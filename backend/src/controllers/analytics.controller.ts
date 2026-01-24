@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-// IMPORTANTE: Importamos o SYNC, não apenas o GET
+import { AnalyticsService } from '../services/analytics.service';
 import { syncLandingPagesFromGA4 } from '../services/googleAnalytics.service'; 
 
 export const getLandingPages = async (
@@ -9,11 +9,15 @@ export const getLandingPages = async (
 ) => {
   try {
     // Pega as datas que o Frontend mandou
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, hostName } = req.query;
 
     // CHAMA A FUNÇÃO DE SINCRONIZAR (SALVAR)
     // Passamos as datas para ele buscar o período correto no Google e salvar no banco
-    const pages = await syncLandingPagesFromGA4(startDate as string, endDate as string);
+    const pages = await AnalyticsService.getLandingPages(
+      startDate as string,
+      endDate as string,
+      hostName as string
+    );
     
     res.json(pages);
   } catch (error) {

@@ -1,4 +1,4 @@
-import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign } from '../types';
+import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign } from '../types';
 import { apiClient } from './apiClient';
 
 // ============================================================================
@@ -73,10 +73,18 @@ export const DataService = {
     return [];
   },
 
-  getLandingPagesGA: async (startDate?: string, endDate?: string): Promise<LandingPage[]> => {
+  getLandingPagesGA: async (
+    startDate?: string,
+    endDate?: string,
+    hostName?: string
+  ): Promise<LandingPage[]> => {
     try {
-      let url = '/analytics/landing-pages';
-      if (startDate && endDate) url += `?startDate=${startDate}&endDate=${endDate}`;
+      const params = new URLSearchParams();
+      if (startDate) params.set('startDate', startDate);
+      if (endDate) params.set('endDate', endDate);
+      if (hostName) params.set('hostName', hostName);
+      const query = params.toString();
+      const url = query ? `/analytics/landing-pages?${query}` : '/analytics/landing-pages';
       const rawData = await apiClient.get<any[]>(url);
       
       if (rawData && rawData.length > 0) {
@@ -323,6 +331,25 @@ export const DataService = {
     }
 
     return safeParse<Campaign[]>(STORAGE_CAMPAIGNS_KEY, []);
+  },
+
+  getMetaCampaigns: async (startDate?: string, endDate?: string): Promise<MetaCampaign[]> => {
+    if (USE_API) {
+      try {
+        const params = new URLSearchParams();
+        if (startDate) params.set('startDate', startDate);
+        if (endDate) params.set('endDate', endDate);
+        const query = params.toString();
+        return await apiClient.get<MetaCampaign[]>(
+          query ? `/campaigns/meta?${query}` : '/campaigns/meta'
+        );
+      } catch (error) {
+        console.error('Erro ao buscar campanhas da Meta:', error);
+        throw error;
+      }
+    }
+
+    return [];
   },
 
   createCampaign: async (campaign: Omit<Campaign, 'id'>): Promise<Campaign> => {

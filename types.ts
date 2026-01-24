@@ -93,6 +93,22 @@ export interface Campaign {
   notes?: string;
 }
 
+export interface MetaCampaign {
+  id: string;
+  name: string;
+  status: CampaignStatus;
+  budget: number;
+  startDate: string;
+  endDate: string;
+  spend: number;
+  reach: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  cpm: number;
+}
+
 export type AssetCategory = 'LP' | 'Criativo' | 'Copy' | 'UTM' | 'Outro';
 
 export interface AssetItem {

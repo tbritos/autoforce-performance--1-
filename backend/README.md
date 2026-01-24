@@ -22,6 +22,7 @@ Edite o `.env` com suas configurações:
 - `DATABASE_URL` - URL de conexão do PostgreSQL
 - `JWT_SECRET` - Chave secreta para JWT
 - `PORT` - Porta do servidor (padrão: 5000)
+- `LP_HOSTNAME` - Hostname das landing pages (padrão: lp.autodromo.com.br)
 
 ### 3. Configurar Banco de Dados
 
@@ -86,6 +87,7 @@ backend/
 
 ### Analytics
 - `GET /api/analytics/landing-pages` - Landing pages do GA4
+  - Query params opcionais: `startDate=YYYY-MM-DD`, `endDate=YYYY-MM-DD`, `hostName=lp.autodromo.com.br`
 
 ## 🗄️ Banco de Dados
 
@@ -135,6 +137,7 @@ O projeto usa **PostgreSQL** com **Prisma ORM**.
 - `POST /api/campaigns` - Criar campanha
 - `PUT /api/campaigns/:id` - Atualizar campanha
 - `DELETE /api/campaigns/:id` - Remover campanha
+- `GET /api/campaigns/meta` - Campanhas da Meta Ads (query opcional: `startDate`, `endDate`)
 
 ### Assets
 - `GET /api/assets` - Listar ativos

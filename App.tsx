@@ -2,12 +2,14 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Login from './components/Login';
 import LPView from './components/LPView';
+import SiteView from './components/SiteView';
 import LeadTracker from './components/LeadTracker';
 import RevenueTracker from './components/RevenueTracker';
 import OKRTracker from './components/OKRTracker';
 import TeamView from './components/TeamView';
 import CampaignsView from './components/CampaignsView';
 import AssetsView from './components/AssetsView';
+import BlogView from './components/BlogView';
 import { DataService } from './services/dataService';
 import { User, Metric, TabView, LandingPage, DailyLeadEntry, RevenueEntry } from './types';
 import { 
@@ -606,18 +608,8 @@ const AppContent: React.FC = () => {
                 <Route path="/team" element={<TeamView />} />
                 <Route path="/okrs" element={<OKRTracker />} />
                 <Route path="/analytics" element={<LPView pages={landingPages} loading={loadingData} />} />
-                <Route path="/site" element={
-                  <div className="p-4 sm:p-6 lg:p-8 space-y-4">
-                    <h2 className="text-2xl font-bold text-white">Site AutoForce</h2>
-                    <p className="text-autoforce-lightGrey text-sm">EspaÃ§o reservado para os indicadores do site.</p>
-                  </div>
-                } />
-                <Route path="/blog" element={
-                  <div className="p-4 sm:p-6 lg:p-8 space-y-4">
-                    <h2 className="text-2xl font-bold text-white">Blog</h2>
-                    <p className="text-autoforce-lightGrey text-sm">EspaÃ§o reservado para indicadores e conteÃºdo do blog.</p>
-                  </div>
-                } />
+                <Route path="/site" element={<SiteView />} />
+                <Route path="/blog" element={<BlogView />} />
                 <Route path="/campaigns" element={<CampaignsView />} />
                 <Route path="/assets" element={<AssetsView />} />
 

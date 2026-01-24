@@ -1,23 +1,22 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LandingPage } from '../types';
 import { DataService } from '../services/dataService';
-import { 
-    ExternalLink, ArrowUpRight, Clock, Users, Activity, Calendar, Search, 
+import {
+    ExternalLink, Activity, Calendar, Search,
     ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, MousePointerClick
 } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 10;
-// Adicionamos 'bounceRate' e 'totalClicks' nas chaves de ordenaÃ§Ã£o
 type SortKey = 'name' | 'users' | 'avgEngagementTime' | 'bounceRate' | 'totalClicks';
 
-const LPView: React.FC = () => {
+const SiteView: React.FC = () => {
   const [pages, setPages] = useState<LandingPage[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortKey, setSortKey] = useState<SortKey>('users');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [dateRange, setDateRange] = useState('30days'); 
+  const [dateRange, setDateRange] = useState('30days');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
 
@@ -36,7 +35,7 @@ const LPView: React.FC = () => {
         startDateStr = customStart; endDateStr = customEnd;
     }
 
-    const data = await DataService.getLandingPagesGA(startDateStr, endDateStr, 'lp.autodromo.com.br');
+    const data = await DataService.getLandingPagesGA(startDateStr, endDateStr, 'site.autoforce.com');
     setPages(data);
     setLoading(false);
   };
@@ -89,12 +88,11 @@ const LPView: React.FC = () => {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 animate-fade-in-up">
-        {/* Header e Filtros */}
         <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-4 mb-4 bg-autoforce-darkest p-6 rounded-xl border border-autoforce-grey/20">
             <div>
                 <div className="flex items-center gap-2 mb-2">
                     <div className="w-6 h-6 bg-[#E37400] rounded-full flex items-center justify-center"><Activity size={14} className="text-white" /></div>
-                    <h2 className="text-xl font-bold text-white">Landing Pages (lp.autodromo.com.br)</h2>
+                    <h2 className="text-xl font-bold text-white">Site AutoForce (site.autoforce.com)</h2>
                 </div>
                 <div className="flex items-center gap-2 mt-2">
                     <span className={`w-2 h-2 rounded-full ${loading ? 'bg-yellow-500' : 'bg-green-500'} animate-pulse`}></span>
@@ -104,14 +102,14 @@ const LPView: React.FC = () => {
             <div className="flex flex-col sm:flex-row items-end gap-3 w-full xl:w-auto">
                  <div className="relative flex-1 w-full sm:w-64">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-autoforce-lightGrey" size={16} />
-                    <input type="text" placeholder="Buscar pÃ¡gina..." value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }} className="w-full bg-autoforce-black border border-autoforce-grey/30 text-white pl-9 pr-4 py-1.5 rounded-lg text-sm focus:border-autoforce-blue outline-none" />
+                    <input type="text" placeholder="Buscar pagina..." value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }} className="w-full bg-autoforce-black border border-autoforce-grey/30 text-white pl-9 pr-4 py-1.5 rounded-lg text-sm focus:border-autoforce-blue outline-none" />
                  </div>
                  <div className="flex items-center gap-2 bg-autoforce-black p-1.5 rounded-lg border border-autoforce-grey/30">
                     <Calendar size={14} className="text-autoforce-lightGrey ml-2"/>
                     <select value={dateRange} onChange={(e) => setDateRange(e.target.value)} className="bg-autoforce-black text-white text-xs font-bold outline-none cursor-pointer p-1">
-                        <option className="bg-autoforce-darkest text-white" value="7days">Ãšltimos 7 dias</option>
-                        <option className="bg-autoforce-darkest text-white" value="30days">Ãšltimos 30 dias</option>
-                        <option className="bg-autoforce-darkest text-white" value="90days">Ãšltimos 90 dias</option>
+                        <option className="bg-autoforce-darkest text-white" value="7days">Ultimos 7 dias</option>
+                        <option className="bg-autoforce-darkest text-white" value="30days">Ultimos 30 dias</option>
+                        <option className="bg-autoforce-darkest text-white" value="90days">Ultimos 90 dias</option>
                         <option className="bg-autoforce-darkest text-white" value="custom">Personalizado</option>
                     </select>
                 </div>
@@ -125,12 +123,11 @@ const LPView: React.FC = () => {
             </div>
         </div>
 
-        {/* Tabela */}
         <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-lg overflow-hidden shadow-lg flex flex-col min-h-[400px]">
             {loading ? (
                 <div className="flex-1 flex flex-col items-center justify-center text-autoforce-lightGrey gap-4">
                     <div className="w-8 h-8 border-4 border-autoforce-blue border-t-transparent rounded-full animate-spin"></div>
-                    <p>Buscando dados das landing pages...</p>
+                    <p>Buscando dados do site...</p>
                 </div>
             ) : (
                 <>
@@ -139,9 +136,9 @@ const LPView: React.FC = () => {
                         <thead>
                             <tr className="bg-autoforce-black/40 text-autoforce-lightGrey text-xs uppercase tracking-wider border-b border-autoforce-grey/20">
                                 <th className="p-4 cursor-pointer hover:text-white" onClick={() => handleSort('name')}><div className="flex items-center">Caminho <SortIcon columnKey="name"/></div></th>
-                                <th className="p-4 text-right cursor-pointer hover:text-white" onClick={() => handleSort('users')}><div className="flex items-center justify-end">UsuÃ¡rios ativos <SortIcon columnKey="users"/></div></th>
+                                <th className="p-4 text-right cursor-pointer hover:text-white" onClick={() => handleSort('users')}><div className="flex items-center justify-end">Usuarios ativos <SortIcon columnKey="users"/></div></th>
                                 <th className="p-4 text-right cursor-pointer hover:text-white" onClick={() => handleSort('totalClicks')}><div className="flex items-center justify-end">Cliques <SortIcon columnKey="totalClicks"/></div></th>
-                                <th className="p-4 text-right cursor-pointer hover:text-white" onClick={() => handleSort('avgEngagementTime')}><div className="flex items-center justify-end">Tempo mÃ©dio <SortIcon columnKey="avgEngagementTime"/></div></th>
+                                <th className="p-4 text-right cursor-pointer hover:text-white" onClick={() => handleSort('avgEngagementTime')}><div className="flex items-center justify-end">Tempo medio <SortIcon columnKey="avgEngagementTime"/></div></th>
                                 <th className="p-4 text-right cursor-pointer hover:text-white" onClick={() => handleSort('bounceRate')}><div className="flex items-center justify-end">Bounce <SortIcon columnKey="bounceRate"/></div></th>
                             </tr>
                         </thead>
@@ -162,7 +159,7 @@ const LPView: React.FC = () => {
                                     </tr>
                                 ))
                             ) : (
-                                <tr><td colSpan={5} className="p-8 text-center text-autoforce-lightGrey">Nenhuma pÃ¡gina encontrada.</td></tr>
+                                <tr><td colSpan={5} className="p-8 text-center text-autoforce-lightGrey">Nenhuma pagina encontrada.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -171,7 +168,7 @@ const LPView: React.FC = () => {
                     <span className="text-xs text-autoforce-lightGrey">{paginatedPages.length > 0 ? `Exibindo ${startIndex + 1}-${Math.min(startIndex + ITEMS_PER_PAGE, sortedPages.length)} de ${sortedPages.length}` : '0 resultados'}</span>
                     <div className="flex items-center gap-2">
                         <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded hover:bg-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed"><ChevronLeft size={18} /></button>
-                        <span className="text-sm font-bold text-white px-2">PÃ¡g {currentPage}</span>
+                        <span className="text-sm font-bold text-white px-2">Pag {currentPage}</span>
                         <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages || totalPages === 0} className="p-1.5 rounded hover:bg-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed"><ChevronRight size={18} /></button>
                     </div>
                 </div>
@@ -182,6 +179,4 @@ const LPView: React.FC = () => {
   );
 };
 
-export default LPView;
-
-
+export default SiteView;

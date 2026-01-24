@@ -22,12 +22,17 @@ export async function initializeGA4Client() {
   return analyticsDataClient;
 }
 
-export async function getLandingPagesFromGA4(startDate?: string, endDate?: string): Promise<LandingPage[]> {
+export async function getLandingPagesFromGA4(
+  startDate?: string,
+  endDate?: string,
+  hostName?: string
+): Promise<LandingPage[]> {
   const propertyId = process.env.GA4_PROPERTY_ID;
   if (!propertyId) throw new Error('GA4_PROPERTY_ID não configurado');
 
   try {
     const client = await initializeGA4Client();
+    const lpHost = hostName || process.env.LP_HOSTNAME || 'lp.autodromo.com.br';
 
     let start = startDate;
     let end = endDate;
@@ -40,13 +45,14 @@ export async function getLandingPagesFromGA4(startDate?: string, endDate?: strin
         start = past.toISOString().split('T')[0];
     }
 
-    console.log(`🔍 Buscando GA4 de ${start} até ${end}...`);
+    console.log(`🔍 Buscando GA4 de ${start} até ${end} (${lpHost})...`);
 
     const response = await client.properties.runReport({
       property: `properties/${propertyId}`,
       requestBody: {
         dateRanges: [{ startDate: start, endDate: end }],
         dimensions: [
+          { name: 'hostName' },
           { name: 'pagePath' },
           { name: 'pageTitle' },
         ],
@@ -59,9 +65,20 @@ export async function getLandingPagesFromGA4(startDate?: string, endDate?: strin
           { name: 'bounceRate' },       
           { name: 'eventCount' }        
         ],
+        dimensionFilter: lpHost
+          ? {
+              filter: {
+                fieldName: 'hostName',
+                stringFilter: {
+                  matchType: 'EXACT',
+                  value: lpHost,
+                },
+              },
+            }
+          : undefined,
         orderBys: [
-          { metric: { metricName: 'conversions' }, desc: true },
-          { metric: { metricName: 'screenPageViews' }, desc: true }
+          { metric: { metricName: 'activeUsers' }, desc: true },
+          { metric: { metricName: 'eventCount' }, desc: true }
         ],
         limit: 200, 
       },
@@ -73,8 +90,8 @@ export async function getLandingPagesFromGA4(startDate?: string, endDate?: strin
       const dimensions = row.dimensionValues || [];
       const metrics = row.metricValues || [];
 
-      const pagePath = dimensions[0]?.value || '';
-      const pageTitle = dimensions[1]?.value || 'Sem título';
+      const pagePath = dimensions[1]?.value || '';
+      const pageTitle = dimensions[2]?.value || 'Sem título';
 
       const views = parseInt(metrics[0]?.value || '0', 10);
       const users = parseInt(metrics[1]?.value || '0', 10);
@@ -112,9 +129,13 @@ export async function getLandingPagesFromGA4(startDate?: string, endDate?: strin
   }
 }
 
-export async function syncLandingPagesFromGA4(startDate?: string, endDate?: string) {
+export async function syncLandingPagesFromGA4(
+  startDate?: string,
+  endDate?: string,
+  hostName?: string
+) {
   try {
-    const pages = await getLandingPagesFromGA4(startDate, endDate);
+    const pages = await getLandingPagesFromGA4(startDate, endDate, hostName);
     
     const { prisma } = await import('../config/database');
 

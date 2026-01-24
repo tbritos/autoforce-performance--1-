@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { CampaignsService } from '../services/campaigns.service';
+import { fetchMetaCampaigns } from '../services/metaAds.service';
 
 export const getCampaigns = async (
   req: Request,
@@ -48,6 +49,20 @@ export const deleteCampaign = async (
   try {
     await CampaignsService.deleteCampaign(req.params.id);
     res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMetaCampaigns = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const campaigns = await fetchMetaCampaigns(startDate as string, endDate as string);
+    res.json(campaigns);
   } catch (error) {
     next(error);
   }
