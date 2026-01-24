@@ -11,6 +11,9 @@ import okrsRoutes from './routes/okrs.routes';
 import teamRoutes from './routes/team.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import calendarRoutes from './routes/calendar.routes';
+import campaignsRoutes from './routes/campaigns.routes';
+import assetsRoutes from './routes/assets.routes';
+import emailRoutes from './routes/email.routes';
 
 dotenv.config();
 
@@ -38,6 +41,9 @@ app.use('/api/okrs', okrsRoutes);
 app.use('/api/team', teamRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/calendar', calendarRoutes);
+app.use('/api/campaigns', campaignsRoutes);
+app.use('/api/assets', assetsRoutes);
+app.use('/api/emails', emailRoutes);
 
 // Error handling middleware (deve ser o último)
 app.use(errorHandler);

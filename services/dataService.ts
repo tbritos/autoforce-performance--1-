@@ -1,4 +1,4 @@
-import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent } from '../types';
+import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign } from '../types';
 import { apiClient } from './apiClient';
 
 // ============================================================================
@@ -40,6 +40,9 @@ const STORAGE_LEADS_KEY = 'autoforce_lead_history';
 const STORAGE_REVENUE_KEY = 'autoforce_revenue_history';
 const STORAGE_OKRS_KEY = 'autoforce_okrs_history';
 const STORAGE_CALENDAR_KEY = 'autoforce_calendar_events';
+const STORAGE_CAMPAIGNS_KEY = 'autoforce_campaigns';
+const STORAGE_ASSETS_KEY = 'autoforce_assets';
+const STORAGE_EMAILS_KEY = 'autoforce_email_campaigns';
 
 
 export const DataService = {
@@ -307,5 +310,191 @@ export const DataService = {
     const history = safeParse<CampaignEvent[]>(STORAGE_CALENDAR_KEY, []);
     const updated = history.filter(item => item.id !== id);
     localStorage.setItem(STORAGE_CALENDAR_KEY, JSON.stringify(updated));
+  },
+
+  getCampaigns: async (): Promise<Campaign[]> => {
+    if (USE_API) {
+      try {
+        return await apiClient.get<Campaign[]>('/campaigns');
+      } catch (error) {
+        console.error('❌ Erro ao buscar campanhas do Backend:', error);
+        throw error;
+      }
+    }
+
+    return safeParse<Campaign[]>(STORAGE_CAMPAIGNS_KEY, []);
+  },
+
+  createCampaign: async (campaign: Omit<Campaign, 'id'>): Promise<Campaign> => {
+    if (USE_API) {
+      try {
+        return await apiClient.post<Campaign>('/campaigns', campaign);
+      } catch (error) {
+        console.error('❌ Erro ao criar campanha no Backend:', error);
+        throw error;
+      }
+    }
+
+    const history = safeParse<Campaign[]>(STORAGE_CAMPAIGNS_KEY, []);
+    const created: Campaign = { id: `${Date.now()}`, ...campaign };
+    const updated = [created, ...history];
+    localStorage.setItem(STORAGE_CAMPAIGNS_KEY, JSON.stringify(updated));
+    return created;
+  },
+
+  updateCampaign: async (id: string, campaign: Omit<Campaign, 'id'>): Promise<Campaign> => {
+    if (USE_API) {
+      try {
+        return await apiClient.put<Campaign>(`/campaigns/${id}`, campaign);
+      } catch (error) {
+        console.error('❌ Erro ao atualizar campanha no Backend:', error);
+        throw error;
+      }
+    }
+
+    const history = safeParse<Campaign[]>(STORAGE_CAMPAIGNS_KEY, []);
+    const updated = history.map(item => (item.id === id ? { id, ...campaign } : item));
+    localStorage.setItem(STORAGE_CAMPAIGNS_KEY, JSON.stringify(updated));
+    return { id, ...campaign };
+  },
+
+  deleteCampaign: async (id: string): Promise<void> => {
+    if (USE_API) {
+      try {
+        await apiClient.delete(`/campaigns/${id}`);
+        return;
+      } catch (error) {
+        console.error('❌ Erro ao remover campanha no Backend:', error);
+        throw error;
+      }
+    }
+
+    const history = safeParse<Campaign[]>(STORAGE_CAMPAIGNS_KEY, []);
+    const updated = history.filter(item => item.id !== id);
+    localStorage.setItem(STORAGE_CAMPAIGNS_KEY, JSON.stringify(updated));
+  },
+
+  getAssets: async (): Promise<AssetItem[]> => {
+    if (USE_API) {
+      try {
+        return await apiClient.get<AssetItem[]>('/assets');
+      } catch (error) {
+        console.error('❌ Erro ao buscar ativos do Backend:', error);
+        throw error;
+      }
+    }
+
+    return safeParse<AssetItem[]>(STORAGE_ASSETS_KEY, []);
+  },
+
+  createAsset: async (asset: Omit<AssetItem, 'id'>): Promise<AssetItem> => {
+    if (USE_API) {
+      try {
+        return await apiClient.post<AssetItem>('/assets', asset);
+      } catch (error) {
+        console.error('❌ Erro ao criar ativo no Backend:', error);
+        throw error;
+      }
+    }
+
+    const history = safeParse<AssetItem[]>(STORAGE_ASSETS_KEY, []);
+    const created: AssetItem = { id: `${Date.now()}`, ...asset };
+    const updated = [created, ...history];
+    localStorage.setItem(STORAGE_ASSETS_KEY, JSON.stringify(updated));
+    return created;
+  },
+
+  updateAsset: async (id: string, asset: Omit<AssetItem, 'id'>): Promise<AssetItem> => {
+    if (USE_API) {
+      try {
+        return await apiClient.put<AssetItem>(`/assets/${id}`, asset);
+      } catch (error) {
+        console.error('❌ Erro ao atualizar ativo no Backend:', error);
+        throw error;
+      }
+    }
+
+    const history = safeParse<AssetItem[]>(STORAGE_ASSETS_KEY, []);
+    const updated = history.map(item => (item.id === id ? { id, ...asset } : item));
+    localStorage.setItem(STORAGE_ASSETS_KEY, JSON.stringify(updated));
+    return { id, ...asset };
+  },
+
+  deleteAsset: async (id: string): Promise<void> => {
+    if (USE_API) {
+      try {
+        await apiClient.delete(`/assets/${id}`);
+        return;
+      } catch (error) {
+        console.error('❌ Erro ao remover ativo no Backend:', error);
+        throw error;
+      }
+    }
+
+    const history = safeParse<AssetItem[]>(STORAGE_ASSETS_KEY, []);
+    const updated = history.filter(item => item.id !== id);
+    localStorage.setItem(STORAGE_ASSETS_KEY, JSON.stringify(updated));
+  },
+
+  getEmailCampaigns: async (): Promise<EmailCampaign[]> => {
+    if (USE_API) {
+      try {
+        return await apiClient.get<EmailCampaign[]>('/emails/campaigns');
+      } catch (error) {
+        console.error('❌ Erro ao buscar campanhas de email do Backend:', error);
+        throw error;
+      }
+    }
+
+    return safeParse<EmailCampaign[]>(STORAGE_EMAILS_KEY, []);
+  },
+
+  createEmailCampaign: async (campaign: Omit<EmailCampaign, 'id'>): Promise<EmailCampaign> => {
+    if (USE_API) {
+      try {
+        return await apiClient.post<EmailCampaign>('/emails/campaigns', campaign);
+      } catch (error) {
+        console.error('❌ Erro ao criar campanha de email no Backend:', error);
+        throw error;
+      }
+    }
+
+    const history = safeParse<EmailCampaign[]>(STORAGE_EMAILS_KEY, []);
+    const created: EmailCampaign = { id: `${Date.now()}`, ...campaign };
+    const updated = [created, ...history];
+    localStorage.setItem(STORAGE_EMAILS_KEY, JSON.stringify(updated));
+    return created;
+  },
+
+  updateEmailCampaign: async (id: string, campaign: Omit<EmailCampaign, 'id'>): Promise<EmailCampaign> => {
+    if (USE_API) {
+      try {
+        return await apiClient.put<EmailCampaign>(`/emails/campaigns/${id}`, campaign);
+      } catch (error) {
+        console.error('❌ Erro ao atualizar campanha de email no Backend:', error);
+        throw error;
+      }
+    }
+
+    const history = safeParse<EmailCampaign[]>(STORAGE_EMAILS_KEY, []);
+    const updated = history.map(item => (item.id === id ? { id, ...campaign } : item));
+    localStorage.setItem(STORAGE_EMAILS_KEY, JSON.stringify(updated));
+    return { id, ...campaign };
+  },
+
+  deleteEmailCampaign: async (id: string): Promise<void> => {
+    if (USE_API) {
+      try {
+        await apiClient.delete(`/emails/campaigns/${id}`);
+        return;
+      } catch (error) {
+        console.error('❌ Erro ao remover campanha de email no Backend:', error);
+        throw error;
+      }
+    }
+
+    const history = safeParse<EmailCampaign[]>(STORAGE_EMAILS_KEY, []);
+    const updated = history.filter(item => item.id !== id);
+    localStorage.setItem(STORAGE_EMAILS_KEY, JSON.stringify(updated));
   },
 };

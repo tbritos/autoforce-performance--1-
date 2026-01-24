@@ -78,6 +78,42 @@ export interface CampaignEvent {
   notes?: string;
 }
 
+export type CampaignPlatform = 'Meta' | 'Google';
+export type CampaignStatus = 'Ativa' | 'Pausada' | 'Em Revisao';
+
+export interface Campaign {
+  id: string;
+  name: string;
+  platform: CampaignPlatform;
+  status: CampaignStatus;
+  budget: number;
+  startDate: string; // ISO YYYY-MM-DD
+  endDate: string; // ISO YYYY-MM-DD
+  kpi?: string;
+  notes?: string;
+}
+
+export type AssetCategory = 'LP' | 'Criativo' | 'Copy' | 'UTM' | 'Outro';
+
+export interface AssetItem {
+  id: string;
+  name: string;
+  category: AssetCategory;
+  link: string;
+  notes?: string;
+}
+
+export interface EmailCampaign {
+  id: string;
+  name: string;
+  date: string; // ISO YYYY-MM-DD
+  sends: number;
+  opens: number;
+  clicks: number;
+  conversions: number;
+  bounce: number;
+}
+
 // --- OKR Types ---
 export type Quarter = 'Q1 2026' | 'Q2 2026' | 'Q3 2026' | 'Q4 2026';
 

@@ -121,3 +121,89 @@ O projeto usa **PostgreSQL** com **Prisma ORM**.
 - **PostgreSQL** - Banco de dados
 - **JWT** - Autenticação
 - **Zod** - Validação de dados
+
+## ✅ Endpoints adicionais
+
+### Calendar
+- `GET /api/calendar/events` - Listar eventos
+- `POST /api/calendar/events` - Criar evento
+- `PUT /api/calendar/events/:id` - Atualizar evento
+- `DELETE /api/calendar/events/:id` - Remover evento
+
+### Campaigns
+- `GET /api/campaigns` - Listar campanhas
+- `POST /api/campaigns` - Criar campanha
+- `PUT /api/campaigns/:id` - Atualizar campanha
+- `DELETE /api/campaigns/:id` - Remover campanha
+
+### Assets
+- `GET /api/assets` - Listar ativos
+- `POST /api/assets` - Criar ativo
+- `PUT /api/assets/:id` - Atualizar ativo
+- `DELETE /api/assets/:id` - Remover ativo
+
+### Emails
+- `GET /api/emails/campaigns` - Listar campanhas de email
+- `POST /api/emails/campaigns` - Criar campanha de email
+- `PUT /api/emails/campaigns/:id` - Atualizar campanha de email
+- `DELETE /api/emails/campaigns/:id` - Remover campanha de email
+
+## 📌 Modelos adicionais
+- `CampaignEvent` - Eventos do calendário
+- `Campaign` - Campanhas (Meta/Google)
+- `AssetItem` - Ativos (LP, criativo, copy, UTM)
+- `EmailCampaign` - Campanhas de email
+
+## 📦 Exemplos de Request
+
+### Criar evento no calendário
+`POST /api/calendar/events`
+```json
+{
+  "title": "Campanha de Feirao",
+  "startDate": "2026-02-01",
+  "endDate": "2026-02-10",
+  "color": "#2563eb",
+  "notes": "Foco em SUVs"
+}
+```
+
+### Criar campanha
+`POST /api/campaigns`
+```json
+{
+  "name": "Search AutoForce",
+  "platform": "Google",
+  "status": "Ativa",
+  "budget": 6200,
+  "startDate": "2026-02-01",
+  "endDate": "2026-02-28",
+  "kpi": "CPC R$ 3.10",
+  "notes": "Palavras de marca"
+}
+```
+
+### Criar ativo
+`POST /api/assets`
+```json
+{
+  "name": "LP Feirao SUVs",
+  "category": "LP",
+  "link": "https://autoforce.com.br/feirao-suv",
+  "notes": "LP principal"
+}
+```
+
+### Criar campanha de email
+`POST /api/emails/campaigns`
+```json
+{
+  "name": "Newsletter Fev",
+  "date": "2026-02-05",
+  "sends": 12000,
+  "opens": 4200,
+  "clicks": 980,
+  "conversions": 120,
+  "bounce": 35
+}
+```

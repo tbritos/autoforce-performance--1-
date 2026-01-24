@@ -94,3 +94,40 @@ model CampaignEvent {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model Campaign {
+  id        String   @id @default(cuid())
+  name      String
+  platform  String
+  status    String
+  budget    Float    @default(0)
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  kpi       String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AssetItem {
+  id        String   @id @default(cuid())
+  name      String
+  category  String
+  link      String
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model EmailCampaign {
+  id          String   @id @default(cuid())
+  name        String
+  date        DateTime @db.Date
+  sends       Int      @default(0)
+  opens       Int      @default(0)
+  clicks      Int      @default(0)
+  conversions Int      @default(0)
+  bounce      Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
