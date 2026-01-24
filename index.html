@@ -1,0 +1,107 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AutoForce Performance</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              autoforce: {
+                blue: '#1440FF',
+                darkBlue: '#001A91',
+                darkest: '#000D3D',
+                secondary: '#0027D4',
+                grey: '#4E5265',
+                lightGrey: '#C7CDE9',
+                accent: '#FFA814',
+                yellow: '#FFC414',
+                black: '#00020A',
+                success: '#00C851',
+                danger: '#ff4444'
+              }
+            },
+            fontFamily: {
+              sans: ['"Titillium Web"', 'sans-serif'],
+              display: ['"Manrope"', 'sans-serif'],
+            },
+            animation: {
+              'spin-slow': 'spin 3s linear infinite',
+              'fade-in-up': 'fadeInUp 0.5s ease-out forwards',
+              'fade-in-down': 'fadeInDown 0.5s ease-out forwards',
+              'fade-in-right': 'fadeInRight 0.5s ease-out forwards',
+              'shake': 'shake 0.5s cubic-bezier(.36,.07,.19,.97) both'
+            },
+            keyframes: {
+              fadeInUp: {
+                '0%': { opacity: '0', transform: 'translateY(10px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              fadeInDown: {
+                '0%': { opacity: '0', transform: 'translateY(-10px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              fadeInRight: {
+                '0%': { opacity: '0', transform: 'translateX(10px)' },
+                '100%': { opacity: '1', transform: 'translateX(0)' },
+              },
+              shake: {
+                '10%, 90%': { transform: 'translate3d(-1px, 0, 0)' },
+                '20%, 80%': { transform: 'translate3d(2px, 0, 0)' },
+                '30%, 50%, 70%': { transform: 'translate3d(-4px, 0, 0)' },
+                '40%, 60%': { transform: 'translate3d(4px, 0, 0)' }
+              }
+            }
+          }
+        }
+      }
+    </script>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700&family=Titillium+Web:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+    
+    <!-- Global Styles -->
+    <style>
+      body {
+        font-family: 'Titillium Web', sans-serif;
+        background-color: #00020A;
+        color: white;
+        overflow-x: hidden;
+      }
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #000D3D; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #1440FF; 
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #0027D4; 
+      }
+      
+      .glass-panel {
+        background: rgba(0, 13, 61, 0.7);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(78, 82, 101, 0.3);
+      }
+    </style>
+
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

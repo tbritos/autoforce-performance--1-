@@ -1,0 +1,96 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  avatar    String?
+  role      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DailyLead {
+  id             String   @id @default(uuid())
+  date           DateTime @unique // Garante apenas um registro por dia
+  mql            Int      @default(0)
+  sql            Int      @default(0)
+  sales          Int      @default(0)
+  conversionRate Float    @default(0) // SQL divididos por MQL
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model RevenueEntry {
+  id           String   @id @default(cuid())
+  date         DateTime @db.Date
+  businessName String
+  setupValue   Float
+  mrrValue     Float    // Monthly Recurring Revenue
+  origin       String
+  product      String[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model OKR {
+  id        String      @id @default(cuid())
+  quarter   String
+  objective String
+  progress  Int         @default(0)
+  keyResults Json       // Array de KeyResult
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+model TeamMember {
+  id            String   @id @default(cuid())
+  name          String
+  role          String
+  avatar        String?
+  status        String   // online, busy, offline
+  lastActive    String
+  leadsGenerated Int      @default(0)
+  salesClosed   Int      @default(0)
+  goalProgress   Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model LandingPage {
+  id                String   @id @default(cuid())
+  name              String
+  path              String   @unique
+  views             Int      @default(0)
+  users             Int      @default(0)
+  conversions       Int      @default(0)
+  conversionRate    Float    @default(0)
+  avgEngagementTime String
+  bounceRate        Float    @default(0)
+  totalClicks       Int      @default(0)
+  source            String   @default("google_analytics")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model CampaignEvent {
+  id        String   @id @default(cuid())
+  title     String
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  color     String
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
