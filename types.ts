@@ -157,6 +157,14 @@ export interface WorkflowEmailStat {
   date: string;
 }
 
+export interface KpiGoal {
+  id: string;
+  metricId: string;
+  target: number;
+  createdAt: string;
+  completedAt?: string;
+}
+
 export interface SyncLog {
   id: string;
   source: string;

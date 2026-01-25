@@ -12,7 +12,7 @@ import AssetsView from './components/AssetsView';
 import BlogView from './components/BlogView';
 import EmailsView from './components/EmailsView';
 import { DataService } from './services/dataService';
-import { User, Metric, TabView, LandingPage, DailyLeadEntry, RevenueEntry } from './types';
+import { User, Metric, TabView, LandingPage, DailyLeadEntry, RevenueEntry, KpiGoal } from './types';
 import {
   LayoutDashboard,
   FileText,
@@ -32,7 +32,8 @@ import {
   FolderOpen,
   Users,
   Menu,
-  ChevronDown
+  ChevronDown,
+  SlidersHorizontal
 } from 'lucide-react';
 import { FunnelChart } from './components/Charts';
 
@@ -54,11 +55,47 @@ const DashboardContent: React.FC<{
     });
     const startDateRef = React.useRef<HTMLInputElement>(null);
     const endDateRef = React.useRef<HTMLInputElement>(null);
-    
+    const [goals, setGoals] = useState<KpiGoal[]>([]);
+    const [goalHistory, setGoalHistory] = useState<KpiGoal[]>([]);
+    const [goalMetricId, setGoalMetricId] = useState('1');
+    const [goalTarget, setGoalTarget] = useState('');
+    const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+    const [showHistory, setShowHistory] = useState(false);
+    const [showGoals, setShowGoals] = useState(false);
+    const [closingGoals, setClosingGoals] = useState(false);
+    const [closingRequested, setClosingRequested] = useState(false);
+
+    const handleCloseGoals = () => {
+        if (closingRequested) return;
+        setClosingRequested(true);
+        setClosingGoals(true);
+        setTimeout(() => {
+            setShowGoals(false);
+            setClosingGoals(false);
+            setClosingRequested(false);
+        }, 250);
+    };
+
     // Fallback de segurança para evitar erro se metrics vier vazio
     const safeMetrics = Array.isArray(metrics) ? metrics : [];
     const safeDailyLeads = Array.isArray(dailyLeads) ? dailyLeads : [];
     const safeRevenueHistory = Array.isArray(revenueHistory) ? revenueHistory : [];
+
+    useEffect(() => {
+        try {
+            const storedGoals = localStorage.getItem('autoforce_kpi_goals');
+            const storedHistory = localStorage.getItem('autoforce_kpi_goals_history');
+            if (storedGoals) setGoals(JSON.parse(storedGoals));
+            if (storedHistory) setGoalHistory(JSON.parse(storedHistory));
+        } catch (error) {
+            console.error('Erro ao carregar metas:', error);
+        }
+    }, []);
+
+    useEffect(() => {
+        localStorage.setItem('autoforce_kpi_goals', JSON.stringify(goals));
+        localStorage.setItem('autoforce_kpi_goals_history', JSON.stringify(goalHistory));
+    }, [goals, goalHistory]);
 
     const parseDateOnly = (value: string) => {
         const [year, month, day] = value.split('-').map(Number);
@@ -182,6 +219,51 @@ const DashboardContent: React.FC<{
         ];
     }, [dateRange.end, dateRange.start, safeMetrics, safeDailyLeads, safeRevenueHistory]);
 
+    const goalTargets = useMemo(() => {
+        const map = new Map<string, number>();
+        goals.forEach(goal => map.set(goal.metricId, goal.target));
+        return map;
+    }, [goals]);
+
+    const handleGoalSubmit = (event: React.FormEvent) => {
+        event.preventDefault();
+        const targetValue = Number(goalTarget);
+        if (!goalMetricId || Number.isNaN(targetValue)) return;
+        if (editingGoalId) {
+            setGoals(prev =>
+                prev.map(goal => goal.id === editingGoalId ? { ...goal, metricId: goalMetricId, target: targetValue } : goal)
+            );
+            setEditingGoalId(null);
+        } else {
+            const newGoal: KpiGoal = {
+                id: `${Date.now()}`,
+                metricId: goalMetricId,
+                target: targetValue,
+                createdAt: new Date().toISOString(),
+            };
+            setGoals(prev => [newGoal, ...prev]);
+        }
+        setGoalTarget('');
+    };
+
+    const handleEditGoal = (goal: KpiGoal) => {
+        setEditingGoalId(goal.id);
+        setGoalMetricId(goal.metricId);
+        setGoalTarget(String(goal.target));
+    };
+
+    const handleDeleteGoal = (id: string) => {
+        setGoals(prev => prev.filter(goal => goal.id !== id));
+    };
+
+    const handleCompleteGoal = (goal: KpiGoal) => {
+        setGoals(prev => prev.filter(item => item.id !== goal.id));
+        setGoalHistory(prev => [
+            { ...goal, completedAt: new Date().toISOString() },
+            ...prev,
+        ]);
+    };
+
     const topProducts = useMemo(() => {
         const map = new Map<string, { count: number; mrr: number }>();
         filteredRevenue.forEach(entry => {
@@ -258,7 +340,7 @@ const DashboardContent: React.FC<{
     
     return (
         <div className="p-4 sm:p-6 lg:p-8 space-y-8 animate-fade-in-up">
-            <div className="flex justify-end">
+            <div className="flex justify-end items-start gap-4 flex-wrap">
                 <div className="flex items-center gap-3 text-xs text-autoforce-grey bg-autoforce-darkest/40 border border-autoforce-grey/20 rounded-xl px-4 py-2">
                     <div className="flex items-center gap-2">
                         <label className="text-[10px] uppercase tracking-wider text-autoforce-lightGrey">De</label>
@@ -302,11 +384,145 @@ const DashboardContent: React.FC<{
                             </button>
                         </div>
                     </div>
+                    <button
+                        type="button"
+                        onClick={() => setShowGoals(true)}
+                        className="ml-2 w-9 h-9 flex items-center justify-center bg-autoforce-blue/20 border border-autoforce-blue/40 rounded-full text-autoforce-blue hover:text-white hover:bg-autoforce-blue/40 transition"
+                        aria-label="Configurar metas"
+                    >
+                        <SlidersHorizontal size={14} />
+                    </button>
                 </div>
             </div>
+
+            {showGoals && (
+                <div className="fixed inset-0 z-50 flex justify-end">
+                    <button
+                        type="button"
+                        className={`absolute inset-0 bg-black/60 ${closingGoals ? 'animate-fade-out' : 'opacity-0 animate-fade-in'}`}
+                        onClick={handleCloseGoals}
+                        aria-label="Fechar metas"
+                    />
+                    <aside className={`relative mt-24 w-full max-w-md bg-autoforce-darkest border border-autoforce-grey/20 rounded-l-3xl shadow-2xl p-5 overflow-y-auto ${showHistory && goalHistory.length > 0 ? 'max-h-[520px]' : 'max-h-[210px]'} ${closingGoals ? 'animate-slide-out-right' : 'animate-slide-in-right'}`}>
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-sm font-bold text-white">Metas dos Cards</h3>
+                            <button
+                                type="button"
+                                onClick={handleCloseGoals}
+                                className="text-xs text-autoforce-lightGrey hover:text-white"
+                            >
+                                Fechar
+                            </button>
+                        </div>
+                        <form onSubmit={handleGoalSubmit} className="space-y-3">
+                            <div className="grid grid-cols-1 gap-2">
+                                <select
+                                    value={goalMetricId}
+                                    onChange={(e) => setGoalMetricId(e.target.value)}
+                                    className="bg-autoforce-black/60 border border-autoforce-grey/30 rounded-lg px-3 py-2 text-xs text-white focus:border-autoforce-blue focus:outline-none"
+                                >
+                                    {computedMetrics.map(metric => (
+                                        <option key={metric.id} value={metric.id}>{metric.label}</option>
+                                    ))}
+                                </select>
+                                <input
+                                    value={goalTarget}
+                                    onChange={(e) => setGoalTarget(e.target.value)}
+                                    type="number"
+                                    className="bg-autoforce-black/60 border border-autoforce-grey/30 rounded-lg px-3 py-2 text-xs text-white focus:border-autoforce-blue focus:outline-none"
+                                    placeholder="Defina a meta"
+                                    required
+                                />
+                            </div>
+                            <div className="flex items-center justify-between gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowHistory(prev => !prev)}
+                                    className="text-xs font-semibold text-autoforce-lightGrey hover:text-white"
+                                >
+                                    Historico
+                                </button>
+                                {editingGoalId && (
+                                    <button
+                                        type="button"
+                                        onClick={() => { setEditingGoalId(null); setGoalTarget(''); }}
+                                        className="text-xs text-autoforce-lightGrey hover:text-white"
+                                    >
+                                        Cancelar
+                                    </button>
+                                )}
+                                <button
+                                    type="submit"
+                                    className="bg-autoforce-blue hover:bg-autoforce-secondary text-white px-3 py-1.5 rounded text-xs font-bold"
+                                >
+                                    {editingGoalId ? 'Salvar' : 'Criar meta'}
+                                </button>
+                            </div>
+                        </form>
+                        {goals.length > 0 && (
+                            <div className="mt-6 space-y-2">
+                                {goals.map(goal => {
+                                    const metricLabel = computedMetrics.find(metric => metric.id === goal.metricId)?.label || 'Meta';
+                                    return (
+                                        <div key={goal.id} className="flex items-center justify-between text-xs bg-autoforce-black/40 border border-autoforce-grey/20 rounded-lg px-3 py-2">
+                                            <div>
+                                                <p className="text-white font-semibold">{metricLabel}</p>
+                                                <p className="text-autoforce-lightGrey">Meta: {goal.target}</p>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleEditGoal(goal)}
+                                                    className="text-autoforce-blue hover:text-autoforce-secondary"
+                                                >
+                                                    Editar
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCompleteGoal(goal)}
+                                                    className="text-green-400 hover:text-green-300"
+                                                >
+                                                    Concluir
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteGoal(goal.id)}
+                                                    className="text-red-400 hover:text-red-300"
+                                                >
+                                                    Excluir
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        {showHistory && goalHistory.length > 0 && (
+                            <div className="mt-3 space-y-2">
+                                {goalHistory.slice(0, 5).map(goal => {
+                                    const metricLabel = computedMetrics.find(metric => metric.id === goal.metricId)?.label || 'Meta';
+                                    return (
+                                        <div key={goal.id} className="text-xs text-autoforce-grey bg-autoforce-black/30 border border-autoforce-grey/20 rounded-lg px-3 py-2">
+                                            <p className="text-white font-semibold">{metricLabel}</p>
+                                            <p>Meta: {goal.target}</p>
+                                            <p>ConcluÃ­da em: {goal.completedAt ? new Date(goal.completedAt).toLocaleDateString('pt-BR') : ''}</p>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        {showHistory && goalHistory.length === 0 && (
+                            <p className="mt-3 text-xs text-autoforce-lightGrey">Nenhuma meta concluÃ­da.</p>
+                        )}
+                    </aside>
+                </div>
+            )}
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {computedMetrics.map((metric) => (
+            {computedMetrics.map((metric) => {
+                const goalTarget = goalTargets.get(metric.id);
+                const target = goalTarget ?? metric.target;
+                return (
                 <div key={metric.id} className="bg-autoforce-darkest p-6 rounded-lg border border-autoforce-grey/20 relative overflow-hidden group hover:border-autoforce-blue/50 transition-all shadow-lg hover:shadow-autoforce-blue/10">
                 <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                     <Award size={40} />
@@ -320,16 +536,17 @@ const DashboardContent: React.FC<{
                         {metric.trend === 'up' ? <TrendingUp size={14} /> : metric.trend === 'down' ? <TrendingDown size={14} /> : null}
                         {metric.change > 0 ? '+' : ''}{metric.change}%
                     </div>
-                    <span className="text-[10px] text-autoforce-grey bg-white/5 px-2 py-0.5 rounded">Meta: {metric.unit}{(metric.target || 0).toLocaleString()}</span>
+                    <span className="text-[10px] text-autoforce-grey bg-white/5 px-2 py-0.5 rounded">Meta: {metric.unit}{(target || 0).toLocaleString()}</span>
                 </div>
                 <div className="w-full bg-gray-800 h-1.5 mt-3 rounded-full overflow-hidden">
                     <div 
                         className={`h-full rounded-full ${metric.trend === 'up' ? 'bg-autoforce-blue' : 'bg-autoforce-accent'}`} 
-                        style={{ width: `${Math.min(((metric.value || 0) / (metric.target || 1)) * 100, 100)}%` }}
+                        style={{ width: `${Math.min(((metric.value || 0) / (target || 1)) * 100, 100)}%` }}
                     ></div>
                 </div>
                 </div>
-            ))}
+                );
+            })}
             </div>
 
             {/* Charts Section */}
@@ -443,28 +660,47 @@ const AppContent: React.FC = () => {
 
   // Initialize App (Check Login)
   useEffect(() => {
-    try {
-        const savedUser = localStorage.getItem('autoforce_user');
+    const restoreSession = async () => {
+      try {
         const savedToken = localStorage.getItem('autoforce_token');
-        if (savedUser && savedToken) {
-          const parsedUser = JSON.parse(savedUser);
-          if (parsedUser && parsedUser.email) {
-            setUser(parsedUser);
-          } else {
-            localStorage.removeItem('autoforce_user');
-            localStorage.removeItem('autoforce_token');
-          }
+        if (!savedToken) {
+          localStorage.removeItem('autoforce_user');
+          setInitializing(false);
+          return;
+        }
+
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        const response = await fetch(`${apiUrl}/auth/me`, {
+          headers: {
+            Authorization: `Bearer ${savedToken}`,
+          },
+        });
+
+        if (!response.ok) {
+          localStorage.removeItem('autoforce_user');
+          localStorage.removeItem('autoforce_token');
+          setInitializing(false);
+          return;
+        }
+
+        const data = await response.json();
+        if (data?.user?.email) {
+          setUser(data.user);
+          localStorage.setItem('autoforce_user', JSON.stringify(data.user));
         } else {
           localStorage.removeItem('autoforce_user');
           localStorage.removeItem('autoforce_token');
         }
-    } catch (e) {
-        console.error("Erro ao restaurar sessÃ£o:", e);
+      } catch (e) {
+        console.error('Erro ao restaurar sessÃ£o:', e);
         localStorage.removeItem('autoforce_user');
         localStorage.removeItem('autoforce_token');
-    } finally {
+      } finally {
         setInitializing(false);
-    }
+      }
+    };
+
+    restoreSession();
   }, []);
 
   useEffect(() => {
@@ -794,5 +1030,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-
-

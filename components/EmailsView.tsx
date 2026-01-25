@@ -10,6 +10,7 @@ const EmailsView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [logsLoading, setLogsLoading] = useState(true);
   const [logFilter, setLogFilter] = useState<'all' | 'rd_emails' | 'rd_workflows'>('all');
+  const [showLogs, setShowLogs] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [source] = useState<'rd'>('rd');
@@ -248,65 +249,77 @@ const EmailsView: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-4">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <h3 className="text-sm font-bold text-white">Logs de Sincronizacao</h3>
-          <div className="flex items-center gap-2 text-xs text-autoforce-lightGrey">
-            <span>Ultimas 20 execucoes</span>
-            <div className="flex items-center gap-1 bg-autoforce-black/40 border border-autoforce-grey/20 rounded-full p-1">
-              {['all', 'rd_emails', 'rd_workflows'].map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setLogFilter(value as typeof logFilter)}
-                  className={`px-3 py-1 rounded-full text-[11px] font-semibold transition ${
-                    logFilter === value
-                      ? 'bg-autoforce-blue/20 text-white'
-                      : 'text-autoforce-lightGrey hover:text-white'
-                  }`}
-                >
-                  {value === 'all' ? 'Todos' : value === 'rd_emails' ? 'Emails' : 'Automações'}
-                </button>
-              ))}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setShowLogs(prev => !prev)}
+          className="text-xs text-autoforce-lightGrey hover:text-white border border-autoforce-grey/30 rounded-full px-3 py-1.5 transition"
+        >
+          {showLogs ? 'Ocultar logs' : 'Ver logs'}
+        </button>
+      </div>
+
+      {showLogs && (
+        <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <h3 className="text-sm font-bold text-white">Logs de Sincronizacao</h3>
+            <div className="flex items-center gap-2 text-xs text-autoforce-lightGrey">
+              <span>Ultimas 20 execucoes</span>
+              <div className="flex items-center gap-1 bg-autoforce-black/40 border border-autoforce-grey/20 rounded-full p-1">
+                {['all', 'rd_emails', 'rd_workflows'].map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setLogFilter(value as typeof logFilter)}
+                    className={`px-3 py-1 rounded-full text-[11px] font-semibold transition ${
+                      logFilter === value
+                        ? 'bg-autoforce-blue/20 text-white'
+                        : 'text-autoforce-lightGrey hover:text-white'
+                    }`}
+                  >
+                    {value === 'all' ? 'Todos' : value === 'rd_emails' ? 'Emails' : 'Automações'}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-        {logsLoading ? (
-          <div className="mt-3 text-xs text-autoforce-lightGrey">Carregando logs...</div>
-        ) : filteredLogs.length === 0 ? (
-          <div className="mt-3 text-xs text-autoforce-lightGrey">Nenhum log disponivel.</div>
-        ) : (
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-            {filteredLogs.map((log) => (
-              <div
-                key={log.id}
-                className="flex items-start justify-between gap-3 rounded-lg border border-autoforce-grey/20 bg-autoforce-black/40 px-3 py-2"
-              >
-                <div>
-                  <div className="text-white font-semibold">{formatSourceLabel(log.source)}</div>
-                  <div className="text-autoforce-lightGrey">
-                    {new Date(log.startedAt).toLocaleString('pt-BR')}
-                  </div>
-                  {log.message && (
-                    <div className="text-autoforce-grey mt-1">{log.message}</div>
-                  )}
-                </div>
-                <span
-                  className={`px-2 py-1 rounded-full text-[10px] font-bold ${
-                    log.status === 'success'
-                      ? 'bg-green-500/20 text-green-300'
-                      : log.status === 'running'
-                      ? 'bg-autoforce-blue/20 text-autoforce-blue'
-                      : 'bg-red-500/20 text-red-300'
-                  }`}
+          {logsLoading ? (
+            <div className="mt-3 text-xs text-autoforce-lightGrey">Carregando logs...</div>
+          ) : filteredLogs.length === 0 ? (
+            <div className="mt-3 text-xs text-autoforce-lightGrey">Nenhum log disponivel.</div>
+          ) : (
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              {filteredLogs.map((log) => (
+                <div
+                  key={log.id}
+                  className="flex items-start justify-between gap-3 rounded-lg border border-autoforce-grey/20 bg-autoforce-black/40 px-3 py-2"
                 >
-                  {log.status === 'success' ? 'OK' : log.status === 'running' ? 'SYNC' : 'ERRO'}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                  <div>
+                    <div className="text-white font-semibold">{formatSourceLabel(log.source)}</div>
+                    <div className="text-autoforce-lightGrey">
+                      {new Date(log.startedAt).toLocaleString('pt-BR')}
+                    </div>
+                    {log.message && (
+                      <div className="text-autoforce-grey mt-1">{log.message}</div>
+                    )}
+                  </div>
+                  <span
+                    className={`px-2 py-1 rounded-full text-[10px] font-bold ${
+                      log.status === 'success'
+                        ? 'bg-green-500/20 text-green-300'
+                        : log.status === 'running'
+                        ? 'bg-autoforce-blue/20 text-autoforce-blue'
+                        : 'bg-red-500/20 text-red-300'
+                    }`}
+                  >
+                    {log.status === 'success' ? 'OK' : log.status === 'running' ? 'SYNC' : 'ERRO'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6">
         <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-6">

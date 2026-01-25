@@ -36,9 +36,29 @@
               'fade-in-up': 'fadeInUp 0.5s ease-out forwards',
               'fade-in-down': 'fadeInDown 0.5s ease-out forwards',
               'fade-in-right': 'fadeInRight 0.5s ease-out forwards',
+              'fade-in': 'fadeIn 0.25s ease-out forwards',
+              'fade-out': 'fadeOut 0.25s ease-in forwards',
+              'slide-in-right': 'slideInRight 0.35s ease-out forwards',
+              'slide-out-right': 'slideOutRight 0.25s ease-in forwards',
               'shake': 'shake 0.5s cubic-bezier(.36,.07,.19,.97) both'
             },
             keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              fadeOut: {
+                '0%': { opacity: '1' },
+                '100%': { opacity: '0' },
+              },
+              slideInRight: {
+                '0%': { opacity: '0', transform: 'translateX(16px)' },
+                '100%': { opacity: '1', transform: 'translateX(0)' },
+              },
+              slideOutRight: {
+                '0%': { opacity: '1', transform: 'translateX(0)' },
+                '100%': { opacity: '0', transform: 'translateX(16px)' },
+              },
               fadeInUp: {
                 '0%': { opacity: '0', transform: 'translateY(10px)' },
                 '100%': { opacity: '1', transform: 'translateY(0)' },

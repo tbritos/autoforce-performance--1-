@@ -17,4 +17,19 @@ router.post('/google', async (req, res, next) => {
   }
 });
 
+router.get('/me', async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    if (!token) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const user = await verifyGoogleToken(token);
+    res.json({ user });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;
