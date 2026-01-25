@@ -2,6 +2,15 @@ import { prisma } from '../config/database';
 import { CampaignEvent } from '../../../types';
 
 export class CalendarService {
+  private static parseDateOnly(value: string): Date {
+    const [year, month, day] = value.split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  }
+
+  private static formatDateOnly(date: Date): string {
+    return date.toISOString().split('T')[0];
+  }
+
   static async getEvents(): Promise<CampaignEvent[]> {
     const events = await prisma.campaignEvent.findMany({
       orderBy: { startDate: 'asc' },
@@ -10,8 +19,8 @@ export class CalendarService {
     return events.map(event => ({
       id: event.id,
       title: event.title,
-      startDate: event.startDate.toISOString().split('T')[0],
-      endDate: event.endDate.toISOString().split('T')[0],
+      startDate: CalendarService.formatDateOnly(event.startDate),
+      endDate: CalendarService.formatDateOnly(event.endDate),
       color: event.color,
       notes: event.notes || undefined,
     }));
@@ -21,8 +30,8 @@ export class CalendarService {
     const event = await prisma.campaignEvent.create({
       data: {
         title: data.title,
-        startDate: new Date(`${data.startDate}T00:00:00`),
-        endDate: new Date(`${data.endDate}T00:00:00`),
+        startDate: CalendarService.parseDateOnly(data.startDate),
+        endDate: CalendarService.parseDateOnly(data.endDate),
         color: data.color,
         notes: data.notes || null,
       },
@@ -31,8 +40,8 @@ export class CalendarService {
     return {
       id: event.id,
       title: event.title,
-      startDate: event.startDate.toISOString().split('T')[0],
-      endDate: event.endDate.toISOString().split('T')[0],
+      startDate: CalendarService.formatDateOnly(event.startDate),
+      endDate: CalendarService.formatDateOnly(event.endDate),
       color: event.color,
       notes: event.notes || undefined,
     };
@@ -43,8 +52,8 @@ export class CalendarService {
       where: { id },
       data: {
         title: data.title,
-        startDate: new Date(`${data.startDate}T00:00:00`),
-        endDate: new Date(`${data.endDate}T00:00:00`),
+        startDate: CalendarService.parseDateOnly(data.startDate),
+        endDate: CalendarService.parseDateOnly(data.endDate),
         color: data.color,
         notes: data.notes || null,
       },
@@ -53,8 +62,8 @@ export class CalendarService {
     return {
       id: event.id,
       title: event.title,
-      startDate: event.startDate.toISOString().split('T')[0],
-      endDate: event.endDate.toISOString().split('T')[0],
+      startDate: CalendarService.formatDateOnly(event.startDate),
+      endDate: CalendarService.formatDateOnly(event.endDate),
       color: event.color,
       notes: event.notes || undefined,
     };

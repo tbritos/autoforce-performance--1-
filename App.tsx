@@ -26,7 +26,7 @@ import {
   RefreshCw,
   ClipboardList,
   DollarSign,
-  Calendar,
+  CalendarDays,
   Package,
   Megaphone,
   FolderOpen,
@@ -43,33 +43,144 @@ const DashboardContent: React.FC<{
     revenueHistory: RevenueEntry[],
     loadingData: boolean 
 }> = ({ metrics, dailyLeads, revenueHistory, loadingData }) => {
-    const [period, setPeriod] = useState<'3m' | '6m' | '12m' | 'all'>('6m');
+    const [dateRange, setDateRange] = useState(() => {
+        const end = new Date();
+        const start = new Date();
+        start.setMonth(end.getMonth() - 6);
+        return {
+            start: start.toISOString().split('T')[0],
+            end: end.toISOString().split('T')[0],
+        };
+    });
+    const startDateRef = React.useRef<HTMLInputElement>(null);
+    const endDateRef = React.useRef<HTMLInputElement>(null);
     
     // Fallback de segurança para evitar erro se metrics vier vazio
     const safeMetrics = Array.isArray(metrics) ? metrics : [];
     const safeDailyLeads = Array.isArray(dailyLeads) ? dailyLeads : [];
     const safeRevenueHistory = Array.isArray(revenueHistory) ? revenueHistory : [];
 
+    const parseDateOnly = (value: string) => {
+        const [year, month, day] = value.split('-').map(Number);
+        return new Date(year, month - 1, day, 12, 0, 0);
+    };
+
     const formatCurrency = (val: number) => {
         if (Number.isNaN(val)) return 'R$ 0,00';
         return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
     };
 
+    const normalizeRange = (startValue: string, endValue: string) => {
+        const start = parseDateOnly(startValue);
+        const end = parseDateOnly(endValue);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+            return null;
+        }
+        return start <= end ? { start, end } : { start: end, end: start };
+    };
+
+    const aggregateForRange = (startValue: string, endValue: string) => {
+        const range = normalizeRange(startValue, endValue);
+        if (!range) {
+            return { mql: 0, sql: 0, mrr: 0, sales: 0 };
+        }
+        const { start, end } = range;
+        const leads = safeDailyLeads.filter(entry => {
+            const entryDate = parseDateOnly(entry.date);
+            return entryDate >= start && entryDate <= end;
+        });
+        const revenue = safeRevenueHistory.filter(entry => {
+            const entryDate = parseDateOnly(entry.date);
+            return entryDate >= start && entryDate <= end;
+        });
+        return {
+            mql: leads.reduce((sum, lead) => sum + lead.mql, 0),
+            sql: leads.reduce((sum, lead) => sum + lead.sql, 0),
+            mrr: revenue.reduce((sum, item) => sum + (item.mrrValue || 0), 0),
+            sales: revenue.length,
+        };
+    };
+
     const filteredDailyLeads = useMemo(() => {
-        if (period === 'all') return safeDailyLeads;
-        const months = period === '3m' ? 3 : period === '6m' ? 6 : 12;
-        const cutoff = new Date();
-        cutoff.setMonth(cutoff.getMonth() - months);
-        return safeDailyLeads.filter(entry => new Date(entry.date) >= cutoff);
-    }, [period, safeDailyLeads]);
+        const range = normalizeRange(dateRange.start, dateRange.end);
+        if (!range) return safeDailyLeads;
+        return safeDailyLeads.filter(entry => {
+            const entryDate = parseDateOnly(entry.date);
+            return entryDate >= range.start && entryDate <= range.end;
+        });
+    }, [dateRange.end, dateRange.start, safeDailyLeads]);
 
     const filteredRevenue = useMemo(() => {
-        if (period === 'all') return safeRevenueHistory;
-        const months = period === '3m' ? 3 : period === '6m' ? 6 : 12;
-        const cutoff = new Date();
-        cutoff.setMonth(cutoff.getMonth() - months);
-        return safeRevenueHistory.filter(entry => new Date(entry.date) >= cutoff);
-    }, [period, safeRevenueHistory]);
+        const range = normalizeRange(dateRange.start, dateRange.end);
+        if (!range) return safeRevenueHistory;
+        return safeRevenueHistory.filter(entry => {
+            const entryDate = parseDateOnly(entry.date);
+            return entryDate >= range.start && entryDate <= range.end;
+        });
+    }, [dateRange.end, dateRange.start, safeRevenueHistory]);
+
+    const computedMetrics = useMemo(() => {
+        const range = normalizeRange(dateRange.start, dateRange.end);
+        if (!range) return safeMetrics;
+        const current = aggregateForRange(dateRange.start, dateRange.end);
+        const dayMs = 24 * 60 * 60 * 1000;
+        const rangeDays = Math.round((range.end.getTime() - range.start.getTime()) / dayMs) + 1;
+        const prevEnd = new Date(range.start.getTime() - dayMs);
+        const prevStart = new Date(prevEnd.getTime() - (rangeDays - 1) * dayMs);
+        const prevStartStr = prevStart.toISOString().split('T')[0];
+        const prevEndStr = prevEnd.toISOString().split('T')[0];
+        const previous = aggregateForRange(prevStartStr, prevEndStr);
+
+        const leadsChange = previous.mql > 0 ? ((current.mql - previous.mql) / previous.mql) * 100 : 0;
+        const currentQual = current.mql > 0 ? (current.sql / current.mql) * 100 : 0;
+        const previousQual = previous.mql > 0 ? (previous.sql / previous.mql) * 100 : 0;
+        const qualChange = currentQual - previousQual;
+        const mrrChange = previous.mrr > 0 ? ((current.mrr - previous.mrr) / previous.mrr) * 100 : 0;
+        const salesChange = previous.sales > 0 ? ((current.sales - previous.sales) / previous.sales) * 100 : 0;
+
+        return [
+            {
+                id: '1',
+                label: 'Total de Leads',
+                value: current.mql,
+                target: 4000,
+                unit: '',
+                change: Number(leadsChange.toFixed(1)),
+                trend: leadsChange >= 0 ? 'up' : 'down',
+                description: 'Leads gerados em todas as fontes',
+            },
+            {
+                id: '2',
+                label: 'Taxa de QualificaÃ§Ã£o',
+                value: Number(currentQual.toFixed(1)),
+                target: 45,
+                unit: '%',
+                change: Number(qualChange.toFixed(1)),
+                trend: qualChange >= 0 ? 'up' : 'down',
+                description: 'Leads que viraram oportunidades',
+            },
+            {
+                id: '3',
+                label: 'MRR Novo (PerÃ­odo)',
+                value: Number(current.mrr.toFixed(2)),
+                target: 15000,
+                unit: 'R$',
+                change: Number(mrrChange.toFixed(1)),
+                trend: mrrChange >= 0 ? 'up' : 'down',
+                description: 'Receita recorrente adicionada',
+            },
+            {
+                id: '4',
+                label: 'Vendas Realizadas',
+                value: current.sales,
+                target: 120,
+                unit: '',
+                change: Number(salesChange.toFixed(1)),
+                trend: salesChange >= 0 ? 'up' : 'down',
+                description: 'NegÃ³cios fechados no perÃ­odo',
+            },
+        ];
+    }, [dateRange.end, dateRange.start, safeMetrics, safeDailyLeads, safeRevenueHistory]);
 
     const topProducts = useMemo(() => {
         const map = new Map<string, { count: number; mrr: number }>();
@@ -147,9 +258,55 @@ const DashboardContent: React.FC<{
     
     return (
         <div className="p-4 sm:p-6 lg:p-8 space-y-8 animate-fade-in-up">
+            <div className="flex justify-end">
+                <div className="flex items-center gap-3 text-xs text-autoforce-grey bg-autoforce-darkest/40 border border-autoforce-grey/20 rounded-xl px-4 py-2">
+                    <div className="flex items-center gap-2">
+                        <label className="text-[10px] uppercase tracking-wider text-autoforce-lightGrey">De</label>
+                        <div className="relative">
+                            <input
+                                id="dashboard-start-date"
+                                type="date"
+                                ref={startDateRef}
+                                value={dateRange.start}
+                                onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                                className="date-input bg-autoforce-black/60 border border-autoforce-grey/30 rounded-lg px-3 py-1.5 text-xs text-white focus:border-autoforce-blue focus:outline-none pr-9"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => (startDateRef.current as HTMLInputElement & { showPicker?: () => void })?.showPicker?.()}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-autoforce-blue"
+                                aria-label="Abrir calendario inicial"
+                            >
+                                <CalendarDays size={12} />
+                            </button>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label className="text-[10px] uppercase tracking-wider text-autoforce-lightGrey">Ate</label>
+                        <div className="relative">
+                            <input
+                                id="dashboard-end-date"
+                                type="date"
+                                ref={endDateRef}
+                                value={dateRange.end}
+                                onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                                className="date-input bg-autoforce-black/60 border border-autoforce-grey/30 rounded-lg px-3 py-1.5 text-xs text-white focus:border-autoforce-blue focus:outline-none pr-9"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => (endDateRef.current as HTMLInputElement & { showPicker?: () => void })?.showPicker?.()}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-autoforce-blue"
+                                aria-label="Abrir calendario final"
+                            >
+                                <CalendarDays size={12} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {safeMetrics.map((metric) => (
+            {computedMetrics.map((metric) => (
                 <div key={metric.id} className="bg-autoforce-darkest p-6 rounded-lg border border-autoforce-grey/20 relative overflow-hidden group hover:border-autoforce-blue/50 transition-all shadow-lg hover:shadow-autoforce-blue/10">
                 <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
                     <Award size={40} />
@@ -180,22 +337,6 @@ const DashboardContent: React.FC<{
                 <div className="lg:col-span-3 bg-autoforce-darkest p-6 rounded-lg border border-autoforce-grey/20">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
                         <h3 className="text-lg font-bold text-white font-display">Funil de Vendas (MQL &gt; SQL &gt; Vendas)</h3>
-                        <div className="flex items-center gap-2 text-xs text-autoforce-grey">
-                            <span>PerÃ­odo:</span>
-                            <div className="bg-autoforce-black/50 rounded px-2 py-1 flex items-center gap-2 border border-autoforce-grey/20">
-                                <Calendar size={12} className="text-autoforce-blue"/>
-                                <select
-                                    value={period}
-                                    onChange={(e) => setPeriod(e.target.value as typeof period)}
-                                    className="bg-autoforce-black text-xs font-bold text-white outline-none cursor-pointer"
-                                >
-                                    <option className="bg-autoforce-darkest text-white" value="3m">Ãšltimos 3 meses</option>
-                                    <option className="bg-autoforce-darkest text-white" value="6m">Ãšltimos 6 meses</option>
-                                    <option className="bg-autoforce-darkest text-white" value="12m">Ãšltimos 12 meses</option>
-                                    <option className="bg-autoforce-darkest text-white" value="all">Todo perÃ­odo</option>
-                                </select>
-                            </div>
-                        </div>
                     </div>
                     <FunnelChart data={funnelSource} isLoading={loadingData} />
                 </div>

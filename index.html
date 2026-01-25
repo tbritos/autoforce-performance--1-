@@ -97,6 +97,18 @@
         backdrop-filter: blur(10px);
         border: 1px solid rgba(78, 82, 101, 0.3);
       }
+
+      input[type="date"] {
+        color-scheme: dark;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+
+      .date-input::-webkit-calendar-picker-indicator {
+        display: none;
+        opacity: 0;
+        cursor: pointer;
+      }
     </style>
 
 </head>

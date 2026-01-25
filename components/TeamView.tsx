@@ -10,6 +10,11 @@ const formatDateKey = (date: Date) => {
   return `${y}-${m}-${d}`;
 };
 
+const parseDateString = (value: string) => {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0);
+};
+
 const monthNames = [
   'Janeiro',
   'Fevereiro',
@@ -74,8 +79,8 @@ const TeamView: React.FC = () => {
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CampaignEvent[]>();
     events.forEach(event => {
-      const start = new Date(event.startDate);
-      const end = new Date(event.endDate);
+      const start = parseDateString(event.startDate);
+      const end = parseDateString(event.endDate);
       const cursor = new Date(start);
       while (cursor <= end) {
         const key = formatDateKey(cursor);
