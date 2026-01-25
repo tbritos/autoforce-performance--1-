@@ -445,17 +445,23 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     try {
         const savedUser = localStorage.getItem('autoforce_user');
-        if (savedUser) {
+        const savedToken = localStorage.getItem('autoforce_token');
+        if (savedUser && savedToken) {
           const parsedUser = JSON.parse(savedUser);
           if (parsedUser && parsedUser.email) {
             setUser(parsedUser);
           } else {
             localStorage.removeItem('autoforce_user');
+            localStorage.removeItem('autoforce_token');
           }
+        } else {
+          localStorage.removeItem('autoforce_user');
+          localStorage.removeItem('autoforce_token');
         }
     } catch (e) {
         console.error("Erro ao restaurar sessÃ£o:", e);
         localStorage.removeItem('autoforce_user');
+        localStorage.removeItem('autoforce_token');
     } finally {
         setInitializing(false);
     }
@@ -507,14 +513,16 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleLogin = (userData: User) => {
+  const handleLogin = (userData: User, token: string) => {
     setUser(userData);
     localStorage.setItem('autoforce_user', JSON.stringify(userData));
+    localStorage.setItem('autoforce_token', token);
   };
 
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('autoforce_user');
+    localStorage.removeItem('autoforce_token');
     setMetrics([]);
     setDailyLeads([]);
     setRevenueHistory([]);

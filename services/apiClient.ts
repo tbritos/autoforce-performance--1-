@@ -13,11 +13,11 @@ class ApiClient {
   ): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
     
+    const token = localStorage.getItem('autoforce_token');
     const config: RequestInit = {
       headers: {
         'Content-Type': 'application/json',
-        // Adicionar token JWT quando autenticação estiver pronta
-        // Authorization: `Bearer ${localStorage.getItem('token')}`,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       ...options,
     };
@@ -74,3 +74,4 @@ class ApiClient {
 }
 
 export const apiClient = new ApiClient();
+

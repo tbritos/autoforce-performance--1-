@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { errorHandler } from './middleware/error.middleware';
+import { authMiddleware } from './middleware/auth.middleware';
 
 // Import routes
 import dashboardRoutes from './routes/dashboard.routes';
@@ -15,6 +16,7 @@ import campaignsRoutes from './routes/campaigns.routes';
 import assetsRoutes from './routes/assets.routes';
 import emailRoutes from './routes/email.routes';
 import { EmailService } from './services/email.service';
+import authRoutes from './routes/auth.routes';
 
 dotenv.config();
 
@@ -46,6 +48,18 @@ app.get('/rdstation/callback', (req, res) => {
     </html>
   `);
 });
+
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', message: 'AutoForce Performance API is running' });
+});
+
+// Auth routes
+app.use('/api/auth', authRoutes);
+
+// Auth middleware for protected routes
+app.use('/api', authMiddleware);
 
 // RD Station OAuth token exchange
 app.post('/api/rdstation/token', async (req, res, next) => {
@@ -118,11 +132,6 @@ app.get('/api/rdstation/test', async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
-
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'AutoForce Performance API is running' });
 });
 
 // API Routes
