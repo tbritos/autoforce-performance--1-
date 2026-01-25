@@ -148,6 +148,37 @@ export const DataService = {
     throw new Error("API Desligada");
   },
 
+  updateDailyLeadEntry: async (
+    id: string,
+    entry: Omit<DailyLeadEntry, 'id'>
+  ): Promise<DailyLeadEntry> => {
+    if (USE_API) {
+      try {
+        const result = await apiClient.put<DailyLeadEntry>(`/leads/daily/${id}`, entry);
+        return result;
+      } catch (error) {
+        console.error('❌ FALHA AO ATUALIZAR LEAD NO BACKEND:', error);
+        throw error;
+      }
+    }
+
+    throw new Error("API Desligada");
+  },
+
+  deleteDailyLeadEntry: async (id: string): Promise<void> => {
+    if (USE_API) {
+      try {
+        await apiClient.delete(`/leads/daily/${id}`);
+        return;
+      } catch (error) {
+        console.error('❌ FALHA AO REMOVER LEAD NO BACKEND:', error);
+        throw error;
+      }
+    }
+
+    throw new Error("API Desligada");
+  },
+
   // ... (Mantenha o resto das funções Revenue e OKR, mas lembre-se que elas também precisam usar a API) ...
   // Se quiser, pode aplicar a mesma lógica de remover o try/catch silencioso nelas.
   getRevenueHistory: async (
@@ -216,6 +247,47 @@ export const DataService = {
     const updated = [created, ...history];
     localStorage.setItem(STORAGE_REVENUE_KEY, JSON.stringify(updated));
     return created;
+  },
+
+  updateRevenueEntry: async (
+    id: string,
+    entry: Omit<RevenueEntry, 'id'>
+  ): Promise<RevenueEntry> => {
+    const normalizedProducts = Array.from(
+      new Set(
+        (Array.isArray(entry.product) ? entry.product : [entry.product])
+          .map(item => item.trim())
+          .filter(Boolean)
+      )
+    );
+    const payload = {
+      ...entry,
+      product: normalizedProducts,
+    };
+    if (USE_API) {
+      try {
+        return await apiClient.put<RevenueEntry>(`/revenue/transactions/${id}`, payload);
+      } catch (error) {
+        console.error('❌ FALHA AO ATUALIZAR GANHO NO BACKEND:', error);
+        throw error;
+      }
+    }
+
+    throw new Error("API Desligada");
+  },
+
+  deleteRevenueEntry: async (id: string): Promise<void> => {
+    if (USE_API) {
+      try {
+        await apiClient.delete(`/revenue/transactions/${id}`);
+        return;
+      } catch (error) {
+        console.error('❌ FALHA AO REMOVER GANHO NO BACKEND:', error);
+        throw error;
+      }
+    }
+
+    throw new Error("API Desligada");
   },
   getOKRs: async (): Promise<OKR[]> => {
     if (USE_API) {

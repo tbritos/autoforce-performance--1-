@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { DailyLeadEntry } from '../types';
 import { DataService } from '../services/dataService';
-import { Calendar, Save, TrendingUp, Filter, Plus, FileSpreadsheet, Loader2, X, Calculator, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, Save, TrendingUp, Filter, Plus, FileSpreadsheet, Loader2, X, Calculator, ChevronLeft, ChevronRight, Pencil, Trash2 } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 7; // Define quantos itens aparecem por página
 
@@ -9,6 +9,8 @@ const LeadTracker: React.FC = () => {
   const [history, setHistory] = useState<DailyLeadEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Estados da Paginação
 // Agora ele tenta ler do navegador antes de usar o 1
@@ -76,19 +78,59 @@ useEffect(() => {
     setSaving(true);
     
     try {
-        await DataService.saveDailyLeadEntry({
+        const payload = {
             date: selectedDate,
             mql: mqlInput,
             sql: sqlInput,
             sales: 0,
             conversionRate: currentConversion
-        });
+        };
+        if (editingId) {
+            await DataService.updateDailyLeadEntry(editingId, payload);
+        } else {
+            await DataService.saveDailyLeadEntry(payload);
+        }
         await loadHistory();
+        setEditingId(null);
     } catch (err) {
         console.error(err);
     } finally {
         setSaving(false);
     }
+  };
+
+  const handleEdit = (entry: DailyLeadEntry) => {
+      setEditingId(entry.id);
+      setSelectedDate(entry.date);
+      setMqlInput(entry.mql || 0);
+      setSqlInput(entry.sql || 0);
+  };
+
+  const handleDelete = async (entry: DailyLeadEntry) => {
+      const confirmed = window.confirm(`Remover o registro de ${fmtDate(entry.date)}?`);
+      if (!confirmed) return;
+      setDeletingId(entry.id);
+      try {
+          await DataService.deleteDailyLeadEntry(entry.id);
+          await loadHistory();
+          if (editingId === entry.id) {
+              setEditingId(null);
+              setSelectedDate(new Date().toISOString().split('T')[0]);
+              setMqlInput(0);
+              setSqlInput(0);
+          }
+      } catch (err) {
+          console.error(err);
+      } finally {
+          setDeletingId(null);
+      }
+  };
+
+  const handleCancelEdit = () => {
+      setEditingId(null);
+      setSelectedDate(new Date().toISOString().split('T')[0]);
+      setMqlInput(0);
+      setSqlInput(0);
   };
 
   // --- LÓGICA DE FILTROS E PAGINAÇÃO ---
@@ -212,10 +254,21 @@ useEffect(() => {
             
             {/* Formulário de Input */}
             <div className="lg:col-span-4 bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-6 shadow-lg h-fit">
-                <h3 className="text-white font-bold mb-4 flex items-center gap-2">
-                    <Plus size={16} className="text-autoforce-accent"/>
-                    Registro de Dados
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-white font-bold flex items-center gap-2">
+                        <Plus size={16} className="text-autoforce-accent"/>
+                        Registro de Dados
+                    </h3>
+                    {editingId && (
+                        <button
+                            type="button"
+                            onClick={handleCancelEdit}
+                            className="text-xs text-autoforce-lightGrey hover:text-white"
+                        >
+                            Cancelar ediÃ§Ã£o
+                        </button>
+                    )}
+                </div>
                 
                 <form onSubmit={handleSave} className="space-y-4">
                     <div>
@@ -274,7 +327,7 @@ useEffect(() => {
                             className="w-full bg-autoforce-blue hover:bg-autoforce-secondary text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg shadow-autoforce-blue/20"
                         >
                             {saving ? <Loader2 className="animate-spin" size={18}/> : <Save size={18} />}
-                            {saving ? 'Salvando...' : 'Salvar Dados'}
+                            {saving ? 'Salvando...' : editingId ? 'Atualizar Dados' : 'Salvar Dados'}
                         </button>
                     </div>
                 </form>
@@ -420,13 +473,14 @@ useEffect(() => {
                             <th className="p-4 text-center">MQL</th>
                             <th className="p-4 text-center">SQL</th>
                             <th className="p-4 text-right">Taxa Conv.</th>
+                            <th className="p-4 text-right">AÃ§Ãµes</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-autoforce-grey/10">
                         {loading ? (
-                            <tr><td colSpan={4} className="p-8 text-center text-autoforce-lightGrey">Carregando histórico...</td></tr>
+                            <tr><td colSpan={5} className="p-8 text-center text-autoforce-lightGrey">Carregando histórico...</td></tr>
                         ) : filteredHistory.length === 0 ? (
-                            <tr><td colSpan={4} className="p-8 text-center text-autoforce-lightGrey">Nenhum registro encontrado no período.</td></tr>
+                            <tr><td colSpan={5} className="p-8 text-center text-autoforce-lightGrey">Nenhum registro encontrado no período.</td></tr>
                         ) : (
                             paginatedData.map((entry) => (
                                 <tr key={entry.id} className="hover:bg-autoforce-blue/5 transition-colors">
@@ -437,6 +491,27 @@ useEffect(() => {
                                         <span className={`px-2 py-1 rounded text-xs font-bold ${entry.conversionRate > 15 ? 'bg-green-900/40 text-green-400' : 'bg-autoforce-blue/10 text-autoforce-blue'}`}>
                                             {fmt(entry.conversionRate)}
                                         </span>
+                                    </td>
+                                    <td className="p-4 text-right">
+                                        <div className="flex items-center justify-end gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleEdit(entry)}
+                                                className="p-2 rounded-lg border border-autoforce-grey/20 text-autoforce-lightGrey hover:text-white hover:border-autoforce-blue/40"
+                                                title="Editar"
+                                            >
+                                                <Pencil size={14} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDelete(entry)}
+                                                disabled={deletingId === entry.id}
+                                                className="p-2 rounded-lg border border-autoforce-grey/20 text-red-300 hover:text-red-200 hover:border-red-400/40 disabled:opacity-50"
+                                                title="Remover"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))

@@ -48,4 +48,36 @@ export class LeadsService {
       conversionRate: lead.conversionRate,
     };
   }
+
+  static async updateDailyLead(
+    id: string,
+    data: Omit<DailyLeadEntry, 'id'>
+  ): Promise<DailyLeadEntry> {
+    const date = new Date(data.date);
+    const lead = await prisma.dailyLead.update({
+      where: { id },
+      data: {
+        date,
+        mql: data.mql,
+        sql: data.sql,
+        sales: data.sales,
+        conversionRate: data.conversionRate,
+      },
+    });
+
+    return {
+      id: lead.id,
+      date: lead.date.toISOString().split('T')[0],
+      mql: lead.mql,
+      sql: lead.sql,
+      sales: lead.sales,
+      conversionRate: lead.conversionRate,
+    };
+  }
+
+  static async deleteDailyLead(id: string): Promise<void> {
+    await prisma.dailyLead.delete({
+      where: { id },
+    });
+  }
 }

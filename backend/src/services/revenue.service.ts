@@ -60,4 +60,38 @@ export class RevenueService {
       product: revenue.product,
     };
   }
+
+  static async updateRevenueEntry(
+    id: string,
+    data: Omit<RevenueEntry, 'id'>
+  ): Promise<RevenueEntry> {
+    const normalizedProducts = Array.isArray(data.product) ? data.product : [data.product];
+    const revenue = await prisma.revenueEntry.update({
+      where: { id },
+      data: {
+        date: data.date ? new Date(`${data.date}T00:00:00`) : undefined,
+        businessName: data.businessName,
+        setupValue: data.setupValue,
+        mrrValue: data.mrrValue,
+        origin: data.origin,
+        product: normalizedProducts,
+      },
+    });
+
+    return {
+      id: revenue.id,
+      date: revenue.date.toISOString().split('T')[0],
+      businessName: revenue.businessName,
+      setupValue: revenue.setupValue,
+      mrrValue: revenue.mrrValue,
+      origin: revenue.origin,
+      product: revenue.product,
+    };
+  }
+
+  static async deleteRevenueEntry(id: string): Promise<void> {
+    await prisma.revenueEntry.delete({
+      where: { id },
+    });
+  }
 }

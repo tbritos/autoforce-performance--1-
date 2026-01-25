@@ -35,3 +35,31 @@ export const saveRevenueEntry = async (
     next(error);
   }
 };
+
+export const updateRevenueEntry = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const entry = await RevenueService.updateRevenueEntry(id, req.body);
+    res.json(entry);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteRevenueEntry = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    await RevenueService.deleteRevenueEntry(id);
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};

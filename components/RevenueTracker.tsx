@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { RevenueEntry } from '../types';
 import { DataService } from '../services/dataService';
-import { DollarSign, Plus, Briefcase, Globe, Package, TrendingUp, Loader2, Filter, X, Calendar, ChevronDown } from 'lucide-react';
+import { DollarSign, Plus, Briefcase, Globe, Package, TrendingUp, Loader2, Filter, X, Calendar, ChevronDown, Pencil, Trash2 } from 'lucide-react';
 
 const RevenueTracker: React.FC = () => {
   const productOptions = ['Autodromo', 'Autopilot', 'Autobot', 'Nitroads', 'Fluxo de IA'];
@@ -10,6 +10,8 @@ const RevenueTracker: React.FC = () => {
   const [history, setHistory] = useState<RevenueEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Form State
   const [businessName, setBusinessName] = useState('');
@@ -68,14 +70,19 @@ const RevenueTracker: React.FC = () => {
 
     setSaving(true);
     try {
-        await DataService.saveRevenueEntry({
+        const payload = {
             businessName,
             date: saleDate,
             setupValue: parseFloat(setupValue),
             mrrValue: parseFloat(mrrValue),
             origin,
             product: selectedProducts
-        });
+        };
+        if (editingId) {
+            await DataService.updateRevenueEntry(editingId, payload);
+        } else {
+            await DataService.saveRevenueEntry(payload);
+        }
         
         // Reset Form
         setBusinessName('');
@@ -83,6 +90,7 @@ const RevenueTracker: React.FC = () => {
         setSetupValue('');
         setMrrValue('');
         setSelectedProducts(['Autodromo']);
+        setEditingId(null);
         
         await loadData();
     } catch (err) {
@@ -90,6 +98,50 @@ const RevenueTracker: React.FC = () => {
     } finally {
         setSaving(false);
     }
+  };
+
+  const handleEdit = (entry: RevenueEntry) => {
+      setEditingId(entry.id);
+      setBusinessName(entry.businessName);
+      setSaleDate(entry.date);
+      setSetupValue(String(entry.setupValue ?? 0));
+      setMrrValue(String(entry.mrrValue ?? 0));
+      setOrigin(entry.origin);
+      setSelectedProducts(Array.isArray(entry.product) ? entry.product : [entry.product]);
+      setIsProductMenuOpen(false);
+  };
+
+  const handleDelete = async (entry: RevenueEntry) => {
+      const confirmed = window.confirm(`Remover o ganho de ${entry.businessName}?`);
+      if (!confirmed) return;
+      setDeletingId(entry.id);
+      try {
+          await DataService.deleteRevenueEntry(entry.id);
+          await loadData();
+          if (editingId === entry.id) {
+              setEditingId(null);
+              setBusinessName('');
+              setSaleDate(new Date().toISOString().split('T')[0]);
+              setSetupValue('');
+              setMrrValue('');
+              setOrigin('Google Ads');
+              setSelectedProducts(['Autodromo']);
+          }
+      } catch (err) {
+          console.error(err);
+      } finally {
+          setDeletingId(null);
+      }
+  };
+
+  const handleCancelEdit = () => {
+      setEditingId(null);
+      setBusinessName('');
+      setSaleDate(new Date().toISOString().split('T')[0]);
+      setSetupValue('');
+      setMrrValue('');
+      setOrigin('Google Ads');
+      setSelectedProducts(['Autodromo']);
   };
 
   const clearFilters = () => {
@@ -275,10 +327,21 @@ const RevenueTracker: React.FC = () => {
             
             {/* Form */}
             <div className="lg:col-span-4 h-fit bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-6 shadow-lg lg:sticky top-6">
-                <h3 className="text-white font-bold mb-6 flex items-center gap-2 border-b border-autoforce-grey/20 pb-4">
-                    <Plus size={16} className="text-autoforce-accent"/>
-                    Novo NegÃ³cio
-                </h3>
+                <div className="flex items-center justify-between mb-6 border-b border-autoforce-grey/20 pb-4">
+                    <h3 className="text-white font-bold flex items-center gap-2">
+                        <Plus size={16} className="text-autoforce-accent"/>
+                        Novo NegÃ³cio
+                    </h3>
+                    {editingId && (
+                        <button
+                            type="button"
+                            onClick={handleCancelEdit}
+                            className="text-xs text-autoforce-lightGrey hover:text-white"
+                        >
+                            Cancelar ediÃ§Ã£o
+                        </button>
+                    )}
+                </div>
                 
                 <form onSubmit={handleSave} className="space-y-4">
                     <div>
@@ -409,7 +472,7 @@ const RevenueTracker: React.FC = () => {
                             className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-900/20"
                         >
                             {saving ? <Loader2 className="animate-spin" size={18}/> : <Plus size={18} />}
-                            {saving ? 'Adicionando...' : 'Adicionar Ganho'}
+                            {saving ? 'Adicionando...' : editingId ? 'Atualizar Ganho' : 'Adicionar Ganho'}
                         </button>
                     </div>
                 </form>
@@ -433,16 +496,17 @@ const RevenueTracker: React.FC = () => {
                             <tr>
                                 <th className="p-4">Data</th>
                                 <th className="p-4">Cliente</th>
-                                <th className="p-4">Origem / Produto</th>
-                                <th className="p-4 text-right">Setup</th>
-                                <th className="p-4 text-right">MRR</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-autoforce-grey/10">
-                            {loading ? (
-                                <tr><td colSpan={5} className="p-8 text-center text-autoforce-lightGrey">Carregando...</td></tr>
+                            <th className="p-4">Origem / Produto</th>
+                            <th className="p-4 text-right">Setup</th>
+                            <th className="p-4 text-right">MRR</th>
+                            <th className="p-4 text-right">AÃ§Ãµes</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-autoforce-grey/10">
+                        {loading ? (
+                                <tr><td colSpan={6} className="p-8 text-center text-autoforce-lightGrey">Carregando...</td></tr>
                             ) : filteredHistory.length === 0 ? (
-                                <tr><td colSpan={5} className="p-8 text-center text-autoforce-lightGrey">Nenhuma venda encontrada no perÃ­odo.</td></tr>
+                                <tr><td colSpan={6} className="p-8 text-center text-autoforce-lightGrey">Nenhuma venda encontrada no perÃ­odo.</td></tr>
                             ) : (
                                 paginatedHistory.map((entry) => (
                                     <tr key={entry.id} className="hover:bg-autoforce-blue/5 transition-colors">
@@ -456,6 +520,27 @@ const RevenueTracker: React.FC = () => {
                                         </td>
                                         <td className="p-4 text-right font-mono text-autoforce-lightGrey">{formatCurrency(entry.setupValue)}</td>
                                         <td className="p-4 text-right font-mono text-green-400 font-bold">{formatCurrency(entry.mrrValue)}</td>
+                                        <td className="p-4 text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleEdit(entry)}
+                                                    className="p-2 rounded-lg border border-autoforce-grey/20 text-autoforce-lightGrey hover:text-white hover:border-autoforce-blue/40"
+                                                    title="Editar"
+                                                >
+                                                    <Pencil size={14} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDelete(entry)}
+                                                    disabled={deletingId === entry.id}
+                                                    className="p-2 rounded-lg border border-autoforce-grey/20 text-red-300 hover:text-red-200 hover:border-red-400/40 disabled:opacity-50"
+                                                    title="Remover"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        </td>
                                     </tr>
                                 ))
                             )}

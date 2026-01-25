@@ -28,3 +28,33 @@ export const saveDailyLead = async (
     next(error);
   }
 };
+
+export const updateDailyLead = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const lead = await LeadsService.updateDailyLead(id, req.body);
+    res.json(lead);
+  } catch (error) {
+    console.error('Error updating daily lead:', error);
+    next(error);
+  }
+};
+
+export const deleteDailyLead = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    await LeadsService.deleteDailyLead(id);
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error deleting daily lead:', error);
+    next(error);
+  }
+};
