@@ -1,4 +1,4 @@
-import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, AssetVersion } from '../types';
+import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, AssetVersion, WorkflowEmailStat } from '../types';
 import { apiClient } from './apiClient';
 
 // ============================================================================
@@ -522,7 +522,7 @@ export const DataService = {
   getEmailCampaigns: async (): Promise<EmailCampaign[]> => {
     if (USE_API) {
       try {
-        return await apiClient.get<EmailCampaign[]>('/emails/campaigns');
+        return await apiClient.get<EmailCampaign[]>('/emails/campaigns?source=manual');
       } catch (error) {
         console.error('❌ Erro ao buscar campanhas de email do Backend:', error);
         throw error;
@@ -530,6 +530,76 @@ export const DataService = {
     }
 
     return safeParse<EmailCampaign[]>(STORAGE_EMAILS_KEY, []);
+  },
+
+  getRdEmailCampaigns: async (): Promise<EmailCampaign[]> => {
+    if (USE_API) {
+      try {
+        return await apiClient.get<EmailCampaign[]>('/emails/campaigns/rdstation');
+      } catch (error) {
+        console.error('? Erro ao buscar emails do RD Station:', error);
+        throw error;
+      }
+    }
+
+    return [];
+  },
+
+  syncRdEmailCampaigns: async (
+    startDate?: string,
+    endDate?: string
+  ): Promise<EmailCampaign[]> => {
+    if (USE_API) {
+      try {
+        const params = new URLSearchParams();
+        if (startDate) params.set('startDate', startDate);
+        if (endDate) params.set('endDate', endDate);
+        const query = params.toString();
+        return await apiClient.get<EmailCampaign[]>(
+          query ? `/emails/campaigns/rdstation/sync?${query}` : '/emails/campaigns/rdstation/sync'
+        );
+      } catch (error) {
+        console.error('Erro ao sincronizar emails do RD Station:', error);
+        throw error;
+      }
+    }
+
+    return [];
+  },
+
+  getRdWorkflowEmailStats: async (): Promise<WorkflowEmailStat[]> => {
+    if (USE_API) {
+      try {
+        return await apiClient.get<WorkflowEmailStat[]>('/emails/automation/rdstation');
+      } catch (error) {
+        console.error('Erro ao buscar automacoes do RD Station:', error);
+        throw error;
+      }
+    }
+
+    return [];
+  },
+
+  syncRdWorkflowEmailStats: async (
+    startDate?: string,
+    endDate?: string
+  ): Promise<WorkflowEmailStat[]> => {
+    if (USE_API) {
+      try {
+        const params = new URLSearchParams();
+        if (startDate) params.set('startDate', startDate);
+        if (endDate) params.set('endDate', endDate);
+        const query = params.toString();
+        return await apiClient.get<WorkflowEmailStat[]>(
+          query ? `/emails/automation/rdstation/sync?${query}` : '/emails/automation/rdstation/sync'
+        );
+      } catch (error) {
+        console.error('? Erro ao sincronizar automacoes do RD Station:', error);
+        throw error;
+      }
+    }
+
+    return [];
   },
 
   createEmailCampaign: async (campaign: Omit<EmailCampaign, 'id'>): Promise<EmailCampaign> => {
@@ -581,3 +651,4 @@ export const DataService = {
     localStorage.setItem(STORAGE_EMAILS_KEY, JSON.stringify(updated));
   },
 };
+

@@ -136,6 +136,8 @@ model AssetVersion {
 
 model EmailCampaign {
   id          String   @id @default(cuid())
+  externalId  String?
+  source      String   @default("manual")
   name        String
   date        DateTime @db.Date
   sends       Int      @default(0)
@@ -145,4 +147,29 @@ model EmailCampaign {
   bounce      Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@unique([externalId, source])
+}
+
+model WorkflowEmailStat {
+  id               String   @id @default(cuid())
+  externalId       String
+  workflowId       String?
+  workflowName     String
+  emailName        String
+  delivered        Int      @default(0)
+  opened           Int      @default(0)
+  clicked          Int      @default(0)
+  bounced          Int      @default(0)
+  unsubscribed     Int      @default(0)
+  deliveredRate    Float    @default(0)
+  openedRate       Float    @default(0)
+  clickedRate      Float    @default(0)
+  spamRate         Float    @default(0)
+  date             DateTime @db.Date
+  source           String   @default("rd")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([externalId, source])
 }

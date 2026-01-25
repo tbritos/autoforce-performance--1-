@@ -14,6 +14,7 @@ import calendarRoutes from './routes/calendar.routes';
 import campaignsRoutes from './routes/campaigns.routes';
 import assetsRoutes from './routes/assets.routes';
 import emailRoutes from './routes/email.routes';
+import { EmailService } from './services/email.service';
 
 dotenv.config();
 
@@ -27,6 +28,97 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// RD Station OAuth callback helper
+app.get('/rdstation/callback', (req, res) => {
+  const code = typeof req.query.code === 'string' ? req.query.code : '';
+  const state = typeof req.query.state === 'string' ? req.query.state : '';
+
+  res.status(200).send(`
+    <html>
+      <head><title>RD Station OAuth</title></head>
+      <body style="font-family: Arial, sans-serif; padding: 24px;">
+        <h2>RD Station OAuth</h2>
+        <p>Copie o code abaixo e use no POST para gerar o refresh token.</p>
+        <pre style="background:#111827;color:#fff;padding:12px;border-radius:8px;">${code || 'code nao encontrado'}</pre>
+        ${state ? `<p><strong>state:</strong> ${state}</p>` : ''}
+      </body>
+    </html>
+  `);
+});
+
+// RD Station OAuth token exchange
+app.post('/api/rdstation/token', async (req, res, next) => {
+  try {
+    const { code } = req.body as { code?: string };
+    const clientId = process.env.RD_STATION_CLIENT_ID;
+    const clientSecret = process.env.RD_STATION_CLIENT_SECRET;
+
+    if (!code || !clientId || !clientSecret) {
+      res.status(400).json({
+        error: 'Missing code or RD Station credentials',
+      });
+      return;
+    }
+
+    const response = await fetch('https://api.rd.services/auth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      res.status(response.status).send(text);
+      return;
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// RD Station workspace lookup
+app.get('/api/rdstation/workspaces', async (req, res, next) => {
+  try {
+    const { getRdAccessToken } = await import('./services/rdstation.service');
+    const token = await getRdAccessToken();
+
+    const response = await fetch('https://api.rd.services/platform/workspaces', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      res.status(response.status).send(text);
+      return;
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/rdstation/test', async (req, res, next) => {
+  try {
+    const { getRdAccessToken } = await import('./services/rdstation.service');
+    await getRdAccessToken();
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -54,5 +146,21 @@ app.listen(PORT, () => {
   console.log(`📊 AutoForce Performance API`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
+
+const syncRdData = async () => {
+  try {
+    await Promise.all([
+      EmailService.syncRdCampaigns(),
+      EmailService.syncWorkflowStats(),
+    ]);
+    console.log('ðŸ”„ RD Station sync concluida.');
+  } catch (error) {
+    console.error('âŒ Falha ao sincronizar RD Station:', error);
+  }
+};
+
+const syncIntervalMs = 15 * 60 * 1000;
+syncRdData();
+setInterval(syncRdData, syncIntervalMs);
 
 export default app;

@@ -10,6 +10,7 @@ import TeamView from './components/TeamView';
 import CampaignsView from './components/CampaignsView';
 import AssetsView from './components/AssetsView';
 import BlogView from './components/BlogView';
+import EmailsView from './components/EmailsView';
 import { DataService } from './services/dataService';
 import { User, Metric, TabView, LandingPage, DailyLeadEntry, RevenueEntry } from './types';
 import { 
@@ -614,88 +615,7 @@ const AppContent: React.FC = () => {
                 <Route path="/assets" element={<AssetsView />} />
 
                 {/* Rota ConfiguraÃ§Ãµes */}
-                <Route path="/settings" element={
-                     <div className="p-4 sm:p-6 lg:p-8 space-y-6">
-                      <div className="flex items-center gap-4 mb-8">
-                           <div className="bg-autoforce-darkest p-4 rounded-full border border-autoforce-blue/20">
-                              <Mail size={32} className="animate-pulse text-autoforce-blue" />
-                          </div>
-                          <div>
-                              <h2 className="text-2xl font-bold text-white">Integracoes & Disparo de Emails</h2>
-                              <p className="text-autoforce-lightGrey text-sm">Preparado para integrar com RD Station.</p>
-                          </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                          <div className="lg:col-span-2 bg-autoforce-darkest border border-autoforce-grey/20 p-6 rounded-xl">
-                              <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                                  <Server className="text-autoforce-accent" />
-                                  RD Station Email
-                              </h3>
-                              <p className="text-sm text-autoforce-lightGrey mb-6">
-                                  Configure a integracao para visualizar envios, aberturas, cliques e conversoes por campanha.
-                              </p>
-
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  <div>
-                                      <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">Access Token</label>
-                                      <input
-                                          type="password"
-                                          placeholder="Insira o token do RD Station"
-                                          className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-sm"
-                                      />
-                                  </div>
-                                  <div>
-                                      <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">Workspace</label>
-                                      <input
-                                          type="text"
-                                          placeholder="Ex: marketing-autoforce"
-                                          className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-sm"
-                                      />
-                                  </div>
-                              </div>
-
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-                                  {[
-                                      { label: 'Envios', value: '--' },
-                                      { label: 'Aberturas', value: '--' },
-                                      { label: 'Cliques', value: '--' },
-                                      { label: 'CTR', value: '--' },
-                                      { label: 'Conversoes', value: '--' },
-                                      { label: 'Bounce', value: '--' },
-                                  ].map((metric) => (
-                                      <div key={metric.label} className="bg-autoforce-black/40 border border-autoforce-grey/30 rounded-lg p-4">
-                                          <p className="text-xs text-autoforce-lightGrey uppercase tracking-wider">{metric.label}</p>
-                                          <p className="text-xl text-white font-bold mt-2">{metric.value}</p>
-                                      </div>
-                                  ))}
-                              </div>
-
-                              <div className="flex justify-end gap-3 mt-6">
-                                  <button className="px-4 py-2 text-autoforce-lightGrey hover:text-white text-sm">Testar Conexao</button>
-                                  <button className="bg-autoforce-blue hover:bg-autoforce-secondary text-white px-5 py-2 rounded text-sm font-bold">
-                                      Salvar Integracao
-                                  </button>
-                              </div>
-                          </div>
-
-                          <div className="bg-autoforce-darkest border border-autoforce-grey/20 p-6 rounded-xl space-y-6">
-                              <div>
-                                  <h3 className="text-white font-bold mb-3">Checklist de Integracao</h3>
-                                  <ul className="text-sm text-autoforce-lightGrey space-y-2">
-                                      <li>1. Gerar token no RD Station</li>
-                                      <li>2. Definir permissões de email marketing</li>
-                                      <li>3. Validar webhooks de eventos</li>
-                                      <li>4. Confirmar dominio de envio</li>
-                                  </ul>
-                              </div>
-                              <div className="bg-autoforce-black/50 border border-autoforce-grey/20 rounded-lg p-4 text-xs text-autoforce-lightGrey">
-                                  Os dados serão atualizados automaticamente apos conectar a integracao.
-                              </div>
-                          </div>
-                      </div>
-                  </div>
-                } />
+                <Route path="/settings" element={<EmailsView />} />
             </Routes>
         </div>
         </div>

@@ -7,7 +7,10 @@ export const getEmailCampaigns = async (
   next: NextFunction
 ) => {
   try {
-    const campaigns = await EmailService.getEmailCampaigns();
+    const { source } = req.query;
+    const campaigns = await EmailService.getEmailCampaigns(
+      source === 'rd' ? 'rd' : 'manual'
+    );
     res.json(campaigns);
   } catch (error) {
     next(error);
@@ -48,6 +51,63 @@ export const deleteEmailCampaign = async (
   try {
     await EmailService.deleteEmailCampaign(req.params.id);
     res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getRdEmailCampaigns = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const campaigns = await EmailService.getEmailCampaigns('rd');
+    res.json(campaigns);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const syncRdEmailCampaigns = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const campaigns = await EmailService.syncRdCampaigns(
+      startDate as string,
+      endDate as string
+    );
+    res.json(campaigns);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getRdWorkflowEmailStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const stats = await EmailService.getWorkflowStats();
+    res.json(stats);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const syncRdWorkflowEmailStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const stats = await EmailService.syncWorkflowStats(startDate as string, endDate as string);
+    res.json(stats);
   } catch (error) {
     next(error);
   }

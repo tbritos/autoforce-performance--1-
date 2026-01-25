@@ -139,6 +139,24 @@ export interface EmailCampaign {
   bounce: number;
 }
 
+export interface WorkflowEmailStat {
+  id: string;
+  externalId?: string;
+  workflowId?: string;
+  workflowName: string;
+  emailName: string;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  bounced: number;
+  unsubscribed: number;
+  deliveredRate: number;
+  openedRate: number;
+  clickedRate: number;
+  spamRate: number;
+  date: string;
+}
+
 // --- OKR Types ---
 export type Quarter = 'Q1 2026' | 'Q2 2026' | 'Q3 2026' | 'Q4 2026';
 

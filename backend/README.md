@@ -149,7 +149,11 @@ O projeto usa **PostgreSQL** com **Prisma ORM**.
 - `DELETE /api/assets/:id` - Remover ativo
 
 ### Emails
-- `GET /api/emails/campaigns` - Listar campanhas de email
+- `GET /api/emails/campaigns` - Listar campanhas de email (query `source=manual|rd`)
+- `GET /api/emails/campaigns/rdstation` - Buscar campanhas de email no RD Station
+- `GET /api/emails/campaigns/rdstation/sync` - Sincronizar RD Station e salvar no banco
+- `GET /api/emails/automation/rdstation` - Estatisticas de emails em fluxos de automacao
+- `GET /api/emails/automation/rdstation/sync` - Sincronizar automacoes do RD Station e salvar no banco
 - `POST /api/emails/campaigns` - Criar campanha de email
 - `PUT /api/emails/campaigns/:id` - Atualizar campanha de email
 - `DELETE /api/emails/campaigns/:id` - Remover campanha de email
