@@ -5,6 +5,9 @@ export class AssetsService {
   static async getAssets(): Promise<AssetItem[]> {
     const assets = await prisma.assetItem.findMany({
       orderBy: { createdAt: 'desc' },
+      include: {
+        versions: { orderBy: { createdAt: 'desc' } },
+      },
     });
 
     return assets.map(item => ({
@@ -13,6 +16,13 @@ export class AssetsService {
       category: item.category as AssetItem['category'],
       link: item.link,
       notes: item.notes || undefined,
+      tags: item.tags || [],
+      versions: item.versions.map(version => ({
+        id: version.id,
+        label: version.label,
+        link: version.link,
+        createdAt: version.createdAt.toISOString().split('T')[0],
+      })),
     }));
   }
 
@@ -23,6 +33,18 @@ export class AssetsService {
         category: data.category,
         link: data.link,
         notes: data.notes || null,
+        tags: data.tags || [],
+        versions: data.versions && data.versions.length > 0
+          ? {
+              create: data.versions.map(version => ({
+                label: version.label,
+                link: version.link,
+              })),
+            }
+          : undefined,
+      },
+      include: {
+        versions: { orderBy: { createdAt: 'desc' } },
       },
     });
 
@@ -32,6 +54,13 @@ export class AssetsService {
       category: asset.category as AssetItem['category'],
       link: asset.link,
       notes: asset.notes || undefined,
+      tags: asset.tags || [],
+      versions: asset.versions.map(version => ({
+        id: version.id,
+        label: version.label,
+        link: version.link,
+        createdAt: version.createdAt.toISOString().split('T')[0],
+      })),
     };
   }
 
@@ -43,6 +72,10 @@ export class AssetsService {
         category: data.category,
         link: data.link,
         notes: data.notes || null,
+        tags: data.tags || [],
+      },
+      include: {
+        versions: { orderBy: { createdAt: 'desc' } },
       },
     });
 
@@ -52,10 +85,61 @@ export class AssetsService {
       category: asset.category as AssetItem['category'],
       link: asset.link,
       notes: asset.notes || undefined,
+      tags: asset.tags || [],
+      versions: asset.versions.map(version => ({
+        id: version.id,
+        label: version.label,
+        link: version.link,
+        createdAt: version.createdAt.toISOString().split('T')[0],
+      })),
     };
   }
 
   static async deleteAsset(id: string): Promise<void> {
     await prisma.assetItem.delete({ where: { id } });
+  }
+
+  static async addVersion(
+    assetId: string,
+    data: { label: string; link: string }
+  ): Promise<AssetItem['versions'][number]> {
+    const version = await prisma.assetVersion.create({
+      data: {
+        assetId,
+        label: data.label,
+        link: data.link,
+      },
+    });
+
+    return {
+      id: version.id,
+      label: version.label,
+      link: version.link,
+      createdAt: version.createdAt.toISOString().split('T')[0],
+    };
+  }
+
+  static async updateVersion(
+    versionId: string,
+    data: { label: string; link: string }
+  ): Promise<AssetItem['versions'][number]> {
+    const version = await prisma.assetVersion.update({
+      where: { id: versionId },
+      data: {
+        label: data.label,
+        link: data.link,
+      },
+    });
+
+    return {
+      id: version.id,
+      label: version.label,
+      link: version.link,
+      createdAt: version.createdAt.toISOString().split('T')[0],
+    };
+  }
+
+  static async deleteVersion(versionId: string): Promise<void> {
+    await prisma.assetVersion.delete({ where: { id: versionId } });
   }
 }

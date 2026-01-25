@@ -1,4 +1,4 @@
-import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign } from '../types';
+import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, AssetVersion } from '../types';
 import { apiClient } from './apiClient';
 
 // ============================================================================
@@ -404,14 +404,23 @@ export const DataService = {
   getAssets: async (): Promise<AssetItem[]> => {
     if (USE_API) {
       try {
-        return await apiClient.get<AssetItem[]>('/assets');
+        const data = await apiClient.get<AssetItem[]>('/assets');
+        return (data || []).map(item => ({
+          ...item,
+          tags: Array.isArray(item.tags) ? item.tags : [],
+          versions: Array.isArray(item.versions) ? item.versions : [],
+        }));
       } catch (error) {
         console.error('❌ Erro ao buscar ativos do Backend:', error);
         throw error;
       }
     }
 
-    return safeParse<AssetItem[]>(STORAGE_ASSETS_KEY, []);
+    return safeParse<AssetItem[]>(STORAGE_ASSETS_KEY, []).map(item => ({
+      ...item,
+      tags: Array.isArray(item.tags) ? item.tags : [],
+      versions: Array.isArray(item.versions) ? item.versions : [],
+    }));
   },
 
   createAsset: async (asset: Omit<AssetItem, 'id'>): Promise<AssetItem> => {
@@ -429,6 +438,53 @@ export const DataService = {
     const updated = [created, ...history];
     localStorage.setItem(STORAGE_ASSETS_KEY, JSON.stringify(updated));
     return created;
+  },
+
+  addAssetVersion: async (
+    id: string,
+    version: { label: string; link: string }
+  ): Promise<AssetVersion> => {
+    if (USE_API) {
+      try {
+        return await apiClient.post<AssetVersion>(`/assets/${id}/versions`, version);
+      } catch (error) {
+        console.error('❌ Erro ao adicionar versao no Backend:', error);
+        throw error;
+      }
+    }
+
+    throw new Error('API Desligada');
+  },
+
+  updateAssetVersion: async (
+    assetId: string,
+    versionId: string,
+    version: { label: string; link: string }
+  ): Promise<AssetVersion> => {
+    if (USE_API) {
+      try {
+        return await apiClient.put<AssetVersion>(`/assets/${assetId}/versions/${versionId}`, version);
+      } catch (error) {
+        console.error('❌ Erro ao atualizar versao no Backend:', error);
+        throw error;
+      }
+    }
+
+    throw new Error('API Desligada');
+  },
+
+  deleteAssetVersion: async (assetId: string, versionId: string): Promise<void> => {
+    if (USE_API) {
+      try {
+        await apiClient.delete(`/assets/${assetId}/versions/${versionId}`);
+        return;
+      } catch (error) {
+        console.error('❌ Erro ao remover versao no Backend:', error);
+        throw error;
+      }
+    }
+
+    throw new Error('API Desligada');
   },
 
   updateAsset: async (id: string, asset: Omit<AssetItem, 'id'>): Promise<AssetItem> => {

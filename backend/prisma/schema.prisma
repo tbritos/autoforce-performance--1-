@@ -115,8 +115,23 @@ model AssetItem {
   category  String
   link      String
   notes     String?
+  tags      String[] @default([])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  versions  AssetVersion[]
+}
+
+model AssetVersion {
+  id        String   @id @default(cuid())
+  assetId   String
+  label     String
+  link      String
+  createdAt DateTime @default(now())
+
+  asset     AssetItem @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
 }
 
 model EmailCampaign {

@@ -111,12 +111,21 @@ export interface MetaCampaign {
 
 export type AssetCategory = 'LP' | 'Criativo' | 'Copy' | 'UTM' | 'Outro';
 
+export interface AssetVersion {
+  id: string;
+  label: string;
+  link: string;
+  createdAt: string;
+}
+
 export interface AssetItem {
   id: string;
   name: string;
   category: AssetCategory;
   link: string;
   notes?: string;
+  tags: string[];
+  versions: AssetVersion[];
 }
 
 export interface EmailCampaign {

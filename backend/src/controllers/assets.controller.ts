@@ -52,3 +52,42 @@ export const deleteAsset = async (
     next(error);
   }
 };
+
+export const addAssetVersion = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const version = await AssetsService.addVersion(req.params.id, req.body);
+    res.status(201).json(version);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateAssetVersion = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const version = await AssetsService.updateVersion(req.params.versionId, req.body);
+    res.json(version);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteAssetVersion = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    await AssetsService.deleteVersion(req.params.versionId);
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};

@@ -142,6 +142,9 @@ O projeto usa **PostgreSQL** com **Prisma ORM**.
 ### Assets
 - `GET /api/assets` - Listar ativos
 - `POST /api/assets` - Criar ativo
+- `POST /api/assets/:id/versions` - Adicionar versao ao ativo
+- `PUT /api/assets/:id/versions/:versionId` - Editar versao
+- `DELETE /api/assets/:id/versions/:versionId` - Remover versao
 - `PUT /api/assets/:id` - Atualizar ativo
 - `DELETE /api/assets/:id` - Remover ativo
 
