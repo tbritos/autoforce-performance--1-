@@ -13,15 +13,14 @@ import BlogView from './components/BlogView';
 import EmailsView from './components/EmailsView';
 import { DataService } from './services/dataService';
 import { User, Metric, TabView, LandingPage, DailyLeadEntry, RevenueEntry } from './types';
-import { 
-  LayoutDashboard, 
-  FileText, 
-  Mail, 
-  LogOut, 
-  TrendingUp, 
-  TrendingDown, 
+import {
+  LayoutDashboard,
+  FileText,
+  Mail,
+  LogOut,
+  TrendingUp,
+  TrendingDown,
   Target,
-  Share2,
   Globe,
   Award,
   RefreshCw,
@@ -30,12 +29,10 @@ import {
   Calendar,
   Package,
   Megaphone,
-  PanelLeft,
   FolderOpen,
-  Server,
-  Database,
-  Cloud,
-  Users
+  Users,
+  Menu,
+  ChevronDown
 } from 'lucide-react';
 import { FunnelChart } from './components/Charts';
 
@@ -289,7 +286,8 @@ const DashboardContent: React.FC<{
 const AppContent: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [initializing, setInitializing] = useState(true);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   
   // Data State
   const [metrics, setMetrics] = useState<Metric[]>([]);
@@ -301,21 +299,6 @@ const AppContent: React.FC = () => {
   // Router Hooks
   const navigate = useNavigate();
   const location = useLocation();
-
-  // FunÃ§Ã£o auxiliar para saber em qual aba estamos baseado na URL
-  const getPageTitle = (pathname: string) => {
-    if (pathname.includes('leads')) return "Acompanhamento DiÃ¡rio";
-    if (pathname.includes('revenue')) return "Ganhos & Resultados";
-    if (pathname.includes('team')) return "Calendario Marketing";
-    if (pathname.includes('okrs')) return "OKRs do Marketing";
-    if (pathname.includes('analytics')) return "Landing Page";
-    if (pathname.includes('site')) return "Site AutoForce";
-    if (pathname.includes('blog')) return "Blog";
-    if (pathname.includes('campaigns')) return "Campanhas Ativas";
-    if (pathname.includes('assets')) return "Biblioteca de Ativos";
-    if (pathname.includes('settings')) return "Emails";
-    return "VisÃ£o Geral de Performance"; // Default
-  };
 
   // Initialize App (Check Login)
   useEffect(() => {
@@ -338,13 +321,9 @@ const AppContent: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const updateSidebar = () => {
-      setIsSidebarOpen(window.innerWidth >= 1024);
-    };
-    updateSidebar();
-    window.addEventListener('resize', updateSidebar);
-    return () => window.removeEventListener('resize', updateSidebar);
-  }, []);
+    setOpenDropdown(null);
+    setIsMenuOpen(false);
+  }, [location.pathname]);
 
   // Fetch Data based on Route (URL)
   useEffect(() => {
@@ -401,6 +380,49 @@ const AppContent: React.FC = () => {
     navigate('/'); // Volta para home ao sair
   };
 
+  const navItems = [
+    { label: 'Performance', icon: LayoutDashboard, path: '/' },
+    { label: 'Calendario Marketing', icon: Users, path: '/team' }
+  ];
+
+  const navGroups = [
+    {
+      id: 'insights',
+      label: 'Gestao de Resultados',
+      icon: ClipboardList,
+      items: [
+        { label: 'Acompanhamento Diario', path: '/leads', icon: ClipboardList },
+        { label: 'Ganhos', path: '/revenue', icon: DollarSign },
+        { label: 'OKRs do Marketing', path: '/okrs', icon: Target }
+      ]
+    },
+    {
+      id: 'channels',
+      label: 'Canais Digitais',
+      icon: Globe,
+      items: [
+        { label: 'Landing Page', path: '/analytics', icon: FileText },
+        { label: 'Site AutoForce', path: '/site', icon: FileText },
+        { label: 'Blog', path: '/blog', icon: FileText }
+      ]
+    },
+    {
+      id: 'operations',
+      label: 'Operacoes de Campanha',
+      icon: Megaphone,
+      items: [
+        { label: 'Campanhas Ativas', path: '/campaigns', icon: Megaphone },
+        { label: 'Biblioteca de Ativos', path: '/assets', icon: FolderOpen },
+        { label: 'Emails', path: '/settings', icon: Mail }
+      ]
+    }
+  ];
+
+  const isActive = (path: string) => {
+    if (path === '/') return location.pathname === '/' || location.pathname === '/dashboard';
+    return location.pathname === path;
+  };
+
   if (initializing) return <div className="min-h-screen bg-[#00020A] flex items-center justify-center text-white"><RefreshCw className="animate-spin mr-2"/> Carregando AutoForce...</div>;
 
   if (!user) {
@@ -408,192 +430,181 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#00020A] font-sans text-white overflow-hidden">
-      {/* Sidebar */}
-      <aside className={`bg-autoforce-darkest border-r border-autoforce-grey/20 flex flex-col z-50 transition-all duration-300 fixed top-0 left-0 h-screen transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
-        <div className="flex flex-col min-h-0 flex-1">
-          <div className="p-6 border-b border-autoforce-grey/20 flex items-center justify-center">
-             {isSidebarOpen ? (
-               <img 
-                 src="https://static.autodromo.com.br/uploads/1dc32f4d-ab47-428d-91dd-756266d45b47_LOGOTIPO-AUTOFORCE-HORIZONTAL.svg" 
-                 alt="AutoForce" 
-                 className="h-8 w-auto object-contain"
-               />
-             ) : (
-               <div className="w-8 h-8 rounded-full bg-autoforce-blue/20 flex items-center justify-center text-autoforce-blue font-bold text-sm">
-                 AF
-               </div>
-             )}
-          </div>
-
-          <nav className="p-4 space-y-2 overflow-y-auto custom-scrollbar">
-            <button 
-              onClick={() => navigate('/')}
-              className={`w-full flex items-center ${isSidebarOpen ? 'gap-3 px-4' : 'justify-center'} py-3 rounded-lg transition-all ${location.pathname === '/' || location.pathname === '/dashboard' ? 'bg-autoforce-blue text-white shadow-lg shadow-autoforce-blue/30' : 'text-autoforce-lightGrey hover:bg-white/5'}`}
-            >
-              <LayoutDashboard size={20} />
-              {isSidebarOpen && <span className="font-medium">Performance</span>}
-            </button>
-            
-            <button 
-              onClick={() => navigate('/leads')}
-              className={`w-full flex items-center ${isSidebarOpen ? 'gap-3 px-4' : 'justify-center'} py-3 rounded-lg transition-all ${location.pathname === '/leads' ? 'bg-autoforce-blue text-white shadow-lg' : 'text-autoforce-lightGrey hover:bg-white/5'}`}
-            >
-              <ClipboardList size={20} />
-              {isSidebarOpen && <span className="font-medium">Acompanhamento</span>}
-            </button>
-            
-            <button 
-              onClick={() => navigate('/revenue')}
-              className={`w-full flex items-center ${isSidebarOpen ? 'gap-3 px-4' : 'justify-center'} py-3 rounded-lg transition-all ${location.pathname === '/revenue' ? 'bg-autoforce-blue text-white shadow-lg' : 'text-autoforce-lightGrey hover:bg-white/5'}`}
-            >
-              <DollarSign size={20} />
-              {isSidebarOpen && <span className="font-medium">Ganhos</span>}
-            </button>
-
-             <button 
-              onClick={() => navigate('/team')}
-              className={`w-full flex items-center ${isSidebarOpen ? 'gap-3 px-4' : 'justify-center'} py-3 rounded-lg transition-all ${location.pathname === '/team' ? 'bg-autoforce-blue text-white shadow-lg' : 'text-autoforce-lightGrey hover:bg-white/5'}`}
-            >
-              <Users size={20} />
-              {isSidebarOpen && <span className="font-medium">Calendario Marketing</span>}
-            </button>
-
-            <button 
-              onClick={() => navigate('/okrs')}
-              className={`w-full flex items-center ${isSidebarOpen ? 'gap-3 px-4' : 'justify-center'} py-3 rounded-lg transition-all ${location.pathname === '/okrs' ? 'bg-autoforce-blue text-white shadow-lg' : 'text-autoforce-lightGrey hover:bg-white/5'}`}
-            >
-              <Target size={20} />
-              {isSidebarOpen && <span className="font-medium">OKRs do Marketing</span>}
-            </button>
-
-            <button 
-              onClick={() => navigate('/analytics')}
-              className={`w-full flex items-center ${isSidebarOpen ? 'gap-3 px-4' : 'justify-center'} py-3 rounded-lg transition-all ${location.pathname === '/analytics' ? 'bg-autoforce-blue text-white shadow-lg' : 'text-autoforce-lightGrey hover:bg-white/5'}`}
-            >
-              <FileText size={20} />
-              {isSidebarOpen && <span className="font-medium">Landing Page</span>}
-            </button>
-
-            <button 
-              onClick={() => navigate('/site')}
-              className={`w-full flex items-center ${isSidebarOpen ? 'gap-3 px-4' : 'justify-center'} py-3 rounded-lg transition-all ${location.pathname === '/site' ? 'bg-autoforce-blue text-white shadow-lg' : 'text-autoforce-lightGrey hover:bg-white/5'}`}
-            >
-              <FileText size={20} />
-              {isSidebarOpen && <span className="font-medium">Site AutoForce</span>}
-            </button>
-
-            <button 
-              onClick={() => navigate('/blog')}
-              className={`w-full flex items-center ${isSidebarOpen ? 'gap-3 px-4' : 'justify-center'} py-3 rounded-lg transition-all ${location.pathname === '/blog' ? 'bg-autoforce-blue text-white shadow-lg' : 'text-autoforce-lightGrey hover:bg-white/5'}`}
-            >
-              <FileText size={20} />
-              {isSidebarOpen && <span className="font-medium">Blog</span>}
-            </button>
-
-            <button 
-              onClick={() => navigate('/campaigns')}
-              className={`w-full flex items-center ${isSidebarOpen ? 'gap-3 px-4' : 'justify-center'} py-3 rounded-lg transition-all ${location.pathname === '/campaigns' ? 'bg-autoforce-blue text-white shadow-lg' : 'text-autoforce-lightGrey hover:bg-white/5'}`}
-            >
-              <Megaphone size={20} />
-              {isSidebarOpen && <span className="font-medium">Campanhas Ativas</span>}
-            </button>
-
-            <button 
-              onClick={() => navigate('/assets')}
-              className={`w-full flex items-center ${isSidebarOpen ? 'gap-3 px-4' : 'justify-center'} py-3 rounded-lg transition-all ${location.pathname === '/assets' ? 'bg-autoforce-blue text-white shadow-lg' : 'text-autoforce-lightGrey hover:bg-white/5'}`}
-            >
-              <FolderOpen size={20} />
-              {isSidebarOpen && <span className="font-medium">Biblioteca de Ativos</span>}
-            </button>
-
-            <button 
-              onClick={() => navigate('/settings')}
-              className={`w-full flex items-center ${isSidebarOpen ? 'gap-3 px-4' : 'justify-center'} py-3 rounded-lg transition-all ${location.pathname === '/settings' ? 'bg-autoforce-blue text-white shadow-lg' : 'text-autoforce-lightGrey hover:bg-white/5'}`}
-            >
-              <Mail size={20} />
-              {isSidebarOpen && <span className="font-medium">Emails</span>}
-            </button>
-          </nav>
-        </div>
-
-        <div className="p-6 border-t border-autoforce-grey/20">
-          <button
-            onClick={() => setIsSidebarOpen(prev => !prev)}
-            className={`w-full mb-4 hidden lg:flex items-center ${isSidebarOpen ? 'gap-2 justify-start' : 'justify-center'} text-autoforce-lightGrey hover:text-white text-xs font-semibold border border-autoforce-grey/30 rounded-full px-2.5 py-1.5 transition`}
-            title={isSidebarOpen ? 'Recolher menu' : 'Expandir menu'}
-          >
-            <PanelLeft size={14} className={isSidebarOpen ? '' : 'rotate-180'} />
-            {isSidebarOpen && <span>Recolher menu</span>}
-          </button>
-          <div className="flex items-center gap-3 mb-4">
-            <img src={user.avatar} alt="User" className="w-10 h-10 rounded-full border-2 border-autoforce-blue" />
-            {isSidebarOpen && (
-              <div>
-                <p className="text-sm font-bold text-white leading-none">{user.name}</p>
-                <p className="text-xs text-autoforce-lightGrey mt-1">{user.role}</p>
-              </div>
-            )}
-          </div>
-          <button 
-            onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2 text-red-400 hover:text-red-300 text-sm font-semibold transition-colors py-2 border border-transparent hover:border-red-400/30 rounded"
-          >
-            <LogOut size={16} />
-            {isSidebarOpen && 'Sair'}
-          </button>
-        </div>
-      </aside>
-
+    <div className="min-h-screen bg-[#00020A] font-sans text-white">
       {/* Main Content */}
-      <main className={`flex-1 bg-[#00020A] relative custom-scrollbar min-h-screen ml-0 ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'}`}>
-        <div className="h-screen overflow-y-auto">
+      <main className="relative min-h-screen">
+        <div className="min-h-screen">
         {/* Background Elements */}
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-autoforce-blue/5 rounded-full blur-[120px] pointer-events-none"></div>
 
-        {/* Top Header */}
-        <header className="px-4 sm:px-6 lg:px-8 py-4 sm:py-6 flex justify-between items-center sticky top-0 bg-[#00020A]/80 backdrop-blur-md z-40 border-b border-autoforce-grey/10">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIsSidebarOpen(true)}
-              className="lg:hidden text-autoforce-lightGrey hover:text-white p-2 rounded-lg border border-autoforce-grey/20"
-              aria-label="Abrir menu"
-            >
-              <PanelLeft size={18} />
-            </button>
-            <div>
-              <h1 className="text-2xl font-display font-bold text-white">
-                  {getPageTitle(location.pathname)}
-              </h1>
-              <p className="text-autoforce-lightGrey text-sm flex items-center gap-2">
-                 {loadingData ? <RefreshCw className="animate-spin w-3 h-3"/> : <span className="w-2 h-2 rounded-full bg-green-500"></span>}
-                 Sistema Atualizado
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex gap-4 items-center">
-            {/* Date Filter (Show only on Dashboard) */}
-            {(location.pathname === '/' || location.pathname === '/dashboard') && (
-                 <div className="hidden md:flex items-center gap-2 bg-autoforce-darkest p-1.5 rounded-lg border border-autoforce-grey/30">
-                    <Calendar size={14} className="text-autoforce-lightGrey ml-2"/>
-                    <select className="bg-autoforce-black text-white text-xs font-bold outline-none cursor-pointer">
-                        <option className="bg-autoforce-darkest text-white">Este Ano</option>
-                        <option className="bg-autoforce-darkest text-white">Ãšltimos 6 meses</option>
-                        <option className="bg-autoforce-darkest text-white">Este MÃªs</option>
-                    </select>
+        {/* Top Navigation */}
+        <header className="sticky top-0 z-40 bg-[#00020A]/90 backdrop-blur-md border-b border-autoforce-grey/10">
+          <div className="px-4 sm:px-6 lg:px-8">
+            <div className="py-4 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <img
+                  src="https://static.autodromo.com.br/uploads/1dc32f4d-ab47-428d-91dd-756266d45b47_LOGOTIPO-AUTOFORCE-HORIZONTAL.svg"
+                  alt="AutoForce"
+                  className="h-8 w-auto object-contain"
+                />
+                <nav className="hidden lg:flex items-center gap-2 text-sm text-autoforce-lightGrey">
+                  {navItems.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        key={item.label}
+                        onClick={() => navigate(item.path)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-full border transition ${
+                          isActive(item.path)
+                            ? 'bg-autoforce-blue/20 text-white border-autoforce-blue/40'
+                            : 'border-transparent hover:border-autoforce-grey/30 hover:text-white'
+                        }`}
+                      >
+                        <Icon size={16} />
+                        <span className="font-medium">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                  {navGroups.map((group) => {
+                    const Icon = group.icon;
+                    const isOpen = openDropdown === group.id;
+                    return (
+                      <div key={group.id} className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setOpenDropdown(isOpen ? null : group.id)}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-full border transition ${
+                            isOpen ? 'bg-autoforce-blue/20 text-white border-autoforce-blue/40' : 'border-transparent hover:border-autoforce-grey/30 hover:text-white'
+                          }`}
+                        >
+                          <Icon size={16} />
+                          <span className="font-medium">{group.label}</span>
+                          <ChevronDown size={14} className={`transition ${isOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {isOpen && (
+                          <div className="absolute left-0 mt-2 w-56 bg-autoforce-darkest border border-autoforce-grey/30 rounded-xl shadow-xl p-2">
+                            {group.items.map((child) => {
+                              const ChildIcon = child.icon;
+                              return (
+                                <button
+                                  key={child.label}
+                                  onClick={() => navigate(child.path)}
+                                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition ${
+                                    isActive(child.path)
+                                      ? 'bg-autoforce-blue/20 text-white'
+                                      : 'text-autoforce-lightGrey hover:bg-white/5 hover:text-white'
+                                  }`}
+                                >
+                                  <ChildIcon size={14} />
+                                  {child.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </nav>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="lg:hidden p-2 rounded-lg border border-autoforce-grey/30 text-autoforce-lightGrey hover:text-white"
+                  onClick={() => setIsMenuOpen(prev => !prev)}
+                  aria-label="Abrir menu"
+                >
+                  <Menu size={18} />
+                </button>
+                <div className="hidden md:flex items-center gap-3">
+                  <img src={user.avatar} alt="User" className="w-9 h-9 rounded-full border border-autoforce-blue/50" />
+                  <div className="text-xs">
+                    <p className="text-white font-semibold leading-tight">{user.name}</p>
+                    <p className="text-autoforce-lightGrey">{user.role}</p>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-2 text-xs text-red-400 hover:text-red-300 border border-transparent hover:border-red-400/30 rounded-full px-3 py-2 transition"
+                  >
+                    <LogOut size={14} />
+                    Sair
+                  </button>
                 </div>
-            )}
-
-            <button className="bg-autoforce-darkest border border-autoforce-grey/30 hover:border-autoforce-blue text-white px-4 py-2 rounded flex items-center gap-2 transition-all text-sm">
-               <Share2 size={16} />
-               Exportar RelatÃ³rio
-            </button>
-            <div className="bg-autoforce-accent/10 border border-autoforce-accent/30 text-autoforce-accent px-4 py-2 rounded font-bold flex items-center gap-2 text-sm">
-                <Target size={18} />
-                Meta Global: 82%
+              </div>
             </div>
           </div>
+
+          {isMenuOpen && (
+            <div className="lg:hidden border-t border-autoforce-grey/20 bg-autoforce-darkest/90">
+              <div className="px-4 py-4 space-y-2">
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.label}
+                      onClick={() => navigate(item.path)}
+                      className={`w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm ${
+                        isActive(item.path) ? 'bg-autoforce-blue/20 text-white' : 'text-autoforce-lightGrey'
+                      }`}
+                    >
+                      <Icon size={16} />
+                      {item.label}
+                    </button>
+                  );
+                })}
+                {navGroups.map((group) => {
+                  const GroupIcon = group.icon;
+                  return (
+                    <div key={group.id} className="border border-autoforce-grey/20 rounded-lg">
+                      <button
+                        type="button"
+                        onClick={() => setOpenDropdown(openDropdown === group.id ? null : group.id)}
+                        className="w-full flex items-center justify-between px-4 py-2 text-sm text-autoforce-lightGrey"
+                      >
+                        <span className="flex items-center gap-2">
+                          <GroupIcon size={16} />
+                          {group.label}
+                        </span>
+                        <ChevronDown size={14} className={`transition ${openDropdown === group.id ? 'rotate-180' : ''}`} />
+                      </button>
+                      {openDropdown === group.id && (
+                        <div className="px-2 pb-2 space-y-1">
+                          {group.items.map((child) => {
+                            const ChildIcon = child.icon;
+                            return (
+                              <button
+                                key={child.label}
+                                onClick={() => navigate(child.path)}
+                                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+                                  isActive(child.path) ? 'bg-autoforce-blue/20 text-white' : 'text-autoforce-lightGrey'
+                                }`}
+                              >
+                                <ChildIcon size={14} />
+                                {child.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <div className="flex items-center gap-3 pt-2 border-t border-autoforce-grey/20">
+                  <img src={user.avatar} alt="User" className="w-9 h-9 rounded-full border border-autoforce-blue/50" />
+                  <div className="text-xs flex-1">
+                    <p className="text-white font-semibold leading-tight">{user.name}</p>
+                    <p className="text-autoforce-lightGrey">{user.role}</p>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="text-xs text-red-400 hover:text-red-300"
+                  >
+                    Sair
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </header>
 
         {/* Content Area - AS ROTAS REAIS */}
@@ -620,14 +631,6 @@ const AppContent: React.FC = () => {
         </div>
         </div>
       </main>
-      {isSidebarOpen && (
-        <button
-          type="button"
-          className="lg:hidden fixed inset-0 bg-black/50 z-40"
-          aria-label="Fechar menu"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
     </div>
   );
 };
