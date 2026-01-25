@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FolderOpen, Link2, Copy, Tag, Search, Plus, Layers } from 'lucide-react';
 import { DataService } from '../services/dataService';
-import { AssetItem } from '../types';
+import { AssetItem, AssetVersion } from '../types';
 
 const AssetsView: React.FC = () => {
   const [assets, setAssets] = useState<AssetItem[]>([]);
@@ -13,6 +13,7 @@ const AssetsView: React.FC = () => {
   const [tagsInput, setTagsInput] = useState('');
   const [versionLabel, setVersionLabel] = useState('');
   const [versionLink, setVersionLink] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'Todos' | AssetItem['category']>('Todos');
@@ -191,10 +192,18 @@ const AssetsView: React.FC = () => {
             Tags, busca avancada e versoes para organizar materiais do time.
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setShowAddForm(prev => !prev)}
+          className="inline-flex items-center gap-2 bg-autoforce-blue/20 border border-autoforce-blue/40 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-autoforce-blue/30 transition"
+        >
+          <Plus size={16} />
+          {showAddForm ? 'Fechar' : 'Adicionar ativo'}
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-6 space-y-6">
+      <div className={`grid grid-cols-1 ${showAddForm ? 'lg:grid-cols-3' : 'lg:grid-cols-1'} gap-6`}>
+        <div className={`${showAddForm ? 'lg:col-span-2' : 'lg:col-span-1'} bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-6 space-y-6`}>
           <div className="flex flex-col lg:flex-row lg:items-center gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-autoforce-lightGrey" size={16} />
@@ -383,99 +392,101 @@ const AssetsView: React.FC = () => {
             </div>
         </div>
 
-        <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-6">
-          <h3 className="text-white font-bold mb-4 flex items-center gap-2">
-            <Tag size={18} className="text-autoforce-blue" />
-            Adicionar ativo
-          </h3>
-          <form onSubmit={handleAdd} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">
-                Nome
-              </label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-sm"
-                placeholder="Ex: LP Black Friday"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">
-                Categoria
-              </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as AssetItem['category'])}
-                className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-sm"
-              >
-                <option value="LP">LP</option>
-                <option value="Criativo">Criativo</option>
-                <option value="Copy">Copy</option>
-                <option value="UTM">UTM</option>
-                <option value="Outro">Outro</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">
-                Link ou identificador
-              </label>
-              <input
-                value={link}
-                onChange={(e) => setLink(e.target.value)}
-                className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-sm"
-                placeholder="Cole a URL ou a UTM"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">
-                Tags (separe por virgula)
-              </label>
-              <input
-                value={tagsInput}
-                onChange={(e) => setTagsInput(e.target.value)}
-                className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-sm"
-                placeholder="Ex: meta,lp,fevereiro"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">
-                Observacoes
-              </label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-sm min-h-[90px]"
-                placeholder="Detalhes do ativo, status, objetivo..."
-              />
-            </div>
-            <div className="border-t border-autoforce-grey/10 pt-4 space-y-3">
-              <p className="text-xs text-autoforce-lightGrey uppercase tracking-wider">Versao inicial (opcional)</p>
-              <input
-                value={versionLabel}
-                onChange={(e) => setVersionLabel(e.target.value)}
-                className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-sm"
-                placeholder="Label da versao (ex: v1)"
-              />
-              <input
-                value={versionLink}
-                onChange={(e) => setVersionLink(e.target.value)}
-                className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-sm"
-                placeholder="Link da versao"
-              />
-            </div>
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                className="bg-autoforce-blue hover:bg-autoforce-secondary text-white px-5 py-2 rounded text-sm font-bold"
-              >
-                Salvar ativo
-              </button>
-            </div>
-          </form>
-        </div>
+        {showAddForm && (
+          <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-6">
+            <h3 className="text-white font-bold mb-4 flex items-center gap-2">
+              <Tag size={18} className="text-autoforce-blue" />
+              Adicionar ativo
+            </h3>
+            <form onSubmit={handleAdd} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">
+                  Nome
+                </label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-sm"
+                  placeholder="Ex: LP Black Friday"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">
+                  Categoria
+                </label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as AssetItem['category'])}
+                  className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-sm"
+                >
+                  <option value="LP">LP</option>
+                  <option value="Criativo">Criativo</option>
+                  <option value="Copy">Copy</option>
+                  <option value="UTM">UTM</option>
+                  <option value="Outro">Outro</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">
+                  Link ou identificador
+                </label>
+                <input
+                  value={link}
+                  onChange={(e) => setLink(e.target.value)}
+                  className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-sm"
+                  placeholder="Cole a URL ou a UTM"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">
+                  Tags (separe por virgula)
+                </label>
+                <input
+                  value={tagsInput}
+                  onChange={(e) => setTagsInput(e.target.value)}
+                  className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-sm"
+                  placeholder="Ex: meta,lp,fevereiro"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">
+                  Observacoes
+                </label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-sm min-h-[90px]"
+                  placeholder="Detalhes do ativo, status, objetivo..."
+                />
+              </div>
+              <div className="border-t border-autoforce-grey/10 pt-4 space-y-3">
+                <p className="text-xs text-autoforce-lightGrey uppercase tracking-wider">Versao inicial (opcional)</p>
+                <input
+                  value={versionLabel}
+                  onChange={(e) => setVersionLabel(e.target.value)}
+                  className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-sm"
+                  placeholder="Label da versao (ex: v1)"
+                />
+                <input
+                  value={versionLink}
+                  onChange={(e) => setVersionLink(e.target.value)}
+                  className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-sm"
+                  placeholder="Link da versao"
+                />
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  className="bg-autoforce-blue hover:bg-autoforce-secondary text-white px-5 py-2 rounded text-sm font-bold"
+                >
+                  Salvar ativo
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
       </div>
     </div>
   );

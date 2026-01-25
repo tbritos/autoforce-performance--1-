@@ -1,4 +1,4 @@
-import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, AssetVersion, WorkflowEmailStat } from '../types';
+import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, AssetVersion, WorkflowEmailStat, SyncLog } from '../types';
 import { apiClient } from './apiClient';
 
 // ============================================================================
@@ -595,6 +595,21 @@ export const DataService = {
         );
       } catch (error) {
         console.error('? Erro ao sincronizar automacoes do RD Station:', error);
+        throw error;
+      }
+    }
+
+    return [];
+  },
+
+  getSyncLogs: async (limit = 50): Promise<SyncLog[]> => {
+    if (USE_API) {
+      try {
+        const params = new URLSearchParams();
+        params.set('limit', String(limit));
+        return await apiClient.get<SyncLog[]>(`/emails/sync/logs?${params.toString()}`);
+      } catch (error) {
+        console.error('Erro ao buscar logs de sincronizacao:', error);
         throw error;
       }
     }

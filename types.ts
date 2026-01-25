@@ -157,6 +157,15 @@ export interface WorkflowEmailStat {
   date: string;
 }
 
+export interface SyncLog {
+  id: string;
+  source: string;
+  status: string;
+  message?: string;
+  startedAt: string;
+  finishedAt?: string;
+}
+
 // --- OKR Types ---
 export type Quarter = 'Q1 2026' | 'Q2 2026' | 'Q3 2026' | 'Q4 2026';
 

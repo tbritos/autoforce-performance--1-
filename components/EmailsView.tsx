@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Mail, Search, ChevronDown, ChevronRight } from 'lucide-react';
 import { DataService } from '../services/dataService';
-import { EmailCampaign, WorkflowEmailStat } from '../types';
+import { EmailCampaign, WorkflowEmailStat, SyncLog } from '../types';
 
 const EmailsView: React.FC = () => {
   const [campaigns, setCampaigns] = useState<EmailCampaign[]>([]);
   const [workflowStats, setWorkflowStats] = useState<WorkflowEmailStat[]>([]);
+  const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [logsLoading, setLogsLoading] = useState(true);
+  const [logFilter, setLogFilter] = useState<'all' | 'rd_emails' | 'rd_workflows'>('all');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [source] = useState<'rd'>('rd');
@@ -33,6 +36,7 @@ const EmailsView: React.FC = () => {
     const loadCampaigns = async () => {
       setLoading(true);
       try {
+        setLogsLoading(true);
         if (mode === 'emails') {
           const data = await DataService.getRdEmailCampaigns();
           setCampaigns(Array.isArray(data) ? data : []);
@@ -46,12 +50,16 @@ const EmailsView: React.FC = () => {
           setCampaigns(Array.isArray(data) ? data : []);
           setWorkflowStats([]);
         }
+        const logs = await DataService.getSyncLogs(20);
+        setSyncLogs(Array.isArray(logs) ? logs : []);
       } catch (error) {
         console.error(error);
         setCampaigns([]);
         setWorkflowStats([]);
+        setSyncLogs([]);
       } finally {
         setLoading(false);
+        setLogsLoading(false);
       }
     };
     loadCampaigns();
@@ -74,6 +82,8 @@ const EmailsView: React.FC = () => {
         setCampaigns(Array.isArray(data) ? data : []);
         setWorkflowStats([]);
       }
+      const logs = await DataService.getSyncLogs(20);
+      setSyncLogs(Array.isArray(logs) ? logs : []);
     } catch (error) {
       console.error(error);
     } finally {
@@ -166,6 +176,17 @@ const EmailsView: React.FC = () => {
     setWorkflowSortDirection('desc');
   };
 
+  const formatSourceLabel = (value: string) => {
+    if (value === 'rd_emails') return 'RD Emails';
+    if (value === 'rd_workflows') return 'RD Automações';
+    return value;
+  };
+
+  const filteredLogs = useMemo(() => {
+    if (logFilter === 'all') return syncLogs;
+    return syncLogs.filter((log) => log.source === logFilter);
+  }, [logFilter, syncLogs]);
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 animate-fade-in-up">
       <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
@@ -225,6 +246,66 @@ const EmailsView: React.FC = () => {
             />
           </div>
         </div>
+      </div>
+
+      <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <h3 className="text-sm font-bold text-white">Logs de Sincronizacao</h3>
+          <div className="flex items-center gap-2 text-xs text-autoforce-lightGrey">
+            <span>Ultimas 20 execucoes</span>
+            <div className="flex items-center gap-1 bg-autoforce-black/40 border border-autoforce-grey/20 rounded-full p-1">
+              {['all', 'rd_emails', 'rd_workflows'].map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setLogFilter(value as typeof logFilter)}
+                  className={`px-3 py-1 rounded-full text-[11px] font-semibold transition ${
+                    logFilter === value
+                      ? 'bg-autoforce-blue/20 text-white'
+                      : 'text-autoforce-lightGrey hover:text-white'
+                  }`}
+                >
+                  {value === 'all' ? 'Todos' : value === 'rd_emails' ? 'Emails' : 'Automações'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        {logsLoading ? (
+          <div className="mt-3 text-xs text-autoforce-lightGrey">Carregando logs...</div>
+        ) : filteredLogs.length === 0 ? (
+          <div className="mt-3 text-xs text-autoforce-lightGrey">Nenhum log disponivel.</div>
+        ) : (
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+            {filteredLogs.map((log) => (
+              <div
+                key={log.id}
+                className="flex items-start justify-between gap-3 rounded-lg border border-autoforce-grey/20 bg-autoforce-black/40 px-3 py-2"
+              >
+                <div>
+                  <div className="text-white font-semibold">{formatSourceLabel(log.source)}</div>
+                  <div className="text-autoforce-lightGrey">
+                    {new Date(log.startedAt).toLocaleString('pt-BR')}
+                  </div>
+                  {log.message && (
+                    <div className="text-autoforce-grey mt-1">{log.message}</div>
+                  )}
+                </div>
+                <span
+                  className={`px-2 py-1 rounded-full text-[10px] font-bold ${
+                    log.status === 'success'
+                      ? 'bg-green-500/20 text-green-300'
+                      : log.status === 'running'
+                      ? 'bg-autoforce-blue/20 text-autoforce-blue'
+                      : 'bg-red-500/20 text-red-300'
+                  }`}
+                >
+                  {log.status === 'success' ? 'OK' : log.status === 'running' ? 'SYNC' : 'ERRO'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-6">

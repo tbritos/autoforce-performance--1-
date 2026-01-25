@@ -173,3 +173,14 @@ model WorkflowEmailStat {
 
   @@unique([externalId, source])
 }
+
+model SyncLog {
+  id         String   @id @default(cuid())
+  source     String
+  status     String
+  message    String?
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+
+  @@index([source, startedAt])
+}

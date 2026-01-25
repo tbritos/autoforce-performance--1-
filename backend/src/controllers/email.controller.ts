@@ -112,3 +112,17 @@ export const syncRdWorkflowEmailStats = async (
     next(error);
   }
 };
+
+export const getSyncLogs = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const limit = req.query.limit ? Number(req.query.limit) : 50;
+    const logs = await EmailService.getSyncLogs(limit);
+    res.json(logs);
+  } catch (error) {
+    next(error);
+  }
+};
