@@ -88,6 +88,26 @@ curl -X POST https://SEU-BACKEND/api/leads/daily \
   -d "{\"date\":\"2026-01-25\",\"mql\":10,\"sql\":3,\"sales\":1,\"conversionRate\":30}"
 ```
 
+### PUT /api/leads/daily/:id
+```json
+{ "date": "2026-01-25", "mql": 12, "sql": 4, "sales": 1, "conversionRate": 33.3 }
+```
+
+Exemplo curl:
+```bash
+curl -X PUT https://SEU-BACKEND/api/leads/daily/LEAD_ID \
+  -H "Authorization: Bearer SEU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"date\":\"2026-01-25\",\"mql\":12,\"sql\":4,\"sales\":1,\"conversionRate\":33.3}"
+```
+
+### DELETE /api/leads/daily/:id
+Exemplo curl:
+```bash
+curl -X DELETE https://SEU-BACKEND/api/leads/daily/LEAD_ID \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
 ---
 
 ## Ganhos
@@ -137,6 +157,33 @@ curl -X POST https://SEU-BACKEND/api/revenue/transactions \
   -d "{\"date\":\"2026-01-25\",\"businessName\":\"Loja X\",\"setupValue\":1000,\"mrrValue\":500,\"origin\":\"Google Ads\",\"product\":[\"Autodromo\",\"Autopilot\"]}"
 ```
 
+### PUT /api/revenue/transactions/:id
+```json
+{
+  "date": "2026-01-25",
+  "businessName": "Loja X",
+  "setupValue": 1200,
+  "mrrValue": 550,
+  "origin": "Google Ads",
+  "product": ["Autodromo", "Autopilot"]
+}
+```
+
+Exemplo curl:
+```bash
+curl -X PUT https://SEU-BACKEND/api/revenue/transactions/REVENUE_ID \
+  -H "Authorization: Bearer SEU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"date\":\"2026-01-25\",\"businessName\":\"Loja X\",\"setupValue\":1200,\"mrrValue\":550,\"origin\":\"Google Ads\",\"product\":[\"Autodromo\",\"Autopilot\"]}"
+```
+
+### DELETE /api/revenue/transactions/:id
+Exemplo curl:
+```bash
+curl -X DELETE https://SEU-BACKEND/api/revenue/transactions/REVENUE_ID \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
 ---
 
 ## OKRs
@@ -181,6 +228,34 @@ curl -X POST https://SEU-BACKEND/api/okrs \
   -H "Authorization: Bearer SEU_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"id\":\"1\",\"quarter\":\"Q1 2026\",\"objective\":\"Crescer leads\",\"progress\":60,\"keyResults\":[{\"id\":\"kr1\",\"title\":\"MQLs\",\"currentValue\":100,\"targetValue\":300,\"unit\":\"#\"}]}"
+```
+
+### PUT /api/okrs/:id
+```json
+{
+  "id": "1",
+  "quarter": "Q1 2026",
+  "objective": "Crescer leads",
+  "progress": 70,
+  "keyResults": [
+    { "id": "kr1", "title": "MQLs", "currentValue": 150, "targetValue": 300, "unit": "#" }
+  ]
+}
+```
+
+Exemplo curl:
+```bash
+curl -X PUT https://SEU-BACKEND/api/okrs/OKR_ID \
+  -H "Authorization: Bearer SEU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"id\":\"1\",\"quarter\":\"Q1 2026\",\"objective\":\"Crescer leads\",\"progress\":70,\"keyResults\":[{\"id\":\"kr1\",\"title\":\"MQLs\",\"currentValue\":150,\"targetValue\":300,\"unit\":\"#\"}]}"
+```
+
+### DELETE /api/okrs/:id
+Exemplo curl:
+```bash
+curl -X DELETE https://SEU-BACKEND/api/okrs/OKR_ID \
+  -H "Authorization: Bearer SEU_TOKEN"
 ```
 
 ---

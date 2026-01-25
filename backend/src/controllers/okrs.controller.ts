@@ -26,3 +26,32 @@ export const saveOKR = async (
     next(error);
   }
 };
+
+export const updateOKR = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const payload = { ...req.body, id };
+    const okr = await OKRsService.saveOKR(payload);
+    res.json(okr);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteOKR = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    await OKRsService.deleteOKR(id);
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+};

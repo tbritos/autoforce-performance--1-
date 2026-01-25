@@ -44,4 +44,10 @@ export class OKRsService {
       keyResults: okr.keyResults as OKR['keyResults'],
     };
   }
+
+  static async deleteOKR(id: string): Promise<void> {
+    await prisma.oKR.delete({
+      where: { id },
+    });
+  }
 }

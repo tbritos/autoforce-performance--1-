@@ -322,6 +322,33 @@ export const DataService = {
     return okr;
   },
 
+  updateOKR: async (id: string, okr: OKR): Promise<OKR> => {
+    if (USE_API) {
+      try {
+        return await apiClient.put<OKR>(`/okrs/${id}`, okr);
+      } catch (error) {
+        console.error('❌ FALHA AO ATUALIZAR OKR NO BACKEND:', error);
+        throw error;
+      }
+    }
+
+    throw new Error('API Desligada');
+  },
+
+  deleteOKR: async (id: string): Promise<void> => {
+    if (USE_API) {
+      try {
+        await apiClient.delete(`/okrs/${id}`);
+        return;
+      } catch (error) {
+        console.error('❌ FALHA AO REMOVER OKR NO BACKEND:', error);
+        throw error;
+      }
+    }
+
+    throw new Error('API Desligada');
+  },
+
   getCampaignEvents: async (): Promise<CampaignEvent[]> => {
     if (USE_API) {
       try {

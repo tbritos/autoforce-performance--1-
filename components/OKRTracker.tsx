@@ -2,18 +2,19 @@
 import React, { useState, useEffect } from 'react';
 import { OKR, Quarter, KeyResult } from '../types';
 import { DataService } from '../services/dataService';
-import { Target, Plus, CheckCircle2, Circle, TrendingUp, Save, Trash2, X } from 'lucide-react';
+import { Target, Plus, CheckCircle2, Circle, TrendingUp, Save, Trash2, X, Pencil } from 'lucide-react';
 
 const OKRTracker: React.FC = () => {
   const [okrs, setOkrs] = useState<OKR[]>([]);
   const [selectedQuarter, setSelectedQuarter] = useState<Quarter>('Q1 2026');
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingOkrId, setEditingOkrId] = useState<string | null>(null);
 
   // Form States
   const [newObjective, setNewObjective] = useState('');
-  const [newKRs, setNewKRs] = useState<{title: string, target: string, unit: string}[]>([
-      { title: '', target: '', unit: '#' }
+  const [newKRs, setNewKRs] = useState<{id: string, title: string, target: string, unit: string, currentValue: number}[]>([
+      { id: `kr-${Date.now()}`, title: '', target: '', unit: '#', currentValue: 0 }
   ]);
 
   useEffect(() => {
@@ -27,10 +28,17 @@ const OKRTracker: React.FC = () => {
     setLoading(false);
   };
 
+  const resetForm = () => {
+      setShowForm(false);
+      setEditingOkrId(null);
+      setNewObjective('');
+      setNewKRs([{ id: `kr-${Date.now()}`, title: '', target: '', unit: '#', currentValue: 0 }]);
+  };
+
   const quarters: Quarter[] = ['Q1 2026', 'Q2 2026', 'Q3 2026', 'Q4 2026'];
 
   const handleAddKRField = () => {
-      setNewKRs([...newKRs, { title: '', target: '', unit: '#' }]);
+      setNewKRs([...newKRs, { id: `kr-${Date.now()}-${newKRs.length}`, title: '', target: '', unit: '#', currentValue: 0 }]);
   };
 
   const handleRemoveKRField = (index: number) => {
@@ -50,25 +58,33 @@ const OKRTracker: React.FC = () => {
       const keyResults: KeyResult[] = newKRs
         .filter(k => k.title.trim() !== '')
         .map((k, i) => ({
-            id: `kr-${Date.now()}-${i}`,
+            id: k.id || `kr-${Date.now()}-${i}`,
             title: k.title,
-            currentValue: 0,
+            currentValue: k.currentValue || 0,
             targetValue: Number(k.target) || 0,
             unit: k.unit
         }));
 
+      const totalProgress = keyResults.reduce((acc, kr) => {
+          const p = kr.targetValue > 0 ? (kr.currentValue / kr.targetValue) * 100 : 0;
+          return acc + Math.min(p, 100);
+      }, 0);
+      const newProgress = keyResults.length > 0 ? Math.round(totalProgress / keyResults.length) : 0;
+
       const newOKR: OKR = {
-          id: Date.now().toString(),
+          id: editingOkrId ?? Date.now().toString(),
           quarter: selectedQuarter,
           objective: newObjective,
           keyResults: keyResults,
-          progress: 0
+          progress: newProgress
       };
 
-      await DataService.saveOKR(newOKR);
-      setShowForm(false);
-      setNewObjective('');
-      setNewKRs([{ title: '', target: '', unit: '#' }]);
+      if (editingOkrId) {
+          await DataService.updateOKR(editingOkrId, newOKR);
+      } else {
+          await DataService.saveOKR(newOKR);
+      }
+      resetForm();
       loadData();
   };
 
@@ -102,6 +118,31 @@ const OKRTracker: React.FC = () => {
       await DataService.saveOKR(updatedOKR);
   };
 
+  const handleEditOKR = (okr: OKR) => {
+      setEditingOkrId(okr.id);
+      setSelectedQuarter(okr.quarter);
+      setNewObjective(okr.objective);
+      const mapped = okr.keyResults.map(kr => ({
+          id: kr.id,
+          title: kr.title,
+          target: String(kr.targetValue),
+          unit: kr.unit,
+          currentValue: kr.currentValue || 0,
+      }));
+      setNewKRs(mapped.length > 0 ? mapped : [{ id: `kr-${Date.now()}`, title: '', target: '', unit: '#', currentValue: 0 }]);
+      setShowForm(true);
+  };
+
+  const handleDeleteOKR = async (okr: OKR) => {
+      const confirmed = window.confirm(`Remover o OKR "${okr.objective}"?`);
+      if (!confirmed) return;
+      await DataService.deleteOKR(okr.id);
+      if (editingOkrId === okr.id) {
+          resetForm();
+      }
+      loadData();
+  };
+
   const filteredOkrs = okrs.filter(okr => okr.quarter === selectedQuarter);
 
   return (
@@ -133,7 +174,12 @@ const OKRTracker: React.FC = () => {
         {/* Action Bar */}
         <div className="flex justify-end">
             <button 
-                onClick={() => setShowForm(true)}
+                onClick={() => {
+                    setEditingOkrId(null);
+                    setNewObjective('');
+                    setNewKRs([{ id: `kr-${Date.now()}`, title: '', target: '', unit: '#', currentValue: 0 }]);
+                    setShowForm(true);
+                }}
                 className="bg-autoforce-blue hover:bg-autoforce-secondary text-white px-4 py-2 rounded flex items-center gap-2 text-sm font-bold transition-colors"
             >
                 <Plus size={16} />
@@ -145,8 +191,10 @@ const OKRTracker: React.FC = () => {
         {showForm && (
             <div className="bg-autoforce-darkest border border-autoforce-blue/50 rounded-xl p-6 shadow-2xl animate-fade-in-down mb-6">
                 <div className="flex justify-between items-center mb-4 border-b border-autoforce-grey/20 pb-2">
-                    <h3 className="text-lg font-bold text-white">Cadastrar OKR em <span className="text-autoforce-accent">{selectedQuarter}</span></h3>
-                    <button onClick={() => setShowForm(false)} className="text-autoforce-lightGrey hover:text-white"><X size={20}/></button>
+                    <h3 className="text-lg font-bold text-white">
+                        {editingOkrId ? 'Editar OKR em' : 'Cadastrar OKR em'} <span className="text-autoforce-accent">{selectedQuarter}</span>
+                    </h3>
+                    <button onClick={resetForm} className="text-autoforce-lightGrey hover:text-white"><X size={20}/></button>
                 </div>
                 
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -165,7 +213,7 @@ const OKRTracker: React.FC = () => {
                     <div className="space-y-3">
                         <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider">Resultados Chave (Key Results)</label>
                         {newKRs.map((kr, idx) => (
-                            <div key={idx} className="flex gap-2 items-start">
+                            <div key={kr.id} className="flex gap-2 items-start">
                                 <input 
                                     type="text" 
                                     className="flex-1 bg-autoforce-black border border-autoforce-grey/50 rounded px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-sm"
@@ -202,8 +250,10 @@ const OKRTracker: React.FC = () => {
                     </div>
 
                     <div className="pt-4 flex justify-end gap-2">
-                        <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-autoforce-lightGrey hover:text-white text-sm">Cancelar</button>
-                        <button type="submit" className="bg-autoforce-blue hover:bg-autoforce-secondary text-white px-6 py-2 rounded text-sm font-bold shadow-lg">Salvar OKR</button>
+                        <button type="button" onClick={resetForm} className="px-4 py-2 text-autoforce-lightGrey hover:text-white text-sm">Cancelar</button>
+                        <button type="submit" className="bg-autoforce-blue hover:bg-autoforce-secondary text-white px-6 py-2 rounded text-sm font-bold shadow-lg">
+                            {editingOkrId ? 'Atualizar OKR' : 'Salvar OKR'}
+                        </button>
                     </div>
                 </form>
             </div>
@@ -230,9 +280,29 @@ const OKRTracker: React.FC = () => {
                                     <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-autoforce-blue/20 text-autoforce-blue mb-2 border border-autoforce-blue/20">OBJECTIVE</span>
                                     <h3 className="text-xl font-bold text-white">{okr.objective}</h3>
                                 </div>
-                                <div className="text-right">
-                                    <span className="text-3xl font-display font-bold text-white">{okr.progress}%</span>
-                                    <p className="text-xs text-autoforce-lightGrey">Concluído</p>
+                                <div className="flex flex-col items-end gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleEditOKR(okr)}
+                                            className="p-2 rounded-lg border border-autoforce-grey/30 text-autoforce-lightGrey hover:text-white hover:border-autoforce-blue/40"
+                                            title="Editar"
+                                        >
+                                            <Pencil size={14} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteOKR(okr)}
+                                            className="p-2 rounded-lg border border-autoforce-grey/30 text-red-300 hover:text-red-200 hover:border-red-400/40"
+                                            title="Remover"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="text-3xl font-display font-bold text-white">{okr.progress}%</span>
+                                        <p className="text-xs text-autoforce-lightGrey">Concluído</p>
+                                    </div>
                                 </div>
                             </div>
                             
@@ -285,3 +355,4 @@ const OKRTracker: React.FC = () => {
 };
 
 export default OKRTracker;
+
