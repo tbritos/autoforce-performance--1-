@@ -109,9 +109,9 @@ const LPView: React.FC = () => {
                  <div className="flex items-center gap-2 bg-autoforce-black p-1.5 rounded-lg border border-autoforce-grey/30">
                     <Calendar size={14} className="text-autoforce-lightGrey ml-2"/>
                     <select value={dateRange} onChange={(e) => setDateRange(e.target.value)} className="bg-autoforce-black text-white text-xs font-bold outline-none cursor-pointer p-1">
-                        <option className="bg-autoforce-darkest text-white" value="7days">Ãšltimos 7 dias</option>
-                        <option className="bg-autoforce-darkest text-white" value="30days">Ãšltimos 30 dias</option>
-                        <option className="bg-autoforce-darkest text-white" value="90days">Ãšltimos 90 dias</option>
+                        <option className="bg-autoforce-darkest text-white" value="7days"> 7 dias</option>
+                        <option className="bg-autoforce-darkest text-white" value="30days"> 30 dias</option>
+                        <option className="bg-autoforce-darkest text-white" value="90days"> 90 dias</option>
                         <option className="bg-autoforce-darkest text-white" value="custom">Personalizado</option>
                     </select>
                 </div>
@@ -139,9 +139,9 @@ const LPView: React.FC = () => {
                         <thead>
                             <tr className="bg-autoforce-black/40 text-autoforce-lightGrey text-xs uppercase tracking-wider border-b border-autoforce-grey/20">
                                 <th className="p-4 cursor-pointer hover:text-white" onClick={() => handleSort('name')}><div className="flex items-center">Caminho <SortIcon columnKey="name"/></div></th>
-                                <th className="p-4 text-right cursor-pointer hover:text-white" onClick={() => handleSort('users')}><div className="flex items-center justify-end">UsuÃ¡rios ativos <SortIcon columnKey="users"/></div></th>
+                                <th className="p-4 text-right cursor-pointer hover:text-white" onClick={() => handleSort('users')}><div className="flex items-center justify-end">Usuarios ativos <SortIcon columnKey="users"/></div></th>
                                 <th className="p-4 text-right cursor-pointer hover:text-white" onClick={() => handleSort('totalClicks')}><div className="flex items-center justify-end">Cliques <SortIcon columnKey="totalClicks"/></div></th>
-                                <th className="p-4 text-right cursor-pointer hover:text-white" onClick={() => handleSort('avgEngagementTime')}><div className="flex items-center justify-end">Tempo mÃ©dio <SortIcon columnKey="avgEngagementTime"/></div></th>
+                                <th className="p-4 text-right cursor-pointer hover:text-white" onClick={() => handleSort('avgEngagementTime')}><div className="flex items-center justify-end">Tempo medio <SortIcon columnKey="avgEngagementTime"/></div></th>
                                 <th className="p-4 text-right cursor-pointer hover:text-white" onClick={() => handleSort('bounceRate')}><div className="flex items-center justify-end">Bounce <SortIcon columnKey="bounceRate"/></div></th>
                             </tr>
                         </thead>
@@ -162,7 +162,7 @@ const LPView: React.FC = () => {
                                     </tr>
                                 ))
                             ) : (
-                                <tr><td colSpan={5} className="p-8 text-center text-autoforce-lightGrey">Nenhuma pÃ¡gina encontrada.</td></tr>
+                                <tr><td colSpan={5} className="p-8 text-center text-autoforce-lightGrey">Nenhuma pagina encontrada.</td></tr>
                             )}
                         </tbody>
                     </table>
@@ -171,7 +171,7 @@ const LPView: React.FC = () => {
                     <span className="text-xs text-autoforce-lightGrey">{paginatedPages.length > 0 ? `Exibindo ${startIndex + 1}-${Math.min(startIndex + ITEMS_PER_PAGE, sortedPages.length)} de ${sortedPages.length}` : '0 resultados'}</span>
                     <div className="flex items-center gap-2">
                         <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded hover:bg-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed"><ChevronLeft size={18} /></button>
-                        <span className="text-sm font-bold text-white px-2">PÃ¡g {currentPage}</span>
+                        <span className="text-sm font-bold text-white px-2">Pag {currentPage}</span>
                         <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages || totalPages === 0} className="p-1.5 rounded hover:bg-white/10 text-white disabled:opacity-30 disabled:cursor-not-allowed"><ChevronRight size={18} /></button>
                     </div>
                 </div>

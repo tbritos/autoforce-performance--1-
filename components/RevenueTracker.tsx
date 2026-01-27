@@ -330,7 +330,7 @@ const RevenueTracker: React.FC = () => {
                 <div className="flex items-center justify-between mb-6 border-b border-autoforce-grey/20 pb-4">
                     <h3 className="text-white font-bold flex items-center gap-2">
                         <Plus size={16} className="text-autoforce-accent"/>
-                        Novo NegÃ³cio
+                        Novo Negocio
                     </h3>
                     {editingId && (
                         <button
@@ -345,7 +345,7 @@ const RevenueTracker: React.FC = () => {
                 
                 <form onSubmit={handleSave} className="space-y-4">
                     <div>
-                        <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">Nome do NegÃ³cio</label>
+                        <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">Nome do Negocio</label>
                         <div className="relative">
                             <input 
                                 type="text" 
@@ -483,7 +483,7 @@ const RevenueTracker: React.FC = () => {
                 <div className="p-6 border-b border-autoforce-grey/20 flex justify-between items-center">
                     <h3 className="text-white font-bold flex items-center gap-2">
                         <Calendar size={18} className="text-autoforce-lightGrey" />
-                        HistÃ³rico de Vendas
+                        Historico de Vendas
                     </h3>
                     <div className="text-xs text-autoforce-lightGrey">
                         Exibindo {paginatedHistory.length} de {filteredHistory.length} registros
@@ -499,7 +499,7 @@ const RevenueTracker: React.FC = () => {
                             <th className="p-4">Origem / Produto</th>
                             <th className="p-4 text-right">Setup</th>
                             <th className="p-4 text-right">MRR</th>
-                            <th className="p-4 text-right">AÃ§Ãµes</th>
+                            <th className="p-4 text-right">ação</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-autoforce-grey/10">

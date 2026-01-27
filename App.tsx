@@ -188,7 +188,7 @@ const DashboardContent: React.FC<{
             },
             {
                 id: '2',
-                label: 'Taxa de QualificaÃ§Ã£o',
+                label: 'Taxa de Qualificação',
                 value: Number(currentQual.toFixed(1)),
                 target: 45,
                 unit: '%',
@@ -198,7 +198,7 @@ const DashboardContent: React.FC<{
             },
             {
                 id: '3',
-                label: 'MRR Novo (PerÃ­odo)',
+                label: 'MRR Novo',
                 value: Number(current.mrr.toFixed(2)),
                 target: 15000,
                 unit: 'R$',
@@ -214,7 +214,7 @@ const DashboardContent: React.FC<{
                 unit: '',
                 change: Number(salesChange.toFixed(1)),
                 trend: salesChange >= 0 ? 'up' : 'down',
-                description: 'NegÃ³cios fechados no perÃ­odo',
+                description: 'Negocios fechados no perí­odo',
             },
         ];
     }, [dateRange.end, dateRange.start, safeMetrics, safeDailyLeads, safeRevenueHistory]);
@@ -568,7 +568,7 @@ const DashboardContent: React.FC<{
                         Top Produtos Vendidos
                     </h3>
                     {topProducts.length === 0 ? (
-                        <p className="text-sm text-autoforce-lightGrey">Nenhum ganho no perÃ­odo.</p>
+                        <p className="text-sm text-autoforce-lightGrey">Nenhum ganho no perí­odo.</p>
                     ) : (
                         <div className="space-y-3">
                             {topProducts.map(item => (
@@ -591,7 +591,7 @@ const DashboardContent: React.FC<{
                         Origem dos Ganhos
                     </h3>
                     {originBreakdown.length === 0 ? (
-                        <p className="text-sm text-autoforce-lightGrey">Nenhum ganho no perÃ­odo.</p>
+                        <p className="text-sm text-autoforce-lightGrey">Nenhum ganho no perí­odo.</p>
                     ) : (
                         <div className="space-y-3">
                             {originBreakdown.map(item => (
@@ -611,10 +611,10 @@ const DashboardContent: React.FC<{
                 <div className="bg-autoforce-darkest p-6 rounded-lg border border-autoforce-grey/20">
                     <h3 className="text-white font-bold mb-4 flex items-center gap-2">
                         <TrendingUp size={18} className="text-green-400"/> 
-                        MRR por MÃªs
+                        MRR por Mês
                     </h3>
                     {monthlyMRRDisplay.length === 0 ? (
-                        <p className="text-sm text-autoforce-lightGrey">Nenhum ganho no perÃ­odo.</p>
+                        <p className="text-sm text-autoforce-lightGrey">Nenhum ganho no período.</p>
                     ) : (
                         <div className="space-y-3">
                             {monthlyMRRDisplay.map(item => (
