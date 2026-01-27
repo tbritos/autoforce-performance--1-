@@ -10,6 +10,7 @@ export class LeadsService {
     return leads.map(lead => ({
       id: lead.id,
       date: lead.date.toISOString().split('T')[0],
+      leads: lead.leads,
       mql: lead.mql,
       sql: lead.sql,
       sales: lead.sales,
@@ -25,6 +26,7 @@ export class LeadsService {
         date: date,
       },
       update: {
+        leads: data.leads,
         mql: data.mql,
         sql: data.sql,
         sales: data.sales,
@@ -32,6 +34,7 @@ export class LeadsService {
       },
       create: {
         date: date,
+        leads: data.leads,
         mql: data.mql,
         sql: data.sql,
         sales: data.sales,
@@ -42,6 +45,7 @@ export class LeadsService {
     return {
       id: lead.id,
       date: lead.date.toISOString().split('T')[0],
+      leads: lead.leads,
       mql: lead.mql,
       sql: lead.sql,
       sales: lead.sales,
@@ -58,6 +62,7 @@ export class LeadsService {
       where: { id },
       data: {
         date,
+        leads: data.leads,
         mql: data.mql,
         sql: data.sql,
         sales: data.sales,
@@ -68,6 +73,7 @@ export class LeadsService {
     return {
       id: lead.id,
       date: lead.date.toISOString().split('T')[0],
+      leads: lead.leads,
       mql: lead.mql,
       sql: lead.sql,
       sales: lead.sales,

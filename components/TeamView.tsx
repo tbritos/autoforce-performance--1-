@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Calendar, Plus, StickyNote, Pencil, Trash2, Droplet } from 'lucide-react';
+import { Calendar, Plus, StickyNote, Pencil, Trash2, Droplet, RefreshCw } from 'lucide-react';
 import { CampaignEvent } from '../types';
 import { DataService } from '../services/dataService';
 
@@ -184,22 +184,32 @@ const TeamView: React.FC = () => {
             Organize eventos, campanhas e entregas do time de marketing.
           </p>
         </div>
-        <button
-          className="bg-autoforce-blue hover:bg-autoforce-secondary text-white px-4 py-2 rounded text-sm font-bold transition-colors"
-          onClick={() => {
-            setEditingEventId(null);
-            setTitle('');
-            setColor('#2563eb');
-            setNotes('');
-            setStartDate(selectedDate);
-            setEndDate(selectedDate);
-            setDateError('');
-            setShowForm(true);
-          }}
-        >
-          <Plus size={16} className="inline mr-2" />
-          Novo agendamento
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            className="border border-autoforce-grey/30 text-autoforce-lightGrey hover:text-white hover:border-autoforce-blue/60 px-3 py-2 rounded text-sm font-semibold transition-colors"
+            onClick={loadEvents}
+            disabled={loading}
+          >
+            <RefreshCw size={14} className={`inline mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Sincronizar
+          </button>
+          <button
+            className="bg-autoforce-blue hover:bg-autoforce-secondary text-white px-4 py-2 rounded text-sm font-bold transition-colors"
+            onClick={() => {
+              setEditingEventId(null);
+              setTitle('');
+              setColor('#2563eb');
+              setNotes('');
+              setStartDate(selectedDate);
+              setEndDate(selectedDate);
+              setDateError('');
+              setShowForm(true);
+            }}
+          >
+            <Plus size={16} className="inline mr-2" />
+            Novo agendamento
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

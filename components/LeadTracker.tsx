@@ -27,6 +27,7 @@ useEffect(() => {
 
   // Form State
   const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [leadsInput, setLeadsInput] = useState<number>(0);
   const [mqlInput, setMqlInput] = useState<number>(0);
   const [sqlInput, setSqlInput] = useState<number>(0);
   
@@ -51,9 +52,11 @@ useEffect(() => {
     if (history && Array.isArray(history)) {
         const existingEntry = history.find(h => h.date.startsWith(selectedDate));
         if (existingEntry) {
+            setLeadsInput(existingEntry.leads || 0);
             setMqlInput(existingEntry.mql || 0);
             setSqlInput(existingEntry.sql || 0);
         } else {
+            setLeadsInput(0);
             setMqlInput(0);
             setSqlInput(0);
         }
@@ -80,6 +83,7 @@ useEffect(() => {
     try {
         const payload = {
             date: selectedDate,
+            leads: leadsInput,
             mql: mqlInput,
             sql: sqlInput,
             sales: 0,
@@ -102,6 +106,7 @@ useEffect(() => {
   const handleEdit = (entry: DailyLeadEntry) => {
       setEditingId(entry.id);
       setSelectedDate(entry.date);
+      setLeadsInput(entry.leads || 0);
       setMqlInput(entry.mql || 0);
       setSqlInput(entry.sql || 0);
   };
@@ -116,6 +121,7 @@ useEffect(() => {
           if (editingId === entry.id) {
               setEditingId(null);
               setSelectedDate(new Date().toISOString().split('T')[0]);
+              setLeadsInput(0);
               setMqlInput(0);
               setSqlInput(0);
           }
@@ -129,6 +135,7 @@ useEffect(() => {
   const handleCancelEdit = () => {
       setEditingId(null);
       setSelectedDate(new Date().toISOString().split('T')[0]);
+      setLeadsInput(0);
       setMqlInput(0);
       setSqlInput(0);
   };
@@ -158,9 +165,10 @@ useEffect(() => {
   // 2. Calcula Totais do Período Filtrado
   const periodTotals = useMemo(() => {
       return filteredHistory.reduce((acc, curr) => ({
+          leads: acc.leads + (curr.leads || 0),
           mql: acc.mql + (curr.mql || 0),
           sql: acc.sql + (curr.sql || 0),
-      }), { mql: 0, sql: 0 });
+      }), { leads: 0, mql: 0, sql: 0 });
   }, [filteredHistory]);
 
   // 3. Aplica a Paginação
@@ -284,7 +292,17 @@ useEffect(() => {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-3 gap-4">
+                        <div>
+                            <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">Leads</label>
+                            <input 
+                                type="number" 
+                                min="0"
+                                value={leadsInput}
+                                onChange={(e) => setLeadsInput(Number(e.target.value))}
+                                className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded-lg px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none font-mono"
+                            />
+                        </div>
                         <div>
                             <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">MQLs</label>
                             <input 
@@ -447,6 +465,10 @@ useEffect(() => {
             <div className="bg-autoforce-blue/5 border-b border-autoforce-blue/10 px-6 py-3 flex gap-8 items-center text-sm">
                 <span className="text-autoforce-lightGrey font-bold uppercase text-xs">Total no Período:</span>
                 <div className="flex gap-2 items-center">
+                    <span className="text-autoforce-grey">Leads:</span>
+                    <span className="text-white font-bold">{periodTotals.leads}</span>
+                </div>
+                <div className="flex gap-2 items-center">
                     <span className="text-autoforce-grey">MQL:</span>
                     <span className="text-white font-bold">{periodTotals.mql}</span>
                 </div>
@@ -470,6 +492,7 @@ useEffect(() => {
                     <thead className="bg-autoforce-black/50 text-autoforce-grey text-xs uppercase font-bold">
                         <tr>
                             <th className="p-4">Data</th>
+                            <th className="p-4 text-center">Leads</th>
                             <th className="p-4 text-center">MQL</th>
                             <th className="p-4 text-center">SQL</th>
                             <th className="p-4 text-right">Taxa Conv.</th>
@@ -478,13 +501,14 @@ useEffect(() => {
                     </thead>
                     <tbody className="divide-y divide-autoforce-grey/10">
                         {loading ? (
-                            <tr><td colSpan={5} className="p-8 text-center text-autoforce-lightGrey">Carregando histórico...</td></tr>
+                            <tr><td colSpan={6} className="p-8 text-center text-autoforce-lightGrey">Carregando histórico...</td></tr>
                         ) : filteredHistory.length === 0 ? (
-                            <tr><td colSpan={5} className="p-8 text-center text-autoforce-lightGrey">Nenhum registro encontrado no período.</td></tr>
+                            <tr><td colSpan={6} className="p-8 text-center text-autoforce-lightGrey">Nenhum registro encontrado no período.</td></tr>
                         ) : (
                             paginatedData.map((entry) => (
                                 <tr key={entry.id} className="hover:bg-autoforce-blue/5 transition-colors">
                                     <td className="p-4 text-white font-medium border-l-4 border-transparent hover:border-autoforce-accent">{fmtDate(entry.date)}</td>
+                                    <td className="p-4 text-center text-autoforce-lightGrey">{entry.leads}</td>
                                     <td className="p-4 text-center text-autoforce-lightGrey">{entry.mql}</td>
                                     <td className="p-4 text-center text-white font-bold">{entry.sql}</td>
                                     <td className="p-4 text-right">
@@ -519,7 +543,6 @@ useEffect(() => {
                     </tbody>
                 </table>
             </div>
-
             {/* RODAPÉ DA PAGINAÇÃO */}
             {filteredHistory.length > 0 && (
                 <div className="p-4 border-t border-autoforce-grey/20 flex justify-between items-center bg-autoforce-black/30">

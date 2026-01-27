@@ -63,6 +63,7 @@ export interface LandingPage {
 export interface DailyLeadEntry {
   id: string;
   date: string; // ISO YYYY-MM-DD
+  leads: number;
   mql: number;
   sql: number;
   sales: number;

@@ -11,6 +11,7 @@ import CampaignsView from './components/CampaignsView';
 import AssetsView from './components/AssetsView';
 import BlogView from './components/BlogView';
 import EmailsView from './components/EmailsView';
+import WeeklyView from './components/WeeklyView';
 import { DataService } from './services/dataService';
 import { User, Metric, TabView, LandingPage, DailyLeadEntry, RevenueEntry, KpiGoal } from './types';
 import {
@@ -31,6 +32,7 @@ import {
   Megaphone,
   FolderOpen,
   Users,
+  BarChart3,
   Menu,
   ChevronDown,
   SlidersHorizontal
@@ -105,6 +107,26 @@ const DashboardContent: React.FC<{
     const formatCurrency = (val: number) => {
         if (Number.isNaN(val)) return 'R$ 0,00';
         return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+    };
+
+    const formatMetricValue = (metric: Metric, value: number) => {
+        if (metric.unit === '%') {
+            return `${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)}%`;
+        }
+        if (metric.unit === 'R$') {
+            return formatCurrency(value);
+        }
+        return new Intl.NumberFormat('pt-BR').format(value);
+    };
+
+    const formatMetricTarget = (metric: Metric, value: number) => {
+        if (metric.unit === '%') {
+            return `${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)}%`;
+        }
+        if (metric.unit === 'R$') {
+            return formatCurrency(value);
+        }
+        return new Intl.NumberFormat('pt-BR').format(value);
     };
 
     const normalizeRange = (startValue: string, endValue: string) => {
@@ -529,14 +551,18 @@ const DashboardContent: React.FC<{
                 </div>
                 <h3 className="text-autoforce-lightGrey text-xs font-bold uppercase tracking-wider mb-2">{metric.label}</h3>
                 <div className="flex items-end gap-2">
-                    <span className="text-3xl font-display font-bold text-white">{metric.unit}{(metric.value || 0).toLocaleString()}</span>
+                    <span className="text-3xl font-display font-bold text-white">
+                        {formatMetricValue(metric, metric.value || 0)}
+                    </span>
                 </div>
                 <div className="mt-4 flex items-center justify-between">
                     <div className={`text-sm font-bold flex items-center gap-1 ${metric.trend === 'up' ? 'text-green-400' : metric.trend === 'down' ? 'text-red-400' : 'text-gray-400'}`}>
                         {metric.trend === 'up' ? <TrendingUp size={14} /> : metric.trend === 'down' ? <TrendingDown size={14} /> : null}
                         {metric.change > 0 ? '+' : ''}{metric.change}%
                     </div>
-                    <span className="text-[10px] text-autoforce-grey bg-white/5 px-2 py-0.5 rounded">Meta: {metric.unit}{(target || 0).toLocaleString()}</span>
+                    <span className="text-[10px] text-autoforce-grey bg-white/5 px-2 py-0.5 rounded">
+                        Meta: {formatMetricTarget(metric, target || 0)}
+                    </span>
                 </div>
                 <div className="w-full bg-gray-800 h-1.5 mt-3 rounded-full overflow-hidden">
                     <div 
@@ -777,6 +803,7 @@ const AppContent: React.FC = () => {
       icon: ClipboardList,
       items: [
         { label: 'Acompanhamento Diario', path: '/leads', icon: ClipboardList },
+        { label: 'Weekly', path: '/weekly', icon: BarChart3 },
         { label: 'Ganhos', path: '/revenue', icon: DollarSign },
         { label: 'OKRs do Marketing', path: '/okrs', icon: Target }
       ]
@@ -1001,6 +1028,7 @@ const AppContent: React.FC = () => {
 
                 {/* Outras Rotas */}
                 <Route path="/leads" element={<LeadTracker />} />
+                <Route path="/weekly" element={<WeeklyView />} />
                 <Route path="/revenue" element={<RevenueTracker />} />
                 <Route path="/team" element={<TeamView />} />
                 <Route path="/okrs" element={<OKRTracker />} />

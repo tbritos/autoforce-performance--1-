@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { LandingPage } from '../types';
 import { DataService } from '../services/dataService';
 import {
@@ -19,6 +19,19 @@ const SiteView: React.FC = () => {
   const [dateRange, setDateRange] = useState('30days');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryRows, setSummaryRows] = useState<Array<{
+    label: string;
+    users: number;
+    bounceRate: number;
+    clicks: number;
+    avgEngagementSeconds: number;
+  }>>([]);
+  const [summaryYear, setSummaryYear] = useState(() => new Date().getFullYear());
+  const [summaryMonth, setSummaryMonth] = useState(() => new Date().getMonth());
+  const [showMonths, setShowMonths] = useState(false);
+  const [showQuarters, setShowQuarters] = useState(false);
+  const [showYear, setShowYear] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -51,6 +64,154 @@ const SiteView: React.FC = () => {
       const secondsMatch = timeStr.match(/(\d+)s/);
       return (minutesMatch ? parseInt(minutesMatch[1]) * 60 : 0) + (secondsMatch ? parseInt(secondsMatch[1]) : 0);
   };
+
+  const formatTime = (seconds: number) => {
+      if (!Number.isFinite(seconds) || seconds <= 0) return '-';
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.round(seconds % 60);
+      if (mins > 0) return `${mins}m ${String(secs).padStart(2, '0')}s`;
+      return `${secs}s`;
+  };
+
+  const startOfWeek = (date: Date) => {
+      const day = date.getDay();
+      const diff = (day + 6) % 7;
+      const start = new Date(date);
+      start.setDate(date.getDate() - diff);
+      start.setHours(12, 0, 0, 0);
+      return start;
+  };
+
+  const endOfWeek = (date: Date) => {
+      const start = startOfWeek(date);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      end.setHours(12, 0, 0, 0);
+      return end;
+  };
+
+  const formatDate = (date: Date) => {
+      const dd = String(date.getDate()).padStart(2, '0');
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      const yy = String(date.getFullYear()).slice(2);
+      return `${dd}/${mm}/${yy}`;
+  };
+
+  const formatISO = (date: Date) => date.toISOString().split('T')[0];
+
+  const monthLabel = (index: number) => {
+      const labels = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+      return labels[index] ?? '';
+  };
+
+  const monthBounds = (y: number, m: number) => {
+      const start = new Date(y, m, 1, 12, 0, 0);
+      const end = new Date(y, m + 1, 0, 12, 0, 0);
+      return { start, end };
+  };
+
+  const yearOptions = useMemo(() => {
+      const years = new Set<number>();
+      pages.forEach(page => {
+          years.add(summaryYear);
+      });
+      years.add(new Date().getFullYear());
+      return Array.from(years.values()).sort((a, b) => b - a);
+  }, [pages, summaryYear]);
+
+  const buildSummaryPeriods = () => {
+      const { start: monthStart, end: monthEnd } = monthBounds(summaryYear, summaryMonth);
+      const weeks: { label: string; start: Date; end: Date }[] = [];
+      const cursor = new Date(monthStart);
+      while (cursor <= monthEnd) {
+          const weekStart = startOfWeek(cursor);
+          const weekEnd = endOfWeek(cursor);
+          weeks.push({
+              label: `Semana ${formatDate(weekStart)} a ${formatDate(weekEnd)}`,
+              start: weekStart,
+              end: weekEnd,
+          });
+          cursor.setDate(cursor.getDate() + 7);
+      }
+
+      const months = Array.from({ length: 12 }).map((_, idx) => {
+          const bounds = monthBounds(summaryYear, idx);
+          return { label: monthLabel(idx), start: bounds.start, end: bounds.end };
+      });
+
+      const quarters = [
+          { label: `Q1/${summaryYear}`, start: new Date(summaryYear, 0, 1, 12, 0, 0), end: new Date(summaryYear, 3, 0, 12, 0, 0) },
+          { label: `Q2/${summaryYear}`, start: new Date(summaryYear, 3, 1, 12, 0, 0), end: new Date(summaryYear, 6, 0, 12, 0, 0) },
+          { label: `Q3/${summaryYear}`, start: new Date(summaryYear, 6, 1, 12, 0, 0), end: new Date(summaryYear, 9, 0, 12, 0, 0) },
+          { label: `Q4/${summaryYear}`, start: new Date(summaryYear, 9, 1, 12, 0, 0), end: new Date(summaryYear, 12, 0, 12, 0, 0) },
+      ];
+
+      const yearRow = { label: `${summaryYear}`, start: new Date(summaryYear, 0, 1, 12, 0, 0), end: new Date(summaryYear, 12, 0, 12, 0, 0) };
+
+      return { weeks, months, quarters, yearRow };
+  };
+
+  useEffect(() => {
+      const loadSummary = async () => {
+          setSummaryLoading(true);
+          try {
+              const { weeks, months, quarters, yearRow } = buildSummaryPeriods();
+              const periods = [...weeks, ...months, ...quarters, yearRow];
+              const results = await Promise.allSettled(
+                  periods.map(async (period) => {
+                      const data = await DataService.getLandingPagesGA(formatISO(period.start), formatISO(period.end), 'site.autoforce.com');
+                      const totals = data.reduce(
+                          (acc, page) => {
+                              const users = page.users || 0;
+                              acc.users += users;
+                              acc.clicks += page.totalClicks || 0;
+                              acc.bounceWeighted += (page.bounceRate || 0) * users;
+                              acc.timeWeighted += parseTime(page.avgEngagementTime) * users;
+                              return acc;
+                          },
+                          { users: 0, clicks: 0, bounceWeighted: 0, timeWeighted: 0 }
+                      );
+                      const bounceRate = totals.users > 0 ? totals.bounceWeighted / totals.users : 0;
+                      const avgEngagementSeconds = totals.users > 0 ? totals.timeWeighted / totals.users : 0;
+                      return {
+                          label: period.label,
+                          users: totals.users,
+                          clicks: totals.clicks,
+                          bounceRate,
+                          avgEngagementSeconds,
+                      };
+                  })
+              );
+              const rows = results.map((result, index) => {
+                  if (result.status === 'fulfilled') return result.value;
+                  console.error('Erro ao carregar resumo do site:', result.reason);
+                  return {
+                      label: periods[index].label,
+                      users: 0,
+                      clicks: 0,
+                      bounceRate: 0,
+                      avgEngagementSeconds: 0,
+                  };
+              });
+              setSummaryRows(rows);
+          } catch (error) {
+              console.error('Erro ao montar resumo do site:', error);
+              setSummaryRows([]);
+          } finally {
+              setSummaryLoading(false);
+          }
+      };
+
+      loadSummary();
+  }, [summaryYear, summaryMonth]);
+
+  const summaryMap = useMemo(() => {
+      const map = new Map<string, typeof summaryRows[number]>();
+      summaryRows.forEach(row => map.set(row.label, row));
+      return map;
+  }, [summaryRows]);
+
+  const summaryPeriods = useMemo(() => buildSummaryPeriods(), [summaryYear, summaryMonth]);
 
   const filteredPages = pages.filter(page => {
       const searchLower = searchTerm.toLowerCase();
@@ -86,8 +247,8 @@ const SiteView: React.FC = () => {
       return sortDirection === 'asc' ? <ArrowUp size={12} className="text-autoforce-blue ml-1" /> : <ArrowDown size={12} className="text-autoforce-blue ml-1" />;
   };
 
-  return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-6 animate-fade-in-up">
+    return (
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6 animate-fade-in-up">
         <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-4 mb-4 bg-autoforce-darkest p-6 rounded-xl border border-autoforce-grey/20">
             <div>
                 <div className="flex items-center gap-2 mb-2">
@@ -120,6 +281,142 @@ const SiteView: React.FC = () => {
                         <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="bg-autoforce-black border border-autoforce-grey/30 text-white text-xs rounded px-2 py-1.5 outline-none focus:border-autoforce-blue" />
                     </div>
                 )}
+            </div>
+        </div>
+
+        <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-lg overflow-hidden shadow-lg flex flex-col">
+            <div className="p-6 border-b border-autoforce-grey/20 flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-2 text-autoforce-lightGrey">
+                    <Activity size={16} className="text-autoforce-accent" />
+                    <span className="text-sm font-bold">Indicadores gerais do site</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <select value={summaryYear} onChange={(e) => setSummaryYear(Number(e.target.value))} className="bg-autoforce-black/50 border border-autoforce-grey/20 rounded-full px-3 py-1.5 text-xs text-white">
+                        {yearOptions.map(option => (
+                            <option key={option} value={option}>{option}</option>
+                        ))}
+                    </select>
+                    <select value={summaryMonth} onChange={(e) => setSummaryMonth(Number(e.target.value))} className="bg-autoforce-black/50 border border-autoforce-grey/20 rounded-full px-3 py-1.5 text-xs text-white">
+                        {Array.from({ length: 12 }).map((_, index) => (
+                            <option key={index} value={index}>{monthLabel(index)}</option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm table-fixed">
+                    <colgroup>
+                        <col className="w-[26%]" />
+                        <col className="w-[12%]" />
+                        <col className="w-[12%]" />
+                        <col className="w-[10%]" />
+                        <col className="w-[14%]" />
+                        <col className="w-[13%]" />
+                        <col className="w-[13%]" />
+                    </colgroup>
+                    <thead className="text-[11px] uppercase tracking-wider text-autoforce-lightGrey border-b border-autoforce-grey/20">
+                        <tr>
+                            <th className="py-2 pr-4">Semanas</th>
+                            <th className="py-2 pr-4 text-center">Visitas (Usuarios ativos)</th>
+                            <th className="py-2 pr-4 text-center">Taxa Rejeição</th>
+                            <th className="py-2 pr-4 text-center">Cliques</th>
+                            <th className="py-2 pr-4 text-center">Tempo Medio Permanencia</th>
+                            <th className="py-2 pr-4 text-center">Respostas formulario</th>
+                            <th className="py-2 text-center">PageSpeed (Mobile)</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-autoforce-grey/10">
+                        {summaryLoading ? (
+                            <tr><td colSpan={7} className="py-6 text-center text-autoforce-lightGrey">Carregando indicadores...</td></tr>
+                        ) : summaryRows.length === 0 ? (
+                            <tr><td colSpan={7} className="py-6 text-center text-autoforce-lightGrey">Sem dados para o período.</td></tr>
+                        ) : (
+                            <>
+                                {summaryPeriods.weeks.map((period) => {
+                                    const row = summaryMap.get(period.label);
+                                    if (!row) return null;
+                                    return (
+                                        <tr key={row.label} className="text-sm text-white">
+                                            <td className="py-3 pr-4 truncate">{row.label}</td>
+                                            <td className="py-3 pr-4 text-center">{row.users.toLocaleString()}</td>
+                                            <td className="py-3 pr-4 text-center">{row.bounceRate ? `${row.bounceRate.toFixed(2)}%` : '—'}</td>
+                                            <td className="py-3 pr-4 text-center">{row.clicks.toLocaleString()}</td>
+                                            <td className="py-3 pr-4 text-center">{formatTime(row.avgEngagementSeconds)}</td>
+                                            <td className="py-3 pr-4 text-center">—</td>
+                                            <td className="py-3 text-center">—</td>
+                                        </tr>
+                                    );
+                                })}
+                                <tr className="bg-autoforce-blue/10 text-white text-xs uppercase tracking-wider">
+                                    <td colSpan={7} className="py-2 px-3">
+                                        <button type="button" onClick={() => setShowMonths(prev => !prev)} className="hover:text-white">
+                                            Meses
+                                        </button>
+                                    </td>
+                                </tr>
+                                {showMonths && summaryPeriods.months.map((period) => {
+                                    const row = summaryMap.get(period.label);
+                                    if (!row) return null;
+                                    return (
+                                        <tr key={row.label} className="text-sm text-white">
+                                            <td className="py-3 pr-4 truncate">{row.label}</td>
+                                            <td className="py-3 pr-4 text-center">{row.users.toLocaleString()}</td>
+                                            <td className="py-3 pr-4 text-center">{row.bounceRate ? `${row.bounceRate.toFixed(2)}%` : '—'}</td>
+                                            <td className="py-3 pr-4 text-center">{row.clicks.toLocaleString()}</td>
+                                            <td className="py-3 pr-4 text-center">{formatTime(row.avgEngagementSeconds)}</td>
+                                            <td className="py-3 pr-4 text-center">—</td>
+                                            <td className="py-3 text-center">—</td>
+                                        </tr>
+                                    );
+                                })}
+                                <tr className="bg-autoforce-blue/10 text-white text-xs uppercase tracking-wider">
+                                    <td colSpan={7} className="py-2 px-3">
+                                        <button type="button" onClick={() => setShowQuarters(prev => !prev)} className="hover:text-white">
+                                            Trimestres
+                                        </button>
+                                    </td>
+                                </tr>
+                                {showQuarters && summaryPeriods.quarters.map((period) => {
+                                    const row = summaryMap.get(period.label);
+                                    if (!row) return null;
+                                    return (
+                                        <tr key={row.label} className="text-sm text-white">
+                                            <td className="py-3 pr-4 truncate">{row.label}</td>
+                                            <td className="py-3 pr-4 text-center">{row.users.toLocaleString()}</td>
+                                            <td className="py-3 pr-4 text-center">{row.bounceRate ? `${row.bounceRate.toFixed(2)}%` : '—'}</td>
+                                            <td className="py-3 pr-4 text-center">{row.clicks.toLocaleString()}</td>
+                                            <td className="py-3 pr-4 text-center">{formatTime(row.avgEngagementSeconds)}</td>
+                                            <td className="py-3 pr-4 text-center">—</td>
+                                            <td className="py-3 text-center">—</td>
+                                        </tr>
+                                    );
+                                })}
+                                <tr className="bg-autoforce-blue/10 text-white text-xs uppercase tracking-wider">
+                                    <td colSpan={7} className="py-2 px-3">
+                                        <button type="button" onClick={() => setShowYear(prev => !prev)} className="hover:text-white">
+                                            Ano
+                                        </button>
+                                    </td>
+                                </tr>
+                                {showYear && (() => {
+                                    const row = summaryMap.get(summaryPeriods.yearRow.label);
+                                    if (!row) return null;
+                                    return (
+                                        <tr key={row.label} className="text-sm text-white">
+                                            <td className="py-3 pr-4 truncate">{row.label}</td>
+                                            <td className="py-3 pr-4 text-center">{row.users.toLocaleString()}</td>
+                                            <td className="py-3 pr-4 text-center">{row.bounceRate ? `${row.bounceRate.toFixed(2)}%` : '—'}</td>
+                                            <td className="py-3 pr-4 text-center">{row.clicks.toLocaleString()}</td>
+                                            <td className="py-3 pr-4 text-center">{formatTime(row.avgEngagementSeconds)}</td>
+                                            <td className="py-3 pr-4 text-center">—</td>
+                                            <td className="py-3 text-center">—</td>
+                                        </tr>
+                                    );
+                                })()}
+                            </>
+                        )}
+                    </tbody>
+                </table>
             </div>
         </div>
 

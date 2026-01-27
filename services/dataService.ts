@@ -120,7 +120,13 @@ export const DataService = {
     if (USE_API) {
       try {
         console.log('📡 Buscando histórico do backend...');
-        return await apiClient.get<DailyLeadEntry[]>('/leads/daily');
+        const data = await apiClient.get<DailyLeadEntry[]>('/leads/daily');
+        return (data || []).map(entry => ({
+          ...entry,
+          leads: entry.leads ?? 0,
+          mql: entry.mql ?? 0,
+          sql: entry.sql ?? 0,
+        }));
       } catch (error) {
         console.error('❌ Erro ao buscar leads do Backend:', error);
         // Não vamos fazer fallback silencioso agora, queremos ver o erro!
@@ -765,4 +771,5 @@ export const DataService = {
     localStorage.setItem(STORAGE_EMAILS_KEY, JSON.stringify(updated));
   },
 };
+
 

@@ -6,7 +6,7 @@ import { DollarSign, Plus, Briefcase, Globe, Package, TrendingUp, Loader2, Filte
 
 const RevenueTracker: React.FC = () => {
   const productOptions = ['Autodromo', 'Autopilot', 'Autobot', 'Nitroads', 'Fluxo de IA'];
-  const originOptions = ['Google Ads', 'Facebook/Meta', 'IndicaÃ§Ã£o', 'OrgÃ¢nico', 'Outros'];
+  const originOptions = ['Google Ads', 'Facebook/Meta', 'Indicação', 'Organico', 'Outros'];
   const [history, setHistory] = useState<RevenueEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -338,7 +338,7 @@ const RevenueTracker: React.FC = () => {
                             onClick={handleCancelEdit}
                             className="text-xs text-autoforce-lightGrey hover:text-white"
                         >
-                            Cancelar ediÃ§Ã£o
+                            Cancelar edição
                         </button>
                     )}
                 </div>
