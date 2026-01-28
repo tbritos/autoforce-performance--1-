@@ -130,7 +130,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 <div className="w-full flex justify-center">
                   <div
                     ref={buttonRef}
-                    className="w-[340px] h-[44px] flex items-center justify-center rounded-full overflow-hidden transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_10px_26px_-14px_rgba(20,64,255,0.9)] mt-1"
+                    className="w-[340px] min-h-[44px] flex items-center justify-center rounded-full transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_10px_26px_-14px_rgba(20,64,255,0.9)] mt-1"
                   />
                 </div>
                 {loading && (
