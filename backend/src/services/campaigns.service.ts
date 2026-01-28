@@ -1,5 +1,5 @@
 import { prisma } from '../config/database';
-import { Campaign } from '../../../types';
+import { Campaign } from '../types/shared.types';
 
 export class CampaignsService {
   static async getCampaigns(): Promise<Campaign[]> {

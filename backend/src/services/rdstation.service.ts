@@ -126,7 +126,7 @@ const fetchRdEmailsWindow = async (
       throw new Error(`RD emails error: ${text}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as any;
     const rows: RdEmailRow[] = Array.isArray(data) ? data : data.emails || data.items || data.results || [];
     allRows.push(...rows);
 
@@ -259,7 +259,7 @@ export const fetchRdWorkflowEmails = async (
       throw new Error(`RD workflow emails error: ${text}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as any;
     const rows: RdWorkflowEmailRow[] = Array.isArray(data)
       ? data
       : data.workflow_email_statistics || data.items || data.results || [];

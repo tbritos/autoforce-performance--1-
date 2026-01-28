@@ -1,5 +1,5 @@
 import { prisma } from '../config/database';
-import { RevenueEntry } from '../../../types';
+import { RevenueEntry } from '../types/shared.types';
 
 type RevenueFilters = {
   origin?: string;

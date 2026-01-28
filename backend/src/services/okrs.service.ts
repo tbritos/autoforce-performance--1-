@@ -1,5 +1,5 @@
 import { prisma } from '../config/database';
-import { OKR } from '../../../types';
+import { OKR } from '../types/shared.types';
 
 export class OKRsService {
   static async getOKRs(): Promise<OKR[]> {

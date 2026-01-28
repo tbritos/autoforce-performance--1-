@@ -1,5 +1,5 @@
 import { prisma } from '../config/database';
-import { LandingPage } from '../../../types';
+import { LandingPage } from '../types/dashboard.types';
 import { syncLandingPagesFromGA4 } from './googleAnalytics.service';
 
 export class AnalyticsService {

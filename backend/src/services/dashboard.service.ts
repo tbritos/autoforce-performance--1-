@@ -1,4 +1,4 @@
-import { Metric, ChartData } from '../../types/dashboard.types';
+import { Metric, ChartData } from '../types/dashboard.types';
 import { prisma } from '../config/database';
 
 export class DashboardService {

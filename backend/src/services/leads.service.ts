@@ -1,5 +1,5 @@
 import { prisma } from '../config/database';
-import { DailyLeadEntry } from '../../../types';
+import { DailyLeadEntry } from '../types/shared.types';
 
 export class LeadsService {
   static async getDailyLeads(): Promise<DailyLeadEntry[]> {

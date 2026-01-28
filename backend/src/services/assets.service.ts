@@ -1,5 +1,5 @@
 import { prisma } from '../config/database';
-import { AssetItem } from '../../../types';
+import { AssetItem } from '../types/shared.types';
 
 export class AssetsService {
   static async getAssets(): Promise<AssetItem[]> {

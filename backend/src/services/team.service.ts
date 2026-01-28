@@ -1,5 +1,5 @@
 import { prisma } from '../config/database';
-import { TeamMember } from '../../../types';
+import { TeamMember } from '../types/shared.types';
 
 export class TeamService {
   static async getTeamMembers(): Promise<TeamMember[]> {

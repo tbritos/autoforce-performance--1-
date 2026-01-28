@@ -1,5 +1,5 @@
 import { prisma } from '../config/database';
-import { EmailCampaign } from '../../../types';
+import { EmailCampaign } from '../types/shared.types';
 import { fetchRdEmails, fetchRdWorkflowEmails } from './rdstation.service';
 
 export class EmailService {

@@ -1,6 +1,6 @@
 import { prisma } from '../config/database';
 import { google } from 'googleapis';
-import { CampaignEvent } from '../../../types';
+import { CampaignEvent } from '../types/shared.types';
 
 export class CalendarService {
   private static getCalendarConfig() {
