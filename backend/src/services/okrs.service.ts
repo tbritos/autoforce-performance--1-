@@ -12,7 +12,7 @@ export class OKRsService {
       quarter: okr.quarter as OKR['quarter'],
       objective: okr.objective,
       progress: okr.progress,
-      keyResults: okr.keyResults as OKR['keyResults'],
+      keyResults: okr.keyResults as unknown as OKR['keyResults'],
     }));
   }
 
@@ -41,7 +41,7 @@ export class OKRsService {
       quarter: okr.quarter as OKR['quarter'],
       objective: okr.objective,
       progress: okr.progress,
-      keyResults: okr.keyResults as OKR['keyResults'],
+      keyResults: okr.keyResults as unknown as OKR['keyResults'],
     };
   }
 
@@ -51,3 +51,4 @@ export class OKRsService {
     });
   }
 }
+
