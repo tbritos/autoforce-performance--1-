@@ -74,11 +74,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         ux_mode: 'popup',
       });
       window.google.accounts.id.renderButton(buttonRef.current, {
-        theme: 'outline',
+        theme: 'filled_black',
         size: 'large',
         text: 'continue_with',
         shape: 'pill',
-        width: 320,
+        width: 340,
       });
       window.google.accounts.id.prompt();
     };
@@ -99,37 +99,42 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   }, []);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#00020A] relative overflow-hidden font-sans">
+    <div className="min-h-screen flex items-center justify-center bg-[#05060C] relative overflow-hidden font-sans">
       <div className="absolute inset-0 z-0">
-        <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-autoforce-blue/10 rounded-full blur-[120px] animate-pulse"></div>
-        <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-autoforce-secondary/10 rounded-full blur-[100px]"></div>
-        <div className="absolute top-[50%] left-[50%] transform -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03]"></div>
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(20,64,255,0.18),transparent_45%),radial-gradient(circle_at_80%_80%,rgba(0,39,212,0.2),transparent_55%)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,2,10,0.9),rgba(0,2,10,0.98))]" />
       </div>
 
-      <div className="z-10 w-full max-w-[420px] p-1">
-        <div className="bg-autoforce-darkest/40 backdrop-blur-2xl border border-white/5 rounded-3xl shadow-2xl overflow-hidden relative">
-          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
-
-          <div className="p-10 flex flex-col items-center min-h-[480px] transition-all duration-500">
-            <div className="mb-12 flex flex-col items-center animate-fade-in-down">
+      <div className="z-10 w-full max-w-[420px] px-6">
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_20px_60px_-30px_rgba(0,0,0,0.75)] overflow-hidden">
+          <div className="px-8 pt-10 pb-8 flex flex-col items-center">
+            <div className="mb-10 flex flex-col items-center animate-fade-in-down">
               <img
                 src="https://static.autodromo.com.br/uploads/1dc32f4d-ab47-428d-91dd-756266d45b47_LOGOTIPO-AUTOFORCE-HORIZONTAL.svg"
                 alt="AutoForce"
-                className="h-12 w-auto mb-4 object-contain"
+                className="h-10 w-auto mb-4 object-contain opacity-90"
               />
-              <p className="text-autoforce-lightGrey text-xs tracking-[0.2em] mt-1 uppercase">Intelligence System</p>
             </div>
 
-            <div className="w-full flex flex-col items-center animate-fade-in-up space-y-8">
+            <div className="w-full flex flex-col items-center animate-fade-in-up space-y-7">
               <div className="text-center space-y-2">
-                <h2 className="text-xl font-semibold text-white">Bem-vindo de volta</h2>
-                <p className="text-sm text-autoforce-lightGrey/70">Acesse com sua conta institucional</p>
+                <h2 className="text-2xl font-semibold text-white font-display tracking-tight">
+                  Bem-vindo de volta
+                </h2>
+                <p className="text-sm text-autoforce-lightGrey/70">
+                  Acesse com sua conta institucional
+                </p>
               </div>
 
               <div className="w-full flex flex-col items-center gap-4">
-                <div ref={buttonRef} className="w-full flex justify-center" />
+                <div className="w-full flex justify-center">
+                  <div
+                    ref={buttonRef}
+                    className="w-[340px] h-[44px] flex items-center justify-center rounded-full overflow-hidden transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_10px_26px_-14px_rgba(20,64,255,0.9)] mt-1"
+                  />
+                </div>
                 {loading && (
-                  <div className="flex items-center gap-2 text-xs text-autoforce-lightGrey">
+                  <div className="flex items-center gap-2 text-xs text-autoforce-lightGrey/80">
                     <Loader2 size={14} className="animate-spin" />
                     Autenticando...
                   </div>
@@ -142,16 +147,19 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 </div>
               )}
 
-              <div className="flex items-center gap-2 text-autoforce-grey text-xs mt-8">
+              <div className="flex items-center gap-2 text-white text-xs mt-2">
                 <ShieldCheck size={12} />
                 <span>Restrito a emails @autoforce.com</span>
               </div>
             </div>
           </div>
 
-          <div className="absolute bottom-0 w-full p-4 bg-black/20 backdrop-blur-md border-t border-white/5 flex justify-between items-center text-[10px] text-autoforce-grey uppercase tracking-widest">
-            <span>V. 2.5.0</span>
-            <span className="flex items-center gap-1"><div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div> System Online</span>
+          <div className="px-8 py-4 border-t border-white/10 flex justify-between items-center text-[10px] text-autoforce-grey uppercase tracking-widest bg-white/[0.02]">
+            <span>V. 1.0.0</span>
+            <span className="flex items-center gap-1">
+              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+              Online
+            </span>
           </div>
         </div>
       </div>
