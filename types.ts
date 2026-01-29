@@ -77,6 +77,7 @@ export interface CampaignEvent {
   endDate: string; // ISO YYYY-MM-DD
   color: string;
   notes?: string;
+  source?: 'google' | 'local';
 }
 
 export type CampaignPlatform = 'Meta' | 'Google';

@@ -44,6 +44,7 @@ export interface CampaignEvent {
   endDate: string;
   color: string;
   notes?: string;
+  source?: 'google' | 'local';
 }
 
 export type CampaignPlatform = 'Meta' | 'Google';
