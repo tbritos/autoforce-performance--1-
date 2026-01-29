@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "DailyLead" ADD COLUMN     "leads" INTEGER NOT NULL DEFAULT 0;

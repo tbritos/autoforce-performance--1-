@@ -26,7 +26,6 @@ npm-debug.log*
 Thumbs.db
 
 # Prisma
-prisma/migrations/
 
 # Google Analytics Credentials
 credentials/
