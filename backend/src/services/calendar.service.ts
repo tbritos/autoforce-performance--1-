@@ -111,7 +111,36 @@ export class CalendarService {
         pageToken = response.data.nextPageToken || undefined;
       } while (pageToken);
 
-      return events;
+      const localEvents = await prisma.campaignEvent.findMany({
+        orderBy: { startDate: 'asc' },
+      });
+      const localMap = new Map(localEvents.map(event => [event.id, event]));
+      const merged: CampaignEvent[] = events.map(event => {
+        const override = localMap.get(event.id);
+        if (!override) return event;
+        return {
+          id: override.id,
+          title: override.title,
+          startDate: CalendarService.formatDateOnly(override.startDate),
+          endDate: CalendarService.formatDateOnly(override.endDate),
+          color: override.color,
+          notes: override.notes || undefined,
+        };
+      });
+      const googleIds = new Set(events.map(event => event.id));
+      localEvents.forEach(event => {
+        if (!googleIds.has(event.id)) {
+          merged.push({
+            id: event.id,
+            title: event.title,
+            startDate: CalendarService.formatDateOnly(event.startDate),
+            endDate: CalendarService.formatDateOnly(event.endDate),
+            color: event.color,
+            notes: event.notes || undefined,
+          });
+        }
+      });
+      return merged;
     }
 
     const events = await prisma.campaignEvent.findMany({
@@ -129,34 +158,6 @@ export class CalendarService {
   }
 
   static async createEvent(data: Omit<CampaignEvent, 'id'>): Promise<CampaignEvent> {
-    const config = CalendarService.getCalendarConfig();
-    if (config) {
-      const calendar = await CalendarService.getCalendarClient();
-      const endExclusive = CalendarService.shiftDate(data.endDate, 1);
-
-      const response = await calendar.events.insert({
-        calendarId: config.calendarId,
-        requestBody: {
-          summary: data.title,
-          description: data.notes || undefined,
-          start: { date: data.startDate },
-          end: { date: endExclusive },
-          extendedProperties: {
-            private: {
-              color: data.color || '#2563eb',
-              notes: data.notes || '',
-            },
-          },
-        },
-      });
-
-      const mapped = CalendarService.mapGoogleEvent(response.data);
-      if (!mapped) {
-        throw new Error('Falha ao mapear evento do Google Calendar');
-      }
-      return mapped;
-    }
-
     const event = await prisma.campaignEvent.create({
       data: {
         title: data.title,
@@ -178,38 +179,17 @@ export class CalendarService {
   }
 
   static async updateEvent(id: string, data: Omit<CampaignEvent, 'id'>): Promise<CampaignEvent> {
-    const config = CalendarService.getCalendarConfig();
-    if (config) {
-      const calendar = await CalendarService.getCalendarClient();
-      const endExclusive = CalendarService.shiftDate(data.endDate, 1);
-
-      const response = await calendar.events.patch({
-        calendarId: config.calendarId,
-        eventId: id,
-        requestBody: {
-          summary: data.title,
-          description: data.notes || undefined,
-          start: { date: data.startDate },
-          end: { date: endExclusive },
-          extendedProperties: {
-            private: {
-              color: data.color || '#2563eb',
-              notes: data.notes || '',
-            },
-          },
-        },
-      });
-
-      const mapped = CalendarService.mapGoogleEvent(response.data);
-      if (!mapped) {
-        throw new Error('Falha ao mapear evento do Google Calendar');
-      }
-      return mapped;
-    }
-
-    const event = await prisma.campaignEvent.update({
+    const event = await prisma.campaignEvent.upsert({
       where: { id },
-      data: {
+      update: {
+        title: data.title,
+        startDate: CalendarService.parseDateOnly(data.startDate),
+        endDate: CalendarService.parseDateOnly(data.endDate),
+        color: data.color,
+        notes: data.notes || null,
+      },
+      create: {
+        id,
         title: data.title,
         startDate: CalendarService.parseDateOnly(data.startDate),
         endDate: CalendarService.parseDateOnly(data.endDate),
@@ -229,13 +209,6 @@ export class CalendarService {
   }
 
   static async deleteEvent(id: string): Promise<void> {
-    const config = CalendarService.getCalendarConfig();
-    if (config) {
-      const calendar = await CalendarService.getCalendarClient();
-      await calendar.events.delete({ calendarId: config.calendarId, eventId: id });
-      return;
-    }
-
-    await prisma.campaignEvent.delete({ where: { id } });
+    await prisma.campaignEvent.deleteMany({ where: { id } });
   }
 }
