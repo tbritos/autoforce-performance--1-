@@ -125,7 +125,7 @@ export class CalendarService {
           startDate: CalendarService.formatDateOnly(override.startDate),
           endDate: CalendarService.formatDateOnly(override.endDate),
           color: override.color,
-          notes: override.notes \|\| undefined,
+          notes: override.notes || undefined,
           source: 'local',
         };
       });
@@ -138,7 +138,7 @@ export class CalendarService {
             startDate: CalendarService.formatDateOnly(event.startDate),
             endDate: CalendarService.formatDateOnly(event.endDate),
             color: event.color,
-            notes: event.notes \|\| undefined,
+            notes: event.notes || undefined,
             source: 'local',
           });
         }
@@ -156,7 +156,7 @@ export class CalendarService {
       startDate: CalendarService.formatDateOnly(event.startDate),
       endDate: CalendarService.formatDateOnly(event.endDate),
       color: event.color,
-      notes: event.notes \|\| undefined,
+      notes: event.notes || undefined,
       source: 'local',
     }));
   }
@@ -178,7 +178,7 @@ export class CalendarService {
       startDate: CalendarService.formatDateOnly(event.startDate),
       endDate: CalendarService.formatDateOnly(event.endDate),
       color: event.color,
-      notes: event.notes \|\| undefined,
+      notes: event.notes || undefined,
       source: 'local',
     };
   }
@@ -209,7 +209,7 @@ export class CalendarService {
       startDate: CalendarService.formatDateOnly(event.startDate),
       endDate: CalendarService.formatDateOnly(event.endDate),
       color: event.color,
-      notes: event.notes \|\| undefined,
+      notes: event.notes || undefined,
       source: 'local',
     };
   }
@@ -218,4 +218,5 @@ export class CalendarService {
     await prisma.campaignEvent.deleteMany({ where: { id } });
   }
 }
+
 
