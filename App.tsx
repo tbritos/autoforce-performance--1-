@@ -48,8 +48,7 @@ const DashboardContent: React.FC<{
 }> = ({ metrics, dailyLeads, revenueHistory, loadingData }) => {
     const [dateRange, setDateRange] = useState(() => {
         const end = new Date();
-        const start = new Date();
-        start.setMonth(end.getMonth() - 6);
+        const start = new Date(end.getFullYear(), end.getMonth(), 1);
         return {
             start: start.toISOString().split('T')[0],
             end: end.toISOString().split('T')[0],
