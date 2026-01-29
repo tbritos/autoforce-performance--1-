@@ -286,21 +286,22 @@ const TeamView: React.FC = () => {
                 {selectedEvents.map(event => (
                   <div key={event.id} className="border border-autoforce-grey/20 rounded-lg p-3">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm text-white font-semibold">{event.title}</p>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
-                          event.source === 'google'
-                            ? 'border-white/20 text-white/70 bg-white/5'
-                            : 'border-autoforce-blue/40 text-autoforce-blue/90 bg-autoforce-blue/10'
-                        }`}>
-                          {event.source === 'google' ? 'Google' : 'Local'}
-                        </span>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm text-white font-semibold">{event.title}</p>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                            event.source === 'google'
+                              ? 'border-white/20 text-white/70 bg-white/5'
+                              : 'border-autoforce-blue/40 text-autoforce-blue/90 bg-autoforce-blue/10'
+                          }`}>
+                            {event.source === 'google' ? 'Google' : 'Local'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-autoforce-lightGrey">
+                          {event.startDate} - {event.endDate}
+                        </p>
                       </div>
-                      <p className="text-xs text-autoforce-lightGrey">
-                        {event.startDate} - {event.endDate}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
                         <button
                           className="text-xs text-autoforce-blue hover:text-autoforce-secondary flex items-center gap-1"
                           onClick={() => handleEditEvent(event)}
