@@ -7,16 +7,26 @@ export async function initializeGA4Client() {
   if (analyticsDataClient) return analyticsDataClient;
 
   const credentialsPath = process.env.GA4_CREDENTIALS_PATH;
+  const credentialsJson = process.env.GA4_CREDENTIALS_JSON;
   const propertyId = process.env.GA4_PROPERTY_ID;
 
-  if (!credentialsPath || !propertyId) {
-    throw new Error('GA4_CREDENTIALS_PATH e GA4_PROPERTY_ID devem estar configurados no .env');
+  if ((!credentialsPath && !credentialsJson) || !propertyId) {
+    throw new Error('GA4_CREDENTIALS_JSON ou GA4_CREDENTIALS_PATH e GA4_PROPERTY_ID devem estar configurados no .env');
   }
 
-  const auth = new google.auth.GoogleAuth({
-    keyFile: credentialsPath,
-    scopes: ['https://www.googleapis.com/auth/analytics.readonly'],
-  });
+  let auth: any;
+  if (credentialsJson) {
+    const parsed = JSON.parse(credentialsJson);
+    auth = new google.auth.GoogleAuth({
+      credentials: parsed,
+      scopes: ['https://www.googleapis.com/auth/analytics.readonly'],
+    });
+  } else {
+    auth = new google.auth.GoogleAuth({
+      keyFile: credentialsPath,
+      scopes: ['https://www.googleapis.com/auth/analytics.readonly'],
+    });
+  }
 
   analyticsDataClient = google.analyticsdata({ version: 'v1beta', auth });
   return analyticsDataClient;
