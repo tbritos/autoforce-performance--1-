@@ -104,9 +104,14 @@ export const fetchMetaCampaigns = async (
     throw new Error('META_ACCESS_TOKEN e META_AD_ACCOUNT_ID devem estar configurados no .env');
   }
 
-  const today = new Date();
-  const start = startDate || new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const end = endDate || today.toISOString().split('T')[0];
+  const today = new Date().toISOString().split('T')[0];
+  const defaultStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  let start = startDate || defaultStart;
+  let end = endDate || today;
+
+  if (start > today) start = today;
+  if (end > today) end = today;
+  if (start > end) start = end;
 
   const encodedToken = encodeURIComponent(accessToken);
   const campaignsUrl =
