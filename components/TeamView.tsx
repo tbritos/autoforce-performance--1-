@@ -299,8 +299,8 @@ const TeamView: React.FC = () => {
                       <p className="text-xs text-autoforce-lightGrey">
                         {event.startDate} - {event.endDate}
                       </p>
-                      </div>
-                      <div className="flex items-center gap-2">
+                    </div>
+                    <div className="flex items-center gap-2">
                         <button
                           className="text-xs text-autoforce-blue hover:text-autoforce-secondary flex items-center gap-1"
                           onClick={() => handleEditEvent(event)}
