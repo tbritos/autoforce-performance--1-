@@ -5,9 +5,14 @@ import { CampaignEvent } from '../types/shared.types';
 export class CalendarService {
   private static getCalendarConfig() {
     const calendarId = process.env.GOOGLE_CALENDAR_ID;
-    const credentialsPath = process.env.GOOGLE_CALENDAR_CREDENTIALS_PATH || process.env.GA4_CREDENTIALS_PATH;
-    if (!calendarId || !credentialsPath) return null;
-    return { calendarId, credentialsPath };
+    const credentialsPath =
+      process.env.GOOGLE_CALENDAR_CREDENTIALS_PATH ||
+      process.env.GA4_CREDENTIALS_PATH;
+    const credentialsJson =
+      process.env.GOOGLE_CALENDAR_CREDENTIALS_JSON ||
+      process.env.GA4_CREDENTIALS_JSON;
+    if (!calendarId || (!credentialsPath && !credentialsJson)) return null;
+    return { calendarId, credentialsPath, credentialsJson };
   }
 
   private static async getCalendarClient() {
@@ -16,10 +21,19 @@ export class CalendarService {
       throw new Error('GOOGLE_CALENDAR_ID e GOOGLE_CALENDAR_CREDENTIALS_PATH (ou GA4_CREDENTIALS_PATH) devem estar configurados no .env');
     }
 
-    const auth = new google.auth.GoogleAuth({
-      keyFile: config.credentialsPath,
-      scopes: ['https://www.googleapis.com/auth/calendar'],
-    });
+    let auth: any;
+    if (config.credentialsJson) {
+      const parsed = JSON.parse(config.credentialsJson);
+      auth = new google.auth.GoogleAuth({
+        credentials: parsed,
+        scopes: ['https://www.googleapis.com/auth/calendar'],
+      });
+    } else {
+      auth = new google.auth.GoogleAuth({
+        keyFile: config.credentialsPath,
+        scopes: ['https://www.googleapis.com/auth/calendar'],
+      });
+    }
 
     return google.calendar({ version: 'v3', auth });
   }
