@@ -199,7 +199,7 @@ const DashboardContent: React.FC<{
         return [
             {
                 id: '1',
-                label: 'Total de Leads',
+                label: 'Total de MQLs',
                 value: current.mql,
                 target: 4000,
                 unit: '',
