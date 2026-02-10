@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarDays, Database, Filter, Search, TrendingUp, Users } from 'lucide-react';
+import { CalendarDays, Database, Filter, Search, Users } from 'lucide-react';
 import { DataService } from '../services/dataService';
 import { LeadConversionSummary } from '../types';
 
@@ -23,7 +23,10 @@ const LeadConversionsView: React.FC = () => {
     const load = async () => {
       setLoading(true);
       try {
-        const data = await DataService.getLeadConversions();
+        const data = await DataService.getLeadConversions({
+          startDate: dateRange.start,
+          endDate: dateRange.end,
+        });
         setConversions(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Erro ao carregar conversoes de leads:', error);
@@ -33,27 +36,19 @@ const LeadConversionsView: React.FC = () => {
       }
     };
     load();
-  }, []);
+  }, [dateRange.end, dateRange.start]);
 
   const filteredConversions = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const start = new Date(dateRange.start);
-    const end = new Date(dateRange.end);
-    end.setHours(23, 59, 59, 999);
     return conversions.filter(item => {
       const matchesQuery =
         !query ||
         item.name.toLowerCase().includes(query) ||
         item.identifier.toLowerCase().includes(query);
       const matchesSource = sourceFilter === 'all' || item.source === sourceFilter;
-      const lastSeen = new Date(item.lastSeen);
-      const matchesDate =
-        Number.isNaN(start.getTime()) ||
-        Number.isNaN(end.getTime()) ||
-        (lastSeen >= start && lastSeen <= end);
-      return matchesQuery && matchesSource && matchesDate;
+      return matchesQuery && matchesSource;
     });
-  }, [conversions, dateRange.end, dateRange.start, search, sourceFilter]);
+  }, [conversions, search, sourceFilter]);
 
   const totals = useMemo(() => {
     return filteredConversions.reduce(
@@ -84,10 +79,10 @@ const LeadConversionsView: React.FC = () => {
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
             <Database className="text-autoforce-blue" />
-            Leads
+            Leads RD Station
           </h2>
           <p className="text-autoforce-lightGrey text-sm">
-            Visualize a origem dos leads e entenda quais conversoes estao trazendo mais volume.
+            Visualize as conversoes do RD Station e entenda quais fontes trazem mais volume.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 bg-autoforce-black/60 border border-autoforce-grey/20 rounded-xl px-4 py-3">
@@ -116,7 +111,6 @@ const LeadConversionsView: React.FC = () => {
             >
               <option value="all">Todas as fontes</option>
               <option value="rdstation">RD Station</option>
-              <option value="manual">Manual</option>
             </select>
           </div>
           <div className="flex items-center gap-2 text-xs text-autoforce-lightGrey border border-autoforce-grey/30 rounded-lg px-2 py-1">
@@ -132,7 +126,7 @@ const LeadConversionsView: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-5">
           <div className="flex items-center justify-between">
             <span className="text-xs text-autoforce-lightGrey uppercase tracking-wider">Total de Leads</span>
@@ -140,14 +134,6 @@ const LeadConversionsView: React.FC = () => {
           </div>
           <p className="text-2xl font-bold text-white mt-3">{totals.leads}</p>
           <p className="text-xs text-autoforce-grey mt-1">No periodo filtrado</p>
-        </div>
-        <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-autoforce-lightGrey uppercase tracking-wider">Conversoes Ativas</span>
-            <TrendingUp size={16} className="text-green-400" />
-          </div>
-          <p className="text-2xl font-bold text-white mt-3">{filteredConversions.length}</p>
-          <p className="text-xs text-autoforce-grey mt-1">Tipos de conversao no periodo</p>
         </div>
         <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-5">
           <div className="flex items-center justify-between">

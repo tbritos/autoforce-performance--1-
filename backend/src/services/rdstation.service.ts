@@ -7,6 +7,7 @@ type RdTokenResponse = {
 
 type RdEmailRow = Record<string, any>;
 type RdWorkflowEmailRow = Record<string, any>;
+type RdConversionRow = Record<string, any>;
 
 const RD_API_BASE = 'https://api.rd.services/platform';
 
@@ -286,4 +287,58 @@ export const fetchRdWorkflowEmails = async (
     spamRate: extractMetric(row, ['email_spam_reported_rate']),
     date: extractDate(row, ['workflow_updated_at', 'workflow_created_at', 'created_at']),
   }));
+};
+
+export const fetchRdConversions = async (
+  startDate?: string,
+  endDate?: string,
+  assetTypes?: string[],
+  pageSize = 200
+) => {
+  const accessToken = await getRdAccessToken();
+  const workspaceId = process.env.RD_STATION_WORKSPACE_ID;
+  const defaultEnd = new Date().toISOString().split('T')[0];
+  const defaultStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split('T')[0];
+  const start = normalizeDate(startDate, defaultStart);
+  const end = normalizeDate(endDate, defaultEnd);
+  const allRows: RdConversionRow[] = [];
+  const maxPages = 10;
+
+  for (let page = 1; page <= maxPages; page += 1) {
+    const url = new URL(`${RD_API_BASE}/analytics/conversions`);
+    url.searchParams.set('start_date', start);
+    url.searchParams.set('end_date', end);
+    url.searchParams.set('page', String(page));
+    url.searchParams.set('page_size', String(pageSize));
+    if (assetTypes && assetTypes.length > 0) {
+      url.searchParams.set('assets_type', assetTypes.join(','));
+    }
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        accept: 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        ...(workspaceId ? { 'X-RD-Station-Workspace-Id': workspaceId } : {}),
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`RD conversions error: ${text}`);
+    }
+
+    const data = (await response.json()) as any;
+    const rows: RdConversionRow[] = Array.isArray(data)
+      ? data
+      : data.conversions || data.items || data.results || data.assets || [];
+    allRows.push(...rows);
+
+    if (rows.length < pageSize) {
+      break;
+    }
+  }
+
+  return allRows;
 };

@@ -65,7 +65,23 @@ export const getLeadConversions = async (
   next: NextFunction
 ) => {
   try {
-    const conversions = await LeadsService.getLeadConversions();
+    const startDate = typeof req.query.startDate === 'string' ? req.query.startDate : undefined;
+    const endDate = typeof req.query.endDate === 'string' ? req.query.endDate : undefined;
+    const assetTypesRaw =
+      typeof req.query.assetTypes === 'string'
+        ? req.query.assetTypes
+        : typeof req.query.assets_type === 'string'
+          ? req.query.assets_type
+          : undefined;
+    const assetTypes = assetTypesRaw
+      ? assetTypesRaw.split(',').map(item => item.trim()).filter(Boolean)
+      : undefined;
+
+    const conversions = await LeadsService.getLeadConversions({
+      startDate,
+      endDate,
+      assetTypes,
+    });
     res.json(conversions);
   } catch (error) {
     console.error('Error fetching lead conversions:', error);

@@ -138,10 +138,20 @@ export const DataService = {
     return [];
   },
 
-  getLeadConversions: async (): Promise<LeadConversionSummary[]> => {
+  getLeadConversions: async (
+    filters?: { startDate?: string; endDate?: string; assetTypes?: string[] }
+  ): Promise<LeadConversionSummary[]> => {
     if (USE_API) {
       try {
-        const data = await apiClient.get<LeadConversionSummary[]>('/leads/conversions');
+        const params = new URLSearchParams();
+        if (filters?.startDate) params.set('startDate', filters.startDate);
+        if (filters?.endDate) params.set('endDate', filters.endDate);
+        if (filters?.assetTypes && filters.assetTypes.length > 0) {
+          params.set('assetTypes', filters.assetTypes.join(','));
+        }
+        const query = params.toString();
+        const url = query ? `/leads/conversions?${query}` : '/leads/conversions';
+        const data = await apiClient.get<LeadConversionSummary[]>(url);
         return (data || []).map(item => ({
           id: item.id,
           name: item.name,
