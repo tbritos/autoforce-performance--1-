@@ -1,5 +1,5 @@
 import { prisma } from '../config/database';
-import { DailyLeadEntry } from '../types/shared.types';
+import { DailyLeadEntry, LeadConversionSummary } from '../types/shared.types';
 
 export class LeadsService {
   static async getDailyLeads(): Promise<DailyLeadEntry[]> {
@@ -85,5 +85,9 @@ export class LeadsService {
     await prisma.dailyLead.delete({
       where: { id },
     });
+  }
+
+  static async getLeadConversions(): Promise<LeadConversionSummary[]> {
+    return [];
   }
 }

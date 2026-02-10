@@ -1,4 +1,4 @@
-import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, AssetVersion, WorkflowEmailStat, SyncLog } from '../types';
+import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary } from '../types';
 import { apiClient } from './apiClient';
 
 // ============================================================================
@@ -43,6 +43,7 @@ const STORAGE_CALENDAR_KEY = 'autoforce_calendar_events';
 const STORAGE_CAMPAIGNS_KEY = 'autoforce_campaigns';
 const STORAGE_ASSETS_KEY = 'autoforce_assets';
 const STORAGE_EMAILS_KEY = 'autoforce_email_campaigns';
+const STORAGE_LEAD_CONVERSIONS_KEY = 'autoforce_lead_conversions';
 
 
 export const DataService = {
@@ -135,6 +136,29 @@ export const DataService = {
     }
     // Fallback antigo removido para teste
     return [];
+  },
+
+  getLeadConversions: async (): Promise<LeadConversionSummary[]> => {
+    if (USE_API) {
+      try {
+        const data = await apiClient.get<LeadConversionSummary[]>('/leads/conversions');
+        return (data || []).map(item => ({
+          id: item.id,
+          name: item.name,
+          identifier: item.identifier || item.name,
+          source: item.source || 'rdstation',
+          leads: item.leads ?? 0,
+          mql: item.mql ?? 0,
+          sql: item.sql ?? 0,
+          conversionRate: item.conversionRate ?? 0,
+          lastSeen: item.lastSeen || new Date().toISOString().split('T')[0],
+        }));
+      } catch (error) {
+        console.error('Erro ao buscar conversoes de leads:', error);
+      }
+    }
+
+    return safeParse<LeadConversionSummary[]>(STORAGE_LEAD_CONVERSIONS_KEY, []);
   },
 
   saveDailyLeadEntry: async (entry: Omit<DailyLeadEntry, 'id'>): Promise<DailyLeadEntry> => {

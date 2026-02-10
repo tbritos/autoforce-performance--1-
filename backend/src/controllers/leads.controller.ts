@@ -58,3 +58,17 @@ export const deleteDailyLead = async (
     next(error);
   }
 };
+
+export const getLeadConversions = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const conversions = await LeadsService.getLeadConversions();
+    res.json(conversions);
+  } catch (error) {
+    console.error('Error fetching lead conversions:', error);
+    next(error);
+  }
+};

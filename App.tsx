@@ -4,6 +4,7 @@ import Login from './components/Login';
 import LPView from './components/LPView';
 import SiteView from './components/SiteView';
 import LeadTracker from './components/LeadTracker';
+import LeadConversionsView from './components/LeadConversionsView';
 import RevenueTracker from './components/RevenueTracker';
 import OKRTracker from './components/OKRTracker';
 import TeamView from './components/TeamView';
@@ -35,7 +36,8 @@ import {
   BarChart3,
   Menu,
   ChevronDown,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Filter
 } from 'lucide-react';
 import { FunnelChart } from './components/Charts';
 
@@ -802,6 +804,7 @@ const AppContent: React.FC = () => {
       icon: ClipboardList,
       items: [
         { label: 'Acompanhamento Diario', path: '/leads', icon: ClipboardList },
+        { label: 'Leads', path: '/leads-conversions', icon: Filter },
         { label: 'Weekly', path: '/weekly', icon: BarChart3 },
         { label: 'Ganhos', path: '/revenue', icon: DollarSign },
         { label: 'OKRs do Marketing', path: '/okrs', icon: Target }
@@ -1027,6 +1030,7 @@ const AppContent: React.FC = () => {
 
                 {/* Outras Rotas */}
                 <Route path="/leads" element={<LeadTracker />} />
+                <Route path="/leads-conversions" element={<LeadConversionsView />} />
                 <Route path="/weekly" element={<WeeklyView />} />
                 <Route path="/revenue" element={<RevenueTracker />} />
                 <Route path="/team" element={<TeamView />} />

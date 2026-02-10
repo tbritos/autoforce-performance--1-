@@ -37,6 +37,18 @@ export interface DailyLeadEntry {
   conversionRate: number;
 }
 
+export interface LeadConversionSummary {
+  id: string;
+  name: string;
+  identifier: string;
+  source: string;
+  leads: number;
+  mql: number;
+  sql: number;
+  conversionRate: number;
+  lastSeen: string;
+}
+
 export interface CampaignEvent {
   id: string;
   title: string;

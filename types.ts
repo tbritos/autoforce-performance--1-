@@ -70,6 +70,18 @@ export interface DailyLeadEntry {
   conversionRate: number; // Calculated (Sales / MQL) * 100 or specific logic
 }
 
+export interface LeadConversionSummary {
+  id: string;
+  name: string;
+  identifier: string;
+  source: string;
+  leads: number;
+  mql: number;
+  sql: number;
+  conversionRate: number;
+  lastSeen: string;
+}
+
 export interface CampaignEvent {
   id: string;
   title: string;
