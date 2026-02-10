@@ -185,3 +185,19 @@ model SyncLog {
 
   @@index([source, startedAt])
 }
+
+model RdLead {
+  id                   String   @id @default(cuid())
+  externalId           String   @unique
+  name                 String?
+  email                String?
+  conversionIdentifier String?
+  conversionName       String?
+  lastConversionDate   DateTime?
+  source               String   @default("rdstation")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([conversionIdentifier])
+  @@index([lastConversionDate])
+}

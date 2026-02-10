@@ -1,4 +1,4 @@
-import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary } from '../types';
+import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, RdLead } from '../types';
 import { apiClient } from './apiClient';
 
 // ============================================================================
@@ -169,6 +169,51 @@ export const DataService = {
     }
 
     return safeParse<LeadConversionSummary[]>(STORAGE_LEAD_CONVERSIONS_KEY, []);
+  },
+
+  getRdLeads: async (
+    segmentationId: string,
+    filters?: { startDate?: string; endDate?: string }
+  ): Promise<RdLead[]> => {
+    if (USE_API) {
+      try {
+        const params = new URLSearchParams();
+        if (filters?.startDate) params.set('startDate', filters.startDate);
+        if (filters?.endDate) params.set('endDate', filters.endDate);
+        const query = params.toString();
+        const url = query
+          ? `/rdstation/segmentations/${segmentationId}/contacts?${query}`
+          : `/rdstation/segmentations/${segmentationId}/contacts`;
+        return await apiClient.get<RdLead[]>(url);
+      } catch (error) {
+        console.error('Erro ao buscar leads do RD Station:', error);
+        throw error;
+      }
+    }
+    return [];
+  },
+
+  syncRdLeads: async (
+    segmentationId: string,
+    options?: { includeConversion?: boolean; maxPages?: number; pageSize?: number }
+  ): Promise<{ totalProcessed: number }> => {
+    if (USE_API) {
+      try {
+        const params = new URLSearchParams();
+        if (options?.includeConversion) params.set('includeConversion', 'true');
+        if (options?.maxPages) params.set('maxPages', String(options.maxPages));
+        if (options?.pageSize) params.set('pageSize', String(options.pageSize));
+        const query = params.toString();
+        const url = query
+          ? `/rdstation/segmentations/${segmentationId}/contacts/sync?${query}`
+          : `/rdstation/segmentations/${segmentationId}/contacts/sync`;
+        return await apiClient.get<{ totalProcessed: number }>(url);
+      } catch (error) {
+        console.error('Erro ao sincronizar leads do RD Station:', error);
+        throw error;
+      }
+    }
+    return { totalProcessed: 0 };
   },
 
   saveDailyLeadEntry: async (entry: Omit<DailyLeadEntry, 'id'>): Promise<DailyLeadEntry> => {

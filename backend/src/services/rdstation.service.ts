@@ -8,6 +8,8 @@ type RdTokenResponse = {
 type RdEmailRow = Record<string, any>;
 type RdWorkflowEmailRow = Record<string, any>;
 type RdConversionRow = Record<string, any>;
+type RdSegmentationRow = Record<string, any>;
+type RdContactRow = Record<string, any>;
 
 const RD_API_BASE = 'https://api.rd.services/platform';
 
@@ -341,4 +343,68 @@ export const fetchRdConversions = async (
   }
 
   return allRows;
+};
+
+export const fetchRdSegmentationContacts = async (
+  segmentationId: string,
+  page = 1,
+  pageSize = 200
+): Promise<{ contacts: RdContactRow[]; hasMore: boolean }> => {
+  const accessToken = await getRdAccessToken();
+  const workspaceId = process.env.RD_STATION_WORKSPACE_ID;
+
+  const url = new URL(`${RD_API_BASE}/segmentations/${segmentationId}/contacts`);
+  url.searchParams.set('page', String(page));
+  url.searchParams.set('page_size', String(pageSize));
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+      ...(workspaceId ? { 'X-RD-Station-Workspace-Id': workspaceId } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`RD segmentation contacts error: ${text}`);
+  }
+
+  const data = (await response.json()) as any;
+  const contacts: RdContactRow[] = [];
+
+  if (Array.isArray(data)) {
+    for (const item of data as RdSegmentationRow[]) {
+      if (Array.isArray(item?.contacts)) {
+        contacts.push(...item.contacts);
+      }
+    }
+  } else if (Array.isArray(data?.contacts)) {
+    contacts.push(...data.contacts);
+  }
+
+  const hasMore = contacts.length >= pageSize;
+  return { contacts, hasMore };
+};
+
+export const fetchRdContactDetails = async (contactUuid: string): Promise<RdContactRow> => {
+  const accessToken = await getRdAccessToken();
+  const workspaceId = process.env.RD_STATION_WORKSPACE_ID;
+
+  const url = new URL(`${RD_API_BASE}/contacts/${contactUuid}`);
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+      ...(workspaceId ? { 'X-RD-Station-Workspace-Id': workspaceId } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`RD contact details error: ${text}`);
+  }
+
+  return (await response.json()) as RdContactRow;
 };

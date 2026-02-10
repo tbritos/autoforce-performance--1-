@@ -82,6 +82,17 @@ export interface LeadConversionSummary {
   lastSeen: string;
 }
 
+export interface RdLead {
+  id: string;
+  externalId: string;
+  name?: string | null;
+  email?: string | null;
+  conversionIdentifier?: string | null;
+  conversionName?: string | null;
+  lastConversionDate?: string | null;
+  source?: string | null;
+}
+
 export interface CampaignEvent {
   id: string;
   title: string;

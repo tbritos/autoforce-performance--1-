@@ -17,6 +17,7 @@ import assetsRoutes from './routes/assets.routes';
 import emailRoutes from './routes/email.routes';
 import { EmailService } from './services/email.service';
 import authRoutes from './routes/auth.routes';
+import rdLeadsRoutes from './routes/rdleads.routes';
 
 dotenv.config();
 
@@ -157,6 +158,7 @@ app.use('/api/calendar', calendarRoutes);
 app.use('/api/campaigns', campaignsRoutes);
 app.use('/api/assets', assetsRoutes);
 app.use('/api/emails', emailRoutes);
+app.use('/api/rdstation', rdLeadsRoutes);
 
 // Error handling middleware (deve ser o último)
 app.use(errorHandler);
