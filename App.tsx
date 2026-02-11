@@ -4,7 +4,6 @@ import Login from './components/Login';
 import LPView from './components/LPView';
 import SiteView from './components/SiteView';
 import LeadTracker from './components/LeadTracker';
-import LeadConversionsView from './components/LeadConversionsView';
 import RdLeadsView from './components/RdLeadsView';
 import RevenueTracker from './components/RevenueTracker';
 import OKRTracker from './components/OKRTracker';
@@ -805,7 +804,6 @@ const AppContent: React.FC = () => {
       icon: ClipboardList,
       items: [
         { label: 'Acompanhamento Diario', path: '/leads', icon: ClipboardList },
-        { label: 'Leads', path: '/leads-conversions', icon: Filter },
         { label: 'Leads RD', path: '/rd-leads', icon: Filter },
         { label: 'Weekly', path: '/weekly', icon: BarChart3 },
         { label: 'Ganhos', path: '/revenue', icon: DollarSign },
@@ -1032,7 +1030,6 @@ const AppContent: React.FC = () => {
 
                 {/* Outras Rotas */}
                 <Route path="/leads" element={<LeadTracker />} />
-                <Route path="/leads-conversions" element={<LeadConversionsView />} />
                 <Route path="/rd-leads" element={<RdLeadsView />} />
                 <Route path="/weekly" element={<WeeklyView />} />
                 <Route path="/revenue" element={<RevenueTracker />} />
