@@ -55,6 +55,14 @@ const buildLeadFromRow = (
     pickString(leadData, ['email']) ||
     pickString(row, ['email']);
 
+  const phone =
+    pickString(leadData, ['phone', 'mobile_phone', 'personal_phone', 'whatsapp']) ||
+    pickString(row, ['phone', 'mobile_phone', 'personal_phone', 'whatsapp']);
+
+  const company =
+    pickString(leadData, ['company', 'company_name', 'organization']) ||
+    pickString(row, ['company', 'company_name', 'organization']);
+
   const externalId =
     pickString(leadData, ['external_id', 'uuid', 'contact_uuid', 'id', 'lead_id']) ||
     pickString(row, ['external_id', 'uuid', 'contact_uuid', 'id', 'lead_id']) ||
@@ -104,6 +112,8 @@ const buildLeadFromRow = (
     externalId,
     name,
     email,
+    phone,
+    company,
     conversionIdentifier: conversion.identifier,
     conversionName: conversion.name,
     lastConversionDate,
@@ -185,6 +195,8 @@ export class WebhookLeadsService {
         update: {
           name: parsed.name,
           email: parsed.email,
+          phone: parsed.phone,
+          company: parsed.company,
           conversionIdentifier: parsed.conversionIdentifier,
           conversionName: parsed.conversionName,
           lastConversionDate: parsed.lastConversionDate,
@@ -194,6 +206,8 @@ export class WebhookLeadsService {
           externalId: parsed.externalId,
           name: parsed.name,
           email: parsed.email,
+          phone: parsed.phone,
+          company: parsed.company,
           conversionIdentifier: parsed.conversionIdentifier,
           conversionName: parsed.conversionName,
           lastConversionDate: parsed.lastConversionDate,

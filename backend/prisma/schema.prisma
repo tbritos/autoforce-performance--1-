@@ -191,6 +191,8 @@ model WebhookLead {
   externalId           String   @unique
   name                 String?
   email                String?
+  phone                String?
+  company              String?
   conversionIdentifier String?
   conversionName       String?
   lastConversionDate   DateTime?

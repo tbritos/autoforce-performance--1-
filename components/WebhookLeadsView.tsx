@@ -63,7 +63,13 @@ const WebhookLeadsView: React.FC = () => {
         label: string;
         count: number;
         lastSeen?: string | null;
-        leads: Array<{ id: string; name?: string | null; email?: string | null }>;
+        leads: Array<{
+          id: string;
+          name?: string | null;
+          email?: string | null;
+          phone?: string | null;
+          company?: string | null;
+        }>;
       }
     >();
     filteredLeads.forEach(lead => {
@@ -80,6 +86,8 @@ const WebhookLeadsView: React.FC = () => {
         id: lead.id,
         name: lead.name,
         email: lead.email,
+        phone: lead.phone,
+        company: lead.company,
       });
       map.set(key, current);
     });
@@ -217,6 +225,12 @@ const WebhookLeadsView: React.FC = () => {
                                   </p>
                                   <p className="text-xs text-autoforce-lightGrey">
                                     {lead.email || 'Sem email'}
+                                  </p>
+                                  <p className="text-xs text-autoforce-lightGrey">
+                                    {lead.phone || 'Sem telefone'}
+                                  </p>
+                                  <p className="text-xs text-autoforce-lightGrey">
+                                    {lead.company || 'Sem empresa'}
                                   </p>
                                 </div>
                               ))}

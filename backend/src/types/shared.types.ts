@@ -54,6 +54,8 @@ export interface WebhookLead {
   externalId: string;
   name?: string | null;
   email?: string | null;
+  phone?: string | null;
+  company?: string | null;
   conversionIdentifier?: string | null;
   conversionName?: string | null;
   lastConversionDate?: string | null;
