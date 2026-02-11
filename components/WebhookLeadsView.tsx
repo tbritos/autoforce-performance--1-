@@ -3,11 +3,14 @@ import { CalendarDays, Database, Filter, Search, Users } from 'lucide-react';
 import { DataService } from '../services/dataService';
 import { WebhookLead } from '../types';
 
+const LEADS_PER_CONVERSION_PAGE = 10;
+
 const WebhookLeadsView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [leads, setLeads] = useState<WebhookLead[]>([]);
   const [search, setSearch] = useState('');
   const [expandedConversion, setExpandedConversion] = useState<string | null>(null);
+  const [conversionLeadPages, setConversionLeadPages] = useState<Record<string, number>>({});
   const [dateRange, setDateRange] = useState(() => {
     const end = new Date();
     const start = new Date(end.getFullYear(), end.getMonth(), 1);
@@ -37,6 +40,11 @@ const WebhookLeadsView: React.FC = () => {
     load();
   }, [dateRange.end, dateRange.start]);
 
+  useEffect(() => {
+    setExpandedConversion(null);
+    setConversionLeadPages({});
+  }, [search, dateRange.start, dateRange.end]);
+
   const fmtDate = (value?: string | null) => {
     if (!value) return '-';
     const date = new Date(value);
@@ -48,7 +56,7 @@ const WebhookLeadsView: React.FC = () => {
     const query = search.trim().toLowerCase();
     if (!query) return leads;
     return leads.filter(item => {
-      const conversion = (item.conversionIdentifier || item.conversionName || '').toLowerCase();
+      const conversion = (item.conversionName || item.conversionIdentifier || '').toLowerCase();
       const name = (item.name || '').toLowerCase();
       const email = (item.email || '').toLowerCase();
       return conversion.includes(query) || name.includes(query) || email.includes(query);
@@ -69,12 +77,13 @@ const WebhookLeadsView: React.FC = () => {
           email?: string | null;
           phone?: string | null;
           company?: string | null;
+          lastConversionDate?: string | null;
         }>;
       }
     >();
     filteredLeads.forEach(lead => {
-      const label = lead.conversionIdentifier || lead.conversionName || 'Sem conversao';
-      const key = label;
+      const key = lead.conversionIdentifier || lead.conversionName || 'Sem conversao';
+      const label = lead.conversionName || lead.conversionIdentifier || 'Sem conversao';
       const current = map.get(key) || { key, label, count: 0, lastSeen: lead.lastConversionDate, leads: [] };
       current.count += 1;
       if (lead.lastConversionDate) {
@@ -88,6 +97,7 @@ const WebhookLeadsView: React.FC = () => {
         email: lead.email,
         phone: lead.phone,
         company: lead.company,
+        lastConversionDate: lead.lastConversionDate,
       });
       map.set(key, current);
     });
@@ -97,6 +107,7 @@ const WebhookLeadsView: React.FC = () => {
   const topConversion = conversionRows.length > 0 ? conversionRows[0] : null;
   const toggleConversion = (key: string) => {
     setExpandedConversion(prev => (prev === key ? null : key));
+    setConversionLeadPages(prev => ({ ...prev, [key]: prev[key] || 1 }));
   };
 
   return (
@@ -202,6 +213,22 @@ const WebhookLeadsView: React.FC = () => {
               <tbody className="divide-y divide-autoforce-grey/10">
                 {conversionRows.map(item => (
                   <React.Fragment key={item.key}>
+                    {(() => {
+                      const sortedLeads = [...item.leads].sort((a, b) => {
+                        const aTime = a.lastConversionDate ? new Date(a.lastConversionDate).getTime() : 0;
+                        const bTime = b.lastConversionDate ? new Date(b.lastConversionDate).getTime() : 0;
+                        return bTime - aTime;
+                      });
+                      const totalPages = Math.max(1, Math.ceil(sortedLeads.length / LEADS_PER_CONVERSION_PAGE));
+                      const currentPage = Math.min(conversionLeadPages[item.key] || 1, totalPages);
+                      const startIndex = (currentPage - 1) * LEADS_PER_CONVERSION_PAGE;
+                      const paginatedLeads = sortedLeads.slice(
+                        startIndex,
+                        startIndex + LEADS_PER_CONVERSION_PAGE
+                      );
+
+                      return (
+                        <>
                     <tr
                       className="hover:bg-autoforce-blue/5 transition-colors cursor-pointer"
                       onClick={() => toggleConversion(item.key)}
@@ -215,7 +242,7 @@ const WebhookLeadsView: React.FC = () => {
                         <td colSpan={3} className="p-0">
                           <div className="px-4 py-3">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                              {item.leads.map((lead, index) => (
+                              {paginatedLeads.map((lead, index) => (
                                 <div
                                   key={`${lead.id}-${index}`}
                                   className="border border-autoforce-grey/20 rounded-lg px-3 py-2"
@@ -232,13 +259,54 @@ const WebhookLeadsView: React.FC = () => {
                                   <p className="text-xs text-autoforce-lightGrey">
                                     {lead.company || 'Sem empresa'}
                                   </p>
+                                  <p className="text-xs text-autoforce-grey mt-1">
+                                    Conversao: {fmtDate(lead.lastConversionDate)}
+                                  </p>
                                 </div>
                               ))}
                             </div>
+                            {totalPages > 1 && (
+                              <div className="flex items-center justify-between mt-3">
+                                <span className="text-xs text-autoforce-grey">
+                                  Pagina {currentPage} de {totalPages} ({sortedLeads.length} leads)
+                                </span>
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setConversionLeadPages(prev => ({
+                                        ...prev,
+                                        [item.key]: Math.max((prev[item.key] || 1) - 1, 1),
+                                      }))
+                                    }
+                                    disabled={currentPage === 1}
+                                    className="px-3 py-1 text-xs rounded border border-autoforce-grey/30 text-white disabled:opacity-40"
+                                  >
+                                    Anterior
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setConversionLeadPages(prev => ({
+                                        ...prev,
+                                        [item.key]: Math.min((prev[item.key] || 1) + 1, totalPages),
+                                      }))
+                                    }
+                                    disabled={currentPage === totalPages}
+                                    className="px-3 py-1 text-xs rounded border border-autoforce-grey/30 text-white disabled:opacity-40"
+                                  >
+                                    Proxima
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>
                     )}
+                        </>
+                      );
+                    })()}
                   </React.Fragment>
                 ))}
               </tbody>
