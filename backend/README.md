@@ -217,3 +217,8 @@ O projeto usa **PostgreSQL** com **Prisma ORM**.
   "bounce": 35
 }
 ```
+
+### Leads via webhook
+- `GET /api/webhooks/leads` - Consulta leads persistidos no banco local
+- `POST /api/webhooks/leads` - Endpoint para receber eventos de lead
+- Seguranca opcional: configure `LEADS_WEBHOOK_TOKEN` e envie no header `x-webhook-token`

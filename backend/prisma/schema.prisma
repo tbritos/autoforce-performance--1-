@@ -186,7 +186,7 @@ model SyncLog {
   @@index([source, startedAt])
 }
 
-model RdLead {
+model WebhookLead {
   id                   String   @id @default(cuid())
   externalId           String   @unique
   name                 String?
@@ -200,4 +200,5 @@ model RdLead {
 
   @@index([conversionIdentifier])
   @@index([lastConversionDate])
+  @@map("RdLead")
 }

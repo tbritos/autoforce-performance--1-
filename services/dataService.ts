@@ -1,4 +1,4 @@
-import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, RdLead } from '../types';
+import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, WebhookLead } from '../types';
 import { apiClient } from './apiClient';
 
 // ============================================================================
@@ -171,11 +171,31 @@ export const DataService = {
     return safeParse<LeadConversionSummary[]>(STORAGE_LEAD_CONVERSIONS_KEY, []);
   },
 
-  getRdLeads: async (
-    segmentationId: string,
+  getWebhookLeads: async (
     filters?: { startDate?: string; endDate?: string }
-  ): Promise<RdLead[]> => {
+  ): Promise<WebhookLead[]> => {
     if (USE_API) {
+      try {
+        const params = new URLSearchParams();
+        if (filters?.startDate) params.set('startDate', filters.startDate);
+        if (filters?.endDate) params.set('endDate', filters.endDate);
+        const query = params.toString();
+        const basePath = '/webhooks/leads';
+        const url = query ? `${basePath}?${query}` : basePath;
+        return await apiClient.get<WebhookLead[]>(url);
+      } catch (error) {
+        console.error('Erro ao buscar leads via webhook:', error);
+        throw error;
+      }
+    }
+    return [];
+  },
+
+  getRdLeads: async (
+    segmentationId?: string,
+    filters?: { startDate?: string; endDate?: string }
+  ): Promise<WebhookLead[]> => {
+    if (segmentationId) {
       try {
         const params = new URLSearchParams();
         if (filters?.startDate) params.set('startDate', filters.startDate);
@@ -184,13 +204,13 @@ export const DataService = {
         const url = query
           ? `/rdstation/segmentations/${segmentationId}/contacts?${query}`
           : `/rdstation/segmentations/${segmentationId}/contacts`;
-        return await apiClient.get<RdLead[]>(url);
+        return await apiClient.get<WebhookLead[]>(url);
       } catch (error) {
-        console.error('Erro ao buscar leads do RD Station:', error);
+        console.error('Erro ao buscar leads por segmentacao:', error);
         throw error;
       }
     }
-    return [];
+    return DataService.getWebhookLeads(filters);
   },
 
   syncRdLeads: async (

@@ -49,7 +49,7 @@ export interface LeadConversionSummary {
   lastSeen: string;
 }
 
-export interface RdLead {
+export interface WebhookLead {
   id: string;
   externalId: string;
   name?: string | null;

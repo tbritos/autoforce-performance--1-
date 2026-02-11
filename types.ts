@@ -82,7 +82,7 @@ export interface LeadConversionSummary {
   lastSeen: string;
 }
 
-export interface RdLead {
+export interface WebhookLead {
   id: string;
   externalId: string;
   name?: string | null;
@@ -92,6 +92,8 @@ export interface RdLead {
   lastConversionDate?: string | null;
   source?: string | null;
 }
+
+export type RdLead = WebhookLead;
 
 export interface CampaignEvent {
   id: string;

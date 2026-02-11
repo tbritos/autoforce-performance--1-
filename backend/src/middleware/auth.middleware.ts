@@ -4,7 +4,11 @@ import { verifyGoogleToken } from '../services/auth.service';
 export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
   try {
     // 1. Libera rotas de saúde e autenticação (públicas)
-    if (req.path === '/health' || req.path.startsWith('/auth')) {
+    const isPublicLeadsWebhook =
+      req.method === 'POST' &&
+      req.path === '/webhooks/leads';
+
+    if (req.path === '/health' || req.path.startsWith('/auth') || isPublicLeadsWebhook) {
       next();
       return;
     }

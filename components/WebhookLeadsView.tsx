@@ -1,14 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Database, Filter, RefreshCw, Search, Users } from 'lucide-react';
+import { CalendarDays, Database, Filter, Search, Users } from 'lucide-react';
 import { DataService } from '../services/dataService';
-import { RdLead } from '../types';
+import { WebhookLead } from '../types';
 
-const RdLeadsView: React.FC = () => {
+const WebhookLeadsView: React.FC = () => {
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [leads, setLeads] = useState<RdLead[]>([]);
+  const [leads, setLeads] = useState<WebhookLead[]>([]);
   const [search, setSearch] = useState('');
-  const [includeConversion, setIncludeConversion] = useState(true);
   const [dateRange, setDateRange] = useState(() => {
     const end = new Date();
     const start = new Date(end.getFullYear(), end.getMonth(), 1);
@@ -18,23 +16,16 @@ const RdLeadsView: React.FC = () => {
     };
   });
 
-  const segmentationId = import.meta.env.VITE_RD_SEGMENTATION_ID || '';
-
   const load = async () => {
-    if (!segmentationId) {
-      setLeads([]);
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     try {
-      const data = await DataService.getRdLeads(segmentationId, {
+      const data = await DataService.getWebhookLeads({
         startDate: dateRange.start,
         endDate: dateRange.end,
       });
       setLeads(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Erro ao carregar leads RD Station:', error);
+      console.error('Erro ao carregar leads via webhook:', error);
       setLeads([]);
     } finally {
       setLoading(false);
@@ -43,22 +34,7 @@ const RdLeadsView: React.FC = () => {
 
   useEffect(() => {
     load();
-  }, [dateRange.end, dateRange.start, segmentationId]);
-
-  const handleSync = async () => {
-    if (!segmentationId) return;
-    setSyncing(true);
-    try {
-      await DataService.syncRdLeads(segmentationId, {
-        includeConversion,
-      });
-      await load();
-    } catch (error) {
-      console.error('Erro ao sincronizar leads RD Station:', error);
-    } finally {
-      setSyncing(false);
-    }
-  };
+  }, [dateRange.end, dateRange.start]);
 
   const fmtDate = (value?: string | null) => {
     if (!value) return '-';
@@ -103,10 +79,10 @@ const RdLeadsView: React.FC = () => {
         <div>
           <h2 className="text-2xl font-bold text-white flex items-center gap-2">
             <Database className="text-autoforce-blue" />
-            Leads RD Station
+            Leads via Webhook
           </h2>
           <p className="text-autoforce-lightGrey text-sm">
-            Conversoes e volume de leads por conversao (segmentacao RD Station).
+            Conversoes e volume de leads por conversao (dados locais via webhook).
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 bg-autoforce-black/60 border border-autoforce-grey/20 rounded-xl px-4 py-3">
@@ -136,32 +112,9 @@ const RdLeadsView: React.FC = () => {
               className="bg-transparent text-xs text-white placeholder:text-autoforce-grey focus:outline-none"
             />
           </div>
-          <label className="flex items-center gap-2 text-xs text-autoforce-lightGrey">
-            <input
-              type="checkbox"
-              checked={includeConversion}
-              onChange={(e) => setIncludeConversion(e.target.checked)}
-              className="accent-autoforce-blue"
-            />
-            Buscar conversao
-          </label>
-          <button
-            type="button"
-            onClick={handleSync}
-            disabled={syncing || !segmentationId}
-            className="inline-flex items-center gap-2 bg-autoforce-blue/20 border border-autoforce-blue/40 text-autoforce-blue px-3 py-2 rounded-lg text-xs hover:bg-autoforce-blue/30 transition disabled:opacity-50"
-          >
-            {syncing ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            Sincronizar
-          </button>
+          <span className="text-xs text-autoforce-lightGrey">Fonte agnostica: qualquer webhook de leads.</span>
         </div>
       </div>
-
-      {!segmentationId && (
-        <div className="bg-red-500/10 border border-red-500/30 text-red-200 px-4 py-3 rounded-lg text-sm">
-          Defina `VITE_RD_SEGMENTATION_ID` no frontend para carregar os leads.
-        </div>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-5">
@@ -207,7 +160,7 @@ const RdLeadsView: React.FC = () => {
           <div className="p-8 text-center space-y-3">
             <p className="text-white font-semibold">Nenhum lead encontrado.</p>
             <p className="text-sm text-autoforce-lightGrey">
-              Sincronize a segmentacao do RD Station para iniciar o monitoramento.
+              Verifique se o webhook de leads esta enviando eventos para esta API.
             </p>
           </div>
         ) : (
@@ -237,4 +190,4 @@ const RdLeadsView: React.FC = () => {
   );
 };
 
-export default RdLeadsView;
+export default WebhookLeadsView;
