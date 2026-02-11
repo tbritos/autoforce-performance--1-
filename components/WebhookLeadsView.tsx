@@ -7,6 +7,7 @@ const WebhookLeadsView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [leads, setLeads] = useState<WebhookLead[]>([]);
   const [search, setSearch] = useState('');
+  const [expandedConversion, setExpandedConversion] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState(() => {
     const end = new Date();
     const start = new Date(end.getFullYear(), end.getMonth(), 1);
@@ -55,23 +56,40 @@ const WebhookLeadsView: React.FC = () => {
   }, [leads, search]);
 
   const conversionRows = useMemo(() => {
-    const map = new Map<string, { key: string; label: string; count: number; lastSeen?: string | null }>();
+    const map = new Map<
+      string,
+      {
+        key: string;
+        label: string;
+        count: number;
+        lastSeen?: string | null;
+        leads: Array<{ id: string; name?: string | null; email?: string | null }>;
+      }
+    >();
     filteredLeads.forEach(lead => {
       const label = lead.conversionIdentifier || lead.conversionName || 'Sem conversao';
       const key = label;
-      const current = map.get(key) || { key, label, count: 0, lastSeen: lead.lastConversionDate };
+      const current = map.get(key) || { key, label, count: 0, lastSeen: lead.lastConversionDate, leads: [] };
       current.count += 1;
       if (lead.lastConversionDate) {
         if (!current.lastSeen || new Date(lead.lastConversionDate) > new Date(current.lastSeen)) {
           current.lastSeen = lead.lastConversionDate;
         }
       }
+      current.leads.push({
+        id: lead.id,
+        name: lead.name,
+        email: lead.email,
+      });
       map.set(key, current);
     });
     return Array.from(map.values()).sort((a, b) => b.count - a.count);
   }, [filteredLeads]);
 
   const topConversion = conversionRows.length > 0 ? conversionRows[0] : null;
+  const toggleConversion = (key: string) => {
+    setExpandedConversion(prev => (prev === key ? null : key));
+  };
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-8 animate-fade-in-up">
@@ -175,11 +193,39 @@ const WebhookLeadsView: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-autoforce-grey/10">
                 {conversionRows.map(item => (
-                  <tr key={item.key} className="hover:bg-autoforce-blue/5 transition-colors">
-                    <td className="p-4 text-white font-medium">{item.label}</td>
-                    <td className="p-4 text-center text-white font-semibold">{item.count}</td>
-                    <td className="p-4 text-right text-autoforce-lightGrey">{fmtDate(item.lastSeen)}</td>
-                  </tr>
+                  <React.Fragment key={item.key}>
+                    <tr
+                      className="hover:bg-autoforce-blue/5 transition-colors cursor-pointer"
+                      onClick={() => toggleConversion(item.key)}
+                    >
+                      <td className="p-4 text-white font-medium">{item.label}</td>
+                      <td className="p-4 text-center text-white font-semibold">{item.count}</td>
+                      <td className="p-4 text-right text-autoforce-lightGrey">{fmtDate(item.lastSeen)}</td>
+                    </tr>
+                    {expandedConversion === item.key && (
+                      <tr className="bg-autoforce-black/30">
+                        <td colSpan={3} className="p-0">
+                          <div className="px-4 py-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                              {item.leads.map((lead, index) => (
+                                <div
+                                  key={`${lead.id}-${index}`}
+                                  className="border border-autoforce-grey/20 rounded-lg px-3 py-2"
+                                >
+                                  <p className="text-sm text-white font-medium">
+                                    {lead.name || 'Sem nome'}
+                                  </p>
+                                  <p className="text-xs text-autoforce-lightGrey">
+                                    {lead.email || 'Sem email'}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
