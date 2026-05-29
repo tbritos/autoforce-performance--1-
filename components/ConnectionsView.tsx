@@ -140,9 +140,8 @@ const PlatformCard: React.FC<CardProps> = ({ meta, connection, requirement, onCo
     setFeedback(null);
     try {
       await fn();
-      if (action !== 'connect') {
-        setFeedback({ type: 'ok', msg: action === 'sync' ? 'Sync concluído!' : 'Desconectado.' });
-      }
+      if (action === 'sync') setFeedback({ type: 'ok', msg: 'Sync concluído!' });
+      if (action === 'disconnect') setFeedback({ type: 'ok', msg: 'Desconectado.' });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro inesperado';
       setFeedback({ type: 'err', msg });
