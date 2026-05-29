@@ -56,7 +56,8 @@ async function main() {
                 name: wl.name || null,
                 phone: wl.phone || null,
                 company: wl.company || null,
-                firstSource: 'rdstation',
+                firstSource: wl.source || 'rdstation',
+                firstCampaign: wl.conversionName || null,
                 firstSeenAt: wl.lastConversionDate || wl.createdAt,
                 lastSeenAt: wl.lastConversionDate || wl.updatedAt,
               },
@@ -66,6 +67,7 @@ async function main() {
             if (!existing.name && wl.name) update.name = wl.name;
             if (!existing.phone && wl.phone) update.phone = wl.phone;
             if (!existing.company && wl.company) update.company = wl.company;
+            if (!existing.firstCampaign && wl.conversionName) update.firstCampaign = wl.conversionName;
             await tx.lead.update({ where: { email }, data: update });
           }
 
