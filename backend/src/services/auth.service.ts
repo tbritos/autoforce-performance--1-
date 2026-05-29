@@ -43,7 +43,7 @@ export const verifyGoogleToken = async (token: string): Promise<AuthUser> => {
   const allowedDomain = process.env.GOOGLE_ALLOWED_DOMAIN || 'autoforce.com';
 
   if (!clientId || data.aud !== clientId) {
-    throw new Error(`Invalid Google client: aud="${data.aud}" expected="${clientId}"`);
+    throw new Error('Invalid Google client');
   }
 
   if (data.email_verified !== 'true') {

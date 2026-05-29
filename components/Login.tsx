@@ -69,6 +69,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       window.google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
         callback: handleCredentialResponse,
+        ux_mode: 'redirect',
+        login_uri: `${API_URL}/auth/google/redirect`,
       });
       window.google.accounts.id.renderButton(hiddenButtonRef.current, { theme: 'filled_black', size: 'large', text: 'continue_with', shape: 'pill', width: 300 });
       setReady(true);
