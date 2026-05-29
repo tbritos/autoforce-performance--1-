@@ -20,6 +20,9 @@ router.put('/:platform/config', ConnectionsController.updateConfig);
 // POST /api/connections/:platform/sync           — forçar sync manual
 router.post('/:platform/sync', ConnectionsController.triggerSync);
 
+// POST /api/connections/:platform/test           — testar conexão real com a plataforma
+router.post('/:platform/test', ConnectionsController.testConnection);
+
 // POST /api/connections/migrate-env              — migrar tokens do .env para o banco
 router.post('/migrate-env', ConnectionsController.migrateFromEnv);
 

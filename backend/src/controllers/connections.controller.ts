@@ -20,6 +20,69 @@ const OAUTH_ENV_REQUIREMENTS: Record<(typeof VALID_PLATFORMS)[number], string[]>
   CLARITY:           [], // API key — sem OAuth
 };
 
+async function testPlatformConnection(platform: Platform): Promise<{ ok: boolean; message: string }> {
+  try {
+    const token = await OAuthService.getValidToken(platform);
+
+    switch (platform) {
+      case 'META_ADS': {
+        const res = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${token}`);
+        const data = await res.json() as { name?: string; error?: { message: string } };
+        if ((data as any).error) return { ok: false, message: (data as any).error.message };
+        return { ok: true, message: `Conectado como ${data.name || 'conta desconhecida'}` };
+      }
+
+      case 'RD_STATION': {
+        const res = await fetch('https://api.rd.services/platform/contacts?page=1&page_size=1', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return { ok: false, message: `HTTP ${res.status} — token inválido ou expirado` };
+        return { ok: true, message: 'RD Station respondendo normalmente' };
+      }
+
+      case 'PIPEDRIVE': {
+        const apiToken = process.env.PIPEDRIVE_API_TOKEN;
+        const domain = process.env.PIPEDRIVE_DOMAIN || 'api';
+        const url = apiToken
+          ? `https://${domain}.pipedrive.com/v1/users/me?api_token=${apiToken}`
+          : `https://api.pipedrive.com/v1/users/me`;
+        const headers: Record<string, string> = apiToken ? {} : { Authorization: `Bearer ${token}` };
+        const res = await fetch(url, { headers });
+        const data = await res.json() as { success?: boolean; data?: { name?: string }; error?: string };
+        if (!data.success) return { ok: false, message: data.error || 'Falha ao autenticar no Pipedrive' };
+        return { ok: true, message: `Conectado como ${data.data?.name || 'usuário desconhecido'}` };
+      }
+
+      case 'GOOGLE_ANALYTICS': {
+        const propertyId = process.env.GA4_PROPERTY_ID;
+        if (!propertyId) return { ok: false, message: 'GA4_PROPERTY_ID não configurado no Railway' };
+        const res = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}/metadata`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return { ok: false, message: `HTTP ${res.status} — verifique as credenciais do GA4` };
+        return { ok: true, message: `Google Analytics (property ${propertyId}) OK` };
+      }
+
+      case 'GOOGLE_ADS': {
+        const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID;
+        const devToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+        if (!customerId) return { ok: false, message: 'GOOGLE_ADS_CUSTOMER_ID não configurado no Railway' };
+        if (!devToken) return { ok: false, message: 'GOOGLE_ADS_DEVELOPER_TOKEN não configurado no Railway' };
+        const res = await fetch(`https://googleads.googleapis.com/v17/customers/${customerId}`, {
+          headers: { Authorization: `Bearer ${token}`, 'developer-token': devToken },
+        });
+        if (!res.ok) return { ok: false, message: `HTTP ${res.status} — verifique o developer token e customer ID` };
+        return { ok: true, message: `Google Ads (customer ${customerId}) OK` };
+      }
+
+      default:
+        return { ok: false, message: 'Teste não implementado para esta plataforma' };
+    }
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : 'Erro desconhecido' };
+  }
+}
+
 function getEnvStatus(platform: (typeof VALID_PLATFORMS)[number]): 'CONNECTED' | 'DISCONNECTED' {
   switch (platform) {
     case 'RD_STATION':
@@ -211,6 +274,18 @@ export class ConnectionsController {
 
       const { triggerSync } = await import('../services/sync-scheduler.service');
       const result = await triggerSync(platform);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  // POST /api/connections/:platform/test  — verifica conexão real com a plataforma
+  static async testConnection(req: Request, res: Response, next: NextFunction) {
+    try {
+      const platform = parsePlatform(req.params.platform);
+      if (!platform) { res.status(400).json({ error: 'Plataforma inválida' }); return; }
+      const result = await testPlatformConnection(platform);
       res.json(result);
     } catch (err) {
       next(err);

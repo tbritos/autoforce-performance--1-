@@ -11,6 +11,7 @@ import {
   Clock,
   Loader2,
   Eye,
+  Wifi,
 } from 'lucide-react';
 import { PlatformConnection, ConnectionStatus, ConnectionRequirement } from '../types';
 import { DataService } from '../services/dataService';
@@ -121,10 +122,11 @@ interface CardProps {
   onConnect: (platform: string) => Promise<void>;
   onDisconnect: (platform: string) => Promise<void>;
   onSync: (platform: string) => Promise<void>;
+  onTest: (platform: string) => Promise<{ ok: boolean; message: string }>;
 }
 
-const PlatformCard: React.FC<CardProps> = ({ meta, connection, requirement, onConnect, onDisconnect, onSync }) => {
-  const [loadingAction, setLoadingAction] = useState<'connect' | 'disconnect' | 'sync' | null>(null);
+const PlatformCard: React.FC<CardProps> = ({ meta, connection, requirement, onConnect, onDisconnect, onSync, onTest }) => {
+  const [loadingAction, setLoadingAction] = useState<'connect' | 'disconnect' | 'sync' | 'test' | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
   const status: ConnectionStatus = connection?.status ?? 'DISCONNECTED';
   const hasSavedConnection = hasConnectionData(connection);
@@ -133,7 +135,7 @@ const PlatformCard: React.FC<CardProps> = ({ meta, connection, requirement, onCo
   const missingEnv = requirement?.missingEnv || [];
   const canOAuthConnect = requirement?.readyForOAuth ?? true;
 
-  const run = async (action: 'connect' | 'disconnect' | 'sync', fn: () => Promise<void>) => {
+  const run = async (action: 'connect' | 'disconnect' | 'sync' | 'test', fn: () => Promise<void>) => {
     setLoadingAction(action);
     setFeedback(null);
     try {
@@ -215,6 +217,15 @@ const PlatformCard: React.FC<CardProps> = ({ meta, connection, requirement, onCo
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto', paddingTop: 4 }}>
         {canManageConnection ? (
           <>
+            <button
+              type="button"
+              disabled={loadingAction !== null}
+              onClick={() => run('test', () => onTest(meta.id).then(r => { setFeedback({ type: r.ok ? 'ok' : 'err', msg: r.message }); }))}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 'var(--r-md)', fontSize: 12, fontWeight: 600, background: 'var(--bg-subtle)', color: 'var(--fg-secondary)', border: '1px solid var(--border)', cursor: 'pointer', opacity: loadingAction !== null ? 0.4 : 1, transition: 'all .15s' }}
+            >
+              {loadingAction === 'test' ? <Loader2 size={11} className="animate-spin" /> : <Wifi size={11} />}
+              Testar
+            </button>
             <button
               type="button"
               disabled={loadingAction !== null}
@@ -304,6 +315,10 @@ const ConnectionsView: React.FC = () => {
     await loadConnections();
   }, [loadConnections]);
 
+  const handleTest = useCallback(async (platform: string) => {
+    return DataService.testPlatformConnection(platform);
+  }, []);
+
   const connectionMap = new Map(connections.map(c => [c.platform, c]));
   const requirementMap = new Map(requirements.map(item => [item.platform, item]));
 
@@ -346,6 +361,7 @@ const ConnectionsView: React.FC = () => {
                   onConnect={handleConnect}
                   onDisconnect={handleDisconnect}
                   onSync={handleSync}
+                  onTest={handleTest}
                 />
         ))}
       </div>

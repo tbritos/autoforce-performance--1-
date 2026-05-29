@@ -932,6 +932,10 @@ export const DataService = {
     return apiClient.post<{ synced: number; errors: number }>(`/connections/${platform}/sync`, {});
   },
 
+  testPlatformConnection: async (platform: string): Promise<{ ok: boolean; message: string }> => {
+    return apiClient.post<{ ok: boolean; message: string }>(`/connections/${platform}/test`, {});
+  },
+
   updateConnectionConfig: async (platform: string, payload: {
     accountId?: string;
     accountName?: string;
