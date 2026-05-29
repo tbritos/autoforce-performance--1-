@@ -34,7 +34,7 @@ async function testPlatformConnection(platform: Platform): Promise<{ ok: boolean
 
       case 'RD_STATION': {
         const res = await fetch('https://api.rd.services/platform/contacts?page=1&page_size=1', {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
         });
         if (!res.ok) {
           let detail = '';
