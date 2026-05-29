@@ -47,7 +47,32 @@ app.set('trust proxy', 1);
 // Security headers — desabilita CSP pois é uma API REST pura
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 
-// CORS
+// Body parsing — antes do CORS para estar disponível no redirect do Google
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Google Sign-In redirect — registrado ANTES do CORS pois o POST vem de accounts.google.com
+// O Express processa rotas na ordem de registro; esta captura o request antes do middleware global
+app.post('/api/auth/google/redirect', async (req, res) => {
+  const { verifyGoogleToken, createSessionToken } = await import('./services/auth.service');
+  const frontendUrl = (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',')[0].trim();
+  try {
+    const credential = typeof req.body?.credential === 'string' ? req.body.credential : '';
+    if (!credential) {
+      res.redirect(`${frontendUrl}/?auth_error=${encodeURIComponent('Missing credential')}`);
+      return;
+    }
+    const user = await verifyGoogleToken(credential);
+    const token = createSessionToken(user);
+    const params = new URLSearchParams({ auth_token: token, auth_user: JSON.stringify(user) });
+    res.redirect(`${frontendUrl}/?${params.toString()}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Google login failed';
+    res.redirect(`${frontendUrl}/?auth_error=${encodeURIComponent(message)}`);
+  }
+});
+
+// CORS para todas as outras rotas /api
 const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .split(',')
   .map(origin => origin.trim())
@@ -55,12 +80,7 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (
-      !origin ||
-      process.env.NODE_ENV === 'development' ||
-      allowedOrigins.includes(origin) ||
-      origin === 'https://accounts.google.com'
-    ) {
+    if (!origin || process.env.NODE_ENV === 'development' || allowedOrigins.includes(origin)) {
       callback(null, true);
       return;
     }
@@ -70,8 +90,6 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   optionsSuccessStatus: 204,
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
 // Rate limiting para endpoints de autenticação
 const authLimiter = rateLimit({
