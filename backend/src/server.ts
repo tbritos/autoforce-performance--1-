@@ -55,7 +55,12 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || process.env.NODE_ENV === 'development' || allowedOrigins.includes(origin)) {
+    if (
+      !origin ||
+      process.env.NODE_ENV === 'development' ||
+      allowedOrigins.includes(origin) ||
+      origin === 'https://accounts.google.com'
+    ) {
       callback(null, true);
       return;
     }
