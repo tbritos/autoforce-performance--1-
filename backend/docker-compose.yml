@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: autoforce123
       POSTGRES_DB: autoforce_db
     ports:
-      - "5432:5432"
+      - "5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

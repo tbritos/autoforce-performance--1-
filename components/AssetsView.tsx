@@ -40,7 +40,7 @@ const AssetsView: React.FC = () => {
       const matchesSearch =
         asset.name.toLowerCase().includes(searchLower) ||
         asset.link.toLowerCase().includes(searchLower) ||
-        asset.notes.toLowerCase().includes(searchLower) ||
+        (asset.notes ?? '').toLowerCase().includes(searchLower) ||
         asset.tags.some(tag => tag.toLowerCase().includes(searchLower)) ||
         asset.versions.some(version =>
           version.label.toLowerCase().includes(searchLower) ||

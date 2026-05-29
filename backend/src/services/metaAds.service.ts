@@ -97,11 +97,22 @@ export const fetchMetaCampaigns = async (
   startDate?: string,
   endDate?: string
 ): Promise<MetaCampaign[]> => {
-  const accessToken = process.env.META_ACCESS_TOKEN;
-  const adAccountId = process.env.META_AD_ACCOUNT_ID;
+  // PlatformConnection first, .env fallback
+  let accessToken: string;
+  try {
+    const { OAuthService } = await import('./oauth.service');
+    accessToken = await OAuthService.getValidToken('META_ADS');
+  } catch {
+    accessToken = process.env.META_ACCESS_TOKEN || '';
+  }
+
+  const { PlatformConnectionService } = await import('./platform-connection.service');
+  const conn = await PlatformConnectionService.getConnection('META_ADS');
+  const meta = conn?.metadata as Record<string, any> | null;
+  const adAccountId = (meta?.adAccountId as string | undefined) || process.env.META_AD_ACCOUNT_ID;
 
   if (!accessToken || !adAccountId) {
-    throw new Error('META_ACCESS_TOKEN e META_AD_ACCOUNT_ID devem estar configurados no .env');
+    throw new Error('Meta Ads não conectado. Configure no painel de Conexões ou adicione META_ACCESS_TOKEN e META_AD_ACCOUNT_ID no .env');
   }
 
   const today = new Date().toISOString().split('T')[0];
@@ -135,9 +146,7 @@ export const fetchMetaCampaigns = async (
     insightsMap.set(row.campaign_id, row);
   });
 
-  return (campaignResponse.data || [])
-    .filter(row => mapStatus(row.effective_status) === 'Ativa')
-    .map(row => {
+  return (campaignResponse.data || []).map(row => {
     const insight = insightsMap.get(row.id);
     const startTime = row.start_time ? row.start_time.split('T')[0] : start;
     const endTime = row.stop_time ? row.stop_time.split('T')[0] : end;

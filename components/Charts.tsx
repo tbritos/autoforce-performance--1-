@@ -226,65 +226,70 @@ export const ConversionBarChart: React.FC<ChartsProps> = ({ data, isLoading = fa
   );
 };
 
-export const FunnelChart: React.FC<ChartsProps> = ({ data, isLoading = false }) => {
+// ─── FunnelChart ──────────────────────────────────────────────────────────────
+
+export interface FunnelStep {
+  label: string;
+  value: number;
+  color: string; // CSS color string (hex, var(), rgb…)
+}
+
+interface FunnelChartProps {
+  steps: FunnelStep[];
+  isLoading?: boolean;
+}
+
+export const FunnelChart: React.FC<FunnelChartProps> = ({ steps, isLoading = false }) => {
   if (isLoading) {
     return (
-      <div className="h-[350px] w-full flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-autoforce-blue"></div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '8px 0' }}>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 72, height: 14, background: 'var(--bg-muted)', borderRadius: 4 }} className="animate-pulse" />
+            <div style={{ flex: 1, height: 32, background: 'var(--bg-muted)', borderRadius: 20 }} className="animate-pulse" />
+            <div style={{ width: 60, height: 14, background: 'var(--bg-muted)', borderRadius: 4 }} className="animate-pulse" />
+          </div>
+        ))}
       </div>
     );
   }
 
-  if (!data || data.length === 0) {
+  const hasData = steps.some(s => s.value > 0);
+  if (!steps.length || !hasData) {
     return (
-      <div className="h-[350px] w-full">
+      <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <EmptyState message="Nenhum dado de funil disponível" />
       </div>
     );
   }
 
-  const totals = data.reduce(
-    (acc, item) => ({
-      mql: acc.mql + (item.leads || 0),
-      sql: acc.sql + (item.qualified || 0),
-      sales: acc.sales + (item.sales || 0),
-    }),
-    { mql: 0, sql: 0, sales: 0 }
-  );
-
-  if (totals.mql === 0 && totals.sql === 0 && totals.sales === 0) {
-    return (
-      <div className="h-[350px] w-full">
-        <EmptyState message="Nenhum dado de funil disponível" />
-      </div>
-    );
-  }
-
-  const maxValue = Math.max(totals.mql, totals.sql, totals.sales, 1);
-  const steps = [
-    { label: 'MQL', value: totals.mql, color: 'bg-autoforce-blue' },
-    { label: 'SQL', value: totals.sql, color: 'bg-autoforce-accent' },
-    { label: 'Vendas', value: totals.sales, color: 'bg-green-500' },
-  ];
+  const maxValue = Math.max(...steps.map(s => s.value), 1);
 
   return (
-    <div className="h-[350px] w-full flex flex-col justify-center gap-4">
-      {steps.map(step => (
-        <div key={step.label} className="flex items-center gap-4">
-          <div className="w-16 text-sm font-bold text-white">{step.label}</div>
-          <div className="flex-1">
-            <div className="w-full bg-autoforce-black/60 h-8 rounded-full overflow-hidden border border-autoforce-grey/20">
-              <div
-                className={`${step.color} h-full rounded-full transition-all`}
-                style={{ width: `${Math.round((step.value / maxValue) * 100)}%` }}
-              ></div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {steps.map((step) => {
+        const pct = Math.max(4, Math.round((step.value / maxValue) * 100));
+        return (
+          <div key={step.label} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 80, fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)', textAlign: 'right', flexShrink: 0 }}>
+              {step.label}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ width: '100%', height: 32, background: 'var(--bg-muted)', borderRadius: 9999, overflow: 'hidden' }}>
+                <div style={{
+                  width: `${pct}%`, height: '100%', borderRadius: 9999,
+                  background: step.color,
+                  transition: 'width .6s ease',
+                  opacity: 0.9,
+                }} />
+              </div>
+            </div>
+            <div style={{ width: 72, textAlign: 'right', fontSize: 13, fontWeight: 700, color: 'var(--fg-primary)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+              {step.value.toLocaleString('pt-BR')}
             </div>
           </div>
-          <div className="w-20 text-right text-sm font-mono text-autoforce-lightGrey">
-            {step.value.toLocaleString('pt-BR')}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };

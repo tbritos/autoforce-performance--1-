@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AnalyticsService } from '../services/analytics.service';
-import { syncLandingPagesFromGA4 } from '../services/googleAnalytics.service'; 
+import { syncLandingPagesFromGA4 } from '../services/googleAnalytics.service';
+import { getClarityMetrics, testClarityConnection } from '../services/clarity.service';
 
 export const getLandingPages = async (
   req: Request,
@@ -39,5 +40,25 @@ export const syncGA4 = async (req: Request, res: Response, next: NextFunction) =
       error: 'Erro ao sincronizar com Google Analytics',
       message: error.message 
     });
+  }
+};
+
+
+export const getClarityData = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const data = await getClarityMetrics(startDate as string, endDate as string);
+    res.json(data);
+  } catch (err: any) {
+    res.status(503).json({ error: err.message });
+  }
+};
+
+export const testClarity = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const ok = await testClarityConnection();
+    res.json({ connected: ok });
+  } catch (err: any) {
+    res.status(503).json({ connected: false, error: err.message });
   }
 };

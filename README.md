@@ -1,81 +1,173 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# AutoForce Marketing Hub
 
-# 🚀 AutoForce Performance Dashboard
+Sistema central de marketing da Autoforce — gestão de leads, campanhas, receita e integrações com Meta Ads, Google Ads, GA4, RD Station e Pipedrive.
 
-Dashboard de performance para análise de métricas, leads, receita e OKRs.
+---
 
-## 📋 Pré-requisitos
+## Início Rápido
 
-- Node.js 18+ 
-- npm ou yarn
+### Pré-requisitos
 
-## 🏃 Rodar Localmente
+- Node.js 20+
+- PostgreSQL (local ou Railway)
+- Arquivo `.env` configurado (ver seção abaixo)
 
-### Frontend
+---
 
-1. Instalar dependências:
-   ```bash
-   npm install
-   ```
+### 1. Instalar dependências
 
-2. Iniciar servidor de desenvolvimento:
-   ```bash
-   npm run dev
-   ```
+```bash
+# Frontend
+npm install
 
-3. Acessar: `http://localhost:3000`
+# Backend
+cd backend && npm install
+```
 
-### Backend (Opcional)
+### 2. Configurar variáveis de ambiente
 
-Veja a documentação completa em [`BACKEND_GUIDE.md`](./BACKEND_GUIDE.md) e [`backend/README.md`](./backend/README.md).
+Crie `backend/.env` com:
 
-**Início rápido:**
+```env
+DATABASE_URL=postgresql://usuario:senha@host:5432/banco
+JWT_SECRET=um-segredo-longo-e-aleatorio
+ENCRYPTION_KEY=chave-de-32-bytes-para-aes-256
+
+# Google OAuth
+GOOGLE_CLIENT_ID=SEU_CLIENT_ID.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=SEU_CLIENT_SECRET
+
+# Meta Ads (opcional)
+META_APP_ID=SEU_APP_ID
+META_APP_SECRET=SEU_APP_SECRET
+
+# RD Station (opcional)
+RD_STATION_CLIENT_ID=SEU_CLIENT_ID
+RD_STATION_CLIENT_SECRET=SEU_CLIENT_SECRET
+
+# Pipedrive (opcional)
+PIPEDRIVE_API_TOKEN=SEU_TOKEN
+PIPEDRIVE_DOMAIN=suaempresa
+
+# CORS
+CORS_ORIGIN=http://localhost:5173
+NODE_ENV=development
+```
+
+### 3. Rodar as migrations do banco
+
 ```bash
 cd backend
-npm install
-cp .env.example .env
-# Configure o DATABASE_URL no .env
-npm run prisma:generate
-npm run prisma:migrate
+npx prisma migrate deploy
+```
+
+### 4. Iniciar o sistema
+
+```bash
+# Terminal 1 — Backend
+cd backend && npm run dev
+
+# Terminal 2 — Frontend
 npm run dev
 ```
 
-## 📁 Estrutura do Projeto
+Acesse: **http://localhost:5173**
+
+---
+
+## Login
+
+O sistema usa **Google OAuth 2.0**. Apenas emails `@autoforce.com` têm acesso.
+
+Em ambiente de desenvolvimento, use o bypass local se necessário.
+
+---
+
+## Deploy em Produção (Railway)
+
+O deploy é feito via GitHub. O Railway conecta ao repositório e auto-deploys a cada push.
+
+**Start script** (já configurado em `package.json`):
+```bash
+prisma migrate deploy && node dist/server.js
+```
+
+As migrations rodam automaticamente a cada deploy. Todas são aditivas — sem perda de dados.
+
+**Variáveis de ambiente em produção:** configurar no painel do Railway (nunca commitar o `.env`).
+
+---
+
+## Estrutura do projeto
 
 ```
-autoforce-performance/
-├── components/          # Componentes React
-├── services/           # Serviços (dataService, etc)
-├── types.ts           # Tipos TypeScript
-├── backend/           # API Backend (Node.js + Express)
+autoforce-performance--1-/
+├── App.tsx                    — roteamento principal
+├── components/                — todos os componentes de tela
+│   ├── LeadHubView.tsx        — banco de leads
+│   ├── LeadProfilePanel.tsx   — perfil do lead
+│   ├── DocsView.tsx           — tela de documentação
+│   └── ...
+├── services/                  — chamadas à API
+├── types.ts                   — tipos TypeScript globais
+│
+├── backend/
 │   ├── src/
-│   │   ├── controllers/
-│   │   ├── services/
-│   │   ├── routes/
-│   │   └── server.ts
-│   └── prisma/        # Schema do banco de dados
-└── README.md
+│   │   ├── server.ts          — entrada do Express
+│   │   ├── routes/            — definição das rotas
+│   │   ├── services/          — lógica de negócio
+│   │   └── middleware/        — auth, erros
+│   └── prisma/
+│       ├── schema.prisma      — modelos do banco
+│       └── migrations/        — histórico de migrations
+│
+├── SISTEMA_DOCUMENTACAO.md   — documentação do sistema (aba "Sistema" em /docs)
+├── API_DOC.md                 — referência da API (aba "API" em /docs)
+└── README.md                  — este arquivo (aba "Início rápido" em /docs)
 ```
 
-## 🔧 Tecnologias
+---
 
-**Frontend:**
-- React 19 + TypeScript
-- Vite
-- Recharts (gráficos)
-- Tailwind CSS
-- Lucide Icons
+## Comandos úteis
 
-**Backend:**
-- Node.js + Express
-- TypeScript
-- Prisma ORM
-- PostgreSQL
+```bash
+# Gerar Prisma Client após mudança no schema
+cd backend && npx prisma generate
 
-## 📚 Documentação
+# Criar nova migration
+cd backend && npx prisma migrate dev --name nome_da_migration
 
-- [`BACKEND_GUIDE.md`](./BACKEND_GUIDE.md) - Guia completo do backend
-- [`backend/README.md`](./backend/README.md) - Documentação da API
-- [`backend/INTEGRATION.md`](./backend/INTEGRATION.md) - Como integrar frontend e backend
+# Ver banco via Prisma Studio
+cd backend && npx prisma studio
+
+# Build de produção
+cd backend && npm run build
+npm run build
+```
+
+---
+
+## Integrações por API
+
+Use `Authorization: Bearer <JWT>` em todas as requisições.
+
+Endpoints principais do Lead Hub (preferir rotas por `id`):
+
+```
+GET    /api/lead-hub/id/:id             — ficha completa do lead
+PATCH  /api/lead-hub/id/:id             — atualizar dados
+PATCH  /api/lead-hub/id/:id/status      — mudar etapa do funil
+PATCH  /api/lead-hub/id/:id/custom-fields — salvar campos personalizados
+POST   /api/lead-hub/id/:id/tags        — adicionar tag
+```
+
+Webhook público (sem autenticação):
+```
+POST   /api/webhooks/lead/:publicId     — receber lead de formulário externo
+```
+
+Ver documentação completa na aba **API** desta página.
+
+---
+
+*AutoForce Marketing Hub v2.0 — 2026*

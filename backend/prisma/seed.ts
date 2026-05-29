@@ -45,10 +45,10 @@ async function main() {
   // 2. Revenue Entries - Últimos 2 meses
   console.log('💰 Criando dados de receita...');
   const revenueData = [
-    { businessName: 'Grupo Sinal', setupValue: 5000, mrrValue: 1200, origin: 'Google Ads', product: 'Autoforce Site' },
-    { businessName: 'Concessionária Elite', setupValue: 3500, mrrValue: 800, origin: 'Indicação', product: 'Autoforce MKT' },
-    { businessName: 'AutoCenter Premium', setupValue: 7500, mrrValue: 1500, origin: 'Google Ads', product: 'Autoforce Site' },
-    { businessName: 'Mega Motors', setupValue: 4200, mrrValue: 950, origin: 'Facebook Ads', product: 'Autoforce MKT' },
+    { businessName: 'Grupo Sinal', setupValue: 5000, mrrValue: 1200, origin: 'Google Ads', product: ['Autoforce Site'] },
+    { businessName: 'Concessionária Elite', setupValue: 3500, mrrValue: 800, origin: 'Indicação', product: ['Autoforce MKT'] },
+    { businessName: 'AutoCenter Premium', setupValue: 7500, mrrValue: 1500, origin: 'Google Ads', product: ['Autoforce Site'] },
+    { businessName: 'Mega Motors', setupValue: 4200, mrrValue: 950, origin: 'Facebook Ads', product: ['Autoforce MKT'] },
   ];
 
   for (let i = 0; i < revenueData.length; i++) {

@@ -1,14 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyGoogleToken } from '../services/auth.service';
+import { verifyAuthToken } from '../services/auth.service';
 
 export const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // 1. Libera rotas de saúde e autenticação (públicas)
-    const isPublicLeadsWebhook =
-      req.method === 'POST' &&
-      req.path === '/webhooks/leads';
+    // Rotas públicas dentro de /api
+    const isOAuthCallback =
+      req.method === 'GET' &&
+      /^\/connections\/[^/]+\/callback$/.test(req.path);
 
-    if (req.path === '/health' || req.path.startsWith('/auth') || isPublicLeadsWebhook) {
+    if (req.path === '/health' || req.path.startsWith('/auth') || isOAuthCallback) {
       next();
       return;
     }
@@ -33,7 +33,14 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
       return;
     }
 
-    const user = await verifyGoogleToken(token);
+    // Dev bypass — só funciona em desenvolvimento
+    if (process.env.NODE_ENV === 'development' && token === 'dev-local-bypass') {
+      (req as any).user = { email: 'dev@autoforce.com', name: 'Dev Local', avatar: '', role: 'AutoForce Member' };
+      next();
+      return;
+    }
+
+    const user = await verifyAuthToken(token);
     (req as Request & { user?: typeof user }).user = user;
     next();
   } catch (error) {

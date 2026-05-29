@@ -25,19 +25,18 @@ class ApiClient {
     try {
       const response = await fetch(url, config);
 
-      // Tratar erros HTTP
       if (!response.ok) {
-        // Se for 401, redirecionar para login (quando autenticação estiver pronta)
         if (response.status === 401) {
-          // window.location.href = '/login';
-          throw new Error('Não autorizado');
+          localStorage.removeItem('autoforce_token');
+          localStorage.removeItem('autoforce_user');
+          window.location.href = '/';
+          throw new Error('Sessão expirada');
         }
-        
+
         const errorText = await response.text();
         throw new Error(`API Error (${response.status}): ${errorText || response.statusText}`);
       }
 
-      // Se a resposta estiver vazia, retornar null
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         return null as T;
@@ -45,7 +44,9 @@ class ApiClient {
 
       return response.json();
     } catch (error) {
-      console.error(`API Request failed: ${url}`, error);
+      if (error instanceof Error && error.message !== 'Sessão expirada') {
+        console.error(`API Request failed: ${url}`, error);
+      }
       throw error;
     }
   }
@@ -64,6 +65,13 @@ class ApiClient {
   put<T>(endpoint: string, data: any): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  patch<T>(endpoint: string, data: unknown): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'PATCH',
       body: JSON.stringify(data),
     });
   }

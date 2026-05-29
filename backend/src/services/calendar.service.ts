@@ -11,31 +11,42 @@ export class CalendarService {
     const credentialsJson =
       process.env.GOOGLE_CALENDAR_CREDENTIALS_JSON ||
       process.env.GA4_CREDENTIALS_JSON;
-    if (!calendarId || (!credentialsPath && !credentialsJson)) return null;
     return { calendarId, credentialsPath, credentialsJson };
   }
 
   private static async getCalendarClient() {
+    const { PlatformConnectionService } = await import('./platform-connection.service');
+    const conn = await PlatformConnectionService.getInternalConnection('GOOGLE_CALENDAR');
+    const meta = (conn?.metadata ?? {}) as Record<string, unknown>;
     const config = CalendarService.getCalendarConfig();
-    if (!config) {
-      throw new Error('GOOGLE_CALENDAR_ID e GOOGLE_CALENDAR_CREDENTIALS_PATH (ou GA4_CREDENTIALS_PATH) devem estar configurados no .env');
-    }
+    const calendarId = (meta.calendarId as string | undefined) || config.calendarId;
+    if (!calendarId) throw new Error('GOOGLE_CALENDAR_ID nao configurado.');
 
     let auth: any;
-    if (config.credentialsJson) {
-      const parsed = JSON.parse(config.credentialsJson);
-      auth = new google.auth.GoogleAuth({
-        credentials: parsed,
-        scopes: ['https://www.googleapis.com/auth/calendar'],
-      });
-    } else {
-      auth = new google.auth.GoogleAuth({
-        keyFile: config.credentialsPath,
-        scopes: ['https://www.googleapis.com/auth/calendar'],
-      });
+    try {
+      const { OAuthService } = await import('./oauth.service');
+      const token = await OAuthService.getValidToken('GOOGLE_CALENDAR');
+      auth = new google.auth.OAuth2();
+      auth.setCredentials({ access_token: token });
+    } catch {
+      if (!config.credentialsPath && !config.credentialsJson) {
+        throw new Error('Google Calendar nao conectado. Configure OAuth em Integracoes ou credenciais de service account.');
+      }
+      if (config.credentialsJson) {
+        const parsed = JSON.parse(config.credentialsJson);
+        auth = new google.auth.GoogleAuth({
+          credentials: parsed,
+          scopes: ['https://www.googleapis.com/auth/calendar'],
+        });
+      } else {
+        auth = new google.auth.GoogleAuth({
+          keyFile: config.credentialsPath as string,
+          scopes: ['https://www.googleapis.com/auth/calendar'],
+        });
+      }
     }
 
-    return google.calendar({ version: 'v3', auth });
+    return { calendar: google.calendar({ version: 'v3', auth }), calendarId };
   }
 
   private static parseDateOnly(value: string): Date {
@@ -83,8 +94,8 @@ export class CalendarService {
 
   static async getEvents(): Promise<CampaignEvent[]> {
     const config = CalendarService.getCalendarConfig();
-    if (config) {
-      const calendar = await CalendarService.getCalendarClient();
+    if (config.calendarId || config.credentialsJson || config.credentialsPath) {
+      const { calendar, calendarId } = await CalendarService.getCalendarClient();
       const now = new Date();
       const past = new Date(now);
       const future = new Date(now);
@@ -96,7 +107,7 @@ export class CalendarService {
 
       do {
         const response = await calendar.events.list({
-          calendarId: config.calendarId,
+          calendarId,
           timeMin: past.toISOString(),
           timeMax: future.toISOString(),
           singleEvents: true,
@@ -216,6 +227,65 @@ export class CalendarService {
 
   static async deleteEvent(id: string): Promise<void> {
     await prisma.campaignEvent.deleteMany({ where: { id } });
+  }
+
+  static async syncGoogleEvents(): Promise<{ synced: number; errors: number }> {
+    const { calendar, calendarId } = await CalendarService.getCalendarClient();
+    const now = new Date();
+    const past = new Date(now);
+    const future = new Date(now);
+    past.setFullYear(now.getFullYear() - 1);
+    future.setFullYear(now.getFullYear() + 1);
+
+    let synced = 0;
+    let errors = 0;
+    let pageToken: string | undefined;
+
+    do {
+      const response = await calendar.events.list({
+        calendarId,
+        timeMin: past.toISOString(),
+        timeMax: future.toISOString(),
+        singleEvents: true,
+        orderBy: 'startTime',
+        pageToken,
+        maxResults: 2500,
+      });
+
+      for (const item of response.data.items || []) {
+        const mapped = CalendarService.mapGoogleEvent(item);
+        if (!mapped) continue;
+        try {
+          await prisma.campaignEvent.upsert({
+            where: { id: mapped.id },
+            update: {
+              title: mapped.title,
+              startDate: CalendarService.parseDateOnly(mapped.startDate),
+              endDate: CalendarService.parseDateOnly(mapped.endDate),
+              color: mapped.color,
+              notes: mapped.notes || null,
+              externalId: mapped.id,
+            },
+            create: {
+              id: mapped.id,
+              title: mapped.title,
+              startDate: CalendarService.parseDateOnly(mapped.startDate),
+              endDate: CalendarService.parseDateOnly(mapped.endDate),
+              color: mapped.color,
+              notes: mapped.notes || null,
+              externalId: mapped.id,
+            },
+          });
+          synced++;
+        } catch {
+          errors++;
+        }
+      }
+
+      pageToken = response.data.nextPageToken || undefined;
+    } while (pageToken);
+
+    return { synced, errors };
   }
 }
 

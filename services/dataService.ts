@@ -1,4 +1,4 @@
-import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, WebhookLead } from '../types';
+import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, GoogleAdsCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, LeadConversion, WebhookLead, PlatformConnection, ConnectionRequirement, Lead, LeadListResult, LeadProfile, LeadCustomFieldDef, FunnelCounts, LeadStatus, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction, UTMLink, UTMLinkListResult, UTMTemplate, UTMCampaignPicker, UTMDestination, FunnelDef, FunnelStats } from '../types';
 import { apiClient } from './apiClient';
 
 // ============================================================================
@@ -91,20 +91,48 @@ export const DataService = {
       if (rawData && rawData.length > 0) {
         return rawData.map(item => ({
           id: item.id,
-          name: item.name || item.path, 
+          name: item.name || item.path,
           path: item.path,
-          visitors: item.views || 0, 
+          views: item.views || 0,
           users: item.users || 0,
-          leads: item.conversions || 0, 
           conversions: item.conversions || 0,
           conversionRate: item.conversionRate || 0,
           avgEngagementTime: item.avgEngagementTime || '-',
           bounceRate: item.bounceRate || 0,
-          totalClicks: item.totalClicks || 0
+          totalClicks: item.totalClicks || 0,
+          source: item.source,
         }));
       }
     } catch (error) { console.error(error); }
     return [];
+  },
+
+  getClarityMetrics: async (startDate?: string, endDate?: string): Promise<{
+    totalSessions: number; totalSessionTime: number; pagesPerSession: number;
+    rageClicks: number; deadClicks: number; errorClicks: number;
+    quickBackClicks: number; javaScriptErrors: number; scrolledPercentage: number;
+  } | null> => {
+    try {
+      const params = new URLSearchParams();
+      if (startDate) params.set('startDate', startDate);
+      if (endDate)   params.set('endDate',   endDate);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      return await apiClient.get(`/analytics/clarity/metrics${qs}`);
+    } catch { return null; }
+  },
+
+  saveClarityConfig: async (projectId: string, apiKey: string): Promise<void> => {
+    await apiClient.put('/connections/CLARITY/config', {
+      accessToken: apiKey || undefined,
+      metadata: { projectId },
+    });
+  },
+
+  testClarityConnection: async (): Promise<boolean> => {
+    try {
+      const res = await apiClient.get<{ connected: boolean }>('/analytics/clarity/test');
+      return res?.connected ?? false;
+    } catch { return false; }
   },
 
   getTeamMembers: async (): Promise<TeamMember[]> => {
@@ -345,9 +373,9 @@ export const DataService = {
 
     const history = safeParse<RevenueEntry[]>(STORAGE_REVENUE_KEY, []);
     const created: RevenueEntry = {
+      ...payload,
       id: `${Date.now()}`,
       date: entry.date || new Date().toISOString().split('T')[0],
-      ...payload,
     };
     const updated = [created, ...history];
     localStorage.setItem(STORAGE_REVENUE_KEY, JSON.stringify(updated));
@@ -552,7 +580,19 @@ export const DataService = {
         throw error;
       }
     }
+    return [];
+  },
 
+  getGoogleAdsCampaigns: async (startDate?: string, endDate?: string): Promise<GoogleAdsCampaign[]> => {
+    if (USE_API) {
+      const params = new URLSearchParams();
+      if (startDate) params.set('startDate', startDate);
+      if (endDate) params.set('endDate', endDate);
+      const query = params.toString();
+      return await apiClient.get<GoogleAdsCampaign[]>(
+        query ? `/campaigns/google?${query}` : '/campaigns/google'
+      );
+    }
     return [];
   },
 
@@ -868,6 +908,407 @@ export const DataService = {
     const history = safeParse<EmailCampaign[]>(STORAGE_EMAILS_KEY, []);
     const updated = history.filter(item => item.id !== id);
     localStorage.setItem(STORAGE_EMAILS_KEY, JSON.stringify(updated));
+  },
+
+  // --- Platform Connections ---
+
+  listConnections: async (): Promise<PlatformConnection[]> => {
+    return apiClient.get<PlatformConnection[]>('/connections');
+  },
+
+  listConnectionRequirements: async (): Promise<ConnectionRequirement[]> => {
+    return apiClient.get<ConnectionRequirement[]>('/connections/requirements');
+  },
+
+  getConnectionAuthUrl: async (platform: string): Promise<{ url: string }> => {
+    return apiClient.get<{ url: string }>(`/connections/${platform}/auth-url`);
+  },
+
+  disconnectPlatform: async (platform: string): Promise<void> => {
+    await apiClient.post(`/connections/${platform}/disconnect`, {});
+  },
+
+  triggerPlatformSync: async (platform: string): Promise<{ synced: number; errors: number }> => {
+    return apiClient.post<{ synced: number; errors: number }>(`/connections/${platform}/sync`, {});
+  },
+
+  updateConnectionConfig: async (platform: string, payload: {
+    accountId?: string;
+    accountName?: string;
+    accessToken?: string;
+    refreshToken?: string;
+    tokenExpiry?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<PlatformConnection> => {
+    return apiClient.put<PlatformConnection>(`/connections/${platform}/config`, payload);
+  },
+
+  migrateEnvConnections: async (): Promise<{ message: string; results: Record<string, string> }> => {
+    return apiClient.post<{ message: string; results: Record<string, string> }>('/connections/migrate-env', {});
+  },
+
+  // --- Lead Hub ---
+
+  listLeads: async (filters: {
+    status?: LeadStatus;
+    search?: string;
+    isHot?: boolean;
+    tag?: string;
+    startDate?: string;
+    endDate?: string;
+    customField?: string;
+    customValue?: string;
+    page?: number;
+    pageSize?: number;
+  } = {}): Promise<LeadListResult> => {
+    const params = new URLSearchParams();
+    if (filters.status)    params.set('status', filters.status);
+    if (filters.search)    params.set('search', filters.search);
+    if (filters.isHot !== undefined) params.set('isHot', String(filters.isHot));
+    if (filters.tag)       params.set('tag', filters.tag);
+    if (filters.startDate) params.set('startDate', filters.startDate);
+    if (filters.endDate)   params.set('endDate', filters.endDate);
+    if (filters.customField) params.set('customField', filters.customField);
+    if (filters.customValue) params.set('customValue', filters.customValue);
+    if (filters.page)      params.set('page', String(filters.page));
+    if (filters.pageSize)  params.set('pageSize', String(filters.pageSize));
+    const qs = params.toString();
+    return apiClient.get<LeadListResult>(`/lead-hub${qs ? `?${qs}` : ''}`);
+  },
+
+  getLeadProfile: async (email: string): Promise<LeadProfile> => {
+    return apiClient.get<LeadProfile>(`/lead-hub/${encodeURIComponent(email)}`);
+  },
+
+  getLeadProfileById: async (id: string): Promise<LeadProfile> => {
+    return apiClient.get<LeadProfile>(`/lead-hub/id/${encodeURIComponent(id)}`);
+  },
+
+  getLeadAllConversions: async (id: string): Promise<LeadConversion[]> => {
+    return apiClient.get<LeadConversion[]>(`/lead-hub/id/${encodeURIComponent(id)}/conversions`);
+  },
+
+  updateLeadProfileById: async (id: string, profile: {
+    name?: string | null;
+    phone?: string | null;
+    company?: string | null;
+    jobTitle?: string | null;
+    city?: string | null;
+    state?: string | null;
+    assignedTo?: string | null;
+    isHot?: boolean;
+    score?: number | null;
+  }): Promise<Partial<LeadProfile>> => {
+    return apiClient.patch<Partial<LeadProfile>>(`/lead-hub/id/${encodeURIComponent(id)}`, profile);
+  },
+
+  updateLeadStatus: async (email: string, status: LeadStatus, reason?: string): Promise<Lead> => {
+    return apiClient.patch<Lead>(`/lead-hub/${encodeURIComponent(email)}/status`, { status, reason });
+  },
+
+  updateLeadStatusById: async (id: string, status: LeadStatus, reason?: string): Promise<Lead> => {
+    return apiClient.patch<Lead>(`/lead-hub/id/${encodeURIComponent(id)}/status`, { status, reason });
+  },
+
+  getFunnelCounts: async (): Promise<FunnelCounts> => {
+    return apiClient.get<FunnelCounts>('/lead-hub/funnel');
+  },
+
+  getAllLeadTags: async (): Promise<string[]> => {
+    return apiClient.get<string[]>('/lead-hub/tags');
+  },
+
+  getLeadsBySource: async (): Promise<{ source: string; count: number }[]> => {
+    return apiClient.get<{ source: string; count: number }[]>('/lead-hub/by-source');
+  },
+
+  listCustomFieldDefs: async (): Promise<LeadCustomFieldDef[]> => {
+    return apiClient.get<LeadCustomFieldDef[]>('/lead-hub/custom-fields');
+  },
+
+  createCustomFieldDef: async (field: {
+    name: string;
+    label: string;
+    fieldType: LeadCustomFieldDef['fieldType'];
+    options?: string[];
+    placeholder?: string;
+    required?: boolean;
+    visible?: boolean;
+    sortOrder?: number;
+    sourceHint?: string;
+  }): Promise<LeadCustomFieldDef> => {
+    return apiClient.post<LeadCustomFieldDef>('/lead-hub/custom-fields', field);
+  },
+
+  updateCustomFieldDef: async (id: string, field: {
+    label?: string;
+    fieldType?: LeadCustomFieldDef['fieldType'];
+    options?: string[];
+    placeholder?: string;
+    required?: boolean;
+    visible?: boolean;
+    sortOrder?: number;
+    sourceHint?: string;
+  }): Promise<LeadCustomFieldDef> => {
+    return apiClient.patch<LeadCustomFieldDef>(`/lead-hub/custom-fields/${encodeURIComponent(id)}`, field);
+  },
+
+  deleteCustomFieldDef: async (id: string): Promise<void> => {
+    await apiClient.delete(`/lead-hub/custom-fields/${encodeURIComponent(id)}`);
+  },
+
+  updateLeadCustomField: async (email: string, field: string, value: unknown): Promise<void> => {
+    await apiClient.patch(`/lead-hub/${encodeURIComponent(email)}/custom-fields/${encodeURIComponent(field)}`, { value });
+  },
+
+  updateLeadCustomFieldById: async (id: string, field: string, value: unknown): Promise<void> => {
+    await apiClient.patch(`/lead-hub/id/${encodeURIComponent(id)}/custom-fields/${encodeURIComponent(field)}`, { value });
+  },
+
+  updateLeadCustomFieldsById: async (id: string, fields: Record<string, unknown>): Promise<void> => {
+    await apiClient.patch(`/lead-hub/id/${encodeURIComponent(id)}/custom-fields`, { fields });
+  },
+
+  addLeadTag: async (email: string, tag: string): Promise<{ tags: string[] }> => {
+    return apiClient.post<{ tags: string[] }>(`/lead-hub/${encodeURIComponent(email)}/tags`, { tag });
+  },
+
+  addLeadTagById: async (id: string, tag: string): Promise<{ tags: string[] }> => {
+    return apiClient.post<{ tags: string[] }>(`/lead-hub/id/${encodeURIComponent(id)}/tags`, { tag });
+  },
+
+  removeLeadTag: async (email: string, tag: string): Promise<{ tags: string[] }> => {
+    return apiClient.delete<{ tags: string[] }>(`/lead-hub/${encodeURIComponent(email)}/tags/${encodeURIComponent(tag)}`);
+  },
+
+  removeLeadTagById: async (id: string, tag: string): Promise<{ tags: string[] }> => {
+    return apiClient.delete<{ tags: string[] }>(`/lead-hub/id/${encodeURIComponent(id)}/tags/${encodeURIComponent(tag)}`);
+  },
+
+  updateLeadNotes: async (email: string, notes: string): Promise<void> => {
+    await apiClient.patch(`/lead-hub/${encodeURIComponent(email)}/notes`, { notes });
+  },
+
+  updateLeadNotesById: async (id: string, notes: string): Promise<void> => {
+    await apiClient.patch(`/lead-hub/id/${encodeURIComponent(id)}/notes`, { notes });
+  },
+
+  deleteLeadById: async (id: string): Promise<void> => {
+    await apiClient.delete(`/lead-hub/id/${encodeURIComponent(id)}`);
+  },
+
+  exportLeadsCsv: (filters: {
+    status?: string; search?: string; startDate?: string; endDate?: string; customField?: string; customValue?: string;
+  } = {}): void => {
+    const params = new URLSearchParams();
+    if (filters.status)    params.set('status', filters.status);
+    if (filters.search)    params.set('search', filters.search);
+    if (filters.startDate) params.set('startDate', filters.startDate);
+    if (filters.endDate)   params.set('endDate', filters.endDate);
+    if (filters.customField) params.set('customField', filters.customField);
+    if (filters.customValue) params.set('customValue', filters.customValue);
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    const qs = params.toString();
+    window.open(`${apiUrl}/lead-hub/export${qs ? `?${qs}` : ''}`, '_blank');
+  },
+
+  migrateWebhookLeads: async (): Promise<{ message: string; migrated: number; skipped: number; errors: number }> => {
+    return apiClient.post('/lead-hub/migrate-webhook', {});
+  },
+
+  listLeadWebhooks: async (): Promise<LeadWebhookSource[]> => {
+    return apiClient.get<LeadWebhookSource[]>('/lead-webhooks');
+  },
+
+  createLeadWebhook: async (payload: {
+    name: string;
+    type: string;
+    description?: string;
+    automaticTags?: string[];
+    fieldMappings?: Record<string, string>;
+    defaultPersona?: string;
+    defaultPain?: string;
+    defaultSource?: string;
+    defaultCampaign?: string;
+  }): Promise<LeadWebhookSource> => {
+    return apiClient.post<LeadWebhookSource>('/lead-webhooks', payload);
+  },
+
+  updateLeadWebhook: async (
+    id: string,
+    payload: Partial<{
+      name: string;
+      type: string;
+      description: string;
+      isActive: boolean;
+      automaticTags: string[];
+      fieldMappings: Record<string, string>;
+      defaultPersona: string;
+      defaultPain: string;
+      defaultSource: string;
+      defaultCampaign: string;
+    }>
+  ): Promise<LeadWebhookSource> => {
+    return apiClient.patch<LeadWebhookSource>(`/lead-webhooks/${encodeURIComponent(id)}`, payload);
+  },
+
+  regenerateLeadWebhookUrl: async (id: string): Promise<LeadWebhookSource> => {
+    return apiClient.post<LeadWebhookSource>(`/lead-webhooks/${encodeURIComponent(id)}/regenerate-url`, {});
+  },
+
+  listLeadWebhookLogs: async (id: string, limit = 50): Promise<LeadWebhookLog[]> => {
+    return apiClient.get<LeadWebhookLog[]>(`/lead-webhooks/${encodeURIComponent(id)}/logs?limit=${limit}`);
+  },
+
+  deleteLeadWebhook: async (id: string): Promise<void> => {
+    return apiClient.delete(`/lead-webhooks/${encodeURIComponent(id)}`);
+  },
+
+  inspectLeadWebhook: async (id: string): Promise<LeadWebhookInspection> => {
+    return apiClient.get<LeadWebhookInspection>(`/lead-webhooks/${encodeURIComponent(id)}/inspect`);
+  },
+
+  listLeadRules: async (): Promise<LeadClassificationRule[]> => {
+    return apiClient.get<LeadClassificationRule[]>('/lead-rules');
+  },
+
+  createLeadRule: async (payload: {
+    name: string;
+    description?: string;
+    isActive?: boolean;
+    priority?: number;
+    trigger?: string;
+    conditions: LeadRuleCondition[];
+    actions: LeadRuleAction[];
+  }): Promise<LeadClassificationRule> => {
+    return apiClient.post<LeadClassificationRule>('/lead-rules', payload);
+  },
+
+  updateLeadRule: async (id: string, payload: Partial<{
+    name: string;
+    description: string;
+    isActive: boolean;
+    priority: number;
+    trigger: string;
+    conditions: LeadRuleCondition[];
+    actions: LeadRuleAction[];
+  }>): Promise<LeadClassificationRule> => {
+    return apiClient.patch<LeadClassificationRule>(`/lead-rules/${encodeURIComponent(id)}`, payload);
+  },
+
+  deleteLeadRule: async (id: string): Promise<void> => {
+    await apiClient.delete(`/lead-rules/${encodeURIComponent(id)}`);
+  },
+
+  runLeadRuleForExistingLeads: async (id: string, payload: { leadEmail?: string; limit?: number } = {}): Promise<{
+    evaluated: number;
+    matched: number;
+    errors: number;
+  }> => {
+    return apiClient.post(`/lead-rules/${encodeURIComponent(id)}/run-existing`, payload);
+  },
+
+  // --- Funnels ---
+
+  listFunnels: async (): Promise<FunnelDef[]> => {
+    return apiClient.get<FunnelDef[]>('/funnels');
+  },
+
+  createFunnel: async (data: {
+    name: string;
+    description?: string;
+    color?: string;
+    leadTags?: string[];
+    impressionPages?: string[];
+    campaignIds?: string[];
+  }): Promise<FunnelDef> => {
+    return apiClient.post<FunnelDef>('/funnels', data);
+  },
+
+  updateFunnel: async (id: string, data: Partial<{
+    name: string;
+    description: string;
+    color: string;
+    leadTags: string[];
+    impressionPages: string[];
+    campaignIds: string[];
+  }>): Promise<FunnelDef> => {
+    return apiClient.patch<FunnelDef>(`/funnels/${id}`, data);
+  },
+
+  listCampaignsForPicker: async (): Promise<{ id: string; name: string; platform: string }[]> => {
+    return apiClient.get('/utm-links/campaigns');
+  },
+
+  deleteFunnel: async (id: string): Promise<void> => {
+    await apiClient.delete(`/funnels/${id}`);
+  },
+
+  getFunnelStats: async (funnelId: string | null, startDate?: string, endDate?: string): Promise<FunnelStats> => {
+    const params = new URLSearchParams();
+    if (funnelId)  params.set('funnelId',  funnelId);
+    if (startDate) params.set('startDate', startDate);
+    if (endDate)   params.set('endDate',   endDate);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return apiClient.get<FunnelStats>(`/funnels/stats${qs}`);
+  },
+
+  // --- UTM Tracker ---
+
+  listUTMLinks: async (filters: {
+    search?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string;
+    isTemplate?: boolean; startDate?: string; endDate?: string;
+    page?: number; pageSize?: number;
+  } = {}): Promise<UTMLinkListResult> => {
+    const params = new URLSearchParams();
+    if (filters.search)      params.set('search',      filters.search);
+    if (filters.utmSource)   params.set('utmSource',   filters.utmSource);
+    if (filters.utmMedium)   params.set('utmMedium',   filters.utmMedium);
+    if (filters.utmCampaign) params.set('utmCampaign', filters.utmCampaign);
+    if (filters.isTemplate !== undefined) params.set('isTemplate', String(filters.isTemplate));
+    if (filters.startDate)   params.set('startDate',   filters.startDate);
+    if (filters.endDate)     params.set('endDate',     filters.endDate);
+    if (filters.page)        params.set('page',        String(filters.page));
+    if (filters.pageSize)    params.set('pageSize',    String(filters.pageSize));
+    const qs = params.toString();
+    return apiClient.get<UTMLinkListResult>(`/utm-links${qs ? `?${qs}` : ''}`);
+  },
+
+  createUTMLink: async (data: {
+    destinationUrl: string; utmSource: string; utmMedium: string; utmCampaign: string;
+    title?: string; utmContent?: string; utmTerm?: string;
+    campaignId?: string; isTemplate?: boolean; templateName?: string;
+  }): Promise<UTMLink> => {
+    return apiClient.post<UTMLink>('/utm-links', data);
+  },
+
+  listUTMTemplates: async (): Promise<UTMTemplate[]> => {
+    return apiClient.get<UTMTemplate[]>('/utm-links/templates');
+  },
+
+  listUTMCampaigns: async (): Promise<UTMCampaignPicker[]> => {
+    return apiClient.get<UTMCampaignPicker[]>('/utm-links/campaigns');
+  },
+
+  toggleUTMFavorite: async (id: string): Promise<{ isFavorite: boolean }> => {
+    return apiClient.patch<{ isFavorite: boolean }>(`/utm-links/${id}/favorite`, {});
+  },
+
+  deleteUTMLink: async (id: string): Promise<void> => {
+    await apiClient.delete(`/utm-links/${id}`);
+  },
+
+  // --- UTM Destinations ---
+  listUTMDestinations: async (): Promise<UTMDestination[]> => {
+    return apiClient.get<UTMDestination[]>('/utm-destinations');
+  },
+
+  createUTMDestination: async (data: { label: string; url: string }): Promise<UTMDestination> => {
+    return apiClient.post<UTMDestination>('/utm-destinations', data);
+  },
+
+  deleteUTMDestination: async (id: string): Promise<void> => {
+    await apiClient.delete(`/utm-destinations/${id}`);
   },
 };
 

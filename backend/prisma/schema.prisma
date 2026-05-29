@@ -1,5 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// AutoForce Marketing Hub — Prisma Schema
+// Synchronized with migration: 20260523100000_lead_foundation
 
 generator client {
   provider = "prisma-client-js"
@@ -10,146 +10,577 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================================
+// AUTENTICAÇÃO & USUÁRIOS
+// ============================================================
+
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  avatar    String?
-  role      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String    @id @default(cuid())
+  email       String    @unique
+  name        String
+  avatar      String?
+  role        String
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  leadStatusChanges LeadStatusHistory[]
 }
 
-model DailyLead {
-  id             String   @id @default(uuid())
-  date           DateTime @unique // Garante apenas um registro por dia
-  leads          Int      @default(0)
-  mql            Int      @default(0)
-  sql            Int      @default(0)
-  sales          Int      @default(0)
-  conversionRate Float    @default(0) // SQL divididos por MQL
-  
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+// ============================================================
+// LEADS (entidade central — email é a chave natural)
+// ============================================================
+
+enum LeadStatus {
+  LEAD
+  MQL
+  SQL
+  SCHEDULED
+  DEMO
+  PROPOSAL
+  OPPORTUNITY
+  CLIENT
+  LOST
+  DISQUALIFIED
 }
+
+model Lead {
+  id    String @id @default(uuid())
+  email String @unique
+
+  name     String?
+  phone    String?
+  company  String?
+  jobTitle String?
+  city     String?
+  state    String?
+
+  status LeadStatus @default(LEAD)
+
+  // First-touch attribution — set on first conversion, never changed
+  firstSource      String?
+  firstMedium      String?
+  firstCampaign    String?
+  firstLandingPage String?
+
+  score Int     @default(0)
+  isHot Boolean @default(false)
+
+  tags       String[]
+  notes      String?  @db.Text
+  assignedTo String?
+
+  // Pipedrive integration
+  pipedrivePersonId String?
+  pipedriveDealId   String?
+
+  // Custom fields — schema defined in LeadCustomFieldDef
+  customFields Json?
+
+  firstSeenAt DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  qualifiedAt DateTime?
+  convertedAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  conversions    LeadConversion[]
+  statusHistory  LeadStatusHistory[]
+  revenueEntries RevenueEntry[]
+
+  @@index([status])
+  @@index([firstSource])
+  @@index([isHot])
+  @@index([score])
+  @@index([assignedTo])
+  @@index([lastSeenAt])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@index([pipedrivePersonId])
+}
+
+model LeadConversion {
+  id        String @id @default(uuid())
+  leadEmail String
+  lead      Lead   @relation(fields: [leadEmail], references: [email])
+
+  source     String
+  externalId String?
+
+  campaignId   String?
+  campaign     Campaign? @relation(fields: [campaignId], references: [id])
+  campaignName String?
+
+  formName    String?
+  landingPage String?
+
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmContent  String?
+  utmTerm     String?
+
+  rawData     Json
+  convertedAt DateTime
+  createdAt   DateTime @default(now())
+
+  @@unique([externalId, source])
+  @@index([leadEmail])
+  @@index([source])
+  @@index([campaignId])
+  @@index([convertedAt])
+  @@index([utmCampaign])
+  @@index([utmSource])
+}
+
+model LeadStatusHistory {
+  id         String     @id @default(uuid())
+  leadEmail  String
+  lead       Lead       @relation(fields: [leadEmail], references: [email])
+  fromStatus LeadStatus?
+  toStatus   LeadStatus
+  changedBy  String?
+  user       User?      @relation(fields: [changedBy], references: [email])
+  reason     String?
+  changedAt  DateTime   @default(now())
+
+  @@index([leadEmail])
+  @@index([changedAt])
+}
+
+// ============================================================
+// CAMPOS CUSTOMIZADOS DE LEAD
+// Define quais campos extras existem e como renderizá-los na UI.
+// Valores ficam em Lead.customFields (JSON).
+// fieldType: "text" | "number" | "boolean" | "date" | "select" | "url"
+// ============================================================
+
+model LeadCustomFieldDef {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  label       String
+  fieldType   String   @default("text")
+  options     String[] @default([])
+  placeholder String?
+  required    Boolean  @default(false)
+  visible     Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  sourceHint  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sortOrder])
+}
+
+model LeadClassificationRule {
+  id          String  @id @default(uuid())
+  name        String
+  description String? @db.Text
+  isActive    Boolean @default(true)
+  priority    Int     @default(100)
+  trigger     String  @default("lead_updated")
+
+  conditions Json @default("[]")
+  actions    Json @default("[]")
+
+  lastRunAt DateTime?
+  runCount  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  executions LeadClassificationRuleExecution[]
+
+  @@index([isActive])
+  @@index([priority])
+  @@index([trigger])
+  @@index([createdAt])
+}
+
+model LeadClassificationRuleExecution {
+  id        String @id @default(uuid())
+  ruleId    String
+  rule      LeadClassificationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  leadEmail String
+  matched   Boolean
+  actionsApplied Json @default("[]")
+  error     String? @db.Text
+  context   Json?
+  createdAt DateTime @default(now())
+
+  @@index([ruleId])
+  @@index([leadEmail])
+  @@index([matched])
+  @@index([createdAt])
+}
+
+// ============================================================
+// CONEXÕES DE PLATAFORMAS
+// ============================================================
+
+enum Platform {
+  META_ADS
+  GOOGLE_ADS
+  GOOGLE_ANALYTICS
+  RD_STATION
+  GOOGLE_CALENDAR
+  PIPEDRIVE
+  CLARITY
+}
+
+enum ConnectionStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+  EXPIRED
+}
+
+model PlatformConnection {
+  id       String           @id @default(uuid())
+  platform Platform         @unique
+  status   ConnectionStatus @default(DISCONNECTED)
+
+  accountId   String?
+  accountName String?
+  extraIds    String[]
+
+  // AES-256 encrypted by service layer — never plain text
+  accessToken  String?   @db.Text
+  refreshToken String?   @db.Text
+  tokenExpiry  DateTime?
+
+  metadata Json?
+
+  lastSyncAt     DateTime?
+  lastSyncStatus String?
+  lastSyncError  String?   @db.Text
+  syncCount      Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaigns      Campaign[]
+  emailCampaigns EmailCampaign[]
+  syncLogs       SyncLog[]
+}
+
+// ============================================================
+// CAMPANHAS
+// ============================================================
+
+model Campaign {
+  id       String @id @default(cuid())
+  name     String
+  platform String
+  status   String
+
+  objective   String?
+  budget      Float    @default(0)
+  dailyBudget Float?
+  startDate   DateTime @db.Date
+  endDate     DateTime @db.Date
+
+  externalId           String?
+  platformConnectionId String?
+  platformConnection   PlatformConnection? @relation(fields: [platformConnectionId], references: [id])
+
+  kpi   String?
+  notes String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  metrics         CampaignMetrics[]
+  leadConversions LeadConversion[]
+  utmLinks        UTMLink[]
+  assetItems      AssetItem[]
+
+  @@index([platform])
+  @@index([status])
+  @@index([externalId])
+  @@index([platformConnectionId])
+  @@index([startDate])
+  @@index([deletedAt])
+}
+
+model CampaignMetrics {
+  id         String   @id @default(uuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  date       DateTime @db.Date
+
+  impressions Int   @default(0)
+  reach       Int   @default(0)
+  clicks      Int   @default(0)
+  ctr         Float @default(0)
+
+  spend Float @default(0)
+  cpc   Float @default(0)
+  cpm   Float @default(0)
+  cpl   Float @default(0)
+
+  leads           Int   @default(0)
+  conversions     Int   @default(0)
+  conversionValue Float @default(0)
+  roas            Float @default(0)
+
+  videoViews    Int?
+  videoWatchPct Float?
+
+  createdAt DateTime @default(now())
+
+  @@unique([campaignId, date])
+  @@index([campaignId])
+  @@index([date])
+}
+
+// ============================================================
+// UTM LINKS
+// ============================================================
+
+model UTMLink {
+  id        String @id @default(uuid())
+  createdBy String
+
+  title          String?
+  destinationUrl String
+  fullUrl        String  @db.Text
+  shortUrl       String?
+  shortCode      String? @unique
+
+  utmSource   String
+  utmMedium   String
+  utmCampaign String
+  utmContent  String?
+  utmTerm     String?
+
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id])
+
+  clicks       Int     @default(0)
+  isTemplate   Boolean @default(false)
+  templateName String?
+  isFavorite   Boolean @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([createdBy])
+  @@index([utmCampaign])
+  @@index([campaignId])
+  @@index([isTemplate])
+  @@index([isFavorite])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model UTMDestination {
+  id        String   @id @default(uuid())
+  label     String
+  url       String
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@index([createdBy])
+  @@index([createdAt])
+}
+
+// ============================================================
+// RECEITA & GANHOS
+// ============================================================
 
 model RevenueEntry {
   id           String   @id @default(cuid())
   date         DateTime @db.Date
   businessName String
+  leadEmail    String?
+  lead         Lead?    @relation(fields: [leadEmail], references: [email])
   setupValue   Float
-  mrrValue     Float    // Monthly Recurring Revenue
+  mrrValue     Float
   origin       String
+  originType   String   @default("INBOUND")
   product      String[]
+  closedBy     String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  @@index([date])
+  @@index([leadEmail])
+  @@index([originType])
+  @@index([closedBy])
 }
+
+// ============================================================
+// OKRs
+// ============================================================
 
 model OKR {
-  id        String      @id @default(cuid())
+  id        String   @id @default(cuid())
   quarter   String
+  year      Int?
   objective String
-  progress  Int         @default(0)
-  keyResults Json       // Array de KeyResult
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  progress  Int      @default(0)
+  keyResults Json
+  status    String   @default("ON_TRACK")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([year])
+  @@index([quarter])
 }
+
+// ============================================================
+// TIME
+// ============================================================
 
 model TeamMember {
-  id            String   @id @default(cuid())
-  name          String
-  role          String
-  avatar        String?
-  status        String   // online, busy, offline
-  lastActive    String
+  id             String   @id @default(cuid())
+  name           String
+  email          String?  @unique
+  role           String
+  avatar         String?
+  status         String
+  lastActive     String
   leadsGenerated Int      @default(0)
-  salesClosed   Int      @default(0)
+  salesClosed    Int      @default(0)
   goalProgress   Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
+
+// ============================================================
+// LANDING PAGES (GA4)
+// ============================================================
 
 model LandingPage {
-  id                String   @id @default(cuid())
-  name              String
-  path              String   @unique
-  views             Int      @default(0)
-  users             Int      @default(0)
-  conversions       Int      @default(0)
-  conversionRate    Float    @default(0)
-  avgEngagementTime String
-  bounceRate        Float    @default(0)
-  totalClicks       Int      @default(0)
-  source            String   @default("google_analytics")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                  String    @id @default(cuid())
+  name                String
+  path                String    @unique
+  views               Int       @default(0)
+  users               Int       @default(0)
+  sessions            Int       @default(0)
+  conversions         Int       @default(0)
+  conversionRate      Float     @default(0)
+  avgEngagementTime   String
+  avgSessionDuration  Float     @default(0)
+  bounceRate          Float     @default(0)
+  totalClicks         Int       @default(0)
+  source              String    @default("google_analytics")
+  lastSyncAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([conversions])
+  @@index([lastSyncAt])
 }
+
+// ============================================================
+// CALENDÁRIO
+// ============================================================
 
 model CampaignEvent {
-  id        String   @id @default(cuid())
-  title     String
-  startDate DateTime @db.Date
-  endDate   DateTime @db.Date
-  color     String
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  startDate   DateTime @db.Date
+  endDate     DateTime @db.Date
+  color       String
+  type        String   @default("CAMPAIGN")
+  notes       String?
+  campaignId  String?
+  externalId  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([startDate])
+  @@index([type])
+  @@index([campaignId])
 }
 
-model Campaign {
-  id        String   @id @default(cuid())
-  name      String
-  platform  String
-  status    String
-  budget    Float    @default(0)
-  startDate DateTime @db.Date
-  endDate   DateTime @db.Date
-  kpi       String?
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ============================================================
+// LEADS DIÁRIOS (entrada manual — funil agregado)
+// ============================================================
+
+model DailyLead {
+  id             String   @id @default(uuid())
+  date           DateTime @unique
+  leads          Int      @default(0)
+  mql            Int      @default(0)
+  sql            Int      @default(0)
+  sales          Int      @default(0)
+  conversionRate Float    @default(0)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([date])
 }
+
+// ============================================================
+// ASSETS / CRIATIVOS
+// ============================================================
 
 model AssetItem {
-  id        String   @id @default(cuid())
-  name      String
-  category  String
-  link      String
-  notes     String?
-  tags      String[] @default([])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  name       String
+  category   String
+  link       String
+  notes      String?
+  tags       String[] @default([])
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
 
-  versions  AssetVersion[]
+  versions AssetVersion[]
+
+  @@index([category])
+  @@index([campaignId])
+  @@index([deletedAt])
 }
 
 model AssetVersion {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   assetId   String
+  asset     AssetItem @relation(fields: [assetId], references: [id], onDelete: Cascade)
   label     String
   link      String
-  createdAt DateTime @default(now())
-
-  asset     AssetItem @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  notes     String?
+  createdAt DateTime  @default(now())
 
   @@index([assetId])
 }
 
+// ============================================================
+// E-MAIL MARKETING
+// ============================================================
+
 model EmailCampaign {
-  id          String   @id @default(cuid())
-  externalId  String?
-  source      String   @default("manual")
-  name        String
-  date        DateTime @db.Date
-  sends       Int      @default(0)
-  opens       Int      @default(0)
-  clicks      Int      @default(0)
-  conversions Int      @default(0)
-  bounce      Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                   String              @id @default(cuid())
+  externalId           String?
+  source               String              @default("manual")
+  platformConnectionId String?
+  platformConnection   PlatformConnection? @relation(fields: [platformConnectionId], references: [id])
+  name                 String
+  date                 DateTime            @db.Date
+  sends                Int                 @default(0)
+  opens                Int                 @default(0)
+  clicks               Int                 @default(0)
+  conversions          Int                 @default(0)
+  bounce               Int                 @default(0)
+  unsubscribes         Int                 @default(0)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
   @@unique([externalId, source])
+  @@index([date])
+  @@index([source])
 }
 
 model WorkflowEmailStat {
@@ -173,22 +604,123 @@ model WorkflowEmailStat {
   updatedAt        DateTime @updatedAt
 
   @@unique([externalId, source])
+  @@index([workflowId])
+  @@index([date])
 }
+
+// ============================================================
+// SISTEMA: Logs e Webhooks
+// ============================================================
 
 model SyncLog {
-  id         String   @id @default(cuid())
-  source     String
-  status     String
-  message    String?
-  startedAt  DateTime @default(now())
-  finishedAt DateTime?
+  id                   String              @id @default(cuid())
+  source               String
+  platformConnectionId String?
+  platformConnection   PlatformConnection? @relation(fields: [platformConnectionId], references: [id])
+  status               String
+  message              String?
+  recordsProcessed     Int                 @default(0)
+  startedAt            DateTime            @default(now())
+  finishedAt           DateTime?
 
   @@index([source, startedAt])
+  @@index([status])
+  @@index([platformConnectionId])
 }
 
+model LeadWebhookSource {
+  id            String   @id @default(uuid())
+  publicId      String   @unique
+  name          String
+  type          String
+  description   String?  @db.Text
+  isActive      Boolean  @default(true)
+  securityMode  String   @default("SECRET_URL")
+
+  automaticTags String[] @default([])
+  fieldMappings Json     @default("{}")
+
+  defaultPersona  String?
+  defaultPain     String?
+  defaultSource   String?
+  defaultCampaign String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  logs WebhookLog[]
+
+  @@index([publicId])
+  @@index([isActive])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model WebhookLog {
+  id          String             @id @default(uuid())
+  source      String
+  sourceId    String?
+  sourceRef   LeadWebhookSource? @relation(fields: [sourceId], references: [id])
+  payload     Json
+  normalized  Json?
+  result      Json?
+  status      String
+  leadEmail   String?
+  error       String?            @db.Text
+  receivedAt  DateTime           @default(now())
+  processedAt DateTime?
+
+  @@index([source])
+  @@index([sourceId])
+  @@index([status])
+  @@index([receivedAt])
+  @@index([leadEmail])
+}
+
+// ============================================================
+// FUNIS DE CONVERSÃO
+// Cada funil define um fluxo de rastreamento filtrado por parâmetros UTM.
+// Os leads são correspondidos via campos de first-touch.
+// ============================================================
+
+model Funnel {
+  id          String  @id @default(uuid())
+  name        String
+  description String?
+  color       String  @default("#3b82f6")
+
+  // UTM filter criteria — null = sem filtro (equivale a "todos")
+  filterSource      String?
+  filterMedium      String?
+  filterCampaign    String?
+  filterLandingPage String?
+
+  // Tag-based membership + GA4 impression pages
+  leadTags        String[] @default([])
+  impressionPages String[] @default([])
+
+  // Linked ad campaigns for spend attribution
+  campaignIds     String[] @default([])
+
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sortOrder])
+  @@index([isActive])
+}
+
+// ============================================================
+// DEPRECATED — Mantido até validação completa da migração
+// Dados migrados para Lead + LeadConversion na Fase 1.
+// Remover após 30 dias em produção com dados validados.
+// ============================================================
+
 model WebhookLead {
-  id                   String   @id @default(cuid())
-  externalId           String   @unique
+  id                   String    @id @default(cuid())
+  externalId           String    @unique
   name                 String?
   email                String?
   phone                String?
@@ -196,9 +728,9 @@ model WebhookLead {
   conversionIdentifier String?
   conversionName       String?
   lastConversionDate   DateTime?
-  source               String   @default("rdstation")
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  source               String    @default("rdstation")
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   @@index([conversionIdentifier])
   @@index([lastConversionDate])

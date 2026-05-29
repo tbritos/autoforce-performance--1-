@@ -1,466 +1,478 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Mail, Search, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+  Mail, Search, ChevronDown, ChevronRight, RefreshCw,
+  Send, Eye, MousePointerClick, TrendingDown, Loader2,
+} from 'lucide-react';
 import { DataService } from '../services/dataService';
-import { EmailCampaign, WorkflowEmailStat, SyncLog } from '../types';
+import { EmailCampaign, WorkflowEmailStat } from '../types';
+
+const fmt  = (n: number) => n.toLocaleString('pt-BR');
+const rate = (n: number) => `${n.toFixed(1)}%`;
+
+// ─── Rate badge ───────────────────────────────────────────────────────────────
+const RateBadge: React.FC<{ value: number; good?: number; warn?: number }> = ({
+  value, good = 25, warn = 15,
+}) => {
+  const color = value >= good
+    ? 'var(--green-600)'
+    : value >= warn
+    ? 'var(--yellow-600)'
+    : 'var(--red-500)';
+  const bg = value >= good
+    ? 'rgba(34,197,94,0.08)'
+    : value >= warn
+    ? 'rgba(234,179,8,0.08)'
+    : 'rgba(239,68,68,0.08)';
+  return (
+    <span style={{ display: 'inline-block', padding: '2px 7px', borderRadius: 'var(--r-sm)', fontSize: 11, fontWeight: 600, color, background: bg }}>
+      {rate(value)}
+    </span>
+  );
+};
+
+// ─── Sort button ──────────────────────────────────────────────────────────────
+type WfKey = 'name' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'unsubscribed' | 'openedRate' | 'clickedRate';
+
+const Th: React.FC<{
+  label: string; col?: WfKey; active?: WfKey; dir?: 'asc' | 'desc';
+  onSort?: (k: WfKey) => void; right?: boolean;
+}> = ({ label, col, active, dir, onSort, right }) => (
+  <th style={{ padding: '10px 14px', textAlign: right ? 'right' : 'left', whiteSpace: 'nowrap' }}>
+    {col && onSort ? (
+      <button type="button" onClick={() => onSort(col)}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: active === col ? 'var(--fg-primary)' : 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+        {label}
+        <span style={{ opacity: active === col ? 1 : 0.3, fontSize: 10 }}>{active === col ? (dir === 'asc' ? '▲' : '▼') : '▲'}</span>
+      </button>
+    ) : (
+      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</span>
+    )}
+  </th>
+);
+
+// ─── Main component ───────────────────────────────────────────────────────────
+const ITEMS = 15;
 
 const EmailsView: React.FC = () => {
-  const [campaigns, setCampaigns] = useState<EmailCampaign[]>([]);
+  const [campaigns,     setCampaigns]     = useState<EmailCampaign[]>([]);
   const [workflowStats, setWorkflowStats] = useState<WorkflowEmailStat[]>([]);
-  const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [logsLoading, setLogsLoading] = useState(true);
-  const [logFilter, setLogFilter] = useState<'all' | 'rd_emails' | 'rd_workflows'>('all');
-  const [showLogs, setShowLogs] = useState(false);
-
-  const [searchTerm, setSearchTerm] = useState('');
-  const [source] = useState<'rd'>('rd');
-  const [mode, setMode] = useState<'emails' | 'automation'>('emails');
-  const [syncing, setSyncing] = useState(false);
-  const [expandedWorkflow, setExpandedWorkflow] = useState<string | null>(null);
-  const [workflowSortKey, setWorkflowSortKey] = useState<'name' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'unsubscribed' | 'openedRate' | 'clickedRate'>('delivered');
-  const [workflowSortDirection, setWorkflowSortDirection] = useState<'asc' | 'desc'>('desc');
-  const itemsPerPage = 15;
-  const [emailPage, setEmailPage] = useState(1);
-  const [automationPage, setAutomationPage] = useState(1);
+  const [loading,       setLoading]       = useState(true);
+  const [syncing,       setSyncing]       = useState(false);
+  const [mode,          setMode]          = useState<'emails' | 'automation'>('emails');
+  const [searchTerm,    setSearchTerm]    = useState('');
+  const [emailPage,     setEmailPage]     = useState(1);
+  const [autoPage,      setAutoPage]      = useState(1);
+  const [expandedWf,    setExpandedWf]    = useState<string | null>(null);
+  const [sortKey,       setSortKey]       = useState<WfKey>('delivered');
+  const [sortDir,       setSortDir]       = useState<'asc' | 'desc'>('desc');
+  const [dateRange,     setDateRange]     = useState('45');
 
   const { startDateStr, endDateStr } = useMemo(() => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(end.getDate() - 45);
-    return {
-      startDateStr: start.toISOString().split('T')[0],
-      endDateStr: end.toISOString().split('T')[0],
-    };
-  }, []);
+    const end = new Date(), start = new Date();
+    start.setDate(end.getDate() - parseInt(dateRange));
+    return { startDateStr: start.toISOString().split('T')[0], endDateStr: end.toISOString().split('T')[0] };
+  }, [dateRange]);
 
   useEffect(() => {
-    const loadCampaigns = async () => {
+    const load = async () => {
       setLoading(true);
       try {
-        setLogsLoading(true);
         if (mode === 'emails') {
-          const data = await DataService.getRdEmailCampaigns();
+          const data = await DataService.syncRdEmailCampaigns(startDateStr, endDateStr);
           setCampaigns(Array.isArray(data) ? data : []);
           setWorkflowStats([]);
-        } else if (mode === 'automation') {
-          const data = await DataService.getRdWorkflowEmailStats();
+        } else {
+          const data = await DataService.syncRdWorkflowEmailStats(startDateStr, endDateStr);
           setWorkflowStats(Array.isArray(data) ? data : []);
           setCampaigns([]);
-        } else {
-          const data = await DataService.getEmailCampaigns();
-          setCampaigns(Array.isArray(data) ? data : []);
-          setWorkflowStats([]);
         }
-        const logs = await DataService.getSyncLogs(20);
-        setSyncLogs(Array.isArray(logs) ? logs : []);
-      } catch (error) {
-        console.error(error);
-        setCampaigns([]);
-        setWorkflowStats([]);
-        setSyncLogs([]);
-      } finally {
-        setLoading(false);
-        setLogsLoading(false);
-      }
+      } catch { setCampaigns([]); setWorkflowStats([]); }
+      finally { setLoading(false); }
     };
-    loadCampaigns();
-  }, [source, mode, startDateStr, endDateStr]);
+    load();
+  }, [mode, startDateStr]);
 
-  useEffect(() => {
-    setEmailPage(1);
-    setAutomationPage(1);
-  }, [mode, searchTerm]);
+  useEffect(() => { setEmailPage(1); setAutoPage(1); }, [mode, searchTerm]);
 
   const handleSync = async () => {
-    setSyncing(true);
+    setLoading(true);
     try {
       if (mode === 'automation') {
         const data = await DataService.syncRdWorkflowEmailStats(startDateStr, endDateStr);
         setWorkflowStats(Array.isArray(data) ? data : []);
-        setCampaigns([]);
       } else {
         const data = await DataService.syncRdEmailCampaigns(startDateStr, endDateStr);
         setCampaigns(Array.isArray(data) ? data : []);
-        setWorkflowStats([]);
       }
-      const logs = await DataService.getSyncLogs(20);
-      setSyncLogs(Array.isArray(logs) ? logs : []);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setSyncing(false);
-    }
+    } catch { /* noop */ }
+    finally { setLoading(false); }
   };
 
+  const handleSort = (key: WfKey) => {
+    if (sortKey === key) { setSortDir(d => d === 'asc' ? 'desc' : 'asc'); return; }
+    setSortKey(key); setSortDir('desc');
+  };
+
+  // ─── Email campaigns ──────────────────────────────────────────────────────
   const filteredCampaigns = useMemo(() => {
-    const searchLower = searchTerm.toLowerCase();
-    const filtered = campaigns.filter(item =>
-      item.name.toLowerCase().includes(searchLower)
-    );
-    return filtered
+    const q = searchTerm.toLowerCase();
+    return campaigns
+      .filter(c => c.name.toLowerCase().includes(q))
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [campaigns, searchTerm]);
 
-  const pagedCampaigns = useMemo(() => {
-    const startIndex = (emailPage - 1) * itemsPerPage;
-    return filteredCampaigns.slice(startIndex, startIndex + itemsPerPage);
-  }, [emailPage, filteredCampaigns]);
+  const pagedCampaigns   = filteredCampaigns.slice((emailPage - 1) * ITEMS, emailPage * ITEMS);
+  const totalEmailPages  = Math.max(1, Math.ceil(filteredCampaigns.length / ITEMS));
 
-  const totalEmailPages = Math.max(1, Math.ceil(filteredCampaigns.length / itemsPerPage));
+  const emailKpis = useMemo(() => {
+    if (!campaigns.length) return null;
+    const totalSends  = campaigns.reduce((s, c) => s + (c.sends  || 0), 0);
+    const totalOpens  = campaigns.reduce((s, c) => s + (c.opens  || 0), 0);
+    const totalClicks = campaigns.reduce((s, c) => s + (c.clicks || 0), 0);
+    const totalBounce = campaigns.reduce((s, c) => s + (c.bounce || 0), 0);
+    return {
+      count: campaigns.length,
+      totalSends,
+      openRate:   totalSends > 0 ? (totalOpens  / totalSends) * 100 : 0,
+      clickRate:  totalSends > 0 ? (totalClicks / totalSends) * 100 : 0,
+      bounceRate: totalSends > 0 ? (totalBounce / totalSends) * 100 : 0,
+    };
+  }, [campaigns]);
 
+  // ─── Automation workflows ─────────────────────────────────────────────────
   const groupedWorkflows = useMemo(() => {
+    const q = searchTerm.toLowerCase();
     const map = new Map<string, { name: string; items: WorkflowEmailStat[] }>();
     workflowStats.forEach(item => {
       const key = item.workflowName || 'Workflow';
-      const group = map.get(key) || { name: key, items: [] };
-      group.items.push(item);
-      map.set(key, group);
+      const g   = map.get(key) || { name: key, items: [] };
+      g.items.push(item);
+      map.set(key, g);
     });
-
-    const grouped = Array.from(map.values()).map(group => {
-      const totals = group.items.reduce(
-        (acc, item) => ({
-          delivered: acc.delivered + item.delivered,
-          opened: acc.opened + item.opened,
-          clicked: acc.clicked + item.clicked,
-          bounced: acc.bounced + item.bounced,
-          unsubscribed: acc.unsubscribed + item.unsubscribed,
-        }),
+    return Array.from(map.values()).map(g => {
+      const t = g.items.reduce(
+        (acc, i) => ({ delivered: acc.delivered + i.delivered, opened: acc.opened + i.opened, clicked: acc.clicked + i.clicked, bounced: acc.bounced + i.bounced, unsubscribed: acc.unsubscribed + i.unsubscribed }),
         { delivered: 0, opened: 0, clicked: 0, bounced: 0, unsubscribed: 0 }
       );
+      const base = t.delivered || 1;
+      return { ...g, totals: t, rates: { openedRate: (t.opened / base) * 100, clickedRate: (t.clicked / base) * 100 } };
+    }).filter(g => !q || g.name.toLowerCase().includes(q))
+      .sort((a, b) => {
+        const d = sortDir === 'asc' ? 1 : -1;
+        if (sortKey === 'name')        return a.name.localeCompare(b.name) * d;
+        if (sortKey === 'openedRate')  return (a.rates.openedRate  - b.rates.openedRate)  * d;
+        if (sortKey === 'clickedRate') return (a.rates.clickedRate - b.rates.clickedRate) * d;
+        return ((a.totals[sortKey as keyof typeof a.totals] ?? 0) - (b.totals[sortKey as keyof typeof b.totals] ?? 0)) * d;
+      });
+  }, [workflowStats, sortKey, sortDir, searchTerm]);
 
-      const deliveredBase = totals.delivered || 1;
-      return {
-        ...group,
-        totals,
-        rates: {
-          openedRate: (totals.opened / deliveredBase) * 100,
-          clickedRate: (totals.clicked / deliveredBase) * 100,
-        },
-      };
-    });
+  const pagedWorkflows  = groupedWorkflows.slice((autoPage - 1) * ITEMS, autoPage * ITEMS);
+  const totalAutoPages  = Math.max(1, Math.ceil(groupedWorkflows.length / ITEMS));
 
-    const sorted = [...grouped].sort((a, b) => {
-      const direction = workflowSortDirection === 'asc' ? 1 : -1;
-      if (workflowSortKey === 'name') {
-        return a.name.localeCompare(b.name) * direction;
-      }
-      if (workflowSortKey === 'openedRate') {
-        return (a.rates.openedRate - b.rates.openedRate) * direction;
-      }
-      if (workflowSortKey === 'clickedRate') {
-        return (a.rates.clickedRate - b.rates.clickedRate) * direction;
-      }
-      const aValue = a.totals[workflowSortKey] ?? 0;
-      const bValue = b.totals[workflowSortKey] ?? 0;
-      return (aValue - bValue) * direction;
-    });
+  const autoKpis = useMemo(() => {
+    if (!groupedWorkflows.length) return null;
+    const totalDel   = groupedWorkflows.reduce((s, w) => s + w.totals.delivered, 0);
+    const totalOpen  = groupedWorkflows.reduce((s, w) => s + w.totals.opened,    0);
+    const totalClick = groupedWorkflows.reduce((s, w) => s + w.totals.clicked,   0);
+    return {
+      count: groupedWorkflows.length,
+      totalDel,
+      openRate:  totalDel > 0 ? (totalOpen  / totalDel) * 100 : 0,
+      clickRate: totalDel > 0 ? (totalClick / totalDel) * 100 : 0,
+    };
+  }, [groupedWorkflows]);
 
-    return sorted;
-  }, [workflowStats, workflowSortDirection, workflowSortKey]);
-
-  const pagedWorkflows = useMemo(() => {
-    const startIndex = (automationPage - 1) * itemsPerPage;
-    return groupedWorkflows.slice(startIndex, startIndex + itemsPerPage);
-  }, [automationPage, groupedWorkflows]);
-
-  const totalAutomationPages = Math.max(1, Math.ceil(groupedWorkflows.length / itemsPerPage));
-
-  const handleWorkflowSort = (
-    key: 'name' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'unsubscribed' | 'openedRate' | 'clickedRate'
-  ) => {
-    if (workflowSortKey === key) {
-      setWorkflowSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
-      return;
-    }
-    setWorkflowSortKey(key);
-    setWorkflowSortDirection('desc');
+  const inputStyle: React.CSSProperties = {
+    padding: '7px 12px', fontSize: 12, borderRadius: 'var(--r-md)',
+    border: '1px solid var(--border)', background: 'var(--bg-secondary)',
+    color: 'var(--fg-primary)', outline: 'none',
   };
-
-  const formatSourceLabel = (value: string) => {
-    if (value === 'rd_emails') return 'RD Emails';
-    if (value === 'rd_workflows') return 'RD Automações';
-    return value;
-  };
-
-  const filteredLogs = useMemo(() => {
-    if (logFilter === 'all') return syncLogs;
-    return syncLogs.filter((log) => log.source === logFilter);
-  }, [logFilter, syncLogs]);
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-6 animate-fade-in-up">
-      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+    <div style={{ padding: '24px 28px 64px', maxWidth: 1480, margin: '0 auto' }} className="space-y-6 animate-fade-in-up">
+
+      {/* Header */}
+      <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-white mb-1 flex items-center gap-2">
-            <Mail className="text-autoforce-blue" />
-            Emails
-          </h2>
-          <p className="text-autoforce-lightGrey text-sm">
-            Emails e fluxos sincronizados automaticamente com o RD Station.
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--fg-primary)', margin: 0 }}>E-mails</h1>
+          <p style={{ fontSize: 13, color: 'var(--fg-muted)', marginTop: 4, marginBottom: 0 }}>
+            Disparos e fluxos sincronizados com o RD Station.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-xs text-autoforce-lightGrey">
-          <div className="flex items-center gap-2 bg-autoforce-darkest border border-autoforce-grey/30 p-1 rounded">
-            <button
-              type="button"
-              onClick={() => setMode('emails')}
-              className={`px-3 py-1.5 rounded text-xs font-bold transition ${mode === 'emails' ? 'bg-autoforce-blue text-white' : 'text-autoforce-lightGrey hover:text-white'}`}
-            >
-              Email Marketing
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('automation')}
-              className={`px-3 py-1.5 rounded text-xs font-bold transition ${mode === 'automation' ? 'bg-autoforce-blue text-white' : 'text-autoforce-lightGrey hover:text-white'}`}
-            >
-              Automacoes
-            </button>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+          {/* Mode toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: 3, borderRadius: 'var(--r-md)', border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+            {(['emails', 'automation'] as const).map(m => (
+              <button key={m} type="button" onClick={() => setMode(m)}
+                style={{ padding: '5px 14px', borderRadius: 'var(--r-sm)', fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer', transition: 'all .15s',
+                  background: mode === m ? 'var(--accent)' : 'transparent',
+                  color: mode === m ? 'white' : 'var(--fg-muted)',
+                }}>
+                {m === 'emails' ? 'Disparo de Email' : 'Fluxo de Email'}
+              </button>
+            ))}
           </div>
-          {mode === 'emails' && (
-            <button
-              type="button"
-              onClick={handleSync}
-              disabled={syncing}
-              className="bg-autoforce-darkest border border-autoforce-grey/30 px-3 py-2 rounded text-xs font-bold text-white hover:border-autoforce-blue disabled:opacity-50"
-            >
-              {syncing ? 'Sincronizando...' : 'Sincronizar'}
-            </button>
-          )}
-          {mode === 'automation' && (
-            <button
-              type="button"
-              onClick={handleSync}
-              disabled={syncing}
-              className="bg-autoforce-darkest border border-autoforce-grey/30 px-3 py-2 rounded text-xs font-bold text-white hover:border-autoforce-blue disabled:opacity-50"
-            >
-              {syncing ? 'Sincronizando...' : 'Sincronizar'}
-            </button>
-          )}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-autoforce-lightGrey" size={14} />
-            <input
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="bg-autoforce-darkest border border-autoforce-grey/30 rounded pl-8 pr-3 py-2 text-white focus:border-autoforce-blue focus:outline-none text-xs"
-              placeholder="Buscar campanha"
-            />
+
+          {/* Date range */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, ...inputStyle }}>
+            <RefreshCw size={12} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
+            <select value={dateRange} onChange={e => setDateRange(e.target.value)}
+              style={{ background: 'transparent', color: 'var(--fg-primary)', border: 'none', outline: 'none', cursor: 'pointer', fontSize: 12 }}>
+              <option value="7">7 dias</option>
+              <option value="30">30 dias</option>
+              <option value="45">45 dias</option>
+              <option value="90">90 dias</option>
+            </select>
           </div>
+
+          {/* Search */}
+          <div style={{ position: 'relative' }}>
+            <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-subtle)' }} />
+            <input type="text" placeholder="Buscar..." value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              style={{ ...inputStyle, paddingLeft: 30, width: 180 }} />
+          </div>
+
+          {/* Manual refresh */}
+          <button type="button" onClick={handleSync} disabled={loading}
+            style={{ padding: 8, borderRadius: 'var(--r-md)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-muted)', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.4 : 1 }}
+            title="Atualizar agora">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </button>
         </div>
       </div>
 
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => setShowLogs(prev => !prev)}
-          className="text-xs text-autoforce-lightGrey hover:text-white border border-autoforce-grey/30 rounded-full px-3 py-1.5 transition"
-        >
-          {showLogs ? 'Ocultar logs' : 'Ver logs'}
-        </button>
-      </div>
-
-      {showLogs && (
-        <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-4">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <h3 className="text-sm font-bold text-white">Logs de Sincronizacao</h3>
-            <div className="flex items-center gap-2 text-xs text-autoforce-lightGrey">
-              <span>Ultimas 20 execucoes</span>
-              <div className="flex items-center gap-1 bg-autoforce-black/40 border border-autoforce-grey/20 rounded-full p-1">
-                {['all', 'rd_emails', 'rd_workflows'].map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setLogFilter(value as typeof logFilter)}
-                    className={`px-3 py-1 rounded-full text-[11px] font-semibold transition ${
-                      logFilter === value
-                        ? 'bg-autoforce-blue/20 text-white'
-                        : 'text-autoforce-lightGrey hover:text-white'
-                    }`}
-                  >
-                    {value === 'all' ? 'Todos' : value === 'rd_emails' ? 'Emails' : 'Automações'}
-                  </button>
-                ))}
+      {/* KPI cards */}
+      {!loading && (mode === 'emails' ? emailKpis : autoKpis) && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {mode === 'emails' && emailKpis && (<>
+            <div className="ds-card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Mail size={16} style={{ color: 'var(--accent)' }} />
+              </div>
+              <div>
+                <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Disparos</p>
+                <p style={{ fontSize: 20, fontWeight: 700, color: 'var(--fg-primary)', margin: '1px 0 0' }}>{emailKpis.count}</p>
               </div>
             </div>
-          </div>
-          {logsLoading ? (
-            <div className="mt-3 text-xs text-autoforce-lightGrey">Carregando logs...</div>
-          ) : filteredLogs.length === 0 ? (
-            <div className="mt-3 text-xs text-autoforce-lightGrey">Nenhum log disponivel.</div>
-          ) : (
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-              {filteredLogs.map((log) => (
-                <div
-                  key={log.id}
-                  className="flex items-start justify-between gap-3 rounded-lg border border-autoforce-grey/20 bg-autoforce-black/40 px-3 py-2"
-                >
-                  <div>
-                    <div className="text-white font-semibold">{formatSourceLabel(log.source)}</div>
-                    <div className="text-autoforce-lightGrey">
-                      {new Date(log.startedAt).toLocaleString('pt-BR')}
-                    </div>
-                    {log.message && (
-                      <div className="text-autoforce-grey mt-1">{log.message}</div>
-                    )}
-                  </div>
-                  <span
-                    className={`px-2 py-1 rounded-full text-[10px] font-bold ${
-                      log.status === 'success'
-                        ? 'bg-green-500/20 text-green-300'
-                        : log.status === 'running'
-                        ? 'bg-autoforce-blue/20 text-autoforce-blue'
-                        : 'bg-red-500/20 text-red-300'
-                    }`}
-                  >
-                    {log.status === 'success' ? 'OK' : log.status === 'running' ? 'SYNC' : 'ERRO'}
-                  </span>
-                </div>
-              ))}
+            <div className="ds-card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: 'rgba(99,102,241,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Send size={16} style={{ color: '#818cf8' }} />
+              </div>
+              <div>
+                <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Envios</p>
+                <p style={{ fontSize: 20, fontWeight: 700, color: 'var(--fg-primary)', margin: '1px 0 0' }}>{fmt(emailKpis.totalSends)}</p>
+              </div>
             </div>
-          )}
+            <div className="ds-card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: 'rgba(251,146,60,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Eye size={16} style={{ color: '#fb923c' }} />
+              </div>
+              <div>
+                <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Tx. Abertura</p>
+                <p style={{ fontSize: 20, fontWeight: 700, color: emailKpis.openRate >= 25 ? 'var(--green-600)' : emailKpis.openRate >= 15 ? 'var(--yellow-600)' : 'var(--red-500)', margin: '1px 0 0' }}>{rate(emailKpis.openRate)}</p>
+              </div>
+            </div>
+            <div className="ds-card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: 'rgba(52,211,153,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <MousePointerClick size={16} style={{ color: 'var(--green-500)' }} />
+              </div>
+              <div>
+                <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Tx. Clique</p>
+                <p style={{ fontSize: 20, fontWeight: 700, color: 'var(--fg-primary)', margin: '1px 0 0' }}>{rate(emailKpis.clickRate)}</p>
+              </div>
+            </div>
+          </>)}
+
+          {mode === 'automation' && autoKpis && (<>
+            <div className="ds-card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Mail size={16} style={{ color: 'var(--accent)' }} />
+              </div>
+              <div>
+                <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Fluxos</p>
+                <p style={{ fontSize: 20, fontWeight: 700, color: 'var(--fg-primary)', margin: '1px 0 0' }}>{autoKpis.count}</p>
+              </div>
+            </div>
+            <div className="ds-card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: 'rgba(99,102,241,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Send size={16} style={{ color: '#818cf8' }} />
+              </div>
+              <div>
+                <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Entregues</p>
+                <p style={{ fontSize: 20, fontWeight: 700, color: 'var(--fg-primary)', margin: '1px 0 0' }}>{fmt(autoKpis.totalDel)}</p>
+              </div>
+            </div>
+            <div className="ds-card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: 'rgba(251,146,60,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Eye size={16} style={{ color: '#fb923c' }} />
+              </div>
+              <div>
+                <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Tx. Abertura</p>
+                <p style={{ fontSize: 20, fontWeight: 700, color: autoKpis.openRate >= 25 ? 'var(--green-600)' : autoKpis.openRate >= 15 ? 'var(--yellow-600)' : 'var(--red-500)', margin: '1px 0 0' }}>{rate(autoKpis.openRate)}</p>
+              </div>
+            </div>
+            <div className="ds-card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: 'rgba(52,211,153,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <MousePointerClick size={16} style={{ color: 'var(--green-500)' }} />
+              </div>
+              <div>
+                <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: 0 }}>Tx. Clique</p>
+                <p style={{ fontSize: 20, fontWeight: 700, color: 'var(--fg-primary)', margin: '1px 0 0' }}>{rate(autoKpis.clickRate)}</p>
+              </div>
+            </div>
+          </>)}
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6">
-        <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-6">
-          <h3 className="text-white font-bold mb-4">Historico</h3>
-          {mode === 'automation' ? (
-            loading ? (
-              <div className="text-sm text-autoforce-lightGrey">Carregando automacoes...</div>
-            ) : groupedWorkflows.length === 0 ? (
-              <div className="text-sm text-autoforce-lightGrey">Nenhum fluxo encontrado.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left text-autoforce-lightGrey">
-                  <thead className="text-xs text-autoforce-grey uppercase bg-autoforce-black/50">
-                    <tr>
-                      <th className="px-4 py-3 rounded-l-lg">
-                        <button
-                          type="button"
-                          onClick={() => handleWorkflowSort('name')}
-                          className={`text-left font-bold uppercase tracking-wider ${workflowSortKey === 'name' ? 'text-white' : 'text-autoforce-grey'}`}
-                        >
-                          Fluxo {workflowSortKey === 'name' ? (workflowSortDirection === 'asc' ? '▲' : '▼') : ''}
-                        </button>
-                      </th>
-                      <th className="px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => handleWorkflowSort('delivered')}
-                          className={`text-left font-bold uppercase tracking-wider ${workflowSortKey === 'delivered' ? 'text-white' : 'text-autoforce-grey'}`}
-                        >
-                          Entregues {workflowSortKey === 'delivered' ? (workflowSortDirection === 'asc' ? '▲' : '▼') : ''}
-                        </button>
-                      </th>
-                      <th className="px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => handleWorkflowSort('opened')}
-                          className={`text-left font-bold uppercase tracking-wider ${workflowSortKey === 'opened' ? 'text-white' : 'text-autoforce-grey'}`}
-                        >
-                          Aberturas {workflowSortKey === 'opened' ? (workflowSortDirection === 'asc' ? '▲' : '▼') : ''}
-                        </button>
-                      </th>
-                      <th className="px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => handleWorkflowSort('clicked')}
-                          className={`text-left font-bold uppercase tracking-wider ${workflowSortKey === 'clicked' ? 'text-white' : 'text-autoforce-grey'}`}
-                        >
-                          Cliques {workflowSortKey === 'clicked' ? (workflowSortDirection === 'asc' ? '▲' : '▼') : ''}
-                        </button>
-                      </th>
-                      <th className="px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => handleWorkflowSort('bounced')}
-                          className={`text-left font-bold uppercase tracking-wider ${workflowSortKey === 'bounced' ? 'text-white' : 'text-autoforce-grey'}`}
-                        >
-                          Bounce {workflowSortKey === 'bounced' ? (workflowSortDirection === 'asc' ? '▲' : '▼') : ''}
-                        </button>
-                      </th>
-                      <th className="px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => handleWorkflowSort('unsubscribed')}
-                          className={`text-left font-bold uppercase tracking-wider ${workflowSortKey === 'unsubscribed' ? 'text-white' : 'text-autoforce-grey'}`}
-                        >
-                          Descad. {workflowSortKey === 'unsubscribed' ? (workflowSortDirection === 'asc' ? '▲' : '▼') : ''}
-                        </button>
-                      </th>
-                      <th className="px-4 py-3 rounded-r-lg">
-                        <button
-                          type="button"
-                          onClick={() => handleWorkflowSort('openedRate')}
-                          className={`text-left font-bold uppercase tracking-wider ${workflowSortKey === 'openedRate' ? 'text-white' : 'text-autoforce-grey'}`}
-                        >
-                          Taxas {workflowSortKey === 'openedRate' ? (workflowSortDirection === 'asc' ? '▲' : '▼') : ''}
-                        </button>
-                      </th>
+      {/* Table card */}
+      <div className="ds-card" style={{ overflow: 'hidden', padding: 0 }}>
+        {/* Card header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Mail size={14} style={{ color: 'var(--accent)' }} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-primary)' }}>
+              {mode === 'emails' ? 'Disparo de Email' : 'Fluxo de Email'}
+            </span>
+            {!loading && (
+              <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>
+                · {mode === 'emails' ? filteredCampaigns.length : groupedWorkflows.length} {mode === 'emails' ? 'disparos' : 'fluxos'}
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: loading ? 'var(--yellow-500)' : 'var(--green-500)', display: 'inline-block' }} className={loading ? 'animate-pulse' : ''} />
+            <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{loading ? 'Carregando...' : 'Sincronizado'}</span>
+          </div>
+        </div>
+
+        {loading ? (
+          <div style={{ padding: '48px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, color: 'var(--fg-muted)' }}>
+            <RefreshCw size={20} className="animate-spin" />
+            <p style={{ fontSize: 13, margin: 0 }}>Carregando dados...</p>
+          </div>
+        ) : mode === 'emails' ? (
+          filteredCampaigns.length === 0 ? (
+            <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>
+              Nenhum disparo encontrado.
+            </div>
+          ) : (
+            <>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      <Th label="Campanha" />
+                      <Th label="Data" />
+                      <Th label="Envios" right />
+                      <Th label="Abertura" right />
+                      <Th label="Tx. Abertura" right />
+                      <Th label="Cliques" right />
+                      <Th label="Tx. Clique" right />
+                      <Th label="Bounce" right />
                     </tr>
                   </thead>
                   <tbody>
-                    {pagedWorkflows.map((workflow) => (
-                      <React.Fragment key={workflow.name}>
-                        <tr
-                          className="border-b border-autoforce-grey/10 hover:bg-autoforce-blue/5 transition-colors cursor-pointer"
-                          onClick={() => setExpandedWorkflow(prev => (prev === workflow.name ? null : workflow.name))}
-                        >
-                          <td className="px-4 py-3 font-medium text-white">
-                            <div className="flex items-center gap-2">
-                              {expandedWorkflow === workflow.name ? (
-                                <ChevronDown size={14} className="text-autoforce-blue" />
-                              ) : (
-                                <ChevronRight size={14} className="text-autoforce-blue" />
-                              )}
-                              <span>{workflow.name}</span>
-                            </div>
+                    {pagedCampaigns.map(item => {
+                      const openRate  = item.sends > 0 ? (item.opens  / item.sends) * 100 : 0;
+                      const clickRate = item.sends > 0 ? (item.clicks / item.sends) * 100 : 0;
+                      return (
+                        <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }} className="hover:bg-white/[0.02] transition-colors">
+                          <td style={{ padding: '10px 14px', maxWidth: 320 }}>
+                            <p style={{ margin: 0, fontWeight: 600, color: 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</p>
                           </td>
-                          <td className="px-4 py-3">{workflow.totals.delivered.toLocaleString()}</td>
-                          <td className="px-4 py-3">{workflow.totals.opened.toLocaleString()}</td>
-                          <td className="px-4 py-3">{workflow.totals.clicked.toLocaleString()}</td>
-                          <td className="px-4 py-3">{workflow.totals.bounced.toLocaleString()}</td>
-                          <td className="px-4 py-3">{workflow.totals.unsubscribed.toLocaleString()}</td>
-                          <td className="px-4 py-3 text-xs">
-                            <div>Abertura: {workflow.rates.openedRate.toFixed(1)}%</div>
-                            <div>Clique: {workflow.rates.clickedRate.toFixed(1)}%</div>
+                          <td style={{ padding: '10px 14px', color: 'var(--fg-muted)', whiteSpace: 'nowrap', fontSize: 12 }}>{item.date}</td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', color: 'var(--fg-primary)', fontWeight: 600 }}>{fmt(item.sends)}</td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', color: 'var(--fg-muted)' }}>{fmt(item.opens)}</td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right' }}><RateBadge value={openRate} /></td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', color: 'var(--fg-muted)' }}>{fmt(item.clicks)}</td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right' }}><RateBadge value={clickRate} good={3} warn={1} /></td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: item.bounce > 0 ? 'var(--red-500)' : 'var(--fg-muted)' }}>
+                              {item.bounce > 0 && <TrendingDown size={11} />}
+                              {fmt(item.bounce)}
+                            </span>
                           </td>
                         </tr>
-                        {expandedWorkflow === workflow.name && (
-                          <tr className="bg-autoforce-black/40">
-                            <td colSpan={7} className="px-4 py-3">
-                              <div className="text-xs text-autoforce-lightGrey mb-2">Emails do fluxo</div>
-                              <div className="overflow-x-auto">
-                                <table className="w-full text-xs text-left text-autoforce-lightGrey">
-                                  <thead className="text-[10px] text-autoforce-grey uppercase">
-                                    <tr>
-                                      <th className="py-2">Email</th>
-                                      <th className="py-2">Entregues</th>
-                                      <th className="py-2">Aberturas</th>
-                                      <th className="py-2">Cliques</th>
-                                      <th className="py-2">Bounce</th>
-                                      <th className="py-2">Descad.</th>
-                                      <th className="py-2">Taxas</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {workflow.items.map((item) => (
-                                      <tr key={item.id} className="border-t border-autoforce-grey/10">
-                                        <td className="py-2 text-white">{item.emailName}</td>
-                                        <td className="py-2">{item.delivered.toLocaleString()}</td>
-                                        <td className="py-2">{item.opened.toLocaleString()}</td>
-                                        <td className="py-2">{item.clicked.toLocaleString()}</td>
-                                        <td className="py-2">{item.bounced.toLocaleString()}</td>
-                                        <td className="py-2">{item.unsubscribed.toLocaleString()}</td>
-                                        <td className="py-2">
-                                          <div>Abertura: {item.openedRate.toFixed(1)}%</div>
-                                          <div>Clique: {item.clickedRate.toFixed(1)}%</div>
-                                        </td>
-                                      </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <Pagination page={emailPage} total={totalEmailPages} onPage={setEmailPage} count={filteredCampaigns.length} items={ITEMS} />
+            </>
+          )
+        ) : (
+          groupedWorkflows.length === 0 ? (
+            <div style={{ padding: '48px 16px', textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>
+              Nenhum fluxo encontrado.
+            </div>
+          ) : (
+            <>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      <Th label="Fluxo"      col="name"          active={sortKey} dir={sortDir} onSort={handleSort} />
+                      <Th label="Entregues"  col="delivered"     active={sortKey} dir={sortDir} onSort={handleSort} right />
+                      <Th label="Aberturas"  col="opened"        active={sortKey} dir={sortDir} onSort={handleSort} right />
+                      <Th label="Tx. Abert." col="openedRate"    active={sortKey} dir={sortDir} onSort={handleSort} right />
+                      <Th label="Cliques"    col="clicked"       active={sortKey} dir={sortDir} onSort={handleSort} right />
+                      <Th label="Tx. Clique" col="clickedRate"   active={sortKey} dir={sortDir} onSort={handleSort} right />
+                      <Th label="Bounce"     col="bounced"       active={sortKey} dir={sortDir} onSort={handleSort} right />
+                      <Th label="Descad."    col="unsubscribed"  active={sortKey} dir={sortDir} onSort={handleSort} right />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedWorkflows.map(wf => (
+                      <React.Fragment key={wf.name}>
+                        <tr style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                          className="hover:bg-white/[0.02] transition-colors"
+                          onClick={() => setExpandedWf(prev => prev === wf.name ? null : wf.name)}>
+                          <td style={{ padding: '10px 14px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              {expandedWf === wf.name
+                                ? <ChevronDown size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                                : <ChevronRight size={14} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />}
+                              <span style={{ fontWeight: 600, color: 'var(--fg-primary)' }}>{wf.name}</span>
+                              <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>{wf.items.length} e-mails</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600, color: 'var(--fg-primary)' }}>{fmt(wf.totals.delivered)}</td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', color: 'var(--fg-muted)' }}>{fmt(wf.totals.opened)}</td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right' }}><RateBadge value={wf.rates.openedRate} /></td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', color: 'var(--fg-muted)' }}>{fmt(wf.totals.clicked)}</td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right' }}><RateBadge value={wf.rates.clickedRate} good={3} warn={1} /></td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', color: wf.totals.bounced > 0 ? 'var(--red-500)' : 'var(--fg-muted)' }}>{fmt(wf.totals.bounced)}</td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', color: 'var(--fg-muted)' }}>{fmt(wf.totals.unsubscribed)}</td>
+                        </tr>
+                        {expandedWf === wf.name && (
+                          <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                            <td colSpan={8} style={{ padding: '0 0 0 40px', background: 'var(--bg-secondary)' }}>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                <thead>
+                                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                                    {['E-mail', 'Entregues', 'Aberturas', 'Tx. Abert.', 'Cliques', 'Tx. Clique', 'Bounce', 'Descad.'].map((h, i) => (
+                                      <th key={h} style={{ padding: '8px 14px', textAlign: i > 0 ? 'right' : 'left', fontSize: 10, fontWeight: 600, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</th>
                                     ))}
-                                  </tbody>
-                                </table>
-                              </div>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {wf.items.map(item => (
+                                    <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                                      <td style={{ padding: '8px 14px', color: 'var(--fg-primary)', fontWeight: 500 }}>{item.emailName}</td>
+                                      <td style={{ padding: '8px 14px', textAlign: 'right', color: 'var(--fg-muted)' }}>{fmt(item.delivered)}</td>
+                                      <td style={{ padding: '8px 14px', textAlign: 'right', color: 'var(--fg-muted)' }}>{fmt(item.opened)}</td>
+                                      <td style={{ padding: '8px 14px', textAlign: 'right' }}><RateBadge value={item.openedRate} /></td>
+                                      <td style={{ padding: '8px 14px', textAlign: 'right', color: 'var(--fg-muted)' }}>{fmt(item.clicked)}</td>
+                                      <td style={{ padding: '8px 14px', textAlign: 'right' }}><RateBadge value={item.clickedRate} good={3} warn={1} /></td>
+                                      <td style={{ padding: '8px 14px', textAlign: 'right', color: item.bounced > 0 ? 'var(--red-500)' : 'var(--fg-muted)' }}>{fmt(item.bounced)}</td>
+                                      <td style={{ padding: '8px 14px', textAlign: 'right', color: 'var(--fg-muted)' }}>{fmt(item.unsubscribed)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
                             </td>
                           </tr>
                         )}
@@ -469,88 +481,32 @@ const EmailsView: React.FC = () => {
                   </tbody>
                 </table>
               </div>
-            )
-          ) : loading ? (
-            <div className="text-sm text-autoforce-lightGrey">Carregando campanhas...</div>
-          ) : filteredCampaigns.length === 0 ? (
-            <div className="text-sm text-autoforce-lightGrey">Nenhuma campanha encontrada.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left text-autoforce-lightGrey">
-                <thead className="text-xs text-autoforce-grey uppercase bg-autoforce-black/50">
-                  <tr>
-                    <th className="px-4 py-3 rounded-l-lg">Campanha</th>
-                    <th className="px-4 py-3">Data</th>
-                    <th className="px-4 py-3">Envios</th>
-                    <th className="px-4 py-3">Aberturas</th>
-                    <th className="px-4 py-3">Cliques</th>
-                    <th className="px-4 py-3">Conversoes</th>
-                    <th className="px-4 py-3 rounded-r-lg">Bounce</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedCampaigns.map(item => (
-                    <tr key={item.id} className="border-b border-autoforce-grey/10 hover:bg-autoforce-blue/5 transition-colors">
-                      <td className="px-4 py-3 font-medium text-white">{item.name}</td>
-                      <td className="px-4 py-3">{item.date}</td>
-                      <td className="px-4 py-3">{item.sends}</td>
-                      <td className="px-4 py-3">{item.opens}</td>
-                      <td className="px-4 py-3">{item.clicks}</td>
-                      <td className="px-4 py-3">{item.conversions}</td>
-                      <td className="px-4 py-3">{item.bounce}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {mode === 'automation' ? (
-            groupedWorkflows.length > itemsPerPage && (
-              <div className="mt-4 flex items-center justify-between text-xs text-autoforce-lightGrey">
-                <span>Pagina {automationPage} de {totalAutomationPages}</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAutomationPage(prev => Math.max(1, prev - 1))}
-                    className="px-3 py-1 rounded border border-autoforce-grey/30 hover:border-autoforce-blue"
-                  >
-                    Anterior
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAutomationPage(prev => Math.min(totalAutomationPages, prev + 1))}
-                    className="px-3 py-1 rounded border border-autoforce-grey/30 hover:border-autoforce-blue"
-                  >
-                    Proxima
-                  </button>
-                </div>
-              </div>
-            )
-          ) : (
-            filteredCampaigns.length > itemsPerPage && (
-              <div className="mt-4 flex items-center justify-between text-xs text-autoforce-lightGrey">
-                <span>Pagina {emailPage} de {totalEmailPages}</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEmailPage(prev => Math.max(1, prev - 1))}
-                    className="px-3 py-1 rounded border border-autoforce-grey/30 hover:border-autoforce-blue"
-                  >
-                    Anterior
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEmailPage(prev => Math.min(totalEmailPages, prev + 1))}
-                    className="px-3 py-1 rounded border border-autoforce-grey/30 hover:border-autoforce-blue"
-                  >
-                    Proxima
-                  </button>
-                </div>
-              </div>
-            )
-          )}
-        </div>
+              <Pagination page={autoPage} total={totalAutoPages} onPage={setAutoPage} count={groupedWorkflows.length} items={ITEMS} />
+            </>
+          )
+        )}
+      </div>
+    </div>
+  );
+};
 
+// ─── Pagination ───────────────────────────────────────────────────────────────
+const Pagination: React.FC<{ page: number; total: number; onPage: (p: number) => void; count: number; items: number }> = ({ page, total, onPage, count, items }) => {
+  if (total <= 1) return null;
+  const start = (page - 1) * items + 1;
+  const end   = Math.min(page * items, count);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
+      <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{start}–{end} de {count}</span>
+      <div style={{ display: 'flex', gap: 4 }}>
+        <button type="button" onClick={() => onPage(Math.max(1, page - 1))} disabled={page === 1}
+          style={{ padding: '4px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-muted)', cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.3 : 1, fontSize: 12 }}>
+          Anterior
+        </button>
+        <button type="button" onClick={() => onPage(Math.min(total, page + 1))} disabled={page === total}
+          style={{ padding: '4px 10px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-muted)', cursor: page === total ? 'not-allowed' : 'pointer', opacity: page === total ? 0.3 : 1, fontSize: 12 }}>
+          Próxima
+        </button>
       </div>
     </div>
   );

@@ -10,10 +10,20 @@ type RdWorkflowEmailRow = Record<string, any>;
 type RdConversionRow = Record<string, any>;
 type RdSegmentationRow = Record<string, any>;
 type RdContactRow = Record<string, any>;
+type RdConversionPayload = Record<string, any>;
+type AnyRecord = Record<string, any>;
 
 const RD_API_BASE = 'https://api.rd.services/platform';
 
 export const getRdAccessToken = async (): Promise<string> => {
+  // PlatformConnection first (Phase 2+), .env fallback (Phase 1 compat)
+  try {
+    const { OAuthService } = await import('./oauth.service');
+    return await OAuthService.getValidToken('RD_STATION');
+  } catch {
+    // Fall through to legacy .env approach
+  }
+
   const token = process.env.RD_STATION_ACCESS_TOKEN;
   if (token) return token;
 
@@ -407,4 +417,34 @@ export const fetchRdContactDetails = async (contactUuid: string): Promise<RdCont
   }
 
   return (await response.json()) as RdContactRow;
+};
+
+export const sendRdConversionEvent = async (payload: RdConversionPayload): Promise<{ event_uuid?: string; raw: any }> => {
+  const accessToken = await getRdAccessToken();
+  const workspaceId = process.env.RD_STATION_WORKSPACE_ID;
+
+  const url = new URL(`${RD_API_BASE}/events`);
+  url.searchParams.set('event_type', 'conversion');
+
+  const response = await fetch(url.toString(), {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+      ...(workspaceId ? { 'X-RD-Station-Workspace-Id': workspaceId } : {}),
+    },
+    body: JSON.stringify({
+      event_type: 'CONVERSION',
+      event_family: 'CDP',
+      payload,
+    }),
+  });
+
+  const data = await response.json().catch(async () => ({ text: await response.text().catch(() => '') })) as AnyRecord;
+  if (!response.ok) {
+    throw new Error(`RD conversion event error: ${JSON.stringify(data)}`);
+  }
+
+  return { event_uuid: data?.event_uuid, raw: data };
 };

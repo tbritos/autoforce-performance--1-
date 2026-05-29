@@ -11,7 +11,7 @@ export class AnalyticsService {
     endDate?: string,
     hostName?: string
   ): Promise<LandingPage[]> {
-    const useGA4 = !!process.env.GA4_PROPERTY_ID && !!process.env.GA4_CREDENTIALS_PATH;
+    const useGA4 = !!(process.env.GA4_PROPERTY_IDS || process.env.GA4_PROPERTY_ID);
 
     if (useGA4) {
       try {
@@ -47,8 +47,8 @@ export class AnalyticsService {
    * Força sincronização com GA4 (endpoint manual)
    */
   static async syncWithGA4(): Promise<LandingPage[]> {
-    if (!process.env.GA4_PROPERTY_ID || !process.env.GA4_CREDENTIALS_PATH) {
-      throw new Error('Google Analytics 4 não está configurado. Configure GA4_PROPERTY_ID e GA4_CREDENTIALS_PATH no .env');
+    if (!process.env.GA4_PROPERTY_IDS && !process.env.GA4_PROPERTY_ID) {
+      throw new Error('Google Analytics 4 não está configurado. Configure GA4_PROPERTY_IDS no .env ou na tela de Integrações');
     }
 
     return await syncLandingPagesFromGA4();

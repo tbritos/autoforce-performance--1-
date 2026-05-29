@@ -1,0 +1,750 @@
+// ============================================================
+// AutoForce Marketing Hub — Schema v2
+// Referência definitiva do banco de dados reformulado
+// Criado em: 2026-05-23
+//
+// NÃO APLICAR DIRETAMENTE — usar como referência para as
+// migrations incrementais de cada fase de desenvolvimento.
+// Ver DATABASE_DESIGN.md para estratégia de migração.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// GRUPO 1 — AUTENTICAÇÃO & USUÁRIOS
+// ============================================================
+
+model User {
+  id          String    @id @default(uuid())
+  email       String    @unique
+  name        String
+  avatar      String?
+  role        UserRole  @default(MEMBER)
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  createdUtmLinks   UTMLink[]           @relation("CreatedBy")
+  createdRevenue    RevenueEntry[]      @relation("CreatedBy")
+  leadStatusChanges LeadStatusHistory[]
+}
+
+enum UserRole {
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+// ============================================================
+// GRUPO 2 — LEADS (entidade central do sistema)
+// ============================================================
+
+model Lead {
+  // Identity — email é a chave natural; sempre normalizado (lowercase + trim) antes de salvar
+  id    String @id @default(uuid())
+  email String @unique
+
+  // Dados pessoais — preenchidos progressivamente pelas conversões
+  // Regra: só preenche campo em branco, nunca sobrescreve dado existente
+  name     String?
+  phone    String?
+  company  String?
+  jobTitle String?
+  city     String?
+  state    String?
+
+  // Posição no funil
+  status LeadStatus @default(LEAD)
+
+  // Atribuição first-touch — preenchida na primeira conversão, nunca alterada depois
+  firstSource      String?
+  firstMedium      String?
+  firstCampaign    String?
+  firstLandingPage String?
+
+  // Scoring
+  score Int     @default(0) // 0–100
+  isHot Boolean @default(false)
+
+  // Gestão
+  tags       String[]
+  notes      String?  @db.Text
+  assignedTo String? // email do SDR/vendedor responsável
+
+  // Timestamps da jornada
+  firstSeenAt DateTime  @default(now()) // Timestamp da 1ª conversão
+  lastSeenAt  DateTime  @default(now()) // Atualizado a cada nova conversão
+  qualifiedAt DateTime? // Quando status → MQL
+  convertedAt DateTime? // Quando status → CLIENT
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete — nunca deletar permanentemente
+
+  // Relations
+  conversions    LeadConversion[]
+  statusHistory  LeadStatusHistory[]
+  revenueEntries RevenueEntry[]
+
+  @@index([status])
+  @@index([firstSource])
+  @@index([isHot])
+  @@index([score])
+  @@index([assignedTo])
+  @@index([lastSeenAt])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+enum LeadStatus {
+  LEAD // Captado, sem qualificação
+  MQL // Marketing Qualified Lead
+  SQL // Sales Qualified Lead
+  OPPORTUNITY // Em negociação ativa
+  CLIENT // Ganho — tornou-se cliente
+  LOST // Perdido
+  DISQUALIFIED // Desqualificado (duplicata, inválido, etc.)
+}
+
+// Registro imutável de cada vez que um lead aparece em uma fonte/formulário.
+// Nunca editar — apenas criar novos registros.
+model LeadConversion {
+  id String @id @default(uuid())
+
+  // Lead associado
+  leadEmail String
+  lead      Lead   @relation(fields: [leadEmail], references: [email])
+
+  // Origem da conversão
+  source     String  // rdstation | meta_lead_ads | google | webhook | manual
+  externalId String? // ID externo para deduplicação por fonte
+
+  // Campanha (opcional — nem toda conversão tem campanha identificada)
+  campaignId   String?
+  campaign     Campaign? @relation(fields: [campaignId], references: [id])
+  campaignName String? // Denormalizado — preserva nome se campanha for deletada futuramente
+
+  // Formulário / página de entrada
+  formName    String?
+  landingPage String?
+
+  // UTMs no exato momento da conversão (imutável)
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmContent  String?
+  utmTerm     String?
+
+  // Payload bruto do formulário (exatamente como foi recebido)
+  rawData Json
+
+  convertedAt DateTime
+  createdAt   DateTime @default(now())
+
+  @@unique([externalId, source]) // Deduplicação: mesmo lead, mesma fonte, não duplica
+  @@index([leadEmail])
+  @@index([source])
+  @@index([campaignId])
+  @@index([convertedAt])
+  @@index([utmCampaign])
+  @@index([utmSource])
+}
+
+// Auditoria completa de mudanças de status no funil.
+// Toda mudança de Lead.status deve gerar um registro aqui (via transaction).
+model LeadStatusHistory {
+  id          String     @id @default(uuid())
+  leadEmail   String
+  lead        Lead       @relation(fields: [leadEmail], references: [email])
+  fromStatus  LeadStatus? // null = criação do lead
+  toStatus    LeadStatus
+  changedBy   String? // email do usuário; null = mudança automática pelo sistema
+  user        User?   @relation(fields: [changedBy], references: [email])
+  reason      String?
+  changedAt   DateTime   @default(now())
+
+  @@index([leadEmail])
+  @@index([changedAt])
+}
+
+// ============================================================
+// GRUPO 3 — CONEXÕES DE PLATAFORMAS
+// ============================================================
+
+model PlatformConnection {
+  id       String           @id @default(uuid())
+  platform Platform         @unique // Apenas uma conexão por plataforma
+  status   ConnectionStatus @default(DISCONNECTED)
+
+  // Conta conectada
+  accountId   String?
+  accountName String?
+  extraIds    String[] // IDs adicionais (ex: múltiplos ad accounts do Meta)
+
+  // Tokens de autenticação
+  // ATENÇÃO: armazenados criptografados (AES-256) pelo service — nunca em texto puro
+  accessToken  String?   @db.Text
+  refreshToken String?   @db.Text
+  tokenExpiry  DateTime?
+
+  // Configurações específicas da plataforma (ver DATABASE_DESIGN.md para estrutura)
+  // Meta:     { adAccountId, pageId, pixelId }
+  // GA4:      { propertyId }
+  // RD:       { workspaceId }
+  // Calendar: { calendarId }
+  metadata Json?
+
+  // Rastreamento de sync
+  lastSyncAt     DateTime?
+  lastSyncStatus String? // success | error | partial
+  lastSyncError  String?   @db.Text
+  syncCount      Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  campaigns      Campaign[]
+  emailCampaigns EmailCampaign[]
+  syncLogs       SyncLog[]
+}
+
+enum Platform {
+  META_ADS
+  GOOGLE_ADS
+  GOOGLE_ANALYTICS
+  RD_STATION
+  GOOGLE_CALENDAR
+}
+
+enum ConnectionStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+  EXPIRED
+}
+
+// ============================================================
+// GRUPO 4 — CAMPANHAS
+// ============================================================
+
+model Campaign {
+  id   String @id @default(uuid())
+  name String
+
+  platform  CampaignPlatform
+  status    CampaignStatus   @default(DRAFT)
+  objective String? // awareness | traffic | leads | conversions | sales
+
+  // Orçamento
+  budget      Float?
+  dailyBudget Float?
+  startDate   DateTime? @db.Date
+  endDate     DateTime? @db.Date
+
+  // Vínculo com plataforma externa
+  externalId           String? // ID da campanha na plataforma (Meta/Google)
+  platformConnectionId String?
+  platformConnection   PlatformConnection? @relation(fields: [platformConnectionId], references: [id])
+
+  kpi   String?
+  notes String? @db.Text
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  // Relations
+  metrics         CampaignMetrics[]
+  leadConversions LeadConversion[]
+  utmLinks        UTMLink[]
+  assetItems      AssetItem[]
+
+  @@index([platform])
+  @@index([status])
+  @@index([externalId])
+  @@index([platformConnectionId])
+  @@index([startDate])
+  @@index([deletedAt])
+}
+
+enum CampaignPlatform {
+  META
+  GOOGLE_ADS
+  TIKTOK
+  LINKEDIN
+  EMAIL
+  ORGANIC
+  OTHER
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  REVIEW
+  ENDED
+  ARCHIVED
+}
+
+// Snapshot diário imutável das métricas de uma campanha.
+// Regra: upsert com @@unique([campaignId, date]) — nunca duplicar o mesmo dia.
+model CampaignMetrics {
+  id         String   @id @default(uuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  date       DateTime @db.Date // Data do snapshot
+
+  // Alcance e engajamento
+  impressions Int   @default(0)
+  reach       Int   @default(0)
+  clicks      Int   @default(0)
+  ctr         Float @default(0) // Click-through rate (%)
+
+  // Custo
+  spend Float @default(0) // Gasto no dia (R$)
+  cpc   Float @default(0) // Custo por clique
+  cpm   Float @default(0) // Custo por 1.000 impressões
+  cpl   Float @default(0) // Custo por lead
+
+  // Conversões e retorno
+  leads           Int   @default(0)
+  conversions     Int   @default(0)
+  conversionValue Float @default(0)
+  roas            Float @default(0) // Return on ad spend
+
+  // Vídeo (campos opcionais, usados quando aplicável)
+  videoViews    Int?
+  videoWatchPct Float? // % médio assistido
+
+  createdAt DateTime @default(now())
+
+  @@unique([campaignId, date])
+  @@index([campaignId])
+  @@index([date])
+}
+
+// ============================================================
+// GRUPO 5 — UTM LINKS
+// ============================================================
+
+model UTMLink {
+  id String @id @default(uuid())
+
+  // Criador
+  createdBy String
+  creator   User   @relation("CreatedBy", fields: [createdBy], references: [email])
+
+  // Identidade
+  title String?
+
+  // URLs
+  destinationUrl String
+  fullUrl        String  @db.Text // URL completa com todos os parâmetros UTM
+  shortUrl       String? // URL encurtada (ex: https://atf.link/polo-vw-abc)
+  shortCode      String? @unique // Código para rastreamento de cliques
+
+  // Parâmetros UTM — source, medium e campaign sempre obrigatórios
+  utmSource   String
+  utmMedium   String
+  utmCampaign String
+  utmContent  String?
+  utmTerm     String?
+
+  // Campanha vinculada (opcional)
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id])
+
+  // Analytics
+  clicks Int @default(0)
+
+  // Organização
+  isTemplate   Boolean @default(false)
+  templateName String?
+  isFavorite   Boolean @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  @@index([createdBy])
+  @@index([utmCampaign])
+  @@index([campaignId])
+  @@index([isTemplate])
+  @@index([isFavorite])
+  @@index([createdAt])
+  @@index([shortCode])
+  @@index([deletedAt])
+}
+
+// ============================================================
+// GRUPO 6 — RECEITA & GANHOS
+// ============================================================
+
+model RevenueEntry {
+  id String @id @default(uuid())
+
+  date         DateTime @db.Date
+  businessName String
+
+  // Vínculo com Lead (nullable — migração progressiva)
+  leadEmail String?
+  lead      Lead?   @relation(fields: [leadEmail], references: [email])
+
+  // Financeiro
+  setupValue Float @default(0)
+  mrrValue   Float @default(0)
+
+  // Atribuição
+  origin     String?
+  originType RevenueOrigin @default(INBOUND)
+  product    String[]
+
+  // Responsável
+  closedBy String? // email do usuário
+  creator  User?   @relation("CreatedBy", fields: [closedBy], references: [email])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@index([leadEmail])
+  @@index([originType])
+  @@index([closedBy])
+}
+
+enum RevenueOrigin {
+  INBOUND
+  OUTBOUND
+  UPSELL
+  INDICATION
+  EVENT
+  OTHER
+}
+
+// ============================================================
+// GRUPO 7 — OKRs
+// ============================================================
+
+model OKR {
+  id        String    @id @default(uuid())
+  quarter   String // ex: "Q2 2026"
+  year      Int
+  objective String
+
+  // Estrutura: [{ id, description, current, target, unit, weight }]
+  keyResults Json
+
+  progress Float     @default(0) // 0–100, calculado
+  status   OKRStatus @default(ON_TRACK)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([year])
+  @@index([quarter])
+}
+
+enum OKRStatus {
+  ON_TRACK
+  AT_RISK
+  OFF_TRACK
+  COMPLETED
+}
+
+// ============================================================
+// GRUPO 8 — ASSETS / CRIATIVOS
+// ============================================================
+
+model AssetItem {
+  id       String        @id @default(uuid())
+  name     String
+  category AssetCategory
+  link     String
+  notes    String?       @db.Text
+  tags     String[]      @default([])
+
+  // Vínculo com campanha (novo — nullable)
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? // Soft delete
+
+  versions AssetVersion[]
+
+  @@index([category])
+  @@index([campaignId])
+  @@index([deletedAt])
+}
+
+enum AssetCategory {
+  LP
+  CREATIVE
+  COPY
+  UTM
+  VIDEO
+  EMAIL_TEMPLATE
+  OTHER
+}
+
+model AssetVersion {
+  id      String    @id @default(uuid())
+  assetId String
+  asset   AssetItem @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  label   String
+  link    String
+  notes   String?
+  createdAt DateTime @default(now())
+
+  @@index([assetId])
+}
+
+// ============================================================
+// GRUPO 9 — E-MAIL MARKETING
+// ============================================================
+
+model EmailCampaign {
+  id         String  @id @default(uuid())
+  externalId String?
+  source     String  @default("manual") // manual | rdstation
+
+  // Vínculo com plataforma (novo)
+  platformConnectionId String?
+  platformConnection   PlatformConnection? @relation(fields: [platformConnectionId], references: [id])
+
+  name String
+  date DateTime @db.Date
+
+  // Métricas
+  sends        Int @default(0)
+  opens        Int @default(0)
+  clicks       Int @default(0)
+  conversions  Int @default(0)
+  bounce       Int @default(0)
+  unsubscribes Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([externalId, source])
+  @@index([date])
+  @@index([source])
+}
+
+model WorkflowEmailStat {
+  id           String  @id @default(uuid())
+  externalId   String
+  source       String  @default("rd")
+  workflowId   String?
+  workflowName String
+  emailName    String
+
+  // Métricas absolutas
+  delivered    Int @default(0)
+  opened       Int @default(0)
+  clicked      Int @default(0)
+  bounced      Int @default(0)
+  unsubscribed Int @default(0)
+
+  // Taxas (%)
+  deliveredRate Float @default(0)
+  openedRate    Float @default(0)
+  clickedRate   Float @default(0)
+  spamRate      Float @default(0)
+
+  date      DateTime @db.Date
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([externalId, source])
+  @@index([workflowId])
+  @@index([date])
+}
+
+// ============================================================
+// GRUPO 10 — LANDING PAGES (GA4)
+// ============================================================
+
+model LandingPage {
+  id   String @id @default(uuid())
+  name String
+  path String @unique
+
+  // Métricas do último sync com GA4
+  views              Int   @default(0)
+  users              Int   @default(0)
+  sessions           Int   @default(0)
+  conversions        Int   @default(0)
+  conversionRate     Float @default(0)
+  bounceRate         Float @default(0)
+  avgSessionDuration Float @default(0) // em segundos
+  totalClicks        Int   @default(0)
+
+  lastSyncAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([conversions])
+  @@index([lastSyncAt])
+}
+
+// ============================================================
+// GRUPO 11 — CALENDÁRIO
+// ============================================================
+
+model CampaignEvent {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  startDate   DateTime  @db.Date
+  endDate     DateTime  @db.Date
+  color       String    @default("brand")
+  type        EventType @default(CAMPAIGN)
+  notes       String?   @db.Text
+
+  // Vínculos (novos — nullable)
+  campaignId String?
+  externalId String? // Google Calendar event ID
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([startDate])
+  @@index([type])
+  @@index([campaignId])
+}
+
+enum EventType {
+  CAMPAIGN
+  CONTENT
+  EVENT
+  MEETING
+  DEADLINE
+  OTHER
+}
+
+// ============================================================
+// GRUPO 12 — LEADS DIÁRIOS (entrada manual)
+// ============================================================
+
+model DailyLead {
+  id             String   @id @default(uuid())
+  date           DateTime @unique // Um registro por dia
+  leads          Int      @default(0)
+  mql            Int      @default(0)
+  sql            Int      @default(0)
+  sales          Int      @default(0)
+  conversionRate Float    @default(0)
+  notes          String? // Campo novo
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+}
+
+// ============================================================
+// GRUPO 13 — TIME
+// ============================================================
+
+model TeamMember {
+  id             String       @id @default(uuid())
+  name           String
+  email          String?      @unique // Campo novo
+  role           String
+  avatar         String?
+  status         MemberStatus @default(OFFLINE)
+  lastActive     DateTime? // Era String no schema atual — corrigido para DateTime
+  leadsGenerated Int          @default(0)
+  salesClosed    Int          @default(0)
+  goalProgress   Float        @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum MemberStatus {
+  ONLINE
+  BUSY
+  OFFLINE
+}
+
+// ============================================================
+// GRUPO 14 — SISTEMA: Logs e Webhooks
+// ============================================================
+
+model SyncLog {
+  id String @id @default(uuid())
+
+  source               String // nome da plataforma
+  platformConnectionId String?
+  platformConnection   PlatformConnection? @relation(fields: [platformConnectionId], references: [id])
+
+  status           String // success | error | partial
+  message          String? @db.Text
+  recordsProcessed Int     @default(0)
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([source])
+  @@index([status])
+  @@index([startedAt])
+}
+
+// Log de cada webhook recebido — para auditoria, debugging e deduplicação
+model WebhookLog {
+  id      String @id @default(uuid())
+  source  String // rdstation | meta | google | manual
+  payload Json // Payload bruto exatamente como recebido
+
+  status    String // processed | error | duplicate | ignored
+  leadEmail String? // Preenchido quando processamento concluiu com sucesso
+  error     String?   @db.Text
+
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([source])
+  @@index([status])
+  @@index([receivedAt])
+  @@index([leadEmail])
+}
+
+// ============================================================
+// DEPRECATED — Manter até validação da migração de dados
+//
+// Dados serão migrados para Lead + LeadConversion na Fase 1.
+// Após validação (contagens, integridade), renomear para
+// WebhookLead_archived e remover após 30 dias em produção.
+// ============================================================
+
+model WebhookLead {
+  id                   String    @id @default(cuid())
+  externalId           String    @unique
+  name                 String?
+  email                String?
+  phone                String?
+  company              String?
+  conversionIdentifier String?
+  conversionName       String?
+  lastConversionDate   DateTime?
+  source               String    @default("rdstation")
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([conversionIdentifier])
+  @@index([lastConversionDate])
+  @@map("RdLead") // Mantém o nome original da tabela no banco
+}

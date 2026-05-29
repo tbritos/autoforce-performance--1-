@@ -1,4 +1,332 @@
 
+export type ConnectionStatus = 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'EXPIRED';
+
+// ─── Lead Hub ─────────────────────────────────────────────────────────────────
+
+export type LeadStatus = 'LEAD' | 'MQL' | 'SQL' | 'SCHEDULED' | 'DEMO' | 'PROPOSAL' | 'CLIENT' | 'LOST' | 'DISQUALIFIED';
+
+export interface Lead {
+  id: string;
+  email: string;
+  name: string | null;
+  phone: string | null;
+  company: string | null;
+  status: LeadStatus;
+  score: number | null;
+  isHot: boolean;
+  tags: string[];
+  assignedTo: string | null;
+  firstSource: string | null;
+  firstMedium: string | null;
+  firstCampaign: string | null;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+  _count: { conversions: number };
+}
+
+export interface LeadListResult {
+  leads: Lead[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface LeadConversion {
+  id: string;
+  source: string;
+  campaignName: string | null;
+  formName: string | null;
+  landingPage: string | null;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  convertedAt: string;
+}
+
+export interface LeadStatusHistoryEntry {
+  id: string;
+  fromStatus: LeadStatus;
+  toStatus: LeadStatus;
+  changedBy: string | null;
+  reason: string | null;
+  changedAt: string;
+}
+
+export interface LeadRevenueEntry {
+  id: string;
+  date: string;
+  businessName: string;
+  setupValue: number;
+  mrrValue: number;
+  origin: string;
+  product: string[];
+}
+
+export interface LeadProfile {
+  id: string;
+  email: string;
+  name: string | null;
+  phone: string | null;
+  company: string | null;
+  jobTitle: string | null;
+  city: string | null;
+  state: string | null;
+  status: LeadStatus;
+  score: number | null;
+  isHot: boolean;
+  tags: string[];
+  assignedTo: string | null;
+  firstSource: string | null;
+  firstMedium: string | null;
+  firstCampaign: string | null;
+  firstLandingPage: string | null;
+  firstSeenAt: string | null;
+  lastSeenAt: string | null;
+  qualifiedAt: string | null;
+  convertedAt: string | null;
+  pipedrivePersonId: string | null;
+  pipedriveDealId: string | null;
+  pipedriveDomain: string | null;
+  customFields: Record<string, unknown> | null;
+  notes: string | null;
+  conversions: LeadConversion[];
+  conversionsTotal: number;
+  statusHistory: LeadStatusHistoryEntry[];
+  statusHistoryTotal: number;
+  revenueEntries: LeadRevenueEntry[];
+}
+
+export interface LeadCustomFieldDef {
+  id: string;
+  name: string;
+  label: string;
+  fieldType: 'text' | 'number' | 'boolean' | 'date' | 'select' | 'url';
+  options: string[];
+  placeholder: string | null;
+  required: boolean;
+  visible: boolean;
+  sortOrder: number;
+  sourceHint: string | null;
+}
+
+export type FunnelCounts = Record<LeadStatus, number>;
+
+export interface LeadWebhookSource {
+  id: string;
+  publicId: string;
+  name: string;
+  type: string;
+  description: string | null;
+  isActive: boolean;
+  securityMode: string;
+  automaticTags: string[];
+  fieldMappings: Record<string, string>;
+  defaultPersona: string | null;
+  defaultPain: string | null;
+  defaultSource: string | null;
+  defaultCampaign: string | null;
+  webhookUrl: string;
+  totalLogs: number;
+  successCount: number;
+  errorCount: number;
+  healthStatus: 'inactive' | 'waiting_test' | 'error' | 'needs_mapping' | 'missing_email_mapping' | 'ready';
+  mappingCount: number;
+  hasRequiredEmailMapping: boolean;
+  lastLog: {
+    status: string;
+    receivedAt: string;
+    error: string | null;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LeadWebhookLog {
+  id: string;
+  source: string;
+  sourceId: string | null;
+  payload: unknown;
+  normalized: unknown;
+  result: unknown;
+  status: string;
+  leadEmail: string | null;
+  error: string | null;
+  receivedAt: string;
+  processedAt: string | null;
+}
+
+export interface LeadWebhookInspection {
+  sourceId: string;
+  detectedFields: string[];
+  currentMappings: Record<string, string>;
+  suggestedMappings: Record<string, string>;
+  normalizedPreview: unknown;
+  lastPayload: unknown;
+  lastLogStatus: string | null;
+  lastLogError: string | null;
+}
+
+export interface LeadRuleCondition {
+  field: string;
+  operator: 'contains' | 'contains_any' | 'equals' | 'filled' | 'tag_exists' | 'score_gt' | 'starts_with' | 'ends_with';
+  connector?: 'and' | 'or';
+  value?: string;
+  values?: string[];
+}
+
+export interface LeadRuleAction {
+  type: 'add_tag' | 'remove_tag' | 'add_score' | 'set_custom_field' | 'set_status' | 'set_persona' | 'set_pain' | 'move_funnel_stage' | 'rd_create_conversion' | 'pipedrive_create_deal';
+  value?: string;
+  values?: string[];
+  field?: string;
+  points?: number;
+  status?: LeadStatus;
+  conversionIdentifier?: string;
+  conversionName?: string;
+  extraTags?: string[];
+  includeFields?: string[];
+  dedupe?: boolean;
+  pipeline?: 'novo_cliente' | 'upsell';
+  fieldMappings?: Array<{ fieldKey: string; sourceType: 'lead_field' | 'fixed'; leadField?: string; fixedValue?: string }>;
+  note?: string;
+}
+
+export interface LeadClassificationRule {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  priority: number;
+  trigger: string;
+  conditions: LeadRuleCondition[];
+  actions: LeadRuleAction[];
+  lastRunAt: string | null;
+  runCount: number;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { executions: number };
+}
+
+// ─── Funnels ──────────────────────────────────────────────────────────────────
+
+export interface FunnelDef {
+  id:               string;
+  name:             string;
+  description:      string | null;
+  color:            string;
+  filterSource:     string | null;
+  filterMedium:     string | null;
+  filterCampaign:   string | null;
+  filterLandingPage: string | null;
+  leadTags:         string[];
+  impressionPages:  string[];
+  campaignIds:      string[];
+  sortOrder:        number;
+  isActive:         boolean;
+  createdAt:        string;
+  updatedAt:        string;
+}
+
+export interface FunnelStats {
+  funnelCounts:  FunnelCounts;
+  totalLeads:    number;
+  mrr:           number;
+  impressions:   number;
+  gaClicks:      number;
+  gaUsers:       number;
+  adSpend:       number;
+  adImpressions: number;
+  adClicks:      number;
+}
+
+// ─── UTM Tracker ──────────────────────────────────────────────────────────────
+
+export const UTM_SOURCES = [
+  'instagram', 'facebook', 'linkedin', 'google', 'youtube',
+  'tiktok', 'whatsapp', 'email', 'direto',
+] as const;
+
+export const UTM_MEDIUMS = [
+  'organico', 'pago', 'stories', 'reels', 'feed', 'carrossel',
+  'display', 'email', 'cpc', 'video', 'blog',
+] as const;
+
+export type UTMSource = typeof UTM_SOURCES[number];
+export type UTMMedium = typeof UTM_MEDIUMS[number];
+
+export interface UTMLink {
+  id: string;
+  title: string | null;
+  destinationUrl: string;
+  fullUrl: string;
+  shortCode: string | null;
+  utmSource: string;
+  utmMedium: string;
+  utmCampaign: string;
+  utmContent: string | null;
+  utmTerm: string | null;
+  clicks: number;
+  isTemplate: boolean;
+  templateName: string | null;
+  isFavorite: boolean;
+  createdBy: string;
+  campaignId: string | null;
+  createdAt: string;
+}
+
+export interface UTMDestination {
+  id: string;
+  label: string;
+  url: string;
+  createdAt: string;
+}
+
+export interface UTMLinkListResult {
+  links: UTMLink[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface UTMTemplate {
+  id: string;
+  templateName: string | null;
+  utmSource: string;
+  utmMedium: string;
+  utmCampaign: string;
+  utmContent: string | null;
+  utmTerm: string | null;
+}
+
+export interface UTMCampaignPicker {
+  id: string;
+  name: string;
+  platform: string;
+}
+
+export interface PlatformConnection {
+  platform: string;
+  status: ConnectionStatus;
+  accountId: string | null;
+  accountName: string | null;
+  extraIds: string[];
+  tokenExpiry: string | null;
+  lastSyncAt: string | null;
+  lastSyncStatus: string | null;
+  lastSyncError: string | null;
+  syncCount: number;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface ConnectionRequirement {
+  platform: string;
+  requiredEnv: string[];
+  missingEnv: string[];
+  readyForOAuth: boolean;
+}
+
 export interface Metric {
   id: string;
   label: string;
@@ -136,6 +464,21 @@ export interface MetaCampaign {
   ctr: number;
   cpc: number;
   cpm: number;
+}
+
+export interface GoogleAdsCampaign {
+  id: string;
+  name: string;
+  status: string;
+  budget: number;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  conversions: number;
+  startDate: string;
+  endDate: string;
 }
 
 export type AssetCategory = 'LP' | 'Criativo' | 'Copy' | 'UTM' | 'Outro';

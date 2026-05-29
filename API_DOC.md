@@ -1,24 +1,41 @@
-# AutoForce Performance API
+# AutoForce Marketing Hub — API Reference
 
-## Auth
-All routes under `/api/*` require:
-```
-Authorization: Bearer <GOOGLE_ID_TOKEN>
-```
+> **Base URL:** `https://SEU_BACKEND/api`  
+> **Autenticação:** `Authorization: Bearer <JWT>` em todas as rotas (exceto auth e webhooks públicos)
 
-### Exemplo curl (com token)
-```bash
-curl -H "Authorization: Bearer SEU_TOKEN" https://SEU-BACKEND/api/health
-```
+---
+
+## Índice
+
+- [Autenticação](#autenticação)
+- [Health Check](#health-check)
+- [Dashboard](#dashboard)
+- [Banco de Leads (Lead Hub)](#banco-de-leads-lead-hub)
+- [Campos Personalizados](#campos-personalizados)
+- [Regras de Classificação](#regras-de-classificação)
+- [Webhooks de Entrada](#webhooks-de-entrada)
+- [Campanhas](#campanhas)
+- [Funis](#funis)
+- [Receita (Ganhos)](#receita-ganhos)
+- [Analytics GA4](#analytics-ga4)
+- [E-mails / RD Station](#e-mails--rd-station)
+- [UTM Links](#utm-links)
+- [Conexões (Integrações)](#conexões-integrações)
+- [Banco de Dados — Modelos](#banco-de-dados--modelos)
+
+---
+
+## Autenticação
 
 ### POST /api/auth/google
-Validate Google credential and return user profile.
+
+Valida o token Google e retorna o usuário.
+
 ```json
-{
-  "credential": "<google_id_token>"
-}
+{ "credential": "<google_id_token>" }
 ```
-Response:
+
+Resposta:
 ```json
 {
   "user": {
@@ -30,397 +47,512 @@ Response:
 }
 ```
 
-Exemplo curl:
 ```bash
 curl -X POST https://SEU-BACKEND/api/auth/google \
   -H "Content-Type: application/json" \
-  -d "{\"credential\":\"SEU_TOKEN\"}"
+  -d '{"credential":"SEU_TOKEN"}'
 ```
 
 ### GET /api/auth/me
-Validate token and return user.
+
+Valida token JWT e retorna o usuário logado.
+
+```bash
+curl https://SEU-BACKEND/api/auth/me \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
+### GET /api/auth/google/redirect
+
+Redireciona para o Google OAuth. Usado pelo frontend ao clicar em "Entrar com Google".
 
 ---
 
-## Health
+## Health Check
+
 ### GET /api/health
-Response:
+
 ```json
 { "status": "ok", "message": "AutoForce Performance API is running" }
+```
+
+```bash
+curl https://SEU-BACKEND/api/health
 ```
 
 ---
 
 ## Dashboard
+
 ### GET /api/dashboard/metrics
-Response: `Metric[]`
+
+KPIs do mês atual (leads, taxa de qualificação, MRR, vendas).
+
+```bash
+curl https://SEU-BACKEND/api/dashboard/metrics \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
 
 ### GET /api/dashboard/history
-Response: `ChartData[]`
 
----
+Histórico dos últimos 7 meses para o gráfico de barras.
 
-## Acompanhamento Diario
-### GET /api/leads/daily
-Response:
-```json
-[
-  { "id": "1", "date": "2026-01-25", "mql": 10, "sql": 3, "sales": 1, "conversionRate": 30 }
-]
-```
-
-Exemplo curl:
 ```bash
-curl https://SEU-BACKEND/api/leads/daily \
-  -H "Authorization: Bearer SEU_TOKEN"
-```
-
-### POST /api/leads/daily
-```json
-{ "date": "2026-01-25", "mql": 10, "sql": 3, "sales": 1, "conversionRate": 30 }
-```
-
-Exemplo curl:
-```bash
-curl -X POST https://SEU-BACKEND/api/leads/daily \
-  -H "Authorization: Bearer SEU_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"date\":\"2026-01-25\",\"mql\":10,\"sql\":3,\"sales\":1,\"conversionRate\":30}"
-```
-
-### PUT /api/leads/daily/:id
-```json
-{ "date": "2026-01-25", "mql": 12, "sql": 4, "sales": 1, "conversionRate": 33.3 }
-```
-
-Exemplo curl:
-```bash
-curl -X PUT https://SEU-BACKEND/api/leads/daily/LEAD_ID \
-  -H "Authorization: Bearer SEU_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"date\":\"2026-01-25\",\"mql\":12,\"sql\":4,\"sales\":1,\"conversionRate\":33.3}"
-```
-
-### DELETE /api/leads/daily/:id
-Exemplo curl:
-```bash
-curl -X DELETE https://SEU-BACKEND/api/leads/daily/LEAD_ID \
+curl https://SEU-BACKEND/api/dashboard/history \
   -H "Authorization: Bearer SEU_TOKEN"
 ```
 
 ---
 
-## Ganhos
-### GET /api/revenue/transactions
-Query params:
-- `origin=Google Ads`
-- `product=Autodromo,Autopilot`
+## Banco de Leads (Lead Hub)
 
-Response:
-```json
-[
-  {
-    "id": "1",
-    "date": "2026-01-25",
-    "businessName": "Loja X",
-    "setupValue": 1000,
-    "mrrValue": 500,
-    "origin": "Google Ads",
-    "product": ["Autodromo", "Autopilot"]
-  }
-]
-```
+### GET /api/lead-hub
 
-Exemplo curl:
+Lista leads com paginação e filtros.
+
+**Query params:**
+- `page=1`
+- `pageSize=50`
+- `status=LEAD|MQL|SQL|SCHEDULED|DEMO|PROPOSAL|CLIENT|LOST|DISQUALIFIED`
+- `search=texto` (nome, email, empresa, telefone)
+- `tag=nome-da-tag`
+- `isHot=true|false`
+- `startDate=YYYY-MM-DD`
+- `endDate=YYYY-MM-DD`
+- `customField=nome_campo`
+- `customValue=valor`
+
 ```bash
-curl "https://SEU-BACKEND/api/revenue/transactions?origin=Google%20Ads&product=Autodromo,Autopilot" \
+curl "https://SEU-BACKEND/api/lead-hub?status=MQL&page=1&pageSize=25" \
   -H "Authorization: Bearer SEU_TOKEN"
 ```
 
-### POST /api/revenue/transactions
+### POST /api/lead-hub
+
+Cria um lead manualmente.
+
 ```json
 {
-  "date": "2026-01-25",
-  "businessName": "Loja X",
-  "setupValue": 1000,
-  "mrrValue": 500,
-  "origin": "Google Ads",
-  "product": ["Autodromo", "Autopilot"]
+  "email": "joao@empresa.com",
+  "name": "João Silva",
+  "phone": "(11) 98888-7777",
+  "company": "Empresa X",
+  "jobTitle": "Gerente",
+  "utm_source": "google",
+  "utm_medium": "cpc",
+  "utm_campaign": "autodromo-q1"
 }
 ```
 
-Exemplo curl:
+### GET /api/lead-hub/funnel
+
+Contagem de leads por status para a barra de funil.
+
+### GET /api/lead-hub/tags
+
+Todas as tags existentes no sistema.
+
+### GET /api/lead-hub/export
+
+Exporta CSV com os mesmos filtros de `GET /api/lead-hub`.
+
 ```bash
-curl -X POST https://SEU-BACKEND/api/revenue/transactions \
+curl "https://SEU-BACKEND/api/lead-hub/export?status=CLIENT" \
   -H "Authorization: Bearer SEU_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"date\":\"2026-01-25\",\"businessName\":\"Loja X\",\"setupValue\":1000,\"mrrValue\":500,\"origin\":\"Google Ads\",\"product\":[\"Autodromo\",\"Autopilot\"]}"
+  -o leads_clientes.csv
 ```
 
-### PUT /api/revenue/transactions/:id
+### GET /api/lead-hub/id/:id
+
+Retorna a ficha completa do lead: dados, conversões, histórico de status, ganhos, campos personalizados.
+
+```bash
+curl https://SEU-BACKEND/api/lead-hub/id/UUID_DO_LEAD \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
+### PATCH /api/lead-hub/id/:id
+
+Atualiza os dados principais do lead.
+
 ```json
 {
-  "date": "2026-01-25",
-  "businessName": "Loja X",
-  "setupValue": 1200,
-  "mrrValue": 550,
-  "origin": "Google Ads",
-  "product": ["Autodromo", "Autopilot"]
+  "name": "Maria Silva",
+  "phone": "84999999999",
+  "company": "Loja X",
+  "jobTitle": "Gerente",
+  "city": "Natal",
+  "state": "RN",
+  "assignedTo": "vendas@autoforce.com",
+  "score": 80,
+  "isHot": true
 }
 ```
 
-Exemplo curl:
-```bash
-curl -X PUT https://SEU-BACKEND/api/revenue/transactions/REVENUE_ID \
-  -H "Authorization: Bearer SEU_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"date\":\"2026-01-25\",\"businessName\":\"Loja X\",\"setupValue\":1200,\"mrrValue\":550,\"origin\":\"Google Ads\",\"product\":[\"Autodromo\",\"Autopilot\"]}"
+### PATCH /api/lead-hub/id/:id/status
+
+```json
+{ "status": "MQL", "reason": "Lead qualificado via regra automática" }
 ```
 
-### DELETE /api/revenue/transactions/:id
-Exemplo curl:
+**Status válidos:** `LEAD`, `MQL`, `SQL`, `SCHEDULED`, `DEMO`, `PROPOSAL`, `CLIENT`, `LOST`, `DISQUALIFIED`
+
+### PATCH /api/lead-hub/id/:id/notes
+
+```json
+{ "notes": "Preferiu contato pela manhã." }
+```
+
+### POST /api/lead-hub/id/:id/tags
+
+```json
+{ "tag": "alto-potencial" }
+```
+
+### DELETE /api/lead-hub/id/:id/tags/:tag
+
+Remove uma tag do lead.
+
 ```bash
-curl -X DELETE https://SEU-BACKEND/api/revenue/transactions/REVENUE_ID \
+curl -X DELETE https://SEU-BACKEND/api/lead-hub/id/UUID/tags/alto-potencial \
   -H "Authorization: Bearer SEU_TOKEN"
 ```
+
+### GET /api/lead-hub/id/:id/conversions
+
+Todas as conversões do lead (histórico completo sem limite).
+
+### PATCH /api/lead-hub/id/:id/custom-fields
+
+Atualiza vários campos personalizados em uma chamada.
+
+```json
+{
+  "fields": {
+    "modelo_interesse": "SUV",
+    "orcamento": 120000,
+    "quer_test_drive": true
+  }
+}
+```
+
+### DELETE /api/lead-hub/id/:id
+
+Remove o lead de forma lógica (`deletedAt`). O histórico físico é preservado.
 
 ---
 
-## OKRs
-### GET /api/okrs
-Response:
+## Campos Personalizados
+
+### GET /api/lead-hub/custom-fields
+
+Lista todas as definições de campos personalizados.
+
+### POST /api/lead-hub/custom-fields
+
+Cria um campo personalizado.
+
 ```json
-[
-  {
-    "id": "1",
-    "quarter": "Q1 2026",
-    "objective": "Crescer leads",
-    "progress": 60,
-    "keyResults": [
-      { "id": "kr1", "title": "MQLs", "currentValue": 100, "targetValue": 300, "unit": "#" }
-    ]
-  }
-]
+{
+  "name": "modelo_interesse",
+  "label": "Modelo de interesse",
+  "fieldType": "select",
+  "options": ["Hatch", "SUV", "Pickup"],
+  "placeholder": "Selecione o modelo",
+  "required": false,
+  "visible": true,
+  "sortOrder": 10,
+  "sourceHint": "Formulário LP Principal"
+}
 ```
 
-Exemplo curl:
+**Tipos aceitos em `fieldType`:** `text`, `number`, `boolean`, `date`, `select`, `url`
+
+### PATCH /api/lead-hub/custom-fields/:id
+
+Atualiza a definição de um campo personalizado.
+
+### DELETE /api/lead-hub/custom-fields/:id
+
+Remove a definição do campo. Os valores já salvos nos leads são preservados.
+
+---
+
+## Regras de Classificação
+
+### GET /api/lead-rules
+
+Lista todas as regras de classificação.
+
 ```bash
-curl https://SEU-BACKEND/api/okrs \
+curl https://SEU-BACKEND/api/lead-rules \
   -H "Authorization: Bearer SEU_TOKEN"
 ```
 
-### POST /api/okrs
+### POST /api/lead-rules
+
+Cria uma nova regra.
+
 ```json
 {
-  "id": "1",
-  "quarter": "Q1 2026",
-  "objective": "Crescer leads",
-  "progress": 60,
-  "keyResults": [
-    { "id": "kr1", "title": "MQLs", "currentValue": 100, "targetValue": 300, "unit": "#" }
+  "name": "Criar no Pipedrive — MQL via Google",
+  "priority": 10,
+  "isActive": true,
+  "conditions": [
+    { "field": "tags", "operator": "tag_exists", "value": "maquina-de-vendas" },
+    { "field": "firstSource", "operator": "equals", "value": "google" }
+  ],
+  "conditionLogic": "AND",
+  "actions": [
+    { "type": "set_status", "value": "MQL" },
+    { "type": "pipedrive_create_deal", "pipeline": "novo_cliente" }
   ]
 }
 ```
 
-Exemplo curl:
+### GET /api/lead-rules/:id
+
+Detalhe completo de uma regra.
+
+### PATCH /api/lead-rules/:id
+
+Edita uma regra existente (mesma estrutura do POST).
+
+### DELETE /api/lead-rules/:id
+
+Remove uma regra.
+
+### POST /api/lead-rules/:id/run-existing
+
+Executa a regra em todos os leads existentes que correspondem às condições.
+
 ```bash
-curl -X POST https://SEU-BACKEND/api/okrs \
-  -H "Authorization: Bearer SEU_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"id\":\"1\",\"quarter\":\"Q1 2026\",\"objective\":\"Crescer leads\",\"progress\":60,\"keyResults\":[{\"id\":\"kr1\",\"title\":\"MQLs\",\"currentValue\":100,\"targetValue\":300,\"unit\":\"#\"}]}"
+curl -X POST https://SEU-BACKEND/api/lead-rules/RULE_ID/run-existing \
+  -H "Authorization: Bearer SEU_TOKEN"
 ```
 
-### PUT /api/okrs/:id
+Resposta:
 ```json
 {
-  "id": "1",
-  "quarter": "Q1 2026",
-  "objective": "Crescer leads",
-  "progress": 70,
-  "keyResults": [
-    { "id": "kr1", "title": "MQLs", "currentValue": 150, "targetValue": 300, "unit": "#" }
-  ]
+  "matched": 42,
+  "actionsApplied": [...],
+  "errors": []
 }
-```
-
-Exemplo curl:
-```bash
-curl -X PUT https://SEU-BACKEND/api/okrs/OKR_ID \
-  -H "Authorization: Bearer SEU_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"id\":\"1\",\"quarter\":\"Q1 2026\",\"objective\":\"Crescer leads\",\"progress\":70,\"keyResults\":[{\"id\":\"kr1\",\"title\":\"MQLs\",\"currentValue\":150,\"targetValue\":300,\"unit\":\"#\"}]}"
-```
-
-### DELETE /api/okrs/:id
-Exemplo curl:
-```bash
-curl -X DELETE https://SEU-BACKEND/api/okrs/OKR_ID \
-  -H "Authorization: Bearer SEU_TOKEN"
 ```
 
 ---
 
-## Calendario Marketing
-### GET /api/calendar/events
-Response:
-```json
-[
-  { "id": "1", "title": "Campanha X", "startDate": "2026-02-20", "endDate": "2026-02-26", "color": "#2563eb", "notes": "Obs" }
-]
-```
+## Webhooks de Entrada
 
-Exemplo curl:
-```bash
-curl https://SEU-BACKEND/api/calendar/events \
-  -H "Authorization: Bearer SEU_TOKEN"
-```
+### GET /api/lead-webhooks
 
-### POST /api/calendar/events
-```json
-{ "title": "Campanha X", "startDate": "2026-02-20", "endDate": "2026-02-26", "color": "#2563eb", "notes": "Obs" }
-```
+Lista os webhooks configurados (rotas protegidas, requer token).
 
-Exemplo curl:
-```bash
-curl -X POST https://SEU-BACKEND/api/calendar/events \
-  -H "Authorization: Bearer SEU_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"title\":\"Campanha X\",\"startDate\":\"2026-02-20\",\"endDate\":\"2026-02-26\",\"color\":\"#2563eb\",\"notes\":\"Obs\"}"
-```
+### POST /api/lead-webhooks
 
-### PUT /api/calendar/events/:id
-```json
-{ "title": "Campanha X", "startDate": "2026-02-20", "endDate": "2026-02-27", "color": "#2563eb", "notes": "Obs" }
-```
+Cria um novo webhook.
 
-### DELETE /api/calendar/events/:id
-No body.
-
----
-
-## Biblioteca de Ativos
-### GET /api/assets
-Response:
-```json
-[
-  {
-    "id": "1",
-    "name": "LP Feirao",
-    "category": "LP",
-    "link": "https://...",
-    "notes": "Obs",
-    "tags": ["lp", "meta"],
-    "versions": []
-  }
-]
-```
-
-Exemplo curl:
-```bash
-curl https://SEU-BACKEND/api/assets \
-  -H "Authorization: Bearer SEU_TOKEN"
-```
-
-### POST /api/assets
 ```json
 {
-  "name": "LP Feirao",
-  "category": "LP",
-  "link": "https://...",
-  "notes": "Obs",
-  "tags": ["lp", "meta"],
-  "versions": []
+  "name": "Formulário LP Autódromo",
+  "type": "RD_STATION",
+  "isActive": true,
+  "autoTags": ["lp-autodromo", "topo-funil"],
+  "defaultSource": "google",
+  "defaultMedium": "cpc"
 }
 ```
 
-Exemplo curl:
+### PATCH /api/lead-webhooks/:id
+
+Edita um webhook existente.
+
+### DELETE /api/lead-webhooks/:id
+
+Remove um webhook.
+
+### POST /api/webhooks/lead/:publicId
+
+**Endpoint público** — não exige token. Recebe leads de formulários externos.
+
 ```bash
-curl -X POST https://SEU-BACKEND/api/assets \
-  -H "Authorization: Bearer SEU_TOKEN" \
+curl -X POST https://SEU-BACKEND/api/webhooks/lead/PUBLIC_ID \
   -H "Content-Type: application/json" \
-  -d "{\"name\":\"LP Feirao\",\"category\":\"LP\",\"link\":\"https://...\",\"notes\":\"Obs\",\"tags\":[\"lp\",\"meta\"],\"versions\":[]}"
+  -d '{
+    "email": "joao@empresa.com",
+    "name": "João Silva",
+    "utm_source": "google",
+    "utm_medium": "cpc",
+    "utm_campaign": "autodromo-q1"
+  }'
 ```
 
-### PUT /api/assets/:id
+Resposta:
 ```json
-{
-  "name": "LP Feirao",
-  "category": "LP",
-  "link": "https://...",
-  "notes": "Obs",
-  "tags": ["lp", "meta"]
-}
+{ "success": true, "leadId": "UUID", "email": "joao@empresa.com" }
 ```
-
-### DELETE /api/assets/:id
-No body.
-
-### POST /api/assets/:id/versions
-```json
-{ "label": "v2", "link": "https://..." }
-```
-
-Exemplo curl:
-```bash
-curl -X POST https://SEU-BACKEND/api/assets/ASSET_ID/versions \
-  -H "Authorization: Bearer SEU_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"label\":\"v2\",\"link\":\"https://...\"}"
-```
-
-### PUT /api/assets/:id/versions/:versionId
-```json
-{ "label": "v3", "link": "https://..." }
-```
-
-### DELETE /api/assets/:id/versions/:versionId
-No body.
 
 ---
 
 ## Campanhas
+
 ### GET /api/campaigns
+
+Todas as campanhas.
+
+### GET /api/campaigns/meta
+
+Campanhas Meta Ads (requer conexão ativa).
+
+**Query params:** `startDate=YYYY-MM-DD`, `endDate=YYYY-MM-DD`
+
+### GET /api/campaigns/google
+
+Campanhas Google Ads (requer conexão ativa).
+
 ### POST /api/campaigns
+
 ```json
 {
-  "name": "Campanha A",
+  "name": "Campanha Autódromo Q2",
   "platform": "Meta",
   "status": "Ativa",
-  "budget": 1000,
-  "startDate": "2026-01-01",
-  "endDate": "2026-01-31",
+  "budget": 5000,
+  "startDate": "2026-04-01",
+  "endDate": "2026-06-30",
   "kpi": "Leads",
-  "notes": "Obs"
+  "notes": "Foco em SUV"
 }
 ```
 
-Exemplo curl:
-```bash
-curl -X POST https://SEU-BACKEND/api/campaigns \
-  -H "Authorization: Bearer SEU_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"name\":\"Campanha A\",\"platform\":\"Meta\",\"status\":\"Ativa\",\"budget\":1000,\"startDate\":\"2026-01-01\",\"endDate\":\"2026-01-31\",\"kpi\":\"Leads\",\"notes\":\"Obs\"}"
-```
-
 ### PUT /api/campaigns/:id
+
+Edita uma campanha.
+
 ### DELETE /api/campaigns/:id
 
-### GET /api/campaigns/meta
-Query params: `startDate`, `endDate`
+Remove uma campanha.
 
 ---
 
-## Landing Pages / Analytics
+## Funis
+
+### GET /api/funnels
+
+Lista todos os funis personalizados.
+
+### POST /api/funnels
+
+Cria um novo funil.
+
+```json
+{
+  "name": "Funil Google Q2",
+  "color": "#2563eb",
+  "filterTags": ["google-ads"],
+  "filterSource": "google",
+  "filterMedium": "cpc",
+  "linkedCampaignIds": ["camp-id-1", "camp-id-2"]
+}
+```
+
+### GET /api/funnels/stats
+
+Estatísticas com filtros.
+
+**Query params:** `funnelId`, `startDate`, `endDate`
+
+### PATCH /api/funnels/:id
+
+Edita um funil.
+
+### DELETE /api/funnels/:id
+
+Remove um funil (soft delete).
+
+---
+
+## Receita (Ganhos)
+
+### GET /api/revenue/transactions
+
+Lista todos os ganhos registrados.
+
+**Query params:**
+- `origin=Google Ads`
+- `product=Autodromo,Autopilot`
+- `startDate=YYYY-MM-DD`
+- `endDate=YYYY-MM-DD`
+
+```bash
+curl "https://SEU-BACKEND/api/revenue/transactions?origin=Google%20Ads" \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
+Resposta:
+```json
+[
+  {
+    "id": "UUID",
+    "date": "2026-04-15",
+    "businessName": "Loja X",
+    "setupValue": 1000,
+    "mrrValue": 500,
+    "origin": "Google Ads",
+    "product": ["Autodromo", "Autopilot"],
+    "leadEmail": "cliente@lojax.com"
+  }
+]
+```
+
+### POST /api/revenue/transactions
+
+```json
+{
+  "date": "2026-04-15",
+  "businessName": "Loja X",
+  "setupValue": 1000,
+  "mrrValue": 500,
+  "origin": "Google Ads",
+  "product": ["Autodromo", "Autopilot"],
+  "leadEmail": "cliente@lojax.com"
+}
+```
+
+**Origens válidas:** `Google Ads`, `Facebook / Meta`, `Indicacao Parceiro`, `Organico`, `Outros`
+
+**Produtos:** `Autodromo`, `Autopilot`, `Autobot`, `Nitroads`, `Fluxo de IA`, `Associacoes Automotivas`
+
+### PUT /api/revenue/transactions/:id
+
+Edita um registro de ganho.
+
+### DELETE /api/revenue/transactions/:id
+
+Remove um registro de ganho.
+
+---
+
+## Analytics GA4
+
 ### GET /api/analytics/landing-pages
-Query params:
+
+Landing pages com métricas do GA4.
+
+**Query params:**
 - `startDate=YYYY-MM-DD`
 - `endDate=YYYY-MM-DD`
 - `hostName=lp.autodromo.com.br`
 
-### POST /api/analytics/sync-ga4
-Forca sincronizacao GA4.
+```bash
+curl "https://SEU-BACKEND/api/analytics/landing-pages?startDate=2026-04-01&endDate=2026-04-30" \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
 
-Exemplo curl:
+### POST /api/analytics/sync-ga4
+
+Força sincronização dos dados GA4.
+
 ```bash
 curl -X POST https://SEU-BACKEND/api/analytics/sync-ga4 \
   -H "Authorization: Bearer SEU_TOKEN"
@@ -428,27 +560,239 @@ curl -X POST https://SEU-BACKEND/api/analytics/sync-ga4 \
 
 ---
 
-## Emails / RD Station
-### GET /api/emails/campaigns?source=manual
+## E-mails / RD Station
+
+### GET /api/emails/campaigns
+
+Campanhas de e-mail manuais.
+
+**Query params:** `source=manual`
+
 ### GET /api/emails/campaigns/rdstation
+
+Campanhas do RD Station (requer conexão ativa).
+
 ### GET /api/emails/campaigns/rdstation/sync
+
+Força sincronização das campanhas RD Station.
+
 ### GET /api/emails/automation/rdstation
+
+Workflows/automações do RD Station.
+
 ### GET /api/emails/automation/rdstation/sync
+
+Força sincronização das automações.
+
 ### GET /api/emails/sync/logs
-Query params: `limit=50`
+
+Logs das últimas sincronizações. **Query params:** `limit=50`
 
 ### POST /api/emails/campaigns
-```json
-{ "name": "Email X", "date": "2026-01-25", "sends": 0, "opens": 0, "clicks": 0, "conversions": 0, "bounce": 0 }
-```
 
-Exemplo curl:
-```bash
-curl -X POST https://SEU-BACKEND/api/emails/campaigns \
-  -H "Authorization: Bearer SEU_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"name\":\"Email X\",\"date\":\"2026-01-25\",\"sends\":0,\"opens\":0,\"clicks\":0,\"conversions\":0,\"bounce\":0}"
+Cria uma campanha de e-mail manual.
+
+```json
+{
+  "name": "Newsletter Maio 2026",
+  "date": "2026-05-15",
+  "sends": 1200,
+  "opens": 350,
+  "clicks": 85,
+  "conversions": 12,
+  "bounce": 5
+}
 ```
 
 ### PUT /api/emails/campaigns/:id
+
+Edita uma campanha.
+
 ### DELETE /api/emails/campaigns/:id
+
+Remove uma campanha.
+
+---
+
+## UTM Links
+
+### GET /api/utm-links
+
+Lista links UTM com paginação e filtros.
+
+**Query params:** `page`, `pageSize`, `source`, `medium`, `campaign`, `startDate`, `endDate`, `favoritesOnly=true`
+
+### POST /api/utm-links
+
+Cria um link UTM.
+
+```json
+{
+  "destinationUrl": "https://lp.autodromo.com.br/",
+  "utmSource": "google",
+  "utmMedium": "cpc",
+  "utmCampaign": "autodromo-maio-2026",
+  "utmContent": "banner-top",
+  "utmTerm": "crm-automotivo"
+}
+```
+
+Resposta inclui `shortCode` (ex: `abc12`) e URL curta acessível em `GET /r/:code`.
+
+### GET /api/utm-links/templates
+
+Templates de links salvos.
+
+### PATCH /api/utm-links/:id/favorite
+
+Favorita ou desfavorita um link.
+
+### DELETE /api/utm-links/:id
+
+Remove um link.
+
+### GET /r/:code
+
+**Endpoint público.** Redireciona para a URL completa e incrementa o contador de cliques.
+
+```bash
+curl -L https://SEU-BACKEND/r/abc12
+# 302 → https://lp.autodromo.com.br/?utm_source=google&utm_medium=cpc&...
+```
+
+---
+
+## Conexões (Integrações)
+
+### GET /api/connections
+
+Lista o status de todas as plataformas e dados da última sincronização.
+
+```bash
+curl https://SEU-BACKEND/api/connections \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
+### GET /api/connections/requirements
+
+Mostra quais variáveis de ambiente faltam para cada plataforma.
+
+```json
+[
+  {
+    "platform": "GOOGLE_ADS",
+    "requiredEnv": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_ADS_DEVELOPER_TOKEN"],
+    "missingEnv": [],
+    "readyForOAuth": true
+  }
+]
+```
+
+### GET /api/connections/:platform/auth-url
+
+Gera a URL OAuth para iniciar a conexão.
+
+**Plataformas:** `META_ADS`, `GOOGLE_ADS`, `GOOGLE_ANALYTICS`, `RD_STATION`, `PIPEDRIVE`
+
+```bash
+curl https://SEU-BACKEND/api/connections/META_ADS/auth-url \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
+### PUT /api/connections/:platform/config
+
+Salva IDs, metadados e credenciais manuais. Tokens são criptografados no banco.
+
+Exemplo — Google Ads:
+```bash
+curl -X PUT https://SEU-BACKEND/api/connections/GOOGLE_ADS/config \
+  -H "Authorization: Bearer SEU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"metadata":{"customerId":"1234567890"}}'
+```
+
+Exemplo — Google Analytics (múltiplas propriedades):
+```bash
+curl -X PUT https://SEU-BACKEND/api/connections/GOOGLE_ANALYTICS/config \
+  -H "Authorization: Bearer SEU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"metadata":{"propertyIds":"484560591,349265313"}}'
+```
+
+Exemplo — Pipedrive com API token:
+```bash
+curl -X PUT https://SEU-BACKEND/api/connections/PIPEDRIVE/config \
+  -H "Authorization: Bearer SEU_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"accessToken":"PIPEDRIVE_API_TOKEN","metadata":{"domain":"autoforce2","authType":"api_token"}}'
+```
+
+### POST /api/connections/:platform/sync
+
+Força sincronização manual da plataforma.
+
+```bash
+curl -X POST https://SEU-BACKEND/api/connections/META_ADS/sync \
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
+### POST /api/connections/:platform/disconnect
+
+Desconecta a plataforma e remove os tokens salvos.
+
+---
+
+## Banco de Dados — Modelos
+
+### Modelos principais
+
+```
+Lead                    — central de leads (email como chave única)
+LeadConversion          — histórico de conversões (imutável, append-only)
+LeadStatusHistory       — auditoria de mudanças de status
+LeadCustomFieldDef      — definição dos campos personalizados
+LeadClassificationRule  — regras de automação
+LeadClassificationRuleExecution — histórico de execuções de regras
+LeadWebhookSource       — configuração dos webhooks de entrada
+WebhookLog              — log bruto de todos os webhooks recebidos
+
+PlatformConnection      — tokens e configuração de cada integração (criptografado AES-256-GCM)
+Campaign                — campanhas (Meta/Google)
+CampaignMetrics         — métricas diárias das campanhas
+CampaignEvent           — eventos do calendário
+
+UTMLink                 — links gerados com parâmetros UTM
+UTMDestination          — destinos de URL salvos para reuso
+
+Funnel                  — funis personalizados
+RevenueEntry            — registros de receita
+DailyLead               — agregado diário do funil
+LandingPage             — dados das landing pages (GA4)
+
+EmailCampaign           — campanhas de e-mail (RD Station + manuais)
+WorkflowEmailStat       — stats de automações RD Station
+
+User                    — usuários do sistema
+OKR                     — objetivos e resultados-chave
+TeamMember              — membros da equipe
+AssetItem               — ativos criativos
+AssetVersion            — versões dos ativos
+SyncLog                 — log de sincronizações com plataformas externas
+```
+
+### Migrations em produção
+
+O Prisma gerencia todas as migrations. O comando `prisma migrate deploy` é executado **automaticamente** ao iniciar o servidor (configurado no `start` do `package.json`). Todas as migrations são aditivas — sem perda de dados.
+
+Ordem cronológica:
+1. `20260122144227_primeira_versao` — estrutura base
+2. `20260523100000_lead_foundation` — banco de leads, plataformas, UTM
+3. `20260523200000_lead_custom_fields_pipedrive` — campos personalizados, Pipedrive
+4. `20260525000000_add_funnel_model` — funis personalizados
+5. `20260527000000_lead_webhook_sources` — webhooks configuráveis
+6. `20260527002000_lead_classification_rules` — motor de regras
+7. `20260528003000_lead_status_scheduled_demo_proposal` — novos status do funil
+
+---
+
+*API Reference — AutoForce Marketing Hub v2.0 — 2026-05-28*

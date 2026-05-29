@@ -1,4 +1,5 @@
 import { prisma } from '../config/database';
+import { LeadHubService, normalizeEmail } from './lead-hub.service';
 
 type WebhookIngestResult = {
   received: number;
@@ -214,6 +215,32 @@ export class WebhookLeadsService {
           source: parsed.source,
         },
       });
+
+      // Dual-write to the new Lead system (Phase 1 transition)
+      // Errors here are non-fatal — legacy table is still the source of truth
+      if (parsed.email) {
+        try {
+          await LeadHubService.processWebhook({
+            source: parsed.source || 'webhook',
+            payload: row,
+            leadData: {
+              email: parsed.email,
+              name: parsed.name,
+              phone: parsed.phone,
+              company: parsed.company,
+            },
+            conversionData: {
+              source: parsed.source || 'webhook',
+              externalId: parsed.externalId,
+              formName: parsed.conversionName,
+              rawData: row,
+              convertedAt: parsed.lastConversionDate,
+            },
+          });
+        } catch {
+          // Non-fatal: log will capture the error, legacy write already succeeded
+        }
+      }
 
       processed += 1;
     }

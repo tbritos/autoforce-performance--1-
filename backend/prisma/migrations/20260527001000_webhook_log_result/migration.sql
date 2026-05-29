@@ -1,0 +1,2 @@
+ALTER TABLE "WebhookLog"
+  ADD COLUMN IF NOT EXISTS "result" JSONB;

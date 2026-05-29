@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { CampaignsService } from '../services/campaigns.service';
 import { fetchMetaCampaigns } from '../services/metaAds.service';
+import { fetchGoogleAdsCampaigns } from '../services/google-ads.service';
 
 export const getCampaigns = async (
   req: Request,
@@ -62,6 +63,20 @@ export const getMetaCampaigns = async (
   try {
     const { startDate, endDate } = req.query;
     const campaigns = await fetchMetaCampaigns(startDate as string, endDate as string);
+    res.json(campaigns);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getGoogleAdsCampaigns = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const campaigns = await fetchGoogleAdsCampaigns(startDate as string, endDate as string);
     res.json(campaigns);
   } catch (error) {
     next(error);

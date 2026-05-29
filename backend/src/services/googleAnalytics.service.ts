@@ -3,29 +3,66 @@ import { LandingPage } from '../types/dashboard.types';
 
 let analyticsDataClient: any = null;
 
+function parsePropertyIds(value?: string | null): string[] {
+  return String(value || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function parseHostNames(value?: string | null): string[] {
+  return String(value || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+async function getGA4PropertyIds(): Promise<string[]> {
+  const { PlatformConnectionService } = await import('./platform-connection.service');
+  const conn = await PlatformConnectionService.getInternalConnection('GOOGLE_ANALYTICS');
+  const meta = conn?.metadata as Record<string, any> | null;
+  const fromMetadata = parsePropertyIds(
+    (meta?.propertyIds as string | undefined) ||
+    (meta?.propertyId as string | undefined)
+  );
+  const fromEnv = parsePropertyIds(process.env.GA4_PROPERTY_IDS || process.env.GA4_PROPERTY_ID);
+  const ids = Array.from(new Set([...fromMetadata, ...fromEnv]));
+  if (!ids.length) throw new Error('GA4_PROPERTY_IDS nao configurado');
+  return ids;
+}
+
 export async function initializeGA4Client() {
   if (analyticsDataClient) return analyticsDataClient;
 
-  const credentialsPath = process.env.GA4_CREDENTIALS_PATH;
-  const credentialsJson = process.env.GA4_CREDENTIALS_JSON;
-  const propertyId = process.env.GA4_PROPERTY_ID;
-
-  if ((!credentialsPath && !credentialsJson) || !propertyId) {
-    throw new Error('GA4_CREDENTIALS_JSON ou GA4_CREDENTIALS_PATH e GA4_PROPERTY_ID devem estar configurados no .env');
-  }
-
   let auth: any;
-  if (credentialsJson) {
-    const parsed = JSON.parse(credentialsJson);
-    auth = new google.auth.GoogleAuth({
-      credentials: parsed,
-      scopes: ['https://www.googleapis.com/auth/analytics.readonly'],
-    });
-  } else {
-    auth = new google.auth.GoogleAuth({
-      keyFile: credentialsPath,
-      scopes: ['https://www.googleapis.com/auth/analytics.readonly'],
-    });
+
+  // Try PlatformConnection OAuth token first
+  try {
+    const { OAuthService } = await import('./oauth.service');
+    const token = await OAuthService.getValidToken('GOOGLE_ANALYTICS');
+    auth = new google.auth.OAuth2();
+    auth.setCredentials({ access_token: token });
+  } catch {
+    // Fallback to service account credentials from .env
+    const credentialsPath = process.env.GA4_CREDENTIALS_PATH;
+    const credentialsJson = process.env.GA4_CREDENTIALS_JSON;
+
+    if (!credentialsPath && !credentialsJson) {
+      throw new Error('Google Analytics não conectado. Configure no painel de Conexões.');
+    }
+
+    if (credentialsJson) {
+      const parsed = JSON.parse(credentialsJson);
+      auth = new google.auth.GoogleAuth({
+        credentials: parsed,
+        scopes: ['https://www.googleapis.com/auth/analytics.readonly'],
+      });
+    } else {
+      auth = new google.auth.GoogleAuth({
+        keyFile: credentialsPath,
+        scopes: ['https://www.googleapis.com/auth/analytics.readonly'],
+      });
+    }
   }
 
   analyticsDataClient = google.analyticsdata({ version: 'v1beta', auth });
@@ -35,14 +72,15 @@ export async function initializeGA4Client() {
 export async function getLandingPagesFromGA4(
   startDate?: string,
   endDate?: string,
-  hostName?: string
+  hostName?: string,
+  propertyId?: string
 ): Promise<LandingPage[]> {
-  const propertyId = process.env.GA4_PROPERTY_ID;
-  if (!propertyId) throw new Error('GA4_PROPERTY_ID não configurado');
+  const resolvedPropertyId = propertyId || (await getGA4PropertyIds())[0];
+  if (!resolvedPropertyId) throw new Error('GA4_PROPERTY_IDS nao configurado');
 
   try {
     const client = await initializeGA4Client();
-    const lpHost = hostName || process.env.LP_HOSTNAME || 'lp.autodromo.com.br';
+    const lpHost = hostName?.trim();
 
     let start = startDate;
     let end = endDate;
@@ -58,7 +96,7 @@ export async function getLandingPagesFromGA4(
     console.log(`🔍 Buscando GA4 de ${start} até ${end} (${lpHost})...`);
 
     const response = await client.properties.runReport({
-      property: `properties/${propertyId}`,
+      property: `properties/${resolvedPropertyId}`,
       requestBody: {
         dateRanges: [{ startDate: start, endDate: end }],
         dimensions: [
@@ -100,7 +138,9 @@ export async function getLandingPagesFromGA4(
       const dimensions = row.dimensionValues || [];
       const metrics = row.metricValues || [];
 
+      const pageHost = dimensions[0]?.value || lpHost || '';
       const pagePath = dimensions[1]?.value || '';
+      const displayPath = pageHost ? `${pageHost}${pagePath || '/'}` : pagePath;
       const pageTitle = dimensions[2]?.value || 'Sem título';
 
       const views = parseInt(metrics[0]?.value || '0', 10);
@@ -117,12 +157,12 @@ export async function getLandingPagesFromGA4(
       const avgEngagementTime = `${minutes}m ${seconds}s`;
 
       const bounceRate = Number((bounceRateVal * 100).toFixed(1));
-      const uniqueId = Buffer.from(pagePath).toString('base64');
+      const uniqueId = Buffer.from(displayPath).toString('base64');
 
       return {
         id: uniqueId,
         name: pageTitle,
-        path: pagePath,
+        path: displayPath,
         views,
         users,
         conversions,
@@ -139,13 +179,57 @@ export async function getLandingPagesFromGA4(
   }
 }
 
+function mergeLandingPages(pages: LandingPage[]): LandingPage[] {
+  const map = new Map<string, LandingPage>();
+
+  for (const page of pages) {
+    const current = map.get(page.path);
+    if (!current) {
+      map.set(page.path, { ...page });
+      continue;
+    }
+
+    const users = current.users + page.users;
+    const conversions = current.conversions + page.conversions;
+    current.views += page.views;
+    current.users = users;
+    current.conversions = conversions;
+    current.totalClicks += page.totalClicks;
+    current.conversionRate = users > 0 ? Number(((conversions / users) * 100).toFixed(2)) : 0;
+  }
+
+  return Array.from(map.values()).sort((a, b) => b.users - a.users);
+}
+
+export async function getLandingPagesFromAllGA4Properties(
+  startDate?: string,
+  endDate?: string,
+  hostName?: string
+): Promise<LandingPage[]> {
+  const propertyIds = await getGA4PropertyIds();
+  const hostNames = parseHostNames(
+    hostName ||
+    process.env.LP_HOSTNAMES ||
+    process.env.LP_HOSTNAME ||
+    'lp.autodromo.com.br,site.autoforce.com,blog.autoforce.com'
+  );
+  const pagesByProperty = await Promise.all(
+    propertyIds.flatMap(id =>
+      hostNames.length
+        ? hostNames.map(host => getLandingPagesFromGA4(startDate, endDate, host, id))
+        : [getLandingPagesFromGA4(startDate, endDate, undefined, id)]
+    )
+  );
+  return mergeLandingPages(pagesByProperty.flat());
+}
+
 export async function syncLandingPagesFromGA4(
   startDate?: string,
   endDate?: string,
   hostName?: string
 ) {
   try {
-    const pages = await getLandingPagesFromGA4(startDate, endDate, hostName);
+    const pages = await getLandingPagesFromAllGA4Properties(startDate, endDate, hostName);
     
     const { prisma } = await import('../config/database');
 
