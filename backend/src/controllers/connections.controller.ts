@@ -36,7 +36,11 @@ async function testPlatformConnection(platform: Platform): Promise<{ ok: boolean
         const res = await fetch('https://api.rd.services/platform/contacts?page=1&page_size=1', {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (!res.ok) return { ok: false, message: `HTTP ${res.status} — token inválido ou expirado` };
+        if (!res.ok) {
+          let detail = '';
+          try { detail = await res.text(); } catch { /* ignore */ }
+          return { ok: false, message: `HTTP ${res.status} — ${detail.slice(0, 200) || 'sem detalhes'}` };
+        }
         return { ok: true, message: 'RD Station respondendo normalmente' };
       }
 
