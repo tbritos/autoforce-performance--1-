@@ -18,6 +18,7 @@ import campaignsRoutes from './routes/campaigns.routes';
 import assetsRoutes from './routes/assets.routes';
 import emailRoutes from './routes/email.routes';
 import { startSyncScheduler } from './services/sync-scheduler.service';
+import { startupConnectionCheck } from './controllers/connections.controller';
 import authRoutes from './routes/auth.routes';
 import webhookLeadsRoutes from './routes/webhook-leads.routes';
 import leadHubRoutes from './routes/lead-hub.routes';
@@ -263,5 +264,6 @@ app.listen(PORT, () => {
 });
 
 startSyncScheduler();
+startupConnectionCheck().catch(err => console.error('[connections] startup check failed:', err));
 
 export default app;

@@ -315,8 +315,10 @@ const ConnectionsView: React.FC = () => {
   }, [loadConnections]);
 
   const handleTest = useCallback(async (platform: string) => {
-    return DataService.testPlatformConnection(platform);
-  }, []);
+    const result = await DataService.testPlatformConnection(platform);
+    await loadConnections(); // refresh status badge from DB after test
+    return result;
+  }, [loadConnections]);
 
   const connectionMap = new Map(connections.map(c => [c.platform, c]));
   const requirementMap = new Map(requirements.map(item => [item.platform, item]));

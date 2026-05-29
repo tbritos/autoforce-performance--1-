@@ -84,20 +84,15 @@ async function testPlatformConnection(platform: Platform): Promise<{ ok: boolean
   }
 }
 
-function getEnvStatus(platform: (typeof VALID_PLATFORMS)[number]): 'CONNECTED' | 'DISCONNECTED' {
+// Returns true if this platform has credentials in env vars worth trying
+function hasEnvCredentials(platform: (typeof VALID_PLATFORMS)[number]): boolean {
   switch (platform) {
-    case 'RD_STATION':
-      return (process.env.RD_STATION_REFRESH_TOKEN || process.env.RD_STATION_ACCESS_TOKEN) ? 'CONNECTED' : 'DISCONNECTED';
-    case 'META_ADS':
-      return process.env.META_ACCESS_TOKEN ? 'CONNECTED' : 'DISCONNECTED';
-    case 'PIPEDRIVE':
-      return (process.env.PIPEDRIVE_API_TOKEN && process.env.PIPEDRIVE_DOMAIN) ? 'CONNECTED' : 'DISCONNECTED';
-    case 'GOOGLE_ANALYTICS':
-      return (process.env.GA4_CREDENTIALS_JSON || process.env.GA4_CREDENTIALS_PATH) ? 'CONNECTED' : 'DISCONNECTED';
-    case 'GOOGLE_ADS':
-      return process.env.GOOGLE_ADS_CUSTOMER_ID ? 'CONNECTED' : 'DISCONNECTED';
-    default:
-      return 'DISCONNECTED';
+    case 'RD_STATION':      return !!(process.env.RD_STATION_REFRESH_TOKEN || process.env.RD_STATION_ACCESS_TOKEN);
+    case 'META_ADS':        return !!process.env.META_ACCESS_TOKEN;
+    case 'PIPEDRIVE':       return !!(process.env.PIPEDRIVE_API_TOKEN && process.env.PIPEDRIVE_DOMAIN);
+    case 'GOOGLE_ANALYTICS':return !!(process.env.GA4_CREDENTIALS_JSON || process.env.GA4_CREDENTIALS_PATH);
+    case 'GOOGLE_ADS':      return !!(process.env.GOOGLE_ADS_CUSTOMER_ID && process.env.GOOGLE_ADS_DEVELOPER_TOKEN);
+    default:                return false;
   }
 }
 
@@ -108,17 +103,13 @@ export class ConnectionsController {
     try {
       const connections = await PlatformConnectionService.listConnections();
       const map = new Map(connections.map((c: { platform: string; [k: string]: unknown }) => [c.platform, c]));
-      const result = VALID_PLATFORMS.map(p => {
-        if (map.has(p)) return map.get(p);
-        const envStatus = getEnvStatus(p);
-        return {
-          platform: p,
-          status: envStatus,
-          accountId: null,
-          accountName: null,
-          lastSyncAt: null,
-          syncCount: 0,
-        };
+      const result = VALID_PLATFORMS.map(p => map.get(p) || {
+        platform: p,
+        status: 'DISCONNECTED',
+        accountId: null,
+        accountName: null,
+        lastSyncAt: null,
+        syncCount: 0,
       });
       res.json(result);
     } catch (err) {
@@ -287,6 +278,12 @@ export class ConnectionsController {
       const platform = parsePlatform(req.params.platform);
       if (!platform) { res.status(400).json({ error: 'Plataforma inválida' }); return; }
       const result = await testPlatformConnection(platform);
+      // Persist result to DB so the status badge reflects reality
+      if (result.ok) {
+        await PlatformConnectionService.updateConnectionConfig({ platform, status: 'CONNECTED' });
+      } else {
+        await PlatformConnectionService.markError(platform, result.message);
+      }
       res.json(result);
     } catch (err) {
       next(err);
@@ -394,6 +391,42 @@ export class ConnectionsController {
       res.json({ message: 'Migracao concluida', results });
     } catch (err) {
       next(err);
+    }
+  }
+}
+
+// Called once on server startup — migrates env var tokens to DB and tests each platform.
+// Platforms already with a non-DISCONNECTED DB record are skipped.
+export async function startupConnectionCheck(): Promise<void> {
+  const platforms = ['META_ADS', 'PIPEDRIVE', 'GOOGLE_ANALYTICS', 'RD_STATION', 'GOOGLE_ADS'] as const;
+
+  for (const platform of platforms) {
+    try {
+      const existing = await PlatformConnectionService.getInternalConnection(platform);
+      if (existing && existing.status !== 'DISCONNECTED') continue;
+      if (!hasEnvCredentials(platform)) continue;
+
+      // For API-token platforms, save token to DB before testing
+      if (platform === 'PIPEDRIVE') {
+        await PlatformConnectionService.saveConnection({ platform, accessToken: process.env.PIPEDRIVE_API_TOKEN!, metadata: { domain: process.env.PIPEDRIVE_DOMAIN, authType: 'api_token' } });
+      }
+      if (platform === 'META_ADS') {
+        await PlatformConnectionService.saveConnection({ platform, accessToken: process.env.META_ACCESS_TOKEN!, metadata: { adAccountId: process.env.META_AD_ACCOUNT_ID } });
+      }
+      if (platform === 'GOOGLE_ANALYTICS') {
+        await PlatformConnectionService.saveConnection({ platform, metadata: { propertyId: process.env.GA4_PROPERTY_ID, serviceAccountJson: process.env.GA4_CREDENTIALS_JSON || null, serviceAccountPath: process.env.GA4_CREDENTIALS_PATH || null } });
+      }
+
+      const result = await testPlatformConnection(platform);
+      if (result.ok) {
+        await PlatformConnectionService.updateConnectionConfig({ platform, status: 'CONNECTED' });
+        console.log(`[connections] ${platform}: OK — ${result.message}`);
+      } else {
+        await PlatformConnectionService.markError(platform, result.message);
+        console.log(`[connections] ${platform}: ERRO — ${result.message}`);
+      }
+    } catch (err) {
+      console.error(`[connections] ${platform}: exceção no startup — ${err instanceof Error ? err.message : err}`);
     }
   }
 }
