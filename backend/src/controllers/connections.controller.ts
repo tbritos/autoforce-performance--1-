@@ -20,21 +20,41 @@ const OAUTH_ENV_REQUIREMENTS: Record<(typeof VALID_PLATFORMS)[number], string[]>
   CLARITY:           [], // API key — sem OAuth
 };
 
+function getEnvStatus(platform: (typeof VALID_PLATFORMS)[number]): 'CONNECTED' | 'DISCONNECTED' {
+  switch (platform) {
+    case 'RD_STATION':
+      return (process.env.RD_STATION_REFRESH_TOKEN || process.env.RD_STATION_ACCESS_TOKEN) ? 'CONNECTED' : 'DISCONNECTED';
+    case 'META_ADS':
+      return process.env.META_ACCESS_TOKEN ? 'CONNECTED' : 'DISCONNECTED';
+    case 'PIPEDRIVE':
+      return (process.env.PIPEDRIVE_API_TOKEN && process.env.PIPEDRIVE_DOMAIN) ? 'CONNECTED' : 'DISCONNECTED';
+    case 'GOOGLE_ANALYTICS':
+      return (process.env.GA4_CREDENTIALS_JSON || process.env.GA4_CREDENTIALS_PATH) ? 'CONNECTED' : 'DISCONNECTED';
+    case 'GOOGLE_ADS':
+      return process.env.GOOGLE_ADS_CUSTOMER_ID ? 'CONNECTED' : 'DISCONNECTED';
+    default:
+      return 'DISCONNECTED';
+  }
+}
+
 export class ConnectionsController {
 
   // GET /api/connections
   static async list(req: Request, res: Response, next: NextFunction) {
     try {
       const connections = await PlatformConnectionService.listConnections();
-      // Fill in any missing platforms with default DISCONNECTED status
       const map = new Map(connections.map((c: { platform: string; [k: string]: unknown }) => [c.platform, c]));
-      const result = VALID_PLATFORMS.map(p => map.get(p) || {
-        platform: p,
-        status: 'DISCONNECTED',
-        accountId: null,
-        accountName: null,
-        lastSyncAt: null,
-        syncCount: 0,
+      const result = VALID_PLATFORMS.map(p => {
+        if (map.has(p)) return map.get(p);
+        const envStatus = getEnvStatus(p);
+        return {
+          platform: p,
+          status: envStatus,
+          accountId: null,
+          accountName: null,
+          lastSyncAt: null,
+          syncCount: 0,
+        };
       });
       res.json(result);
     } catch (err) {
