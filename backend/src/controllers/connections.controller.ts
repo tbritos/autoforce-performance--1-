@@ -33,7 +33,9 @@ async function testPlatformConnection(platform: Platform): Promise<{ ok: boolean
       }
 
       case 'RD_STATION': {
-        const res = await fetch('https://api.rd.services/platform/analytics/emails?page=1&page_size=1', {
+        const end = new Date().toISOString().slice(0, 10);
+        const start = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+        const res = await fetch(`https://api.rd.services/platform/analytics/emails?page=1&page_size=1&start_date=${start}&end_date=${end}`, {
           headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
         });
         if (!res.ok) {
