@@ -55,8 +55,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       localStorage.setItem('autoforce_user', JSON.stringify(data.user));
       onLogin(data.user, sessionToken);
     } catch (err) {
-      console.error(err);
-      setError('Acesso restrito a contas @autoforce.com');
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('Login error:', msg);
+      setError(msg || 'Acesso restrito a contas @autoforce.com');
       setLoading(false);
     }
   };
