@@ -54,8 +54,9 @@ async function testPlatformConnection(platform: Platform): Promise<{ ok: boolean
       }
 
       case 'GOOGLE_ANALYTICS': {
-        const propertyId = process.env.GA4_PROPERTY_ID;
-        if (!propertyId) return { ok: false, message: 'GA4_PROPERTY_ID não configurado no Railway' };
+        const rawPropertyId = process.env.GA4_PROPERTY_ID;
+        if (!rawPropertyId) return { ok: false, message: 'GA4_PROPERTY_ID não configurado no Railway' };
+        const propertyId = rawPropertyId.split(',')[0].trim();
         const res = await fetch(`https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}/metadata`, {
           headers: { Authorization: `Bearer ${token}` },
         });
