@@ -41,6 +41,9 @@ if (missing.length > 0) {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Railway (e qualquer reverse proxy) passa o IP real via X-Forwarded-For
+app.set('trust proxy', 1);
+
 // Security headers — desabilita CSP pois é uma API REST pura
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 
