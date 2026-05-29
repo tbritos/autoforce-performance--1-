@@ -244,7 +244,7 @@ export interface FunnelStats {
 
 export const UTM_SOURCES = [
   'instagram', 'facebook', 'linkedin', 'google', 'youtube',
-  'tiktok', 'whatsapp', 'email', 'direto',
+  'tiktok', 'whatsapp', 'email', 'wordpress', 'direto',
 ] as const;
 
 export const UTM_MEDIUMS = [

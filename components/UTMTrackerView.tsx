@@ -23,7 +23,7 @@ import { DataService } from '../services/dataService';
 const SOURCE_LABELS: Record<string, string> = {
   instagram: 'Instagram', facebook: 'Facebook', linkedin: 'LinkedIn',
   google: 'Google', youtube: 'YouTube', tiktok: 'TikTok',
-  whatsapp: 'WhatsApp', email: 'E-mail', direto: 'Direto',
+  whatsapp: 'WhatsApp', email: 'E-mail', wordpress: 'WordPress', direto: 'Direto',
 };
 
 const MEDIUM_LABELS: Record<string, string> = {
