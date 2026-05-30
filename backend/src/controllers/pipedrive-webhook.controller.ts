@@ -73,13 +73,30 @@ async function resolveStageNames(
   );
 }
 
-// ─── Deal status → Lead status ────────────────────────────────────────────────
+// ─── Stage name → Lead status ─────────────────────────────────────────────────
 
-const DEAL_STATUS_TO_LEAD: Record<string, LeadStatus> = {
-  open: 'OPPORTUNITY',
-  won:  'CLIENT',
-  lost: 'LOST',
-};
+function stageNameToLeadStatus(stageName: string): LeadStatus | null {
+  const n = stageName.toLowerCase();
+  if (n.includes('mql'))                                     return 'MQL';
+  if (n.includes('sql') || n.includes('qualificado'))        return 'SQL';
+  if (n.includes('agendamento') || n.includes('no-show') || n.includes('noshow')) return 'SCHEDULED';
+  if (n.includes('reuni') || n.includes('demo'))             return 'DEMO';
+  if (n.includes('proposta') || n.includes('elabora') || n.includes('contrat')) return 'PROPOSAL';
+  return null;
+}
+
+function resolveLeadStatus(dealStatus: string, stageId: number | null): LeadStatus {
+  if (dealStatus === 'won')  return 'CLIENT';
+  if (dealStatus === 'lost') return 'LOST';
+  if (stageId != null) {
+    const name = stageNameCache.get(stageId);
+    if (name) {
+      const mapped = stageNameToLeadStatus(name);
+      if (mapped) return mapped;
+    }
+  }
+  return 'SQL';
+}
 
 // ─── Primary email helper ─────────────────────────────────────────────────────
 
@@ -248,7 +265,7 @@ export class PipedriveWebhookController {
     }
 
     // 5. Persist events + update lead atomically
-    const newLeadStatus = DEAL_STATUS_TO_LEAD[dealStatus] ?? 'OPPORTUNITY';
+    const newLeadStatus = resolveLeadStatus(dealStatus, currentStage);
 
     await prisma.$transaction(async (tx) => {
       for (const data of eventsToCreate) {

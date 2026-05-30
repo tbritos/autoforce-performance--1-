@@ -48,23 +48,38 @@ interface PipedriveListResponse<T> {
   additional_data?: { pagination?: { start: number; limit: number; more_items_in_collection: boolean; next_start?: number } };
 }
 
-// ─── Default deal status → LeadStatus mapping ────────────────────────────────
+// ─── Stage name → LeadStatus mapping ─────────────────────────────────────────
 
-const DEFAULT_STATUS_MAP: Record<string, LeadStatus> = {
-  open: 'OPPORTUNITY',
-  won: 'CLIENT',
-  lost: 'LOST',
-};
+function stageNameToLeadStatus(stageName: string): LeadStatus | null {
+  const n = stageName.toLowerCase();
+  if (n.includes('mql'))                                     return 'MQL';
+  if (n.includes('sql') || n.includes('qualificado'))        return 'SQL';
+  if (n.includes('agendamento') || n.includes('no-show') || n.includes('noshow')) return 'SCHEDULED';
+  if (n.includes('reuni') || n.includes('demo'))             return 'DEMO';
+  if (n.includes('proposta') || n.includes('elabora') || n.includes('contrat')) return 'PROPOSAL';
+  return null;
+}
 
 function resolveLeadStatus(
   deal: PipedriveDeal,
   stageMap: Record<string, LeadStatus>
 ): LeadStatus {
-  // Stage-specific mapping takes priority over deal status
+  if (deal.status === 'won')  return 'CLIENT';
+  if (deal.status === 'lost') return 'LOST';
+
+  // Explicit stage ID mapping configured in PlatformConnection.metadata
   if (deal.stage_id && stageMap[String(deal.stage_id)]) {
     return stageMap[String(deal.stage_id)];
   }
-  return DEFAULT_STATUS_MAP[deal.status] ?? 'OPPORTUNITY';
+
+  // Stage name pattern matching (uses cache populated by loadStageNames)
+  const stageName = stageNameCache.get(deal.stage_id);
+  if (stageName) {
+    const mapped = stageNameToLeadStatus(stageName);
+    if (mapped) return mapped;
+  }
+
+  return 'SQL';
 }
 
 // ─── API client ──────────────────────────────────────────────────────────────
@@ -398,6 +413,10 @@ export async function syncPipedrivePersons(): Promise<{ synced: number; errors: 
 export async function syncPipedriveDeals(): Promise<{ synced: number; errors: number }> {
   const { token, domain, stageMap, authType } = await getCredentials();
   const deals = await fetchAllPages<PipedriveDeal>('/deals', token, domain, authType);
+
+  // Pre-load stage names so resolveLeadStatus can use pattern matching
+  const allStageIds = [...new Set(deals.map(d => d.stage_id).filter((id): id is number => id != null))];
+  await loadStageNames(allStageIds, token, domain, authType);
 
   let synced = 0;
   let errors = 0;
