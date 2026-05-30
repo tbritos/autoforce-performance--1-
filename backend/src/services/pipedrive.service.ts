@@ -414,6 +414,11 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
   const { token, domain, stageMap, authType } = await getCredentials();
   const deals = await fetchAllPages<PipedriveDeal>('/deals', token, domain, authType);
 
+  // Remove OPPORTUNITY status history records created before stage mapping was implemented
+  await prisma.leadStatusHistory.deleteMany({
+    where: { OR: [{ toStatus: 'OPPORTUNITY' }, { fromStatus: 'OPPORTUNITY' }] },
+  });
+
   // Pre-load stage names so resolveLeadStatus can use pattern matching
   const allStageIds = [...new Set(deals.map(d => d.stage_id).filter((id): id is number => id != null))];
   await loadStageNames(allStageIds, token, domain, authType);
