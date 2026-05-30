@@ -422,7 +422,8 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
       fetchAllPages<PipedriveDeal>(`/pipelines/${pid}/deals`, token, domain, authType)
     )
   );
-  const deals = dealArrays.flat();
+  // Only inbound deals (Canal de Origem = Inbound, option 66)
+  const deals = dealArrays.flat().filter(d => d[FIELD_CANAL_ORIGEM] === OPT_CANAL_INBOUND);
 
   // Remove OPPORTUNITY status history records created before stage mapping was implemented
   await prisma.leadStatusHistory.deleteMany({
