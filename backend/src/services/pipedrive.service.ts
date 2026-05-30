@@ -526,6 +526,23 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
     }
   }
 
+  // Clean up leads linked to non-inbound deals (deals not in the filtered set)
+  const inboundDealIds = new Set(deals.map(d => String(d.id)));
+  const linkedLeads = await prisma.lead.findMany({
+    where: { pipedriveDealId: { not: null } },
+    select: { email: true, pipedriveDealId: true },
+  });
+  const staleLeads = linkedLeads.filter(l => l.pipedriveDealId && !inboundDealIds.has(l.pipedriveDealId));
+  if (staleLeads.length > 0) {
+    const staleEmails = staleLeads.map(l => l.email);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (prisma as any).pipedriveDealEvent.deleteMany({ where: { leadEmail: { in: staleEmails } } });
+    await prisma.lead.updateMany({
+      where: { email: { in: staleEmails } },
+      data: { pipedriveDealId: null },
+    });
+  }
+
   return { synced, errors };
 }
 
