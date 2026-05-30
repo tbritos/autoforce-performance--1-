@@ -23,6 +23,7 @@ import authRoutes from './routes/auth.routes';
 import webhookLeadsRoutes from './routes/webhook-leads.routes';
 import leadHubRoutes from './routes/lead-hub.routes';
 import connectionsRoutes from './routes/connections.routes';
+import pipedriveWebhookRoutes from './routes/pipedrive-webhook.routes';
 import utmLinksRoutes from './routes/utm-links.routes';
 import utmDestinationsRoutes from './routes/utm-destinations.routes';
 import funnelRoutes from './routes/funnel.routes';
@@ -112,6 +113,16 @@ const webhookLimiter = rateLimit({
   skip: () => process.env.NODE_ENV === 'development',
 });
 
+// Rate limiting para webhook do Pipedrive (deals mudam com frequência moderada)
+const pipedriveWebhookLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 500,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Limite de requisições atingido.' },
+  skip: () => process.env.NODE_ENV === 'development',
+});
+
 // RD Station OAuth callback helper
 app.get('/rdstation/callback', (req, res) => {
   const escape = (s: string) =>
@@ -144,6 +155,9 @@ app.use('/api/auth', authLimiter, authRoutes);
 
 // Public incoming lead webhooks — sem autenticação, com rate limit
 app.use('/api/lead-webhooks', webhookLimiter, publicLeadWebhooksRouter);
+
+// Pipedrive deal webhooks — público, autenticado por query token
+app.use('/api/pipedrive-webhook', pipedriveWebhookLimiter, pipedriveWebhookRoutes);
 
 // Public UTM redirect — /r/:code → increment clicks → redirect to fullUrl
 app.get('/r/:code', async (req, res) => {

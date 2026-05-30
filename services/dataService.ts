@@ -936,6 +936,10 @@ export const DataService = {
     return apiClient.post<{ ok: boolean; message: string }>(`/connections/${platform}/test`, {});
   },
 
+  getPipedriveEvents: async (leadId: string): Promise<{ events: import('../types').PipedriveDealEvent[]; dealUrl: string | null }> => {
+    return apiClient.get(`/lead-hub/id/${leadId}/pipedrive-events`);
+  },
+
   updateConnectionConfig: async (platform: string, payload: {
     accountId?: string;
     accountName?: string;

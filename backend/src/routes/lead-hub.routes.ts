@@ -39,6 +39,7 @@ router.get('/', LeadHubController.list);
 // DELETE /api/lead-hub/:email                       — soft delete
 router.get('/id/:id', LeadHubController.profileById);
 router.get('/id/:id/conversions', LeadHubController.getAllConversions);
+router.get('/id/:id/pipedrive-events', LeadHubController.getPipedriveEvents);
 router.patch('/id/:id', LeadHubController.updateProfileById);
 router.patch('/id/:id/status', LeadHubController.updateStatusById);
 router.patch('/id/:id/notes', LeadHubController.updateNotesById);

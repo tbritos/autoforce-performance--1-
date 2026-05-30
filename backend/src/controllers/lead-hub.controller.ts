@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { LeadHubService, LeadFilter } from '../services/lead-hub.service';
 import { LeadStatus } from '@prisma/client';
+import { prisma } from '../config/database';
+import { PlatformConnectionService } from '../services/platform-connection.service';
 
 function parseFilters(q: Request['query']): LeadFilter {
   return {
@@ -251,6 +253,44 @@ export class LeadHubController {
       if (!id) { res.status(400).json({ error: 'Lead ID is required' }); return; }
       await LeadHubService.deleteLeadById(id);
       res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async getPipedriveEvents(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      if (!id) { res.status(400).json({ error: 'Lead ID is required' }); return; }
+
+      const lead = await prisma.lead.findUnique({
+        where: { id },
+        select: { email: true, pipedriveDealId: true },
+      });
+
+      if (!lead?.pipedriveDealId) {
+        res.json({ events: [], dealUrl: null });
+        return;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const events = await (prisma as any).pipedriveDealEvent.findMany({
+        where: { leadEmail: lead.email },
+        orderBy: { occurredAt: 'asc' },
+      });
+
+      // Build Pipedrive deal URL from connection metadata or env
+      let dealUrl: string | null = null;
+      try {
+        const conn = await PlatformConnectionService.getConnection('PIPEDRIVE');
+        const meta = (conn?.metadata ?? {}) as Record<string, unknown>;
+        const domain = (meta.domain as string) || process.env.PIPEDRIVE_DOMAIN || '';
+        if (domain) {
+          dealUrl = `https://${domain}.pipedrive.com/deal/${lead.pipedriveDealId}`;
+        }
+      } catch { /* non-fatal */ }
+
+      res.json({ events, dealUrl });
     } catch (err) {
       next(err);
     }

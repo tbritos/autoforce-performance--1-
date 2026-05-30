@@ -53,6 +53,24 @@ export interface LeadStatusHistoryEntry {
   changedAt: string;
 }
 
+export interface PipedriveDealEvent {
+  id: string;
+  dealId: string;
+  leadEmail: string;
+  eventType: 'created' | 'stage_changed' | 'value_changed' | 'won' | 'lost' | 'reopened';
+  fromStageId: number | null;
+  fromStageName: string | null;
+  toStageId: number | null;
+  toStageName: string | null;
+  fromValue: number | null;
+  toValue: number | null;
+  dealTitle: string | null;
+  dealStatus: string;
+  occurredAt: string;
+  source: string;
+  createdAt: string;
+}
+
 export interface LeadRevenueEntry {
   id: string;
   date: string;

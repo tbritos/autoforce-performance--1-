@@ -30,9 +30,9 @@ interface PipedriveDeal {
   stage_name?: string;
   value: number;
   currency: string;
-  person_id: { value: number } | null;
+  person_id: { value: number; email?: Array<{ value: string; primary: boolean }>; phone?: Array<{ value: string; primary: boolean }> } | null;
   person_name?: string;
-  person_email?: Array<{ value: string; primary: boolean }>;
+  person_email?: Array<{ value: string; primary: boolean }>; // may not be present in list endpoint
   expected_close_date?: string;
   close_time?: string;
   won_time?: string;
@@ -144,6 +144,244 @@ async function fetchAllPages<T>(
   return all;
 }
 
+// ─── Stage name cache (in-memory per process) ────────────────────────────────
+
+const stageNameCache = new Map<number, string>();
+
+async function loadStageNames(
+  stageIds: (number | null | undefined)[],
+  token: string,
+  domain: string,
+  authType: 'api_token' | 'oauth'
+): Promise<void> {
+  const missing = [...new Set(stageIds.filter((id): id is number => id != null && !stageNameCache.has(id)))];
+  if (missing.length === 0) return;
+  await Promise.allSettled(missing.map(async (id) => {
+    try {
+      const url = new URL(`${BASE(domain)}/stages/${id}`);
+      if (authType === 'api_token') url.searchParams.set('api_token', token);
+      const res = await fetch(url.toString(), {
+        headers: authType === 'oauth' ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (res.ok) {
+        const json = await res.json() as { success: boolean; data?: { name: string } };
+        if (json.success && json.data?.name) stageNameCache.set(id, json.data.name);
+      }
+    } catch { /* non-fatal */ }
+  }));
+}
+
+// ─── Deal history backfill ────────────────────────────────────────────────────
+
+interface PipedriveDealChange {
+  object: string;
+  timestamp: string;
+  data: {
+    field?: string;
+    old_value?: unknown;
+    new_value?: unknown;
+  };
+}
+
+async function fetchDealHistory(
+  dealId: number,
+  token: string,
+  domain: string,
+  authType: 'api_token' | 'oauth'
+): Promise<PipedriveDealChange[]> {
+  try {
+    const url = new URL(`${BASE(domain)}/deals/${dealId}/updates`);
+    if (authType === 'api_token') url.searchParams.set('api_token', token);
+    url.searchParams.set('items', 'dealChange');
+    url.searchParams.set('limit', '200');
+    const res = await fetch(url.toString(), {
+      headers: authType === 'oauth' ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    if (!res.ok) return [];
+    const json = await res.json() as { success: boolean; data?: PipedriveDealChange[] };
+    return json.success ? (json.data ?? []) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function recordDealEvents(
+  deal: PipedriveDeal,
+  leadEmail: string,
+  token: string,
+  domain: string,
+  authType: 'api_token' | 'oauth'
+): Promise<void> {
+  const dealId = String(deal.id);
+  const dealTitle = typeof deal.title === 'string' ? deal.title : null;
+
+  const lastEvent = await prisma.pipedriveDealEvent.findFirst({
+    where: { dealId },
+    orderBy: { occurredAt: 'desc' },
+  });
+
+  if (!lastEvent) {
+    // First time seeing this deal — backfill full history
+    const history = await fetchDealHistory(deal.id, token, domain, authType);
+    const stageHistory = history.filter(h => h.data?.field === 'stage_id' || h.data?.field === 'status' || h.data?.field === 'value');
+
+    // Collect all stage IDs for name resolution
+    const stageIds: number[] = [];
+    for (const h of stageHistory) {
+      if (h.data?.field === 'stage_id') {
+        const prev = Number(h.data.old_value);
+        const next = Number(h.data.new_value);
+        if (!isNaN(prev)) stageIds.push(prev);
+        if (!isNaN(next)) stageIds.push(next);
+      }
+    }
+    if (deal.stage_id) stageIds.push(deal.stage_id);
+    await loadStageNames(stageIds, token, domain, authType);
+
+    const eventsToCreate: Array<Record<string, unknown>> = [];
+
+    for (const h of stageHistory) {
+      const occurredAt = new Date(h.timestamp);
+      if (isNaN(occurredAt.getTime())) continue;
+
+      if (h.data?.field === 'stage_id') {
+        const fromId = Number(h.data.old_value);
+        const toId   = Number(h.data.new_value);
+        eventsToCreate.push({
+          id:           `${dealId}-stage-${occurredAt.getTime()}-backfill`,
+          dealId,
+          leadEmail,
+          eventType:    'stage_changed',
+          fromStageId:  isNaN(fromId) ? null : fromId,
+          fromStageName: isNaN(fromId) ? null : (stageNameCache.get(fromId) ?? null),
+          toStageId:    isNaN(toId)   ? null : toId,
+          toStageName:  isNaN(toId)   ? null : (stageNameCache.get(toId) ?? null),
+          dealTitle,
+          dealStatus:   deal.status,
+          occurredAt,
+          source:       'backfill',
+        });
+      } else if (h.data?.field === 'status') {
+        const newStatus = String(h.data.new_value ?? '');
+        const eventType = newStatus === 'won' ? 'won' : newStatus === 'lost' ? 'lost' : newStatus === 'open' ? 'reopened' : null;
+        if (eventType) {
+          eventsToCreate.push({
+            id:         `${dealId}-status-${occurredAt.getTime()}-backfill`,
+            dealId,
+            leadEmail,
+            eventType,
+            dealTitle,
+            dealStatus: newStatus,
+            occurredAt,
+            source:     'backfill',
+          });
+        }
+      } else if (h.data?.field === 'value') {
+        eventsToCreate.push({
+          id:         `${dealId}-value-${occurredAt.getTime()}-backfill`,
+          dealId,
+          leadEmail,
+          eventType:  'value_changed',
+          fromValue:  h.data.old_value != null ? Number(h.data.old_value) : null,
+          toValue:    h.data.new_value != null ? Number(h.data.new_value) : null,
+          dealTitle,
+          dealStatus: deal.status,
+          occurredAt,
+          source:     'backfill',
+        });
+      }
+    }
+
+    // Always add a 'created' event at deal add_time
+    const createdAt = new Date(deal.add_time);
+    if (!isNaN(createdAt.getTime())) {
+      eventsToCreate.unshift({
+        id:           `${dealId}-created-backfill`,
+        dealId,
+        leadEmail,
+        eventType:    'created',
+        toStageId:    deal.stage_id ?? null,
+        toStageName:  deal.stage_id != null ? (stageNameCache.get(deal.stage_id) ?? null) : null,
+        toValue:      typeof deal.value === 'number' ? deal.value : null,
+        dealTitle,
+        dealStatus:   deal.status,
+        occurredAt:   createdAt,
+        source:       'backfill',
+      });
+    }
+
+    if (eventsToCreate.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await prisma.pipedriveDealEvent.createMany({ data: eventsToCreate as any, skipDuplicates: true });
+    }
+    return;
+  }
+
+  // Subsequent syncs: detect changes since last event
+  const occurredAt = new Date(deal.update_time);
+  if (isNaN(occurredAt.getTime())) return;
+
+  const currentStageId = deal.stage_id ?? null;
+  const currentStatus  = deal.status;
+  const currentValue   = typeof deal.value === 'number' ? deal.value : null;
+
+  await loadStageNames([currentStageId, lastEvent.toStageId], token, domain, authType);
+
+  const newEvents: Array<Record<string, unknown>> = [];
+
+  if (currentStageId != null && currentStageId !== lastEvent.toStageId) {
+    newEvents.push({
+      id:           `${dealId}-stage-${occurredAt.getTime()}-sync`,
+      dealId,
+      leadEmail,
+      eventType:    'stage_changed',
+      fromStageId:  lastEvent.toStageId,
+      fromStageName: lastEvent.toStageName,
+      toStageId:    currentStageId,
+      toStageName:  stageNameCache.get(currentStageId) ?? null,
+      dealTitle,
+      dealStatus:   currentStatus,
+      occurredAt,
+      source:       'sync',
+    });
+  }
+
+  if (currentStatus !== lastEvent.dealStatus) {
+    const eventType = currentStatus === 'won' ? 'won' : currentStatus === 'lost' ? 'lost' : 'reopened';
+    newEvents.push({
+      id:         `${dealId}-status-${occurredAt.getTime()}-sync`,
+      dealId,
+      leadEmail,
+      eventType,
+      toValue:    currentValue,
+      dealTitle,
+      dealStatus: currentStatus,
+      occurredAt,
+      source:     'sync',
+    });
+  }
+
+  if (currentValue != null && currentValue !== lastEvent.toValue) {
+    newEvents.push({
+      id:         `${dealId}-value-${occurredAt.getTime()}-sync`,
+      dealId,
+      leadEmail,
+      eventType:  'value_changed',
+      fromValue:  lastEvent.toValue,
+      toValue:    currentValue,
+      dealTitle,
+      dealStatus: currentStatus,
+      occurredAt,
+      source:     'sync',
+    });
+  }
+
+  if (newEvents.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await prisma.pipedriveDealEvent.createMany({ data: newEvents as any, skipDuplicates: true });
+  }
+}
+
 // ─── Sync logic ───────────────────────────────────────────────────────────────
 
 function primaryEmail(emails: Array<{ value: string; primary: boolean }> = []): string | null {
@@ -165,8 +403,9 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
   let errors = 0;
 
   for (const deal of deals) {
-    // Resolve lead email from deal person
-    const personEmails = deal.person_email ?? [];
+    // Resolve lead email: Pipedrive returns emails in person_id.email (list endpoint)
+    // or in person_email (single deal endpoint). Try both.
+    const personEmails = deal.person_email ?? deal.person_id?.email ?? [];
     const email = primaryEmail(personEmails) ?? null;
 
     // Also try lookup by pipedrivePersonId if no email
@@ -243,6 +482,10 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
       });
 
       synced++;
+
+      // Record deal events: backfill on first link, detect changes on subsequent syncs.
+      // Fire-and-forget — errors here must not fail the main sync.
+      recordDealEvents(deal, lead!.email, token, domain, authType).catch(() => {});
     } catch {
       errors++;
     }

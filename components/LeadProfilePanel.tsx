@@ -3,8 +3,9 @@ import {
   X, ArrowLeft, Flame, User, Mail,
   Tag, Link2, Calendar, ArrowRight, DollarSign, LayoutList,
   RefreshCw, ChevronDown, Plus, Check, PenLine,
+  CheckCircle, XCircle, ExternalLink, GitBranch,
 } from 'lucide-react';
-import { LeadProfile, LeadStatus, LeadCustomFieldDef } from '../types';
+import { LeadProfile, LeadStatus, LeadCustomFieldDef, PipedriveDealEvent } from '../types';
 import { DataService } from '../services/dataService';
 
 // ─── Status config ────────────────────────────────────────────────────────────
@@ -522,6 +523,134 @@ const CustomFieldEditor: React.FC<{
   );
 };
 
+// ─── Pipedrive Timeline ───────────────────────────────────────────────────────
+
+const EVENT_CONFIG: Record<string, { icon: React.ReactNode; color: string; label: (e: PipedriveDealEvent) => string }> = {
+  created:       { icon: <GitBranch size={12} />, color: 'var(--fg-muted)',   label: () => 'Negócio criado' },
+  stage_changed: { icon: <ArrowRight size={12} />, color: '#818cf8',          label: (e) => `${e.fromStageName ?? `#${e.fromStageId}`} → ${e.toStageName ?? `#${e.toStageId}`}` },
+  value_changed: { icon: <DollarSign size={12} />, color: '#f59e0b',          label: (e) => `${brl(e.fromValue ?? 0)} → ${brl(e.toValue ?? 0)}` },
+  won:           { icon: <CheckCircle size={12} />, color: 'var(--green-500)', label: (e) => `Ganho${e.toValue ? ` — ${brl(e.toValue)}` : ''}` },
+  lost:          { icon: <XCircle size={12} />,     color: 'var(--red-500)',   label: () => 'Perdido' },
+  reopened:      { icon: <RefreshCw size={12} />,   color: 'var(--af-500)',    label: () => 'Reaberto' },
+};
+
+const PipedriveTimeline: React.FC<{ leadId: string; dealId: string }> = ({ leadId, dealId }) => {
+  const [open, setOpen]       = useState(false);
+  const [events, setEvents]   = useState<PipedriveDealEvent[] | null>(null);
+  const [dealUrl, setDealUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleOpen = async () => {
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    if (events !== null) return;
+    setLoading(true);
+    try {
+      const { events: data, dealUrl: url } = await DataService.getPipedriveEvents(leadId);
+      setEvents(data);
+      setDealUrl(url);
+    } catch {
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+      <button
+        type="button"
+        onClick={handleOpen}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 8, padding: '10px 16px', background: 'var(--bg-muted)',
+          border: 'none', borderBottom: open ? '1px solid var(--border)' : 'none',
+          cursor: 'pointer',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <GitBranch size={13} style={{ color: 'var(--fg-muted)' }} />
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+            Funil Pipedrive
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--fg-subtle)', fontFamily: 'monospace' }}>#{dealId}</span>
+        </div>
+        <ChevronDown size={13} style={{ color: 'var(--fg-subtle)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
+      </button>
+
+      {open && (
+        <div style={{ padding: 16, background: 'var(--bg-surface)' }}>
+          {loading && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {[1, 2, 3].map(i => (
+                <div key={i} style={{ height: 32, background: 'var(--bg-muted)', borderRadius: 8 }} className="animate-pulse" />
+              ))}
+            </div>
+          )}
+
+          {!loading && events?.length === 0 && (
+            <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-subtle)', textAlign: 'center', padding: '12px 0' }}>
+              Nenhuma movimentação registrada ainda.
+            </p>
+          )}
+
+          {!loading && events && events.length > 0 && (
+            <div style={{ position: 'relative', paddingLeft: 20 }}>
+              {/* Vertical line */}
+              <div style={{ position: 'absolute', left: 5, top: 8, bottom: 8, width: 1, background: 'var(--border)' }} />
+
+              {events.map((ev, i) => {
+                const cfg = EVENT_CONFIG[ev.eventType] ?? EVENT_CONFIG.created;
+                const isLast = i === events.length - 1;
+                return (
+                  <div key={ev.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, paddingBottom: isLast ? 0 : 14 }}>
+                    {/* Dot */}
+                    <div style={{
+                      position: 'absolute', left: 1, width: 9, height: 9, borderRadius: '50%',
+                      background: cfg.color, border: '2px solid var(--bg-surface)',
+                      marginTop: 3, flexShrink: 0,
+                    }} />
+                    {/* Content */}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ color: cfg.color, display: 'flex', alignItems: 'center' }}>{cfg.icon}</span>
+                        <span style={{ fontSize: 12, fontWeight: ev.eventType === 'won' || ev.eventType === 'lost' ? 700 : 500, color: cfg.color }}>
+                          {cfg.label(ev)}
+                        </span>
+                      </div>
+                      {ev.dealTitle && ev.eventType === 'created' && (
+                        <p style={{ fontSize: 11, color: 'var(--fg-muted)', margin: '2px 0 0', fontStyle: 'italic' }}>{ev.dealTitle}</p>
+                      )}
+                      <p style={{ fontSize: 11, color: 'var(--fg-subtle)', margin: '2px 0 0' }}>
+                        {fmt(ev.occurredAt, { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {!loading && dealUrl && (
+            <a
+              href={dealUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, marginTop: events && events.length > 0 ? 14 : 0,
+                paddingTop: 10, borderTop: '1px solid var(--border)',
+                fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontWeight: 600,
+              }}
+            >
+              <ExternalLink size={12} /> Abrir no Pipedrive
+            </a>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface Props {
   email?: string;
   leadId?: string;
@@ -790,6 +919,10 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                     </p>
                   )}
                 </Section>
+              )}
+
+              {profile.pipedriveDealId && (
+                <PipedriveTimeline leadId={profile.id} dealId={profile.pipedriveDealId} />
               )}
 
               {profile.revenueEntries.length > 0 && (

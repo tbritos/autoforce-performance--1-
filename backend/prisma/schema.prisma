@@ -87,9 +87,10 @@ model Lead {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  conversions    LeadConversion[]
-  statusHistory  LeadStatusHistory[]
-  revenueEntries RevenueEntry[]
+  conversions      LeadConversion[]
+  statusHistory    LeadStatusHistory[]
+  revenueEntries   RevenueEntry[]
+  pipedriveEvents  PipedriveDealEvent[]
 
   @@index([status])
   @@index([firstSource])
@@ -710,6 +711,44 @@ model Funnel {
 
   @@index([sortOrder])
   @@index([isActive])
+}
+
+// ============================================================
+// PIPEDRIVE DEAL EVENTS — Histórico de movimentações de deals
+// Alimentado por webhook em tempo real + sync como fallback.
+// ============================================================
+
+model PipedriveDealEvent {
+  id            String   @id @default(cuid())
+  dealId        String   // ID numérico do deal no Pipedrive (como string)
+  leadEmail     String
+  lead          Lead     @relation(fields: [leadEmail], references: [email])
+
+  // Tipo do evento
+  eventType     String   // 'created' | 'stage_changed' | 'value_changed' | 'won' | 'lost' | 'reopened'
+
+  // Mudança de estágio
+  fromStageId   Int?
+  fromStageName String?
+  toStageId     Int?
+  toStageName   String?
+
+  // Mudança de valor
+  fromValue     Float?
+  toValue       Float?
+
+  // Snapshot do deal
+  dealTitle     String?
+  dealStatus    String   // 'open' | 'won' | 'lost'
+
+  occurredAt    DateTime // quando aconteceu no Pipedrive (update_time)
+  source        String   @default("sync") // 'webhook' | 'sync' | 'backfill'
+
+  createdAt     DateTime @default(now())
+
+  @@index([leadEmail])
+  @@index([dealId])
+  @@index([occurredAt])
 }
 
 // ============================================================
