@@ -3,7 +3,7 @@ export type ConnectionStatus = 'CONNECTED' | 'DISCONNECTED' | 'ERROR' | 'EXPIRED
 
 // ─── Lead Hub ─────────────────────────────────────────────────────────────────
 
-export type LeadStatus = 'LEAD' | 'MQL' | 'SQL' | 'SCHEDULED' | 'DEMO' | 'PROPOSAL' | 'CLIENT' | 'LOST' | 'DISQUALIFIED';
+export type LeadStatus = 'LEAD' | 'MQL' | 'SQL' | 'SCHEDULED' | 'DEMO' | 'PROPOSAL' | 'OPPORTUNITY' | 'CLIENT' | 'LOST' | 'DISQUALIFIED';
 
 export interface Lead {
   id: string;

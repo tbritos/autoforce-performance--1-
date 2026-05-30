@@ -38,6 +38,7 @@ const STATUSES: StatusMeta[] = [
   { value: 'SCHEDULED',    label: 'Agendado',       badgeClass: '',        dotColor: '#f59e0b' },
   { value: 'DEMO',         label: 'Demo',           badgeClass: '',        dotColor: '#f97316' },
   { value: 'PROPOSAL',     label: 'Proposta',       badgeClass: 'warning', dotColor: '#a855f7' },
+  { value: 'OPPORTUNITY',  label: 'Oportunidade',   badgeClass: '',        dotColor: '#06b6d4' },
   { value: 'CLIENT',       label: 'Cliente',        badgeClass: 'success', dotColor: 'var(--green-500)' },
   { value: 'LOST',         label: 'Perdido',        badgeClass: 'danger',  dotColor: 'var(--red-500)' },
   { value: 'DISQUALIFIED', label: 'Desqualificado', badgeClass: '',        dotColor: 'var(--fg-subtle)' },
