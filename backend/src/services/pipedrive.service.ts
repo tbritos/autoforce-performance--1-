@@ -410,9 +410,19 @@ export async function syncPipedrivePersons(): Promise<{ synced: number; errors: 
   return { synced: 0, errors: 0 };
 }
 
+// Pipelines a sincronizar: novo_cliente (2) e upsell (5)
+const SYNC_PIPELINE_IDS = [2, 5];
+
 export async function syncPipedriveDeals(): Promise<{ synced: number; errors: number }> {
   const { token, domain, stageMap, authType } = await getCredentials();
-  const deals = await fetchAllPages<PipedriveDeal>('/deals', token, domain, authType);
+
+  // Fetch only from sales pipelines — ignore CS/relationship pipelines
+  const dealArrays = await Promise.all(
+    SYNC_PIPELINE_IDS.map(pid =>
+      fetchAllPages<PipedriveDeal>(`/pipelines/${pid}/deals`, token, domain, authType)
+    )
+  );
+  const deals = dealArrays.flat();
 
   // Remove OPPORTUNITY status history records created before stage mapping was implemented
   await prisma.leadStatusHistory.deleteMany({
