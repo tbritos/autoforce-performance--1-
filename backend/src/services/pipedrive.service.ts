@@ -534,13 +534,30 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
   });
   const staleLeads = linkedLeads.filter(l => l.pipedriveDealId && !inboundDealIds.has(l.pipedriveDealId));
   if (staleLeads.length > 0) {
-    const staleEmails = staleLeads.map(l => l.email);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (prisma as any).pipedriveDealEvent.deleteMany({ where: { leadEmail: { in: staleEmails } } });
-    await prisma.lead.updateMany({
-      where: { email: { in: staleEmails } },
-      data: { pipedriveDealId: null },
-    });
+    for (const staleLead of staleLeads) {
+      // Find the status the lead had BEFORE Pipedrive changed it
+      const firstPipedriveHistory = await prisma.leadStatusHistory.findFirst({
+        where: { leadEmail: staleLead.email, reason: { contains: 'Pipedrive deal' } },
+        orderBy: { changedAt: 'asc' },
+      });
+
+      await prisma.$transaction(async (tx) => {
+        // Delete Pipedrive events and status history entries
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (tx as any).pipedriveDealEvent.deleteMany({ where: { leadEmail: staleLead.email } });
+        await tx.leadStatusHistory.deleteMany({
+          where: { leadEmail: staleLead.email, reason: { contains: 'Pipedrive deal' } },
+        });
+        await tx.lead.update({
+          where: { email: staleLead.email },
+          data: {
+            pipedriveDealId: null,
+            // Revert to status before Pipedrive touched it, or keep if no history found
+            ...(firstPipedriveHistory?.fromStatus ? { status: firstPipedriveHistory.fromStatus } : {}),
+          },
+        });
+      });
+    }
   }
 
   return { synced, errors };
