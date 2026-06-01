@@ -51,7 +51,7 @@ const EntryDrawer: React.FC<{
       />
 
       {/* Detail modal */}
-      <div className={`relative flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-autoforce-grey/20 bg-autoforce-darkest shadow-2xl transition-all duration-300 ease-out ${visible ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-4 scale-95 opacity-0'}`}>
+      <div className={`revenue-entry-modal relative flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-autoforce-grey/20 bg-autoforce-darkest shadow-2xl transition-all duration-300 ease-out ${visible ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-4 scale-95 opacity-0'}`}>
 
         {/* Header */}
         <div className="flex-shrink-0 bg-autoforce-darkest border-b border-autoforce-grey/20 px-5 py-4">
