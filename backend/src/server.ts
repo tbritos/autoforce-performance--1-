@@ -187,6 +187,23 @@ app.post('/api/admin/backfill-revenue', async (req, res) => {
     return;
   }
 
+  // Debug mode: GET /api/admin/backfill-revenue?token=...&debug=1
+  // Returns raw first deal to inspect what fields Pipedrive is returning
+  if (req.query.debug === '1') {
+    const url = new URL(`https://${domain}.pipedrive.com/api/v1/deals`);
+    url.searchParams.set('api_token', token);
+    url.searchParams.set('pipeline_id', '2');
+    url.searchParams.set('status', 'won');
+    url.searchParams.set('limit', '1');
+    const json = await fetch(url.toString()).then(r => r.json()) as { data: unknown[] | null };
+    const deal = json.data?.[0] ?? null;
+    if (!deal) { res.json({ error: 'no deals found' }); return; }
+    const keys = Object.keys(deal as object);
+    const canalKey = '9459f9b49acca8552e69c0ee0898f751b05b4fe6';
+    res.json({ canalValue: (deal as Record<string, unknown>)[canalKey], totalKeys: keys.length, sampleKeys: keys.slice(0, 20), deal });
+    return;
+  }
+
   try {
     const { PIPEDRIVE_FIELDS, PIPEDRIVE_OPTIONS, resolveSetField, resolveEnumField, extractSetupValue, sourceToOrigin } = await import('./services/pipedrive.service');
     const { prisma } = await import('./config/database');
