@@ -90,6 +90,29 @@ const normalizeRange = (startValue: string, endValue: string) => {
   return start <= end ? { start, end } : { start: end, end: start };
 };
 
+// ─── Pure format helpers (module-level to avoid TDZ in useMemo callbacks) ──────
+
+const formatCurrency = (val: number) => {
+    if (Number.isNaN(val)) return 'R$ 0,00';
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+};
+
+const formatMetricValue = (metric: Metric, value: number) => {
+    if (metric.unit === '%') {
+        return `${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)}%`;
+    }
+    if (metric.unit === 'R$') return formatCurrency(value);
+    return new Intl.NumberFormat('pt-BR').format(value);
+};
+
+const formatMetricTarget = (metric: Metric, value: number) => {
+    if (metric.unit === '%') {
+        return `${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)}%`;
+    }
+    if (metric.unit === 'R$') return formatCurrency(value);
+    return new Intl.NumberFormat('pt-BR').format(value);
+};
+
 // ─── Dashboard constants ───────────────────────────────────────────────────────
 
 const FUNNEL_STAGES: { status: LeadStatus; label: string; color: string }[] = [
@@ -244,32 +267,9 @@ const DashboardContent: React.FC<{
         localStorage.setItem('autoforce_kpi_goals_history', JSON.stringify(goalHistory));
     }, [goals, goalHistory]);
 
-    const formatCurrency = (val: number) => {
-        if (Number.isNaN(val)) return 'R$ 0,00';
-        return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-    };
-
-    const formatMetricValue = (metric: Metric, value: number) => {
-        if (metric.unit === '%') {
-            return `${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)}%`;
-        }
-        if (metric.unit === 'R$') {
-            return formatCurrency(value);
-        }
-        return new Intl.NumberFormat('pt-BR').format(value);
-    };
-
-    const formatMetricTarget = (metric: Metric, value: number) => {
-        if (metric.unit === '%') {
-            return `${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)}%`;
-        }
-        if (metric.unit === 'R$') {
-            return formatCurrency(value);
-        }
-        return new Intl.NumberFormat('pt-BR').format(value);
-    };
-
-    const aggregateForRange = (startValue: string, endValue: string) => {
+    // aggregateForRange uses function declaration (hoisted) so it cannot cause TDZ
+    // even if a minifier reorders const initialisations inside this component.
+    function aggregateForRange(startValue: string, endValue: string) {
         const range = normalizeRange(startValue, endValue);
         if (!range) return { mrr: 0, sales: 0 };
         const { start, end } = range;
@@ -281,7 +281,7 @@ const DashboardContent: React.FC<{
             mrr:   revenue.reduce((sum, item) => sum + (item.mrrValue || 0), 0),
             sales: revenue.length,
         };
-    };
+    }
 
     const filteredRevenue = useMemo(() => {
         const range = normalizeRange(dateRange.start, dateRange.end);
