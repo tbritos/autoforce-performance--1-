@@ -140,31 +140,32 @@ const DashboardContent: React.FC<{
 
     const totalInvest = useMemo(() => metaSpend + googleSpend, [metaSpend, googleSpend]);
 
+    // Conversion rates use leadStats (period-filtered) + revenue filtered by same range
     const conversionRates = useMemo(() => {
-      if (!funnelCounts) return { leadToMql: 0, mqlToSql: 0, sqlToSale: 0, leadToSale: 0 };
-      const { LEAD = 0, MQL = 0, SQL = 0, SCHEDULED = 0, DEMO = 0, PROPOSAL = 0, CLIENT = 0 } = funnelCounts;
-      const active = LEAD + MQL + SQL + SCHEDULED + DEMO + PROPOSAL + CLIENT;
-      const mqlUp  = MQL + SQL + SCHEDULED + DEMO + PROPOSAL + CLIENT;
-      const sqlUp  = SQL + SCHEDULED + DEMO + PROPOSAL + CLIENT;
+      const { leads, mqls, sqls } = leadStats;
+      const revenue = Array.isArray(revenueHistory) ? revenueHistory : [];
+      const range = normalizeRange(dateRange.start, dateRange.end);
+      const vendas = range
+        ? revenue.filter(e => { const d = parseDateOnly(e.date); return d >= range.start && d <= range.end; }).length
+        : revenue.length;
       return {
-        leadToMql:  active > 0 ? (mqlUp / active) * 100 : 0,
-        mqlToSql:   mqlUp  > 0 ? (sqlUp / mqlUp)  * 100 : 0,
-        sqlToSale:  sqlUp  > 0 ? (CLIENT / sqlUp)  * 100 : 0,
-        leadToSale: active > 0 ? (CLIENT / active) * 100 : 0,
+        leadToMql:  leads > 0 ? (mqls  / leads) * 100 : 0,
+        mqlToSql:   mqls  > 0 ? (sqls  / mqls)  * 100 : 0,
+        sqlToSale:  sqls  > 0 ? (vendas / sqls)  * 100 : 0,
+        leadToSale: leads > 0 ? (vendas / leads) * 100 : 0,
       };
-    }, [funnelCounts]);
+    }, [leadStats, revenueHistory, dateRange.start, dateRange.end]);
 
     const totalFunnelLeads = useMemo(
       () => (funnelCounts ? Object.values(funnelCounts).reduce((a, b) => a + b, 0) : 0),
       [funnelCounts]
     );
 
+    // CPL = investimento no período ÷ leads captados no período
     const cpl = useMemo(() => {
-      if (!funnelCounts || totalInvest === 0) return 0;
-      const { MQL = 0, SQL = 0, SCHEDULED = 0, DEMO = 0, PROPOSAL = 0, CLIENT = 0 } = funnelCounts;
-      const mqls = MQL + SQL + SCHEDULED + DEMO + PROPOSAL + CLIENT;
-      return mqls > 0 ? totalInvest / mqls : 0;
-    }, [funnelCounts, totalInvest]);
+      if (totalInvest === 0 || leadStats.leads === 0) return 0;
+      return totalInvest / leadStats.leads;
+    }, [totalInvest, leadStats.leads]);
 
     const handleCloseGoals = () => {
         if (closingRequested) return;
