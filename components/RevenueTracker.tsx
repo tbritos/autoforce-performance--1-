@@ -57,13 +57,13 @@ const EntryDetailModal: React.FC<{
         </div>
 
         {/* MRR + Setup */}
-        <div className="grid grid-cols-2 border-b border-autoforce-grey/20">
-          <div className="p-5 border-r border-autoforce-grey/20">
+        <div className="grid grid-cols-2 border-b border-autoforce-grey/20 bg-autoforce-darkest">
+          <div className="p-5 border-r border-autoforce-grey/20 bg-autoforce-darkest">
             <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-widest mb-2">Receita Mensal (MRR)</p>
             <p className="text-3xl font-black text-green-400">{formatCurrency(entry.mrrValue)}</p>
             <p className="text-[11px] text-autoforce-grey mt-1">por mês</p>
           </div>
-          <div className="p-5">
+          <div className="p-5 bg-autoforce-darkest">
             <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-widest mb-2">Setup / Implantação</p>
             <p className="text-3xl font-black text-white">{formatCurrency(entry.setupValue)}</p>
             <p className="text-[11px] text-autoforce-grey mt-1">pagamento único</p>
@@ -71,7 +71,7 @@ const EntryDetailModal: React.FC<{
         </div>
 
         {/* Body — 2 colunas */}
-        <div className="p-6 grid grid-cols-2 gap-6">
+        <div className="p-6 grid grid-cols-2 gap-6 bg-autoforce-darkest">
 
           {/* Esquerda */}
           <div className="space-y-5">
@@ -165,7 +165,7 @@ const EntryDetailModal: React.FC<{
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-autoforce-grey/20 flex items-center justify-between">
+        <div className="px-6 py-4 border-t border-autoforce-grey/20 flex items-center justify-between bg-autoforce-darkest">
           <button type="button" onClick={() => onDelete(entry)} disabled={deleting}
             className="flex items-center gap-2 text-xs text-red-400/70 hover:text-red-400 disabled:opacity-40 transition">
             {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
