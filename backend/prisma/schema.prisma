@@ -396,19 +396,23 @@ model UTMDestination {
 // ============================================================
 
 model RevenueEntry {
-  id           String   @id @default(cuid())
-  date         DateTime @db.Date
-  businessName String
-  leadEmail    String?
-  lead         Lead?    @relation(fields: [leadEmail], references: [email])
-  setupValue   Float
-  mrrValue     Float
-  origin       String
-  originType   String   @default("INBOUND")
-  product      String[]
-  closedBy     String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String   @id @default(cuid())
+  date            DateTime @db.Date
+  businessName    String
+  leadEmail       String?
+  lead            Lead?    @relation(fields: [leadEmail], references: [email])
+  setupValue      Float
+  mrrValue        Float
+  origin          String
+  originType      String   @default("INBOUND")
+  product         String[]
+  closedBy        String?  // vendedor
+  whyBought       String[] // Porque Comprou?
+  currentSupplier String[] // Fornecedor atual
+  dealUrl         String?  // link do card no Pipedrive
+  contractLink    String?  // Link do Contrato
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([date])
   @@index([leadEmail])

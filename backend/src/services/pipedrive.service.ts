@@ -48,9 +48,75 @@ interface PipedriveListResponse<T> {
   additional_data?: { pagination?: { start: number; limit: number; more_items_in_collection: boolean; next_start?: number } };
 }
 
+// ─── Pipedrive custom field keys ─────────────────────────────────────────────
+
+export const PIPEDRIVE_FIELDS = {
+  CANAL_ORIGEM:      '9459f9b49acca8552e69c0ee0898f751b05b4fe6',
+  SETUP_VALUE:       '4a5f006a09009d88b1eedfe13222b267c1507f8a',
+  PRODUTO_VENDA:     '1d44a1c1a505d689fa71d5e06b7f813f6a7dffff',
+  PORQUE_COMPROU:    '3c73185140050c4a7fe0e5aed7fbc07380ca2e16',
+  FORNECEDOR_ATUAL:  'd3eb5536e0e9481894b2bd7829a23b07421e33cc',
+  VENDEDOR:          'd0c46ae25c4019c285fbcecdf6a36f12f3aefcc0',
+  CONTRACT_LINK:     '6d8d5c688ce56ff0262d760ed1cf35fdbbcac879',
+} as const;
+
+// Static option maps — field IDs are stable in Pipedrive
+export const PIPEDRIVE_OPTIONS = {
+  PRODUTO_VENDA: {
+    97: 'Showroom Digital', 98: 'Landing Page', 99: 'Portal de Grupo',
+    100: 'Portal de Consorcio', 101: 'Portal de Assinatura', 102: 'Portal de Seminovos',
+    103: 'Autopilot', 104: 'Autobot', 105: 'NitroAds', 106: 'CRM Autopilot',
+    107: 'IA Autopilot', 108: 'Campanha Autopilot', 109: 'Automação Autopilot',
+    154: '360', 155: 'Portal de Blindagem', 156: 'Showroom 2.0', 194: 'Setup',
+  } as Record<number, string>,
+  PORQUE_COMPROU: {
+    164: 'Insatisfação com Fornecedor Atual', 165: 'Referência da Autoforce',
+    166: 'Precificação Atrativa', 167: 'Exigência da Montadora',
+    168: 'Solução inexistente no fornecedor atual', 169: 'Complicações com desenvolvimento próprio',
+    170: 'Encantamento Comercial', 171: 'Atende dor Prioritária',
+  } as Record<number, string>,
+  FORNECEDOR_ATUAL: {
+    127: 'DealerSpace', 128: 'Syonet', 129: 'AlpesOne', 130: 'Motorleads',
+    131: 'Microwork', 132: 'Autocerto', 133: 'Autoveículo', 134: 'Agência Lua4',
+    135: 'Followize', 136: 'Salesforce', 137: 'Autoconf', 140: 'Outros',
+    158: 'Operação Nova', 159: 'Desenvolvimento Próprio', 160: 'Agência (diversas)',
+    161: 'Webmotors', 162: 'Revenda Mais', 217: 'Autoforce',
+  } as Record<number, string>,
+  VENDEDOR: {
+    81: 'Aline Dantas', 84: 'Mikaely Dias', 85: 'Pedro Paiva', 86: 'Tiago Fernandes',
+    117: 'Darlan Barros', 141: 'Time Cuidar', 148: 'Luis Antonio', 149: 'Angelina Rodrigues',
+    150: 'Iluama Cavalcanti', 151: 'Marco Veppo', 152: 'Mayara Machado',
+    197: 'Deogenes Brito', 203: 'Jonathan Rodrigues', 204: 'Rebeca Nogueira',
+  } as Record<number, string>,
+} as const;
+
+// Resolve a set/multi-select field (list endpoint returns number[], detail returns "id1,id2")
+export function resolveSetField(raw: unknown, optMap: Record<number, string>): string[] {
+  if (!raw) return [];
+  const ids: unknown[] = Array.isArray(raw) ? raw : String(raw).split(',');
+  return ids
+    .map(id => optMap[Number(String(id).trim())] ?? String(id).trim())
+    .filter(Boolean);
+}
+
+// Resolve a single-select enum field
+export function resolveEnumField(raw: unknown, optMap: Record<number, string>): string | null {
+  if (raw == null) return null;
+  return optMap[Number(raw)] ?? String(raw);
+}
+
+// Extract setup value — list endpoint returns {value, currency}, detail returns plain number
+export function extractSetupValue(raw: unknown): number {
+  if (!raw) return 0;
+  if (typeof raw === 'object' && raw !== null && 'value' in raw) {
+    return Number((raw as { value: unknown }).value) || 0;
+  }
+  return Number(raw) || 0;
+}
+
 // ─── Stage name → LeadStatus mapping ─────────────────────────────────────────
 
-function sourceToOrigin(firstSource: string | null | undefined): string {
+export function sourceToOrigin(firstSource: string | null | undefined): string {
   if (!firstSource) return 'Outros';
   const s = firstSource.toLowerCase();
   if (s.includes('google'))                                return 'Google Ads';
@@ -506,30 +572,50 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
           });
         }
 
-        // If deal was won, create or update RevenueEntry
-        if (deal.status === 'won' && deal.value > 0) {
-          const closeDate = deal.won_time || deal.close_time || deal.add_time;
-          const dateObj = new Date(closeDate);
+        // If deal was won, create or update RevenueEntry with all Pipedrive fields
+        if (deal.status === 'won') {
+          const closeDate  = deal.won_time || deal.close_time || deal.add_time;
+          const dateObj    = new Date(closeDate);
+          const setupVal   = extractSetupValue(deal[PIPEDRIVE_FIELDS.SETUP_VALUE]);
+          const produtos   = resolveSetField(deal[PIPEDRIVE_FIELDS.PRODUTO_VENDA],    PIPEDRIVE_OPTIONS.PRODUTO_VENDA);
+          const porqueComp = resolveSetField(deal[PIPEDRIVE_FIELDS.PORQUE_COMPROU],   PIPEDRIVE_OPTIONS.PORQUE_COMPROU);
+          const fornecedor = resolveSetField(deal[PIPEDRIVE_FIELDS.FORNECEDOR_ATUAL], PIPEDRIVE_OPTIONS.FORNECEDOR_ATUAL);
+          const vendedor   = resolveEnumField(deal[PIPEDRIVE_FIELDS.VENDEDOR],        PIPEDRIVE_OPTIONS.VENDEDOR);
+          const contrato   = (deal[PIPEDRIVE_FIELDS.CONTRACT_LINK] as string | null) ?? null;
+          const dealUrl    = `https://${domain}.pipedrive.com/deal/${deal.id}`;
+          const biz        = lead!.company || deal.person_name || lead!.name || lead!.email;
+          const orig       = sourceToOrigin(lead!.firstSource);
 
           await tx.revenueEntry.upsert({
             where: { id: `pipedrive-${deal.id}` },
             update: {
-              mrrValue:     deal.value,
-              businessName: lead!.company || deal.person_name || lead!.name || lead!.email,
-              origin:       sourceToOrigin(lead!.firstSource),
-              updatedAt:    new Date(),
+              mrrValue:        deal.value,
+              setupValue:      setupVal,
+              businessName:    biz,
+              origin:          orig,
+              product:         produtos,
+              closedBy:        vendedor,
+              whyBought:       porqueComp,
+              currentSupplier: fornecedor,
+              contractLink:    contrato,
+              dealUrl,
+              updatedAt:       new Date(),
             },
             create: {
-              id:           `pipedrive-${deal.id}`,
-              leadEmail:    lead!.email,
-              businessName: lead!.company || deal.person_name || lead!.name || lead!.email,
-              date:         dateObj,
-              setupValue:   0,
-              mrrValue:     deal.value,
-              origin:       sourceToOrigin(lead!.firstSource),
-              originType:   'INBOUND',
-              product:      [],
-              closedBy:     null,
+              id:              `pipedrive-${deal.id}`,
+              leadEmail:       lead!.email,
+              businessName:    biz,
+              date:            dateObj,
+              setupValue:      setupVal,
+              mrrValue:        deal.value,
+              origin:          orig,
+              originType:      'INBOUND',
+              product:         produtos,
+              closedBy:        vendedor,
+              whyBought:       porqueComp,
+              currentSupplier: fornecedor,
+              contractLink:    contrato,
+              dealUrl,
             },
           });
         }

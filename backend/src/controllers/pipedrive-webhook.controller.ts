@@ -1,6 +1,10 @@
 import { Request, Response } from 'express';
 import { prisma } from '../config/database';
 import { LeadStatus } from '@prisma/client';
+import {
+  PIPEDRIVE_FIELDS, PIPEDRIVE_OPTIONS,
+  resolveSetField, resolveEnumField, extractSetupValue, sourceToOrigin,
+} from '../services/pipedrive.service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,6 +31,7 @@ interface PipedriveDealPayload {
   add_time?: string;
   won_time?: string;
   lost_time?: string;
+  [key: string]: unknown;
 }
 
 interface PipedriveWebhookBody {
@@ -169,18 +174,19 @@ export class PipedriveWebhookController {
       ? new Date(current.update_time)
       : new Date();
 
-    // 3. Resolve stage names (best-effort, requires Pipedrive credentials)
+    // 3. Resolve stage names + grab domain (best-effort, requires Pipedrive credentials)
+    let pipedriveDomain = process.env.PIPEDRIVE_DOMAIN || '';
     try {
       const { PlatformConnectionService } = await import('../services/platform-connection.service');
       const tokens = await PlatformConnectionService.getTokens('PIPEDRIVE');
       const conn   = await PlatformConnectionService.getConnection('PIPEDRIVE');
       const meta   = (conn?.metadata ?? {}) as Record<string, unknown>;
-      const domain = (meta.domain as string) || process.env.PIPEDRIVE_DOMAIN || '';
+      pipedriveDomain = (meta.domain as string) || pipedriveDomain;
       const authType: 'api_token' | 'oauth' = meta.authType === 'api_token' ? 'api_token' : 'oauth';
       const token  = tokens?.accessToken ?? process.env.PIPEDRIVE_API_TOKEN ?? '';
 
-      if (token && domain) {
-        await resolveStageNames([currentStage, previousStage], token, domain, authType);
+      if (token && pipedriveDomain) {
+        await resolveStageNames([currentStage, previousStage], token, pipedriveDomain, authType);
       }
     } catch {
       // Non-fatal
@@ -296,6 +302,51 @@ export class PipedriveWebhookController {
             toStatus:   newLeadStatus,
             changedBy:  null,
             reason:     `Pipedrive deal #${dealId} — ${dealStatus} (webhook)`,
+          },
+        });
+      }
+
+      // If deal is won, create/update RevenueEntry with full Pipedrive data
+      if (dealStatus === 'won') {
+        const wonAt      = current.won_time ? new Date(current.won_time as string) : occurredAt;
+        const setupVal   = extractSetupValue(current[PIPEDRIVE_FIELDS.SETUP_VALUE]);
+        const produtos   = resolveSetField(current[PIPEDRIVE_FIELDS.PRODUTO_VENDA],    PIPEDRIVE_OPTIONS.PRODUTO_VENDA);
+        const porqueComp = resolveSetField(current[PIPEDRIVE_FIELDS.PORQUE_COMPROU],   PIPEDRIVE_OPTIONS.PORQUE_COMPROU);
+        const fornecedor = resolveSetField(current[PIPEDRIVE_FIELDS.FORNECEDOR_ATUAL], PIPEDRIVE_OPTIONS.FORNECEDOR_ATUAL);
+        const vendedor   = resolveEnumField(current[PIPEDRIVE_FIELDS.VENDEDOR],        PIPEDRIVE_OPTIONS.VENDEDOR);
+        const contrato   = (current[PIPEDRIVE_FIELDS.CONTRACT_LINK] as string | null) ?? null;
+        const dealUrl    = pipedriveDomain ? `https://${pipedriveDomain}.pipedrive.com/deal/${dealId}` : null;
+        const biz        = lead.company || lead.name || lead.email;
+
+        await tx.revenueEntry.upsert({
+          where: { id: `pipedrive-${dealId}` },
+          update: {
+            mrrValue:        currentValue ?? 0,
+            setupValue:      setupVal,
+            businessName:    biz,
+            product:         produtos,
+            closedBy:        vendedor,
+            whyBought:       porqueComp,
+            currentSupplier: fornecedor,
+            contractLink:    contrato,
+            ...(dealUrl ? { dealUrl } : {}),
+            updatedAt:       new Date(),
+          },
+          create: {
+            id:              `pipedrive-${dealId}`,
+            leadEmail:       lead.email,
+            businessName:    biz,
+            date:            wonAt,
+            setupValue:      setupVal,
+            mrrValue:        currentValue ?? 0,
+            origin:          sourceToOrigin(lead.firstSource),
+            originType:      'INBOUND',
+            product:         produtos,
+            closedBy:        vendedor,
+            whyBought:       porqueComp,
+            currentSupplier: fornecedor,
+            contractLink:    contrato,
+            ...(dealUrl ? { dealUrl } : {}),
           },
         });
       }

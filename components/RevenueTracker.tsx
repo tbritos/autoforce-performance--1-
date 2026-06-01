@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { RevenueEntry, Lead } from '../types';
 import { DataService } from '../services/dataService';
-import { DollarSign, Plus, Briefcase, Globe, Package, TrendingUp, Loader2, Filter, X, Calendar, ChevronDown, Pencil, Trash2, User, Link } from 'lucide-react';
+import { DollarSign, Plus, Briefcase, Globe, Package, TrendingUp, Loader2, Filter, X, Calendar, ChevronDown, Pencil, Trash2, User, Link, ExternalLink } from 'lucide-react';
 
 const RevenueTracker: React.FC = () => {
   const productOptions = ['Autodromo', 'Autopilot', 'Autobot', 'Nitroads', 'Fluxo de IA'];
@@ -621,13 +621,26 @@ const RevenueTracker: React.FC = () => {
                                         <td className="p-4">
                                             <div className="flex flex-col gap-1">
                                                 <span className="flex items-center gap-1 text-xs text-autoforce-lightGrey"><Globe size={10}/> {entry.origin}</span>
-                                                <span className="flex items-center gap-1 text-xs text-autoforce-blue"><Package size={10}/> {entry.product.join(', ')}</span>
+                                                {entry.product.length > 0 && <span className="flex items-center gap-1 text-xs text-autoforce-blue"><Package size={10}/> {entry.product.join(', ')}</span>}
+                                                {entry.closedBy && <span className="text-xs text-autoforce-lightGrey">Vendedor: <span className="text-white">{entry.closedBy}</span></span>}
+                                                {(entry.whyBought?.length ?? 0) > 0 && <span className="text-[11px] text-autoforce-lightGrey/70 italic">{entry.whyBought!.join(' · ')}</span>}
                                             </div>
                                         </td>
                                         <td className="p-4 text-right font-mono text-autoforce-lightGrey">{formatCurrency(entry.setupValue)}</td>
                                         <td className="p-4 text-right font-mono text-green-400 font-bold">{formatCurrency(entry.mrrValue)}</td>
                                         <td className="p-4 text-right">
                                             <div className="flex items-center justify-end gap-2">
+                                                {entry.dealUrl && (
+                                                    <a
+                                                        href={entry.dealUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="p-2 rounded-lg border border-autoforce-grey/20 text-autoforce-blue hover:text-white hover:border-autoforce-blue/40"
+                                                        title="Abrir no Pipedrive"
+                                                    >
+                                                        <ExternalLink size={14} />
+                                                    </a>
+                                                )}
                                                 <button
                                                     type="button"
                                                     onClick={() => handleEdit(entry)}

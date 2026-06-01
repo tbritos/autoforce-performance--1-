@@ -25,6 +25,11 @@ export interface RevenueEntry {
   mrrValue: number;
   origin: string;
   product: string[];
+  closedBy?: string | null;
+  whyBought?: string[];
+  currentSupplier?: string[];
+  dealUrl?: string | null;
+  contractLink?: string | null;
   leadEmail?: string | null;
   leadName?: string | null;
 }

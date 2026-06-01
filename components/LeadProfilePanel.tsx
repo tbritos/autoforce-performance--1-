@@ -930,20 +930,39 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                 <Section title="Venda Vinculada" icon={<DollarSign size={13} />}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {profile.revenueEntries.map(rev => (
-                      <div key={rev.id} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, padding: 12, background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.15)', borderRadius: 10 }}>
-                        <div style={{ minWidth: 0 }}>
-                          <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--fg-primary)', margin: 0 }}>{rev.businessName}</p>
-                          <p style={{ fontSize: 11, color: 'var(--fg-muted)', margin: '2px 0 0' }}>{rev.origin} · {fmt(rev.date)}</p>
-                          {rev.product.length > 0 && (
-                            <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
-                              {rev.product.map(p => <span key={p} style={{ padding: '1px 6px', borderRadius: 4, fontSize: 11, background: 'var(--bg-muted)', color: 'var(--fg-muted)' }}>{p}</span>)}
-                            </div>
-                          )}
+                      <div key={rev.id} style={{ padding: 12, background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.15)', borderRadius: 10 }}>
+                        {/* Header row */}
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-primary)', margin: 0 }}>{rev.businessName}</p>
+                            <p style={{ fontSize: 11, color: 'var(--fg-muted)', margin: '2px 0 0' }}>{rev.origin} · {fmt(rev.date)}{rev.closedBy ? ` · ${rev.closedBy}` : ''}</p>
+                          </div>
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            {rev.mrrValue > 0 && <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--green-500)', margin: 0 }}>{brl(rev.mrrValue)}<span style={{ fontSize: 11, fontWeight: 400, color: 'var(--fg-muted)' }}>/mês</span></p>}
+                            {rev.setupValue > 0 && <p style={{ fontSize: 11, color: 'var(--fg-muted)', margin: '2px 0 0' }}>{brl(rev.setupValue)} setup</p>}
+                          </div>
                         </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          {rev.mrrValue > 0 && <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--green-500)', margin: 0 }}>{brl(rev.mrrValue)}<span style={{ fontSize: 11, fontWeight: 400, color: 'var(--fg-muted)' }}>/mês</span></p>}
-                          {rev.setupValue > 0 && <p style={{ fontSize: 11, color: 'var(--fg-muted)', margin: '2px 0 0' }}>{brl(rev.setupValue)} setup</p>}
-                        </div>
+                        {/* Products */}
+                        {(rev.product?.length ?? 0) > 0 && (
+                          <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                            {rev.product.map(p => <span key={p} style={{ padding: '1px 6px', borderRadius: 4, fontSize: 11, background: 'var(--bg-muted)', color: 'var(--fg-muted)' }}>{p}</span>)}
+                          </div>
+                        )}
+                        {/* Why bought */}
+                        {(rev.whyBought?.length ?? 0) > 0 && (
+                          <p style={{ fontSize: 11, color: 'var(--fg-muted)', margin: '6px 0 0', fontStyle: 'italic' }}>Motivo: {rev.whyBought!.join(', ')}</p>
+                        )}
+                        {/* Current supplier */}
+                        {(rev.currentSupplier?.length ?? 0) > 0 && (
+                          <p style={{ fontSize: 11, color: 'var(--fg-muted)', margin: '3px 0 0' }}>Fornecedor anterior: {rev.currentSupplier!.join(', ')}</p>
+                        )}
+                        {/* Links */}
+                        {(rev.dealUrl || rev.contractLink) && (
+                          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                            {rev.dealUrl && <a href={rev.dealUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#3b82f6', textDecoration: 'none' }}>↗ Ver no Pipedrive</a>}
+                            {rev.contractLink && <a href={rev.contractLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#3b82f6', textDecoration: 'none' }}>↗ Contrato</a>}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
