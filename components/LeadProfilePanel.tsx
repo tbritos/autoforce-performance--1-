@@ -17,13 +17,13 @@ const STATUSES: { value: LeadStatus; label: string; color: string }[] = [
   { value: 'SCHEDULED',    label: 'Agendado',       color: '#f59e0b' },
   { value: 'DEMO',         label: 'Demo',           color: '#f97316' },
   { value: 'PROPOSAL',     label: 'Proposta',       color: '#a855f7' },
-  { value: 'OPPORTUNITY',  label: 'Oportunidade',   color: '#06b6d4' },
   { value: 'CLIENT',       label: 'Cliente',        color: 'var(--green-500)' },
   { value: 'LOST',         label: 'Perdido',        color: 'var(--red-500)' },
   { value: 'DISQUALIFIED', label: 'Desqualificado', color: 'var(--fg-subtle)' },
 ];
 
 const STATUS_MAP = Object.fromEntries(STATUSES.map(s => [s.value, s])) as Record<LeadStatus, typeof STATUSES[0]>;
+(STATUS_MAP as Record<string, typeof STATUSES[0]>)['OPPORTUNITY'] = { value: 'PROPOSAL', label: 'Proposta', color: '#a855f7' };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
