@@ -53,34 +53,22 @@ const EntryDrawer: React.FC<{
       <div className={`relative flex flex-col w-full max-w-md bg-autoforce-darkest border-l border-autoforce-grey/20 shadow-2xl h-screen overflow-hidden transition-transform duration-300 ease-out ${visible ? 'translate-x-0' : 'translate-x-full'}`}>
 
         {/* Header */}
-        <div className="flex-shrink-0 bg-gradient-to-b from-autoforce-darkBlue/20 to-autoforce-darkest border-b border-autoforce-grey/20 p-5">
-          <div className="flex items-start justify-between mb-4">
+        <div className="flex-shrink-0 bg-autoforce-darkest border-b border-autoforce-grey/20 px-5 py-4">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-xl bg-autoforce-blue/20 border border-autoforce-blue/30 flex items-center justify-center flex-shrink-0">
-                <span className="text-sm font-black text-autoforce-blue">{initials}</span>
-              </div>
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-500/15 text-green-400 border border-green-500/25 flex-shrink-0">
+                <CheckCircle size={10} /> GANHO
+              </span>
               <div className="min-w-0">
-                <p className="text-[10px] font-bold text-autoforce-grey uppercase tracking-widest mb-0.5">Ganho</p>
-                <h3 className="text-base font-black text-white leading-tight truncate">{entry.businessName}</h3>
+                <h3 className="text-sm font-black text-white leading-tight truncate">{entry.businessName}</h3>
+                <p className="text-[11px] text-autoforce-lightGrey mt-0.5">
+                  {new Date(entry.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </p>
               </div>
             </div>
             <button onClick={handleClose} className="p-1.5 rounded-lg text-autoforce-grey hover:text-white hover:bg-autoforce-grey/10 transition flex-shrink-0 ml-2">
               <X size={16} />
             </button>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-500/15 text-green-400 border border-green-500/25">
-              <CheckCircle size={10} /> GANHO
-            </span>
-            <span className="text-xs text-autoforce-lightGrey">
-              {new Date(entry.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
-            </span>
-            {entry.leadEmail && (
-              <span className="flex items-center gap-1 text-xs text-autoforce-blue/70 truncate">
-                <Link size={10} /> {entry.leadName || entry.leadEmail}
-              </span>
-            )}
           </div>
         </div>
 
