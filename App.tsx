@@ -76,6 +76,20 @@ const TooltipInfo: React.FC<{ text: string; position?: 'top' | 'bottom' }> = ({ 
   );
 };
 
+// ─── Pure date helpers (module-level to avoid TDZ in useMemo callbacks) ────────
+
+const parseDateOnly = (value: string) => {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0);
+};
+
+const normalizeRange = (startValue: string, endValue: string) => {
+  const start = parseDateOnly(startValue);
+  const end   = parseDateOnly(endValue);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  return start <= end ? { start, end } : { start: end, end: start };
+};
+
 // ─── Dashboard constants ───────────────────────────────────────────────────────
 
 const FUNNEL_STAGES: { status: LeadStatus; label: string; color: string }[] = [
@@ -230,11 +244,6 @@ const DashboardContent: React.FC<{
         localStorage.setItem('autoforce_kpi_goals_history', JSON.stringify(goalHistory));
     }, [goals, goalHistory]);
 
-    const parseDateOnly = (value: string) => {
-        const [year, month, day] = value.split('-').map(Number);
-        return new Date(year, month - 1, day, 12, 0, 0);
-    };
-
     const formatCurrency = (val: number) => {
         if (Number.isNaN(val)) return 'R$ 0,00';
         return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -258,15 +267,6 @@ const DashboardContent: React.FC<{
             return formatCurrency(value);
         }
         return new Intl.NumberFormat('pt-BR').format(value);
-    };
-
-    const normalizeRange = (startValue: string, endValue: string) => {
-        const start = parseDateOnly(startValue);
-        const end = parseDateOnly(endValue);
-        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-            return null;
-        }
-        return start <= end ? { start, end } : { start: end, end: start };
     };
 
     const aggregateForRange = (startValue: string, endValue: string) => {
