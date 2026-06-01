@@ -43,15 +43,15 @@ const EntryDrawer: React.FC<{
   );
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex justify-end">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
         className={`absolute inset-0 bg-black/70 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}
         onClick={handleClose}
       />
 
-      {/* Drawer */}
-      <div className={`relative flex flex-col w-full max-w-md bg-autoforce-darkest border-l border-autoforce-grey/20 shadow-2xl h-screen overflow-hidden transition-transform duration-300 ease-out ${visible ? 'translate-x-0' : 'translate-x-full'}`}>
+      {/* Detail modal */}
+      <div className={`relative flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-autoforce-grey/20 bg-autoforce-darkest shadow-2xl transition-all duration-300 ease-out ${visible ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-4 scale-95 opacity-0'}`}>
 
         {/* Header */}
         <div className="flex-shrink-0 bg-autoforce-darkest border-b border-autoforce-grey/20 px-5 py-4">
