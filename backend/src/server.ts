@@ -171,6 +171,111 @@ app.get('/r/:code', async (req, res) => {
   }
 });
 
+// ── Admin: backfill de ganhos (one-time, protegido por token) ─────────────────
+// Chame: POST /api/admin/backfill-revenue?token=<PIPEDRIVE_WEBHOOK_SECRET>
+app.post('/api/admin/backfill-revenue', async (req, res) => {
+  const secret = process.env.PIPEDRIVE_WEBHOOK_SECRET;
+  if (secret && req.query.token !== secret) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const token  = process.env.PIPEDRIVE_API_TOKEN ?? '';
+  const domain = process.env.PIPEDRIVE_DOMAIN ?? '';
+  if (!token || !domain) {
+    res.status(500).json({ error: 'PIPEDRIVE_API_TOKEN ou PIPEDRIVE_DOMAIN não configurados.' });
+    return;
+  }
+
+  try {
+    const { PIPEDRIVE_FIELDS, PIPEDRIVE_OPTIONS, resolveSetField, resolveEnumField, extractSetupValue, sourceToOrigin } = await import('./services/pipedrive.service');
+    const { prisma } = await import('./config/database');
+
+    const FIELD_CANAL_ORIGEM = '9459f9b49acca8552e69c0ee0898f751b05b4fe6';
+    const OPT_CANAL_INBOUND  = 66;
+
+    async function fetchAllWonDeals(pipelineId: number): Promise<Record<string, unknown>[]> {
+      const all: Record<string, unknown>[] = [];
+      let start = 0;
+      while (true) {
+        const url = new URL(`https://${domain}.pipedrive.com/api/v1/pipelines/${pipelineId}/deals`);
+        url.searchParams.set('api_token', token);
+        url.searchParams.set('status', 'won');
+        url.searchParams.set('start', String(start));
+        url.searchParams.set('limit', '100');
+        const json = await fetch(url.toString()).then(r => r.json()) as { success: boolean; data: Record<string, unknown>[] | null; additional_data?: { pagination?: { more_items_in_collection: boolean; next_start?: number } } };
+        if (!json.success || !json.data) break;
+        all.push(...json.data);
+        const p = json.additional_data?.pagination;
+        if (!p?.more_items_in_collection) break;
+        start = p.next_start ?? start + 100;
+      }
+      return all;
+    }
+
+    const primaryEmail = (emails: Array<{ value: string; primary: boolean }> = []) =>
+      emails.find(e => e.primary)?.value || emails[0]?.value || null;
+
+    const [deals2, deals5] = await Promise.all([fetchAllWonDeals(2), fetchAllWonDeals(5)]);
+    const allDeals    = [...deals2, ...deals5];
+    const inbound     = allDeals.filter(d => d[FIELD_CANAL_ORIGEM] === OPT_CANAL_INBOUND);
+    const inboundIds  = new Set(inbound.map(d => String(d.id)));
+
+    // 1. Remover entradas não-inbound
+    const existing = await prisma.revenueEntry.findMany({ where: { id: { startsWith: 'pipedrive-' } }, select: { id: true, businessName: true } });
+    const toDelete  = existing.filter(e => !inboundIds.has(e.id.replace('pipedrive-', '')));
+    let deleted = 0;
+    for (const e of toDelete) {
+      await prisma.revenueEntry.delete({ where: { id: e.id } });
+      deleted++;
+    }
+
+    // 2. Upsert entradas inbound
+    let created = 0, updated = 0, skipped = 0, errors = 0;
+    const log: string[] = [];
+
+    for (const deal of inbound) {
+      const dealId   = String(deal.id);
+      const emails   = (deal.person_email ?? (deal.person_id as any)?.email ?? []) as Array<{ value: string; primary: boolean }>;
+      const email    = primaryEmail(emails);
+      const personId = (deal.person_id as any)?.value ? String((deal.person_id as any).value) : null;
+
+      let lead = email ? await prisma.lead.findUnique({ where: { email: email.toLowerCase().trim() } }) : null;
+      if (!lead && personId) lead = await prisma.lead.findFirst({ where: { pipedrivePersonId: personId } });
+      if (!lead) { skipped++; log.push(`SKIP #${dealId} ${deal.title} — sem lead`); continue; }
+
+      try {
+        const setupVal   = extractSetupValue(deal[PIPEDRIVE_FIELDS.SETUP_VALUE]);
+        const produtos   = resolveSetField(deal[PIPEDRIVE_FIELDS.PRODUTO_VENDA],    PIPEDRIVE_OPTIONS.PRODUTO_VENDA);
+        const porqueComp = resolveSetField(deal[PIPEDRIVE_FIELDS.PORQUE_COMPROU],   PIPEDRIVE_OPTIONS.PORQUE_COMPROU);
+        const fornecedor = resolveSetField(deal[PIPEDRIVE_FIELDS.FORNECEDOR_ATUAL], PIPEDRIVE_OPTIONS.FORNECEDOR_ATUAL);
+        const vendedor   = resolveEnumField(deal[PIPEDRIVE_FIELDS.VENDEDOR],        PIPEDRIVE_OPTIONS.VENDEDOR);
+        const contrato   = (deal[PIPEDRIVE_FIELDS.CONTRACT_LINK] as string | null) ?? null;
+        const dealUrl    = `https://${domain}.pipedrive.com/deal/${dealId}`;
+        const biz        = lead.company || (deal.person_name as string | null) || lead.name || lead.email;
+        const orig       = sourceToOrigin(lead.firstSource);
+        const wonAt      = new Date((deal.won_time || deal.close_time || deal.add_time) as string);
+
+        const prev = await prisma.revenueEntry.findUnique({ where: { id: `pipedrive-${dealId}` } });
+        await prisma.revenueEntry.upsert({
+          where:  { id: `pipedrive-${dealId}` },
+          update: { mrrValue: deal.value as number, setupValue: setupVal, businessName: biz, origin: orig, product: produtos, closedBy: vendedor, whyBought: porqueComp, currentSupplier: fornecedor, contractLink: contrato, dealUrl, updatedAt: new Date() },
+          create: { id: `pipedrive-${dealId}`, leadEmail: lead.email, businessName: biz, date: wonAt, setupValue: setupVal, mrrValue: deal.value as number, origin: orig, originType: 'INBOUND', product: produtos, closedBy: vendedor, whyBought: porqueComp, currentSupplier: fornecedor, contractLink: contrato, dealUrl },
+        });
+        if (prev) { updated++; log.push(`UPDATE #${dealId} ${deal.title}`); }
+        else       { created++; log.push(`CREATE #${dealId} ${deal.title}`); }
+      } catch (err) {
+        errors++;
+        log.push(`ERROR #${dealId}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    res.json({ ok: true, total: allDeals.length, inbound: inbound.length, deleted, created, updated, skipped, errors, log });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 // Auth middleware for protected routes
 app.use('/api', authMiddleware);
 
