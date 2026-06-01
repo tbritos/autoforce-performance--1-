@@ -8,170 +8,182 @@ import {
   MessageSquare, ChevronRight, Search, Users, Trophy, CheckCircle,
 } from 'lucide-react';
 
-// ─── Detail Modal ─────────────────────────────────────────────────────────────
+// ─── Detail Drawer ────────────────────────────────────────────────────────────
 
-const EntryDetailModal: React.FC<{
+const EntryDrawer: React.FC<{
   entry: RevenueEntry;
   onClose: () => void;
   onDelete: (entry: RevenueEntry) => void;
   deleting: boolean;
   formatCurrency: (v: number) => string;
 }> = ({ entry, onClose, onDelete, deleting, formatCurrency }) => {
-  const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) onClose();
-  };
+  const [visible, setVisible] = useState(false);
   const initials = entry.businessName.slice(0, 2).toUpperCase();
 
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), 10);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleClose = () => {
+    setVisible(false);
+    setTimeout(onClose, 280);
+  };
+
+  const Section: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+    <div>
+      <p className="text-[10px] font-bold text-autoforce-grey uppercase tracking-widest mb-2">{label}</p>
+      {children}
+    </div>
+  );
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
-      onClick={handleBackdrop}
-    >
-      <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex justify-end">
+      {/* Backdrop */}
+      <div
+        className={`absolute inset-0 bg-black/50 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'}`}
+        onClick={handleClose}
+      />
+
+      {/* Drawer */}
+      <div className={`relative flex flex-col w-full max-w-sm bg-autoforce-darkest border-l border-autoforce-grey/20 shadow-2xl h-full transition-transform duration-300 ease-out ${visible ? 'translate-x-0' : 'translate-x-full'}`}>
 
         {/* Header */}
-        <div className="bg-gradient-to-r from-autoforce-darkBlue/30 to-autoforce-darkest border-b border-autoforce-grey/20 p-6 flex items-start gap-4">
-          <div className="w-14 h-14 rounded-xl bg-autoforce-blue/20 border border-autoforce-blue/30 flex items-center justify-center flex-shrink-0">
-            <span className="text-lg font-black text-autoforce-blue">{initials}</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-xl font-black text-white">{entry.businessName}</h3>
-              <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-500/15 text-green-400 border border-green-500/25">
-                <CheckCircle size={10} /> GANHO
-              </span>
-            </div>
-            {entry.leadEmail && (
-              <div className="flex items-center gap-1.5 mt-1">
-                <Link size={11} className="text-autoforce-blue/70" />
-                <span className="text-xs text-autoforce-blue/70">{entry.leadName || entry.leadEmail}</span>
+        <div className="flex-shrink-0 bg-gradient-to-b from-autoforce-darkBlue/20 to-autoforce-darkest border-b border-autoforce-grey/20 p-5">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-xl bg-autoforce-blue/20 border border-autoforce-blue/30 flex items-center justify-center flex-shrink-0">
+                <span className="text-sm font-black text-autoforce-blue">{initials}</span>
               </div>
-            )}
-            <p className="text-xs text-autoforce-lightGrey mt-1">
-              {new Date(entry.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
-            </p>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold text-autoforce-grey uppercase tracking-widest mb-0.5">Ganho</p>
+                <h3 className="text-base font-black text-white leading-tight truncate">{entry.businessName}</h3>
+              </div>
+            </div>
+            <button onClick={handleClose} className="p-1.5 rounded-lg text-autoforce-grey hover:text-white hover:bg-autoforce-grey/10 transition flex-shrink-0 ml-2">
+              <X size={16} />
+            </button>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg text-autoforce-grey hover:text-white hover:bg-autoforce-grey/10 transition flex-shrink-0">
-            <X size={16} />
-          </button>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-500/15 text-green-400 border border-green-500/25">
+              <CheckCircle size={10} /> GANHO
+            </span>
+            <span className="text-xs text-autoforce-lightGrey">
+              {new Date(entry.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </span>
+            {entry.leadEmail && (
+              <span className="flex items-center gap-1 text-xs text-autoforce-blue/70 truncate">
+                <Link size={10} /> {entry.leadName || entry.leadEmail}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* MRR + Setup */}
-        <div className="grid grid-cols-2 border-b border-autoforce-grey/20 bg-autoforce-darkest">
-          <div className="p-5 border-r border-autoforce-grey/20 bg-autoforce-darkest">
-            <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-widest mb-2">Receita Mensal (MRR)</p>
-            <p className="text-3xl font-black text-green-400">{formatCurrency(entry.mrrValue)}</p>
-            <p className="text-[11px] text-autoforce-grey mt-1">por mês</p>
+        <div className="flex-shrink-0 grid grid-cols-2 border-b border-autoforce-grey/20 bg-autoforce-darkest">
+          <div className="p-4 border-r border-autoforce-grey/20">
+            <p className="text-[10px] font-bold text-autoforce-grey uppercase tracking-widest mb-1">MRR</p>
+            <p className="text-2xl font-black text-green-400">{formatCurrency(entry.mrrValue)}</p>
+            <p className="text-[10px] text-autoforce-grey mt-0.5">por mês</p>
           </div>
-          <div className="p-5 bg-autoforce-darkest">
-            <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-widest mb-2">Setup / Implantação</p>
-            <p className="text-3xl font-black text-white">{formatCurrency(entry.setupValue)}</p>
-            <p className="text-[11px] text-autoforce-grey mt-1">pagamento único</p>
+          <div className="p-4 bg-autoforce-darkest">
+            <p className="text-[10px] font-bold text-autoforce-grey uppercase tracking-widest mb-1">Setup</p>
+            <p className="text-2xl font-black text-white">{formatCurrency(entry.setupValue)}</p>
+            <p className="text-[10px] text-autoforce-grey mt-0.5">único</p>
           </div>
         </div>
 
-        {/* Body — 2 colunas */}
-        <div className="p-6 grid grid-cols-2 gap-6 bg-autoforce-darkest">
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-autoforce-darkest">
 
-          {/* Esquerda */}
-          <div className="space-y-5">
-            <div>
-              <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-widest mb-2">Origem do Lead</p>
-              <div className="flex items-center gap-2 bg-autoforce-black/40 border border-autoforce-grey/15 rounded-xl px-3 py-2.5">
-                <Globe size={13} className="text-autoforce-blue flex-shrink-0" />
-                <span className="text-sm text-white">{entry.origin || '—'}</span>
+          <div className="grid grid-cols-2 gap-4">
+            <Section label="Origem">
+              <div className="flex items-center gap-2 bg-autoforce-black/50 border border-autoforce-grey/15 rounded-lg px-3 py-2">
+                <Globe size={12} className="text-autoforce-blue flex-shrink-0" />
+                <span className="text-xs text-white truncate">{entry.origin || '—'}</span>
               </div>
-            </div>
+            </Section>
 
-            {entry.closedBy && (
-              <div>
-                <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-widest mb-2">Fechado por</p>
-                <div className="flex items-center gap-2 bg-autoforce-black/40 border border-autoforce-grey/15 rounded-xl px-3 py-2.5">
-                  <div className="w-5 h-5 rounded-full bg-autoforce-blue/20 flex items-center justify-center flex-shrink-0">
-                    <User size={11} className="text-autoforce-blue" />
+            {entry.closedBy ? (
+              <Section label="Vendedor">
+                <div className="flex items-center gap-2 bg-autoforce-black/50 border border-autoforce-grey/15 rounded-lg px-3 py-2">
+                  <User size={12} className="text-autoforce-blue flex-shrink-0" />
+                  <span className="text-xs text-white truncate">{entry.closedBy}</span>
+                </div>
+              </Section>
+            ) : <div />}
+          </div>
+
+          {(entry.product?.length ?? 0) > 0 && (
+            <Section label="Produtos Vendidos">
+              <div className="flex flex-wrap gap-1.5">
+                {entry.product.map(p => (
+                  <span key={p} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-autoforce-blue/10 text-autoforce-blue border border-autoforce-blue/20">
+                    <Package size={10} /> {p}
+                  </span>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {(entry.whyBought?.length ?? 0) > 0 && (
+            <Section label="Motivo da Compra">
+              <div className="space-y-1.5">
+                {entry.whyBought!.map(r => (
+                  <div key={r} className="flex items-start gap-2 bg-autoforce-black/50 border border-autoforce-grey/15 rounded-lg px-3 py-2">
+                    <MessageSquare size={10} className="text-autoforce-grey mt-0.5 flex-shrink-0" />
+                    <span className="text-xs text-autoforce-lightGrey leading-relaxed">{r}</span>
                   </div>
-                  <span className="text-sm text-white">{entry.closedBy}</span>
-                </div>
+                ))}
               </div>
-            )}
+            </Section>
+          )}
 
-            {(entry.whyBought?.length ?? 0) > 0 && (
-              <div>
-                <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-widest mb-2">Motivo da Compra</p>
-                <div className="space-y-1.5">
-                  {entry.whyBought!.map(r => (
-                    <div key={r} className="flex items-start gap-2 bg-autoforce-black/40 border border-autoforce-grey/15 rounded-xl px-3 py-2">
-                      <MessageSquare size={11} className="text-autoforce-lightGrey mt-0.5 flex-shrink-0" />
-                      <span className="text-xs text-autoforce-lightGrey leading-relaxed">{r}</span>
-                    </div>
-                  ))}
-                </div>
+          {(entry.currentSupplier?.length ?? 0) > 0 && (
+            <Section label="Fornecedor Anterior">
+              <div className="flex flex-wrap gap-1.5">
+                {entry.currentSupplier!.map(s => (
+                  <span key={s} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs bg-autoforce-grey/10 text-autoforce-lightGrey border border-autoforce-grey/20">
+                    <ShoppingBag size={10} /> {s}
+                  </span>
+                ))}
               </div>
-            )}
+            </Section>
+          )}
 
-            {(entry.currentSupplier?.length ?? 0) > 0 && (
-              <div>
-                <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-widest mb-2">Fornecedor Anterior</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {entry.currentSupplier!.map(s => (
-                    <span key={s} className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs bg-autoforce-grey/10 text-autoforce-lightGrey border border-autoforce-grey/20">
-                      <ShoppingBag size={10} /> {s}
-                    </span>
-                  ))}
-                </div>
+          {(entry.dealUrl || entry.contractLink) && (
+            <Section label="Links">
+              <div className="flex flex-col gap-2">
+                {entry.dealUrl && (
+                  <a href={entry.dealUrl} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold bg-autoforce-blue/10 text-autoforce-blue border border-autoforce-blue/20 hover:bg-autoforce-blue/20 transition group">
+                    <ExternalLink size={13} />
+                    Abrir no Pipedrive
+                    <ChevronRight size={12} className="ml-auto opacity-0 group-hover:opacity-100 transition" />
+                  </a>
+                )}
+                {entry.contractLink && (
+                  <a href={entry.contractLink} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold bg-autoforce-grey/10 text-autoforce-lightGrey border border-autoforce-grey/20 hover:text-white transition group">
+                    <FileText size={13} />
+                    Ver Contrato
+                    <ChevronRight size={12} className="ml-auto opacity-0 group-hover:opacity-100 transition" />
+                  </a>
+                )}
               </div>
-            )}
-          </div>
-
-          {/* Direita */}
-          <div className="space-y-5">
-            {(entry.product?.length ?? 0) > 0 && (
-              <div>
-                <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-widest mb-2">Produtos Vendidos</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {entry.product.map(p => (
-                    <span key={p} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-autoforce-blue/10 text-autoforce-blue border border-autoforce-blue/25">
-                      <Package size={10} /> {p}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {(entry.dealUrl || entry.contractLink) && (
-              <div>
-                <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-widest mb-2">Links</p>
-                <div className="flex flex-col gap-2">
-                  {entry.dealUrl && (
-                    <a href={entry.dealUrl} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold bg-autoforce-blue/10 text-autoforce-blue border border-autoforce-blue/25 hover:bg-autoforce-blue/20 transition group">
-                      <ExternalLink size={13} />
-                      Abrir no Pipedrive
-                      <ChevronRight size={12} className="ml-auto opacity-0 group-hover:opacity-100 transition" />
-                    </a>
-                  )}
-                  {entry.contractLink && (
-                    <a href={entry.contractLink} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold bg-autoforce-grey/10 text-autoforce-lightGrey border border-autoforce-grey/20 hover:text-white transition group">
-                      <FileText size={13} />
-                      Ver Contrato
-                      <ChevronRight size={12} className="ml-auto opacity-0 group-hover:opacity-100 transition" />
-                    </a>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+            </Section>
+          )}
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-autoforce-grey/20 flex items-center justify-between bg-autoforce-darkest">
+        <div className="flex-shrink-0 px-5 py-4 border-t border-autoforce-grey/20 bg-autoforce-darkest flex items-center justify-between">
           <button type="button" onClick={() => onDelete(entry)} disabled={deleting}
-            className="flex items-center gap-2 text-xs text-red-400/70 hover:text-red-400 disabled:opacity-40 transition">
+            className="flex items-center gap-2 text-xs text-red-400/60 hover:text-red-400 disabled:opacity-40 transition">
             {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-            Remover ganho
+            Remover
           </button>
-          <button onClick={onClose}
+          <button onClick={handleClose}
             className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-autoforce-grey/10 text-autoforce-lightGrey hover:text-white border border-autoforce-grey/20 transition">
             Fechar
           </button>
@@ -271,7 +283,7 @@ const RevenueTracker: React.FC = () => {
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 animate-fade-in-up">
 
       {selectedEntry && (
-        <EntryDetailModal entry={selectedEntry} onClose={() => setSelectedEntry(null)}
+        <EntryDrawer entry={selectedEntry} onClose={() => setSelectedEntry(null)}
           onDelete={handleDelete} deleting={deletingId === selectedEntry.id} formatCurrency={formatCurrency} />
       )}
 
