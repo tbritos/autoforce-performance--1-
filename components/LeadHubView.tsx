@@ -124,13 +124,15 @@ const LeadHubView: React.FC = () => {
   const [tagFilter, setTagFilter]   = useState('');
   const [isHotFilter, setIsHotFilter] = useState(false);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [dateFrom, setDateFrom]     = useState('');
+  const [dateTo, setDateTo]         = useState('');
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 350);
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => { setPage(1); }, [debouncedSearch, statusFilter, customFilterField, customFilterValue, tagFilter, isHotFilter]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, statusFilter, customFilterField, customFilterValue, tagFilter, isHotFilter, dateFrom, dateTo]);
 
   useEffect(() => {
     DataService.listCustomFieldDefs()
@@ -153,6 +155,8 @@ const LeadHubView: React.FC = () => {
           tag: tagFilter || undefined,
           customField: customFilterField || undefined,
           customValue: customFilterValue || undefined,
+          startDate: dateFrom || undefined,
+          endDate: dateTo || undefined,
           page,
           pageSize: 25,
         }),
@@ -165,7 +169,7 @@ const LeadHubView: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, statusFilter, isHotFilter, tagFilter, customFilterField, customFilterValue, page]);
+  }, [debouncedSearch, statusFilter, isHotFilter, tagFilter, customFilterField, customFilterValue, dateFrom, dateTo, page]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -202,7 +206,7 @@ const LeadHubView: React.FC = () => {
           <button type="button" onClick={() => setShowFieldManager(true)} style={btnStyle} title="Gerenciar campos personalizados">
             <Settings2 size={13} /> Campos
           </button>
-          <button type="button" onClick={() => DataService.exportLeadsCsv({ status: statusFilter, search: debouncedSearch, customField: customFilterField, customValue: customFilterValue })} style={btnStyle} title="Exportar CSV">
+          <button type="button" onClick={() => DataService.exportLeadsCsv({ status: statusFilter, search: debouncedSearch, customField: customFilterField, customValue: customFilterValue, startDate: dateFrom || undefined, endDate: dateTo || undefined })} style={btnStyle} title="Exportar CSV">
             <Download size={13} /> CSV
           </button>
           <button type="button" onClick={load} disabled={loading} style={{ ...btnStyle, padding: 8 }} aria-label="Recarregar">
@@ -263,6 +267,30 @@ const LeadHubView: React.FC = () => {
             placeholder="Buscar por nome, email, empresa..."
             style={{ width: '100%', paddingLeft: 36, paddingRight: 12, paddingTop: 8, paddingBottom: 8, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', fontSize: 13, color: 'var(--fg-primary)', outline: 'none', boxSizing: 'border-box' }}
           />
+        </div>
+
+        {/* Date range filter */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={e => setDateFrom(e.target.value)}
+            title="Data inicial (chegada do lead)"
+            style={{ padding: '7px 10px', background: 'var(--bg-surface)', border: `1px solid ${dateFrom ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 'var(--r-md)', fontSize: 12, color: dateFrom ? 'var(--fg-primary)' : 'var(--fg-muted)', outline: 'none', cursor: 'pointer' }}
+          />
+          <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>–</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={e => setDateTo(e.target.value)}
+            title="Data final (chegada do lead)"
+            style={{ padding: '7px 10px', background: 'var(--bg-surface)', border: `1px solid ${dateTo ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 'var(--r-md)', fontSize: 12, color: dateTo ? 'var(--fg-primary)' : 'var(--fg-muted)', outline: 'none', cursor: 'pointer' }}
+          />
+          {(dateFrom || dateTo) && (
+            <button type="button" onClick={() => { setDateFrom(''); setDateTo(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-muted)', padding: 4, display: 'flex' }} title="Limpar datas">
+              <X size={12} />
+            </button>
+          )}
         </div>
 
         {/* Tag filter */}
