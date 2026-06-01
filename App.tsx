@@ -39,6 +39,8 @@ import {
   BookOpen,
   Sun,
   Moon,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { FunnelChart, FunnelStep } from './components/Charts';
 
@@ -858,6 +860,9 @@ const AppContent: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [initializing, setInitializing] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() =>
+    localStorage.getItem('autoforce_sidebar_collapsed') === 'true'
+  );
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     (localStorage.getItem('autoforce_theme') as 'light' | 'dark') || 'light'
   );
@@ -866,6 +871,10 @@ const AppContent: React.FC = () => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('autoforce_theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem('autoforce_sidebar_collapsed', String(isSidebarCollapsed));
+  }, [isSidebarCollapsed]);
   
   // Data State
   const [metrics, setMetrics] = useState<Metric[]>([]);
@@ -1051,6 +1060,7 @@ const AppContent: React.FC = () => {
     path === '/'
       ? location.pathname === '/' || location.pathname === '/dashboard'
       : location.pathname.startsWith(path);
+  const sidebarWidth = isSidebarCollapsed ? 72 : 248;
 
   // ─── Loading / Auth guards ──────────────────────────────────────────────────
 
@@ -1074,41 +1084,70 @@ const AppContent: React.FC = () => {
 
   // ─── Sidebar nav item ───────────────────────────────────────────────────────
 
-  const NavItem = ({ path, icon: Icon, label }: { path: string; icon: React.ElementType; label: string }) => (
+  const NavItem = ({ path, icon: Icon, label, collapsed = false }: { path: string; icon: React.ElementType; label: string; collapsed?: boolean }) => (
     <button
       type="button"
       onClick={() => { navigate(path); setIsMenuOpen(false); }}
       className={`ds-nav-item${isActive(path) ? ' active' : ''}`}
+      title={collapsed ? label : undefined}
+      style={collapsed ? { justifyContent: 'center', padding: '9px 0' } : undefined}
     >
       <Icon size={15} style={{ color: isActive(path) ? 'var(--af-300)' : 'rgba(255,255,255,0.55)', flexShrink: 0 }} />
-      <span>{label}</span>
+      {!collapsed && <span>{label}</span>}
     </button>
   );
 
   // ─── Sidebar content (shared between desktop and mobile) ───────────────────
 
-  const SidebarContent = () => (
+  const SidebarContent = ({ collapsed = false, mobile = false }: { collapsed?: boolean; mobile?: boolean }) => (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="px-4 shrink-0" style={{ height: 56, display: 'flex', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <img
-          src="https://static.autodromo.com.br/uploads/1dc32f4d-ab47-428d-91dd-756266d45b47_LOGOTIPO-AUTOFORCE-HORIZONTAL.svg"
-          alt="AutoForce"
-          style={{ height: 22, width: 'auto', objectFit: 'contain', filter: 'brightness(0) invert(1)' }}
-        />
+      <div className="px-3 shrink-0" style={{ height: 56, display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'space-between', gap: collapsed ? 6 : 0, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        {!collapsed && (
+          <img
+            src="https://static.autodromo.com.br/uploads/1dc32f4d-ab47-428d-91dd-756266d45b47_LOGOTIPO-AUTOFORCE-HORIZONTAL.svg"
+            alt="AutoForce"
+            style={{ height: 22, width: 'auto', objectFit: 'contain', filter: 'brightness(0) invert(1)' }}
+          />
+        )}
+        {collapsed && (
+          <span style={{ color: 'white', fontSize: 15, fontWeight: 800, letterSpacing: '-0.03em' }}>AF</span>
+        )}
+        {!mobile && (
+          <button
+            type="button"
+            onClick={() => setIsSidebarCollapsed(value => !value)}
+            title={collapsed ? 'Expandir menu' : 'Recolher menu'}
+            className="hidden lg:flex items-center justify-center rounded-lg transition"
+            style={{
+              width: 30,
+              height: 30,
+              color: 'rgba(255,255,255,0.58)',
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              marginLeft: collapsed ? 0 : 8,
+            }}
+          >
+            {collapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+          </button>
+        )}
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
-        <NavItem path="/" icon={LayoutDashboard} label="Dashboard" />
+        <NavItem path="/" icon={LayoutDashboard} label="Dashboard" collapsed={collapsed} />
         {NAV_GROUPS.map(group => (
           <div key={group.label}>
-            <p className="px-2 mb-1 text-[10.5px] font-semibold tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.32)', paddingLeft: 10 }}>
-              {group.label}
-            </p>
+            {!collapsed ? (
+              <p className="px-2 mb-1 text-[10.5px] font-semibold tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.32)', paddingLeft: 10 }}>
+                {group.label}
+              </p>
+            ) : (
+              <div style={{ height: 1, margin: '8px 10px', background: 'rgba(255,255,255,0.08)' }} />
+            )}
             <div className="space-y-0.5">
               {group.items.map(item => (
-                <NavItem key={item.path} path={item.path} icon={item.icon} label={item.label} />
+                <NavItem key={item.path} path={item.path} icon={item.icon} label={item.label} collapsed={collapsed} />
               ))}
             </div>
           </div>
@@ -1122,33 +1161,49 @@ const AppContent: React.FC = () => {
           type="button"
           onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
           className="ds-nav-item w-full"
-          style={{ fontSize: 12.5 }}
+          title={collapsed ? (theme === 'dark' ? 'Tema claro' : 'Tema escuro') : undefined}
+          style={collapsed ? { justifyContent: 'center', padding: '9px 0', fontSize: 12.5 } : { fontSize: 12.5 }}
         >
           {theme === 'dark'
-            ? <><Sun size={13} style={{ color: 'rgba(255,255,255,0.55)' }} /><span>Tema claro</span></>
-            : <><Moon size={13} style={{ color: 'rgba(255,255,255,0.55)' }} /><span>Tema escuro</span></>
+            ? <><Sun size={13} style={{ color: 'rgba(255,255,255,0.55)' }} />{!collapsed && <span>Tema claro</span>}</>
+            : <><Moon size={13} style={{ color: 'rgba(255,255,255,0.55)' }} />{!collapsed && <span>Tema escuro</span>}</>
           }
         </button>
 
         {/* User row */}
-        <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg" style={{ cursor: 'default' }}>
+        <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg" style={{ cursor: 'default', justifyContent: collapsed ? 'center' : 'flex-start' }}>
           <img src={user.avatar} alt="Avatar" className="w-7 h-7 rounded-full shrink-0" style={{ border: '1.5px solid rgba(104,146,242,0.5)' }} />
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold truncate" style={{ color: 'white' }}>{user.name}</p>
-            <p className="truncate" style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{user.email}</p>
-          </div>
+          {!collapsed && (
+            <>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold truncate" style={{ color: 'white' }}>{user.name}</p>
+                <p className="truncate" style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)' }}>{user.email}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleLogout}
+                title="Sair"
+                className="p-1.5 rounded-md transition shrink-0"
+                style={{ color: 'rgba(255,255,255,0.35)', background: 'transparent', border: 'none' }}
+                onMouseEnter={e => (e.currentTarget.style.color = '#f87171')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.35)')}
+              >
+                <LogOut size={13} />
+              </button>
+            </>
+          )}
+        </div>
+        {collapsed && (
           <button
             type="button"
             onClick={handleLogout}
             title="Sair"
-            className="p-1.5 rounded-md transition shrink-0"
-            style={{ color: 'rgba(255,255,255,0.35)', background: 'transparent', border: 'none' }}
-            onMouseEnter={e => (e.currentTarget.style.color = '#f87171')}
-            onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.35)')}
+            className="ds-nav-item w-full"
+            style={{ justifyContent: 'center', padding: '9px 0' }}
           >
-            <LogOut size={13} />
+            <LogOut size={13} style={{ color: 'rgba(255,255,255,0.55)' }} />
           </button>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -1162,9 +1217,10 @@ const AppContent: React.FC = () => {
       <aside
         className="hidden lg:flex flex-col fixed inset-y-0 left-0 z-40"
         style={{
-          width: 248,
+          width: sidebarWidth,
           background: 'var(--bg-sidebar)',
           borderRight: '1px solid rgba(255,255,255,0.05)',
+          transition: 'width .2s ease',
         }}
       >
         {/* Subtle gradient flourish inside sidebar */}
@@ -1173,7 +1229,7 @@ const AppContent: React.FC = () => {
           background: 'radial-gradient(500px 200px at -10% -10%, rgba(55,84,226,0.18), transparent 60%), radial-gradient(400px 240px at 110% 100%, rgba(104,146,242,0.10), transparent 60%)',
         }} />
         <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <SidebarContent />
+          <SidebarContent collapsed={isSidebarCollapsed} />
         </div>
       </aside>
 
@@ -1185,14 +1241,14 @@ const AppContent: React.FC = () => {
             style={{ background: 'var(--bg-sidebar)', borderRight: '1px solid rgba(255,255,255,0.05)', position: 'relative' }}
             onClick={e => e.stopPropagation()}
           >
-            <SidebarContent />
+            <SidebarContent mobile />
           </aside>
         </div>
       )}
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-h-screen" style={{ marginLeft: 0 }} >
-        <div className="hidden lg:block" style={{ marginLeft: 248 }} />
+        <div className="hidden lg:block" style={{ marginLeft: sidebarWidth, transition: 'margin-left .2s ease' }} />
 
         {/* Mobile topbar */}
         <header
@@ -1218,7 +1274,10 @@ const AppContent: React.FC = () => {
 
         {/* Page content */}
         <main className="flex-1 app-content" style={{ marginLeft: 0 }}>
-          <div className="lg:ml-[248px]">
+          <div
+            className="lg:ml-[var(--sidebar-width)] transition-[margin-left] duration-200"
+            style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
+          >
           <Routes>
             <Route path="/" element={<DashboardContent metrics={metrics} dailyLeads={dailyLeads} revenueHistory={revenueHistory} loadingData={loadingData} />} />
 
