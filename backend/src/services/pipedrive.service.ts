@@ -543,37 +543,42 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
 
     if (!lead) continue;
 
-    const newStatus = resolveLeadStatus(deal, stageMap);
+    // Only drive lead status + revenue from inbound deals.
+    // Already-linked non-inbound deals still get timeline events but must not
+    // overwrite the lead's status or create revenue entries.
+    const isInbound = deal[FIELD_CANAL_ORIGEM] === OPT_CANAL_INBOUND;
+    const newStatus = isInbound ? resolveLeadStatus(deal, stageMap) : null;
     const prevStatus = lead.status;
 
     try {
       await prisma.$transaction(async (tx) => {
-        // Update lead status and Pipedrive deal reference
-        await tx.lead.update({
-          where: { email: lead!.email },
-          data: {
-            status:         newStatus,
-            pipedriveDealId: String(deal.id),
-            lastSeenAt:     new Date(),
-            ...(newStatus === 'CLIENT' && !lead!.convertedAt ? { convertedAt: new Date() } : {}),
-          },
-        });
-
-        // Record status change if it changed
-        if (prevStatus !== newStatus) {
-          await tx.leadStatusHistory.create({
+        if (isInbound) {
+          // Update lead status and Pipedrive deal reference only for inbound deals
+          await tx.lead.update({
+            where: { email: lead!.email },
             data: {
-              leadEmail:  lead!.email,
-              fromStatus: prevStatus,
-              toStatus:   newStatus,
-              changedBy:  null,
-              reason:     `Pipedrive deal #${deal.id} — ${deal.status}`,
+              status:          newStatus!,
+              pipedriveDealId: String(deal.id),
+              lastSeenAt:      new Date(),
+              ...(newStatus === 'CLIENT' && !lead!.convertedAt ? { convertedAt: new Date() } : {}),
             },
           });
+
+          // Record status change if it changed
+          if (prevStatus !== newStatus) {
+            await tx.leadStatusHistory.create({
+              data: {
+                leadEmail:  lead!.email,
+                fromStatus: prevStatus,
+                toStatus:   newStatus!,
+                changedBy:  null,
+                reason:     `Pipedrive deal #${deal.id} — ${deal.status}`,
+              },
+            });
+          }
         }
 
         // Only create RevenueEntry for inbound won deals
-        const isInbound = deal[FIELD_CANAL_ORIGEM] === OPT_CANAL_INBOUND;
         if (deal.status === 'won' && isInbound) {
           const closeDate  = deal.won_time || deal.close_time || deal.add_time;
           const dateObj    = new Date(closeDate);
