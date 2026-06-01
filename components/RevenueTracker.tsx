@@ -21,8 +21,12 @@ const EntryDrawer: React.FC<{
   const initials = entry.businessName.slice(0, 2).toUpperCase();
 
   useEffect(() => {
+    document.body.style.overflow = 'hidden';
     const t = setTimeout(() => setVisible(true), 10);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      document.body.style.overflow = '';
+    };
   }, []);
 
   const handleClose = () => {
@@ -46,7 +50,7 @@ const EntryDrawer: React.FC<{
       />
 
       {/* Drawer */}
-      <div className={`relative flex flex-col w-full max-w-sm bg-autoforce-darkest border-l border-autoforce-grey/20 shadow-2xl h-screen transition-transform duration-300 ease-out ${visible ? 'translate-x-0' : 'translate-x-full'}`}>
+      <div className={`relative flex flex-col w-full max-w-md bg-autoforce-darkest border-l border-autoforce-grey/20 shadow-2xl h-screen overflow-hidden transition-transform duration-300 ease-out ${visible ? 'translate-x-0' : 'translate-x-full'}`}>
 
         {/* Header */}
         <div className="flex-shrink-0 bg-gradient-to-b from-autoforce-darkBlue/20 to-autoforce-darkest border-b border-autoforce-grey/20 p-5">
@@ -95,7 +99,7 @@ const EntryDrawer: React.FC<{
         </div>
 
         {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-autoforce-grey/5">
+        <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-autoforce-darkest">
 
           {/* Origem + Vendedor */}
           <div className="grid grid-cols-2 gap-3">
