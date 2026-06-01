@@ -198,8 +198,10 @@ app.post('/api/admin/backfill-revenue', async (req, res) => {
       const all: Record<string, unknown>[] = [];
       let start = 0;
       while (true) {
-        const url = new URL(`https://${domain}.pipedrive.com/api/v1/pipelines/${pipelineId}/deals`);
+        // Use /deals?pipeline_id= (not /pipelines/{id}/deals) — only this endpoint returns custom fields
+        const url = new URL(`https://${domain}.pipedrive.com/api/v1/deals`);
         url.searchParams.set('api_token', token);
+        url.searchParams.set('pipeline_id', String(pipelineId));
         url.searchParams.set('status', 'won');
         url.searchParams.set('start', String(start));
         url.searchParams.set('limit', '100');

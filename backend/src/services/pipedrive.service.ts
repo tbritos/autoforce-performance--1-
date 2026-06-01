@@ -217,14 +217,15 @@ async function fetchAllPages<T>(
   path: string,
   token: string,
   domain: string,
-  authType: 'api_token' | 'oauth'
+  authType: 'api_token' | 'oauth',
+  extraParams: Record<string, string | number> = {}
 ): Promise<T[]> {
   const all: T[] = [];
   let start = 0;
   const limit = 100;
 
   while (true) {
-    const res = await pipedriveGet<PipedriveListResponse<T>>(path, token, domain, authType, { start, limit });
+    const res = await pipedriveGet<PipedriveListResponse<T>>(path, token, domain, authType, { start, limit, ...extraParams });
     if (!res.success || !res.data) break;
     all.push(...res.data);
 
@@ -493,10 +494,10 @@ const SYNC_PIPELINE_IDS = [2, 5];
 export async function syncPipedriveDeals(): Promise<{ synced: number; errors: number }> {
   const { token, domain, stageMap, authType } = await getCredentials();
 
-  // Fetch only from sales pipelines — ignore CS/relationship pipelines
+  // Fetch only from sales pipelines using /deals?pipeline_id= (includes custom fields)
   const dealArrays = await Promise.all(
     SYNC_PIPELINE_IDS.map(pid =>
-      fetchAllPages<PipedriveDeal>(`/pipelines/${pid}/deals`, token, domain, authType)
+      fetchAllPages<PipedriveDeal>(`/deals`, token, domain, authType, { pipeline_id: pid })
     )
   );
   const allDeals = dealArrays.flat();
