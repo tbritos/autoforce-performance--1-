@@ -307,13 +307,13 @@ const DashboardContent: React.FC<{
             },
             {
                 id: '2',
-                label: 'Taxa de Qualificação',
+                label: 'Taxa Lead → MQL',
                 value: Number(currentQual.toFixed(1)),
                 target: 45,
                 unit: '%',
                 change: Number(qualChange.toFixed(1)),
                 trend: (qualChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
-                description: 'Leads que viraram MQL',
+                description: 'Leads convertidos em MQL no período',
             },
             {
                 id: '3',
