@@ -378,8 +378,12 @@
 
       .app-content .border-autoforce-grey\/20,
       .app-content .border-autoforce-grey\/25,
+      .app-content .border-autoforce-grey\/30,
       .app-content .border-autoforce-grey\/15,
       .app-content .border-autoforce-grey\/10 { border-color: var(--border) !important; }
+      .app-content .divide-autoforce-grey\/10 > :not([hidden]) ~ :not([hidden]),
+      .app-content .divide-autoforce-grey\/15 > :not([hidden]) ~ :not([hidden]),
+      .app-content .divide-autoforce-grey\/20 > :not([hidden]) ~ :not([hidden]) { border-color: var(--border-subtle) !important; }
 
       .app-content .text-white { color: var(--fg-primary) !important; }
       /* Exception: elements that are themselves colored (buttons etc.) keep white text */
@@ -402,7 +406,8 @@
 
       .app-content .bg-autoforce-black { background: var(--bg-subtle) !important; }
 
-      .app-content .bg-autoforce-grey\/10 { background: var(--bg-muted) !important; }
+      .app-content .bg-autoforce-grey\/10,
+      .app-content .bg-autoforce-grey\/15 { background: var(--bg-muted) !important; }
 
       /* Gradient overrides */
       .app-content .bg-gradient-to-br { background-image: none !important; background: var(--bg-surface) !important; }
@@ -423,24 +428,6 @@
       .app-content .hover\:text-white:hover { color: var(--fg-primary) !important; }
       .app-content .hover\:border-autoforce-grey\/40:hover { border-color: var(--border-strong) !important; }
       .app-content .hover\:bg-white\/\[0\.02\]:hover { background: var(--bg-hover) !important; }
-
-      /* Dark mode: restore original behavior */
-      [data-theme="dark"] .app-content .bg-autoforce-darkest,
-      [data-theme="dark"] .app-content .bg-autoforce-dark,
-      [data-theme="dark"] .app-content .bg-autoforce-darkest\/60,
-      [data-theme="dark"] .app-content .bg-autoforce-darkest\/40,
-      [data-theme="dark"] .app-content .bg-autoforce-black,
-      [data-theme="dark"] .app-content .bg-autoforce-black\/60,
-      [data-theme="dark"] .app-content .bg-autoforce-black\/40,
-      [data-theme="dark"] .app-content .bg-autoforce-black\/30 { background: unset !important; }
-      [data-theme="dark"] .app-content .bg-gradient-to-br { background-image: unset !important; background: unset !important; }
-      [data-theme="dark"] .app-content .text-white { color: unset !important; }
-      [data-theme="dark"] .app-content .text-autoforce-lightGrey { color: unset !important; }
-      [data-theme="dark"] .app-content .text-autoforce-grey { color: unset !important; }
-      [data-theme="dark"] .app-content .border-autoforce-grey\/20,
-      [data-theme="dark"] .app-content .border-autoforce-grey\/15,
-      [data-theme="dark"] .app-content .border-autoforce-grey\/10 { border-color: unset !important; }
-      [data-theme="dark"] .app-content .hover\:bg-white\/\[0\.02\]:hover { background: unset !important; }
 
       /* ── Animations ──────────────────────────────────────────────────── */
       @keyframes fadeInUp   { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
