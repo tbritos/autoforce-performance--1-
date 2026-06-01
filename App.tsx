@@ -60,11 +60,10 @@ const FUNNEL_STAGES: { status: LeadStatus; label: string; color: string }[] = [
 
 // --- COMPONENTE DO CONTEÃšDO DO DASHBOARD (ExtraÃ­do para limpar o cÃ³digo) ---
 const DashboardContent: React.FC<{
-    metrics: Metric[], 
-    dailyLeads: DailyLeadEntry[],
+    metrics: Metric[],
     revenueHistory: RevenueEntry[],
-    loadingData: boolean 
-}> = ({ metrics, dailyLeads, revenueHistory, loadingData }) => {
+    loadingData: boolean
+}> = ({ metrics, revenueHistory, loadingData }) => {
     const [dateRange, setDateRange] = useState(() => {
         const end = new Date();
         const start = new Date(end.getFullYear(), end.getMonth(), 1);
@@ -93,17 +92,33 @@ const DashboardContent: React.FC<{
     const [visits, setVisits]         = useState(0);
     const [insightsLoading, setInsightsLoading] = useState(true);
 
+    // ── Lead KPI stats from Lead table (replaces DailyLead) ──────────────────
+    const [leadStats, setLeadStats] = useState({ leads: 0, mqls: 0, sqls: 0 });
+    const [prevLeadStats, setPrevLeadStats] = useState({ leads: 0, mqls: 0, sqls: 0 });
+
     useEffect(() => {
       let cancelled = false;
       const load = async () => {
         setInsightsLoading(true);
         try {
-          const [funnel, source, meta, google, lps] = await Promise.all([
+          // Compute previous period (same duration, immediately before)
+          const startD  = new Date(dateRange.start);
+          const endD    = new Date(dateRange.end);
+          const dayMs   = 24 * 60 * 60 * 1000;
+          const rangeDays = Math.round((endD.getTime() - startD.getTime()) / dayMs) + 1;
+          const prevEnd   = new Date(startD.getTime() - dayMs);
+          const prevStart = new Date(prevEnd.getTime() - (rangeDays - 1) * dayMs);
+          const prevStartStr = prevStart.toISOString().split('T')[0];
+          const prevEndStr   = prevEnd.toISOString().split('T')[0];
+
+          const [funnel, source, meta, google, lps, curr, prev] = await Promise.all([
             DataService.getFunnelCounts(),
             DataService.getLeadsBySource(),
             DataService.getMetaCampaigns(dateRange.start, dateRange.end),
             DataService.getGoogleAdsCampaigns(dateRange.start, dateRange.end),
             DataService.getLandingPagesGA(dateRange.start, dateRange.end),
+            DataService.getLeadStats(dateRange.start, dateRange.end),
+            DataService.getLeadStats(prevStartStr, prevEndStr),
           ]);
           if (cancelled) return;
           setFunnelCounts(funnel);
@@ -111,6 +126,8 @@ const DashboardContent: React.FC<{
           setMetaSpend(meta.reduce((s, c) => s + (c.spend || 0), 0));
           setGoogleSpend(google.reduce((s, c) => s + (c.spend || 0), 0));
           setVisits(lps.reduce((s, lp) => s + (lp.users || 0), 0));
+          setLeadStats(curr);
+          setPrevLeadStats(prev);
         } catch (err) {
           console.error('Insights load error:', err);
         } finally {
@@ -162,7 +179,6 @@ const DashboardContent: React.FC<{
 
     // Fallback de segurança para evitar erro se metrics vier vazio
     const safeMetrics = Array.isArray(metrics) ? metrics : [];
-    const safeDailyLeads = Array.isArray(dailyLeads) ? dailyLeads : [];
     const safeRevenueHistory = Array.isArray(revenueHistory) ? revenueHistory : [];
 
     useEffect(() => {
@@ -222,35 +238,17 @@ const DashboardContent: React.FC<{
 
     const aggregateForRange = (startValue: string, endValue: string) => {
         const range = normalizeRange(startValue, endValue);
-        if (!range) {
-            return { leads: 0, mql: 0, sql: 0, mrr: 0, sales: 0 };
-        }
+        if (!range) return { mrr: 0, sales: 0 };
         const { start, end } = range;
-        const leads = safeDailyLeads.filter(entry => {
-            const entryDate = parseDateOnly(entry.date);
-            return entryDate >= start && entryDate <= end;
-        });
         const revenue = safeRevenueHistory.filter(entry => {
             const entryDate = parseDateOnly(entry.date);
             return entryDate >= start && entryDate <= end;
         });
         return {
-            leads: leads.reduce((sum, lead) => sum + lead.leads, 0),
-            mql: leads.reduce((sum, lead) => sum + lead.mql, 0),
-            sql: leads.reduce((sum, lead) => sum + lead.sql, 0),
-            mrr: revenue.reduce((sum, item) => sum + (item.mrrValue || 0), 0),
+            mrr:   revenue.reduce((sum, item) => sum + (item.mrrValue || 0), 0),
             sales: revenue.length,
         };
     };
-
-    const filteredDailyLeads = useMemo(() => {
-        const range = normalizeRange(dateRange.start, dateRange.end);
-        if (!range) return safeDailyLeads;
-        return safeDailyLeads.filter(entry => {
-            const entryDate = parseDateOnly(entry.date);
-            return entryDate >= range.start && entryDate <= range.end;
-        });
-    }, [dateRange.end, dateRange.start, safeDailyLeads]);
 
     const filteredRevenue = useMemo(() => {
         const range = normalizeRange(dateRange.start, dateRange.end);
@@ -262,30 +260,35 @@ const DashboardContent: React.FC<{
     }, [dateRange.end, dateRange.start, safeRevenueHistory]);
 
     const computedMetrics = useMemo(() => {
-        const range = normalizeRange(dateRange.start, dateRange.end);
-        if (!range) return safeMetrics;
-        const current = aggregateForRange(dateRange.start, dateRange.end);
-        const dayMs = 24 * 60 * 60 * 1000;
-        const rangeDays = Math.round((range.end.getTime() - range.start.getTime()) / dayMs) + 1;
-        const prevEnd = new Date(range.start.getTime() - dayMs);
-        const prevStart = new Date(prevEnd.getTime() - (rangeDays - 1) * dayMs);
-        const prevStartStr = prevStart.toISOString().split('T')[0];
-        const prevEndStr = prevEnd.toISOString().split('T')[0];
-        const previous = aggregateForRange(prevStartStr, prevEndStr);
+        // Revenue metrics from RevenueEntry (filtered by date in the existing memos)
+        const currentMrr   = filteredRevenue.reduce((s, e) => s + (e.mrrValue || 0), 0);
+        const currentSales = filteredRevenue.length;
 
-        const rawLeadsChange = previous.leads > 0 ? ((current.leads - previous.leads) / previous.leads) * 100 : 0;
-        const leadsChange = previous.mql > 0 ? ((current.mql - previous.mql) / previous.mql) * 100 : 0;
-        const currentQual = current.mql > 0 ? (current.sql / current.mql) * 100 : 0;
-        const previousQual = previous.mql > 0 ? (previous.sql / previous.mql) * 100 : 0;
-        const qualChange = currentQual - previousQual;
-        const mrrChange = previous.mrr > 0 ? ((current.mrr - previous.mrr) / previous.mrr) * 100 : 0;
-        const salesChange = previous.sales > 0 ? ((current.sales - previous.sales) / previous.sales) * 100 : 0;
+        // Lead/MQL/SQL metrics from Lead table (via leadStats API — real data)
+        const rawLeadsChange = prevLeadStats.leads > 0 ? ((leadStats.leads - prevLeadStats.leads) / prevLeadStats.leads) * 100 : 0;
+        const mqlsChange     = prevLeadStats.mqls  > 0 ? ((leadStats.mqls  - prevLeadStats.mqls)  / prevLeadStats.mqls)  * 100 : 0;
+        const currentQual    = leadStats.leads > 0 ? (leadStats.mqls / leadStats.leads) * 100 : 0;
+        const prevQual       = prevLeadStats.leads > 0 ? (prevLeadStats.mqls / prevLeadStats.leads) * 100 : 0;
+        const qualChange     = currentQual - prevQual;
+
+        // Revenue comparison — use filteredRevenue vs safeRevenueHistory for prev period
+        const range = normalizeRange(dateRange.start, dateRange.end);
+        let mrrChange = 0, salesChange = 0;
+        if (range) {
+          const dayMs = 24 * 60 * 60 * 1000;
+          const rangeDays = Math.round((range.end.getTime() - range.start.getTime()) / dayMs) + 1;
+          const prevEnd   = new Date(range.start.getTime() - dayMs);
+          const prevStart = new Date(prevEnd.getTime() - (rangeDays - 1) * dayMs);
+          const prev = aggregateForRange(prevStart.toISOString().split('T')[0], prevEnd.toISOString().split('T')[0]);
+          mrrChange   = prev.mrr   > 0 ? ((currentMrr   - prev.mrr)   / prev.mrr)   * 100 : 0;
+          salesChange = prev.sales > 0 ? ((currentSales - prev.sales) / prev.sales) * 100 : 0;
+        }
 
         return [
             {
                 id: '0',
                 label: 'Total de Leads',
-                value: current.leads,
+                value: leadStats.leads,
                 target: 5000,
                 unit: '',
                 change: Number(rawLeadsChange.toFixed(1)),
@@ -295,12 +298,12 @@ const DashboardContent: React.FC<{
             {
                 id: '1',
                 label: 'Total de MQLs',
-                value: current.mql,
+                value: leadStats.mqls,
                 target: 4000,
                 unit: '',
-                change: Number(leadsChange.toFixed(1)),
-                trend: (leadsChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
-                description: 'Leads gerados em todas as fontes',
+                change: Number(mqlsChange.toFixed(1)),
+                trend: (mqlsChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
+                description: 'Leads qualificados no período',
             },
             {
                 id: '2',
@@ -310,12 +313,12 @@ const DashboardContent: React.FC<{
                 unit: '%',
                 change: Number(qualChange.toFixed(1)),
                 trend: (qualChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
-                description: 'Leads que viraram oportunidades',
+                description: 'Leads que viraram MQL',
             },
             {
                 id: '3',
                 label: 'MRR Novo',
-                value: Number(current.mrr.toFixed(2)),
+                value: Number(currentMrr.toFixed(2)),
                 target: 15000,
                 unit: 'R$',
                 change: Number(mrrChange.toFixed(1)),
@@ -325,15 +328,15 @@ const DashboardContent: React.FC<{
             {
                 id: '4',
                 label: 'Vendas Realizadas',
-                value: current.sales,
+                value: currentSales,
                 target: 120,
                 unit: '',
                 change: Number(salesChange.toFixed(1)),
                 trend: (salesChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
-                description: 'Negocios fechados no perí­odo',
+                description: 'Negócios fechados no período',
             },
         ];
-    }, [dateRange.end, dateRange.start, safeMetrics, safeDailyLeads, safeRevenueHistory]);
+    }, [leadStats, prevLeadStats, filteredRevenue, dateRange.start, dateRange.end, safeRevenueHistory]);
 
     const goalTargets = useMemo(() => {
         const map = new Map<string, number>();
@@ -437,22 +440,14 @@ const DashboardContent: React.FC<{
     );
 
     const funnelSteps = useMemo((): FunnelStep[] => {
-        const totals = filteredDailyLeads.reduce(
-            (acc, entry) => ({
-                leads: acc.leads + entry.leads,
-                mql:   acc.mql   + entry.mql,
-                sql:   acc.sql   + entry.sql,
-            }),
-            { leads: 0, mql: 0, sql: 0 }
-        );
         return [
-            { label: 'Visitas', value: visits,               color: '#64748b' },
-            { label: 'Leads',   value: totals.leads,         color: '#60a5fa' },
-            { label: 'MQL',     value: totals.mql,           color: '#3b82f6' },
-            { label: 'SQL',     value: totals.sql,           color: '#818cf8' },
+            { label: 'Visitas', value: visits,                color: '#64748b' },
+            { label: 'Leads',   value: leadStats.leads,       color: '#60a5fa' },
+            { label: 'MQL',     value: leadStats.mqls,        color: '#3b82f6' },
+            { label: 'SQL',     value: leadStats.sqls,        color: '#818cf8' },
             { label: 'Vendas',  value: filteredRevenue.length, color: '#22c55e' },
         ];
-    }, [filteredDailyLeads, filteredRevenue, visits]);
+    }, [leadStats, filteredRevenue, visits]);
     
     return (
         <div style={{ padding: '24px 28px 64px', maxWidth: 1480, margin: '0 auto' }} className="space-y-6 animate-fade-in-up">
@@ -1288,7 +1283,7 @@ const AppContent: React.FC = () => {
             style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
           >
           <Routes>
-            <Route path="/" element={<DashboardContent metrics={metrics} dailyLeads={dailyLeads} revenueHistory={revenueHistory} loadingData={loadingData} />} />
+            <Route path="/" element={<DashboardContent metrics={metrics} revenueHistory={revenueHistory} loadingData={loadingData} />} />
 
             <Route path="/dashboard" element={<Navigate to="/" replace />} />
 

@@ -511,6 +511,24 @@ export class LeadHubService {
   }
 
   // ----------------------------------------------------------
+  // Query: KPI stats for a date range (dashboard cards)
+  // ----------------------------------------------------------
+  static async getLeadStats(start: Date, end: Date) {
+    const [leads, mqls, sqls] = await Promise.all([
+      prisma.lead.count({
+        where: { deletedAt: null, createdAt: { gte: start, lte: end } },
+      }),
+      prisma.leadStatusHistory.count({
+        where: { toStatus: 'MQL', changedAt: { gte: start, lte: end } },
+      }),
+      prisma.leadStatusHistory.count({
+        where: { toStatus: 'SQL', changedAt: { gte: start, lte: end } },
+      }),
+    ]);
+    return { leads, mqls, sqls };
+  }
+
+  // ----------------------------------------------------------
   // Query: funnel counts by status
   // ----------------------------------------------------------
   static async getFunnelCounts() {

@@ -22,6 +22,19 @@ function parseFilters(q: Request['query']): LeadFilter {
 
 export class LeadHubController {
 
+  static async getLeadStats(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { start, end } = req.query as { start?: string; end?: string };
+      const startDate = start ? new Date(start) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+      const endDate   = end   ? new Date(end)   : new Date();
+      endDate.setHours(23, 59, 59, 999);
+      const stats = await LeadHubService.getLeadStats(startDate, endDate);
+      res.json(stats);
+    } catch (err) {
+      next(err);
+    }
+  }
+
   static async list(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await LeadHubService.listLeads(parseFilters(req.query));
