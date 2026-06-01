@@ -81,83 +81,87 @@ const EntryDrawer: React.FC<{
         </div>
 
         {/* MRR + Setup */}
-        <div className="flex-shrink-0 grid grid-cols-2 border-b border-autoforce-grey/20 bg-autoforce-darkest">
-          <div className="p-4 border-r border-autoforce-grey/20">
-            <p className="text-[10px] font-bold text-autoforce-grey uppercase tracking-widest mb-1">MRR</p>
-            <p className="text-2xl font-black text-green-400">{formatCurrency(entry.mrrValue)}</p>
+        <div className="flex-shrink-0 grid grid-cols-2 divide-x divide-autoforce-grey/20 border-b border-autoforce-grey/20">
+          <div className="p-4 bg-green-500/10">
+            <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest mb-1">MRR Mensal</p>
+            <p className="text-2xl font-black text-green-500">{formatCurrency(entry.mrrValue)}</p>
             <p className="text-[10px] text-autoforce-grey mt-0.5">por mês</p>
           </div>
-          <div className="p-4 bg-autoforce-darkest">
-            <p className="text-[10px] font-bold text-autoforce-grey uppercase tracking-widest mb-1">Setup</p>
-            <p className="text-2xl font-black text-white">{formatCurrency(entry.setupValue)}</p>
+          <div className="p-4 bg-autoforce-blue/10">
+            <p className="text-[10px] font-bold text-autoforce-blue uppercase tracking-widest mb-1">Setup</p>
+            <p className="text-2xl font-black text-autoforce-blue">{formatCurrency(entry.setupValue)}</p>
             <p className="text-[10px] text-autoforce-grey mt-0.5">único</p>
           </div>
         </div>
 
         {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-autoforce-darkest">
+        <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-autoforce-grey/5">
 
-          <div className="grid grid-cols-2 gap-4">
-            <Section label="Origem">
-              <div className="flex items-center gap-2 bg-autoforce-black/50 border border-autoforce-grey/15 rounded-lg px-3 py-2">
+          {/* Origem + Vendedor */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-3">
+              <p className="text-[9px] font-bold text-autoforce-grey uppercase tracking-widest mb-1.5">Origem</p>
+              <div className="flex items-center gap-1.5">
                 <Globe size={12} className="text-autoforce-blue flex-shrink-0" />
-                <span className="text-xs text-white truncate">{entry.origin || '—'}</span>
+                <span className="text-xs font-semibold text-white truncate">{entry.origin || '—'}</span>
               </div>
-            </Section>
-
-            {entry.closedBy ? (
-              <Section label="Vendedor">
-                <div className="flex items-center gap-2 bg-autoforce-black/50 border border-autoforce-grey/15 rounded-lg px-3 py-2">
-                  <User size={12} className="text-autoforce-blue flex-shrink-0" />
-                  <span className="text-xs text-white truncate">{entry.closedBy}</span>
-                </div>
-              </Section>
-            ) : <div />}
+            </div>
+            <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-3">
+              <p className="text-[9px] font-bold text-autoforce-grey uppercase tracking-widest mb-1.5">Vendedor</p>
+              <div className="flex items-center gap-1.5">
+                <User size={12} className="text-autoforce-blue flex-shrink-0" />
+                <span className="text-xs font-semibold text-white truncate">{entry.closedBy || '—'}</span>
+              </div>
+            </div>
           </div>
 
           {(entry.product?.length ?? 0) > 0 && (
-            <Section label="Produtos Vendidos">
+            <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-3">
+              <p className="text-[9px] font-bold text-autoforce-grey uppercase tracking-widest mb-2">Produtos Vendidos</p>
               <div className="flex flex-wrap gap-1.5">
                 {entry.product.map(p => (
-                  <span key={p} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-autoforce-blue/10 text-autoforce-blue border border-autoforce-blue/20">
-                    <Package size={10} /> {p}
+                  <span key={p} className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold bg-autoforce-blue/15 text-autoforce-blue border border-autoforce-blue/25">
+                    <Package size={9} /> {p}
                   </span>
                 ))}
               </div>
-            </Section>
+            </div>
           )}
 
           {(entry.whyBought?.length ?? 0) > 0 && (
-            <Section label="Motivo da Compra">
+            <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-3">
+              <p className="text-[9px] font-bold text-autoforce-grey uppercase tracking-widest mb-2">Motivo da Compra</p>
               <div className="space-y-1.5">
                 {entry.whyBought!.map(r => (
-                  <div key={r} className="flex items-start gap-2 bg-autoforce-black/50 border border-autoforce-grey/15 rounded-lg px-3 py-2">
-                    <MessageSquare size={10} className="text-autoforce-grey mt-0.5 flex-shrink-0" />
-                    <span className="text-xs text-autoforce-lightGrey leading-relaxed">{r}</span>
+                  <div key={r} className="flex items-start gap-2 bg-autoforce-grey/10 rounded-lg px-2.5 py-2">
+                    <MessageSquare size={10} className="text-autoforce-lightGrey mt-0.5 flex-shrink-0" />
+                    <span className="text-[11px] text-autoforce-lightGrey leading-relaxed">{r}</span>
                   </div>
                 ))}
               </div>
-            </Section>
+            </div>
           )}
 
           {(entry.currentSupplier?.length ?? 0) > 0 && (
-            <Section label="Fornecedor Anterior">
+            <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-3">
+              <p className="text-[9px] font-bold text-autoforce-grey uppercase tracking-widest mb-2">Fornecedor Anterior</p>
               <div className="flex flex-wrap gap-1.5">
                 {entry.currentSupplier!.map(s => (
-                  <span key={s} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs bg-autoforce-grey/10 text-autoforce-lightGrey border border-autoforce-grey/20">
-                    <ShoppingBag size={10} /> {s}
+                  <span key={s} className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] bg-autoforce-grey/15 text-autoforce-lightGrey border border-autoforce-grey/20">
+                    <ShoppingBag size={9} /> {s}
                   </span>
                 ))}
               </div>
-            </Section>
+            </div>
           )}
 
           {(entry.dealUrl || entry.contractLink) && (
-            <Section label="Links">
+            <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-3">
+              <p className="text-[9px] font-bold text-autoforce-grey uppercase tracking-widest mb-2">Links</p>
               <div className="flex flex-col gap-2">
                 {entry.dealUrl && (
                   <a href={entry.dealUrl} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold bg-autoforce-blue/10 text-autoforce-blue border border-autoforce-blue/20 hover:bg-autoforce-blue/20 transition group">
+                    className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold bg-autoforce-blue/15 text-autoforce-blue border border-autoforce-blue/25 hover:bg-autoforce-blue/25 transition group">
                     <ExternalLink size={13} />
                     Abrir no Pipedrive
                     <ChevronRight size={12} className="ml-auto opacity-0 group-hover:opacity-100 transition" />
@@ -165,14 +169,14 @@ const EntryDrawer: React.FC<{
                 )}
                 {entry.contractLink && (
                   <a href={entry.contractLink} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold bg-autoforce-grey/10 text-autoforce-lightGrey border border-autoforce-grey/20 hover:text-white transition group">
+                    className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold bg-autoforce-grey/15 text-autoforce-lightGrey border border-autoforce-grey/25 hover:text-white transition group">
                     <FileText size={13} />
                     Ver Contrato
                     <ChevronRight size={12} className="ml-auto opacity-0 group-hover:opacity-100 transition" />
                   </a>
                 )}
               </div>
-            </Section>
+            </div>
           )}
         </div>
 
