@@ -510,7 +510,7 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
     })).map(l => l.pipedriveDealId!)
   );
   const deals = allDeals.filter(d =>
-    d[FIELD_CANAL_ORIGEM] === OPT_CANAL_INBOUND || alreadyLinkedIds.has(String(d.id))
+    Number(d[FIELD_CANAL_ORIGEM]) === OPT_CANAL_INBOUND || alreadyLinkedIds.has(String(d.id))
   );
 
   // Remove OPPORTUNITY status history records created before stage mapping was implemented
@@ -547,7 +547,7 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
     // Only drive lead status + revenue from inbound deals.
     // Already-linked non-inbound deals still get timeline events but must not
     // overwrite the lead's status or create revenue entries.
-    const isInbound = deal[FIELD_CANAL_ORIGEM] === OPT_CANAL_INBOUND;
+    const isInbound = Number(deal[FIELD_CANAL_ORIGEM]) === OPT_CANAL_INBOUND;
     const newStatus = isInbound ? resolveLeadStatus(deal, stageMap) : null;
     const prevStatus = lead.status;
 

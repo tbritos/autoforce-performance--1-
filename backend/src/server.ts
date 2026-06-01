@@ -237,7 +237,7 @@ app.post('/api/admin/backfill-revenue', async (req, res) => {
 
     const [deals2, deals5] = await Promise.all([fetchAllWonDeals(2), fetchAllWonDeals(5)]);
     const allDeals    = [...deals2, ...deals5];
-    const inbound     = allDeals.filter(d => d[FIELD_CANAL_ORIGEM] === OPT_CANAL_INBOUND);
+    const inbound     = allDeals.filter(d => Number(d[FIELD_CANAL_ORIGEM]) === OPT_CANAL_INBOUND);
     const inboundIds  = new Set(inbound.map(d => String(d.id)));
 
     // 1. Remover entradas não-inbound

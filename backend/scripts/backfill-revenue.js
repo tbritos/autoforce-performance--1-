@@ -100,7 +100,7 @@ async function main() {
   const allDeals = [...deals2, ...deals5];
   console.log(`   → ${allDeals.length} negócios ganhos no total`);
 
-  const inboundDeals    = allDeals.filter(d => d[F.CANAL_ORIGEM] === OPT_CANAL_INBOUND);
+  const inboundDeals    = allDeals.filter(d => Number(d[F.CANAL_ORIGEM]) === OPT_CANAL_INBOUND);
   const inboundDealIds  = new Set(inboundDeals.map(d => String(d.id)));
   console.log(`   → ${inboundDeals.length} com Canal de Origem = Inbound (66)`);
   console.log(`   → ${allDeals.length - inboundDeals.length} não-inbound (serão removidos do banco)\n`);
