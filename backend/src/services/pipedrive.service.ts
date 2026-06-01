@@ -572,8 +572,9 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
           });
         }
 
-        // If deal was won, create or update RevenueEntry with all Pipedrive fields
-        if (deal.status === 'won') {
+        // Only create RevenueEntry for inbound won deals
+        const isInbound = deal[FIELD_CANAL_ORIGEM] === OPT_CANAL_INBOUND;
+        if (deal.status === 'won' && isInbound) {
           const closeDate  = deal.won_time || deal.close_time || deal.add_time;
           const dateObj    = new Date(closeDate);
           const setupVal   = extractSetupValue(deal[PIPEDRIVE_FIELDS.SETUP_VALUE]);

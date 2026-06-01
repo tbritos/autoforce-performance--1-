@@ -306,8 +306,9 @@ export class PipedriveWebhookController {
         });
       }
 
-      // If deal is won, create/update RevenueEntry with full Pipedrive data
-      if (dealStatus === 'won') {
+      // If deal is won AND is inbound, create/update RevenueEntry
+      const isInbound = Number(current[PIPEDRIVE_FIELDS.CANAL_ORIGEM]) === 66;
+      if (dealStatus === 'won' && isInbound) {
         const wonAt      = current.won_time ? new Date(current.won_time as string) : occurredAt;
         const setupVal   = extractSetupValue(current[PIPEDRIVE_FIELDS.SETUP_VALUE]);
         const produtos   = resolveSetField(current[PIPEDRIVE_FIELDS.PRODUTO_VENDA],    PIPEDRIVE_OPTIONS.PRODUTO_VENDA);
