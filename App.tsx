@@ -1110,9 +1110,6 @@ const AppContent: React.FC = () => {
             style={{ height: 22, width: 'auto', objectFit: 'contain', filter: 'brightness(0) invert(1)' }}
           />
         )}
-        {collapsed && (
-          <span style={{ color: 'white', fontSize: 15, fontWeight: 800, letterSpacing: '-0.03em' }}>AF</span>
-        )}
         {!mobile && (
           <button
             type="button"
