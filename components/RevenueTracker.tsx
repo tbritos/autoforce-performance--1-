@@ -46,7 +46,7 @@ const EntryDrawer: React.FC<{
       />
 
       {/* Drawer */}
-      <div className={`relative flex flex-col w-full max-w-sm bg-autoforce-darkest border-l border-autoforce-grey/20 shadow-2xl h-full transition-transform duration-300 ease-out ${visible ? 'translate-x-0' : 'translate-x-full'}`}>
+      <div className={`relative flex flex-col w-full max-w-sm bg-autoforce-darkest border-l border-autoforce-grey/20 shadow-2xl h-screen transition-transform duration-300 ease-out ${visible ? 'translate-x-0' : 'translate-x-full'}`}>
 
         {/* Header */}
         <div className="flex-shrink-0 bg-gradient-to-b from-autoforce-darkBlue/20 to-autoforce-darkest border-b border-autoforce-grey/20 p-5">
@@ -82,14 +82,14 @@ const EntryDrawer: React.FC<{
 
         {/* MRR + Setup */}
         <div className="flex-shrink-0 grid grid-cols-2 divide-x divide-autoforce-grey/20 border-b border-autoforce-grey/20">
-          <div className="p-4 bg-green-500/10">
-            <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest mb-1">MRR Mensal</p>
-            <p className="text-2xl font-black text-green-500">{formatCurrency(entry.mrrValue)}</p>
+          <div className="p-4 bg-green-500/8">
+            <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-widest mb-1">MRR Mensal</p>
+            <p className="text-2xl font-black text-green-400">{formatCurrency(entry.mrrValue)}</p>
             <p className="text-[10px] text-autoforce-grey mt-0.5">por mês</p>
           </div>
-          <div className="p-4 bg-autoforce-blue/10">
-            <p className="text-[10px] font-bold text-autoforce-blue uppercase tracking-widest mb-1">Setup</p>
-            <p className="text-2xl font-black text-autoforce-blue">{formatCurrency(entry.setupValue)}</p>
+          <div className="p-4 bg-autoforce-darkest">
+            <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-widest mb-1">Setup</p>
+            <p className="text-2xl font-black text-white">{formatCurrency(entry.setupValue)}</p>
             <p className="text-[10px] text-autoforce-grey mt-0.5">único</p>
           </div>
         </div>
