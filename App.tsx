@@ -223,7 +223,7 @@ const DashboardContent: React.FC<{
     const aggregateForRange = (startValue: string, endValue: string) => {
         const range = normalizeRange(startValue, endValue);
         if (!range) {
-            return { mql: 0, sql: 0, mrr: 0, sales: 0 };
+            return { leads: 0, mql: 0, sql: 0, mrr: 0, sales: 0 };
         }
         const { start, end } = range;
         const leads = safeDailyLeads.filter(entry => {
@@ -235,6 +235,7 @@ const DashboardContent: React.FC<{
             return entryDate >= start && entryDate <= end;
         });
         return {
+            leads: leads.reduce((sum, lead) => sum + lead.leads, 0),
             mql: leads.reduce((sum, lead) => sum + lead.mql, 0),
             sql: leads.reduce((sum, lead) => sum + lead.sql, 0),
             mrr: revenue.reduce((sum, item) => sum + (item.mrrValue || 0), 0),
@@ -272,6 +273,7 @@ const DashboardContent: React.FC<{
         const prevEndStr = prevEnd.toISOString().split('T')[0];
         const previous = aggregateForRange(prevStartStr, prevEndStr);
 
+        const rawLeadsChange = previous.leads > 0 ? ((current.leads - previous.leads) / previous.leads) * 100 : 0;
         const leadsChange = previous.mql > 0 ? ((current.mql - previous.mql) / previous.mql) * 100 : 0;
         const currentQual = current.mql > 0 ? (current.sql / current.mql) * 100 : 0;
         const previousQual = previous.mql > 0 ? (previous.sql / previous.mql) * 100 : 0;
@@ -280,6 +282,16 @@ const DashboardContent: React.FC<{
         const salesChange = previous.sales > 0 ? ((current.sales - previous.sales) / previous.sales) * 100 : 0;
 
         return [
+            {
+                id: '0',
+                label: 'Total de Leads',
+                value: current.leads,
+                target: 5000,
+                unit: '',
+                change: Number(rawLeadsChange.toFixed(1)),
+                trend: (rawLeadsChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
+                description: 'Leads capturados no período',
+            },
             {
                 id: '1',
                 label: 'Total de MQLs',
@@ -627,7 +639,7 @@ const DashboardContent: React.FC<{
                 </div>
             )}
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             {computedMetrics.map((metric) => {
                 const goalTarget = goalTargets.get(metric.id);
                 const target = goalTarget ?? metric.target;
