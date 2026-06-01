@@ -160,9 +160,9 @@
         --fg-muted:     #94A3B8;
         --fg-subtle:    #64748B;
 
-        --border:        #1F284A;
-        --border-strong: #2A3560;
-        --border-subtle: #182149;
+        --border:        rgba(31,40,74,.62);
+        --border-strong: rgba(42,53,96,.72);
+        --border-subtle: rgba(24,33,73,.52);
 
         --accent:       var(--af-500);
         --accent-hover: var(--af-400);
@@ -175,8 +175,12 @@
 
       [data-theme="dark"] .text-autoforce-grey { color: #64748B !important; }
       [data-theme="dark"] .text-autoforce-lightGrey { color: #94A3B8 !important; }
-      [data-theme="dark"] .border-autoforce-grey\/20 { border-color: rgba(31,40,74,.88) !important; }
-      [data-theme="dark"] .border-autoforce-grey\/25 { border-color: rgba(42,53,96,.72) !important; }
+      [data-theme="dark"] .border-autoforce-grey\/10,
+      [data-theme="dark"] .border-autoforce-grey\/15,
+      [data-theme="dark"] .border-autoforce-grey\/20 { border-color: rgba(31,40,74,.50) !important; }
+      [data-theme="dark"] .border-autoforce-grey\/25,
+      [data-theme="dark"] .border-autoforce-grey\/30 { border-color: rgba(42,53,96,.58) !important; }
+      [data-theme="dark"] .divide-autoforce-grey\/20 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(31,40,74,.50) !important; }
 
       .revenue-entry-modal {
         background: var(--bg-surface);
