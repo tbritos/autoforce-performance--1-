@@ -75,7 +75,7 @@ const EntryDrawer: React.FC<{
 
         {/* MRR + Setup */}
         <div className="flex-shrink-0 grid grid-cols-2 divide-x divide-autoforce-grey/20 border-b border-autoforce-grey/20">
-          <div className="p-4 bg-green-500/8">
+          <div className="revenue-entry-mrr p-4">
             <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-widest mb-1">MRR Mensal</p>
             <p className="text-2xl font-black text-green-400">{formatCurrency(entry.mrrValue)}</p>
             <p className="text-[10px] text-autoforce-grey mt-0.5">por mês</p>
