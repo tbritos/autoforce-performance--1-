@@ -7,6 +7,7 @@ import {
   DollarSign, Briefcase, Globe, Package, TrendingUp, Loader2, Filter,
   Calendar, Trash2, ExternalLink, Link, X, User, FileText, ShoppingBag,
   MessageSquare, ChevronRight, Search, Users, Trophy, CheckCircle,
+  ChevronDown,
 } from 'lucide-react';
 
 // ─── Detail Drawer ────────────────────────────────────────────────────────────
@@ -193,6 +194,87 @@ const EntryDrawer: React.FC<{
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+const RevenueFilterSelect: React.FC<{
+  icon: React.ElementType;
+  value: string;
+  placeholder: string;
+  options: string[];
+  onChange: (value: string) => void;
+}> = ({ icon: Icon, value, placeholder, options, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  const items = [{ value: '', label: placeholder }, ...options.map(option => ({ value: option, label: option }))];
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!ref.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(current => !current)}
+        className="flex h-[38px] w-full items-center gap-2 rounded-xl border px-3 text-left text-xs font-semibold transition"
+        style={{
+          background: open ? 'var(--bg-surface)' : 'var(--bg-subtle)',
+          borderColor: open ? 'var(--accent)' : 'var(--border)',
+          color: value ? 'var(--fg-primary)' : 'var(--fg-muted)',
+          boxShadow: open ? '0 0 0 3px rgba(69,108,236,.14)' : 'var(--shadow-xs)',
+        }}
+      >
+        <Icon size={13} style={{ color: value ? 'var(--accent)' : 'var(--fg-subtle)', flexShrink: 0 }} />
+        <span className="min-w-0 flex-1 truncate">{value || placeholder}</span>
+        <ChevronDown
+          size={14}
+          className="shrink-0 transition-transform"
+          style={{ color: 'var(--fg-subtle)', transform: open ? 'rotate(180deg)' : 'none' }}
+        />
+      </button>
+
+      {open && (
+        <div
+          className="absolute left-0 right-0 top-[calc(100%+6px)] z-50 max-h-64 overflow-y-auto rounded-xl border p-1 shadow-2xl"
+          style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border)', boxShadow: 'var(--shadow-md)' }}
+        >
+          {items.map(item => {
+            const selected = item.value === value;
+            return (
+              <button
+                key={item.value || '__all'}
+                type="button"
+                onClick={() => {
+                  onChange(item.value);
+                  setOpen(false);
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs transition"
+                style={{
+                  background: selected ? 'var(--accent-soft)' : 'transparent',
+                  color: selected ? 'var(--accent)' : 'var(--fg-secondary)',
+                  fontWeight: selected ? 700 : 500,
+                }}
+                onMouseEnter={event => {
+                  if (!selected) event.currentTarget.style.background = 'var(--bg-hover)';
+                }}
+                onMouseLeave={event => {
+                  if (!selected) event.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: selected ? 'var(--accent)' : 'transparent' }} />
+                <span className="truncate">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const RevenueTracker: React.FC = () => {
   const [history, setHistory] = useState<RevenueEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -359,24 +441,22 @@ const RevenueTracker: React.FC = () => {
           </div>
 
           {/* Vendedor */}
-          <div className="relative">
-            <Users size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-autoforce-grey pointer-events-none" />
-            <select value={filterVendedor} onChange={e => setFilterVendedor(e.target.value)}
-              className="w-full bg-autoforce-black text-white text-xs pl-8 pr-3 py-2.5 rounded-xl border border-autoforce-grey/25 focus:border-autoforce-blue/50 outline-none appearance-none">
-              <option value="">Todos vendedores</option>
-              {vendedorOptions.map(v => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </div>
+          <RevenueFilterSelect
+            icon={Users}
+            value={filterVendedor}
+            placeholder="Todos vendedores"
+            options={vendedorOptions}
+            onChange={setFilterVendedor}
+          />
 
           {/* Origem */}
-          <div className="relative">
-            <Globe size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-autoforce-grey pointer-events-none" />
-            <select value={filterOrigin} onChange={e => setFilterOrigin(e.target.value)}
-              className="w-full bg-autoforce-black text-white text-xs pl-8 pr-3 py-2.5 rounded-xl border border-autoforce-grey/25 focus:border-autoforce-blue/50 outline-none appearance-none">
-              <option value="">Todas origens</option>
-              {originOptions.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
-          </div>
+          <RevenueFilterSelect
+            icon={Globe}
+            value={filterOrigin}
+            placeholder="Todas origens"
+            options={originOptions}
+            onChange={setFilterOrigin}
+          />
 
           {/* Período */}
           <div className="flex items-center gap-1.5">
