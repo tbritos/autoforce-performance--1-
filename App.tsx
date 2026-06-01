@@ -41,8 +41,40 @@ import {
   Moon,
   ChevronLeft,
   ChevronRight,
+  Info,
 } from 'lucide-react';
 import { FunnelChart, FunnelStep } from './components/Charts';
+
+// ─── Tooltip info icon ────────────────────────────────────────────────────────
+
+const TooltipInfo: React.FC<{ text: string; position?: 'top' | 'bottom' }> = ({ text, position = 'top' }) => {
+  const [show, setShow] = useState(false);
+  return (
+    <span
+      className="relative inline-flex items-center"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      <Info size={11} style={{ color: 'var(--fg-subtle)', cursor: 'help', flexShrink: 0 }} />
+      {show && (
+        <span
+          className="absolute z-[9999] w-60 rounded-xl p-3 text-xs leading-relaxed pointer-events-none"
+          style={{
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border)',
+            color: 'var(--fg-muted)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+            ...(position === 'top'
+              ? { bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)' }
+              : { top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)' }),
+          }}
+        >
+          {text}
+        </span>
+      )}
+    </span>
+  );
+};
 
 // ─── Dashboard constants ───────────────────────────────────────────────────────
 
@@ -295,6 +327,7 @@ const DashboardContent: React.FC<{
                 change: Number(rawLeadsChange.toFixed(1)),
                 trend: (rawLeadsChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
                 description: 'Leads capturados no período',
+                tooltip: 'Novos contatos criados no sistema no período selecionado, vindos de todas as fontes: formulários, webhooks, RD Station, Pipedrive, etc.',
             },
             {
                 id: '1',
@@ -305,6 +338,7 @@ const DashboardContent: React.FC<{
                 change: Number(mqlsChange.toFixed(1)),
                 trend: (mqlsChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
                 description: 'Leads qualificados no período',
+                tooltip: 'Quantidade de vezes que um lead avançou para o status MQL no período. Um lead pode ser qualificado mais de uma vez se retornar ao funil.',
             },
             {
                 id: '2',
@@ -315,6 +349,7 @@ const DashboardContent: React.FC<{
                 change: Number(qualChange.toFixed(1)),
                 trend: (qualChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
                 description: 'Leads convertidos em MQL no período',
+                tooltip: 'Percentual de leads que se tornaram MQL no período. Calculado como: MQLs no período ÷ Leads no período. Não é cohort — um lead criado antes pode virar MQL dentro do período.',
             },
             {
                 id: '3',
@@ -325,6 +360,7 @@ const DashboardContent: React.FC<{
                 change: Number(mrrChange.toFixed(1)),
                 trend: (mrrChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
                 description: 'Receita recorrente adicionada',
+                tooltip: 'Soma do MRR (Receita Mensal Recorrente) dos negócios ganhos no Pipedrive no período. Inclui apenas negócios inbound. Atualizado automaticamente.',
             },
             {
                 id: '4',
@@ -335,6 +371,7 @@ const DashboardContent: React.FC<{
                 change: Number(salesChange.toFixed(1)),
                 trend: (salesChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
                 description: 'Negócios fechados no período',
+                tooltip: 'Quantidade de negócios marcados como ganhos no Pipedrive (canal inbound) dentro do período selecionado. Atualizado automaticamente via sync.',
             },
         ];
     }, [leadStats, prevLeadStats, filteredRevenue, dateRange.start, dateRange.end, safeRevenueHistory]);
@@ -644,9 +681,12 @@ const DashboardContent: React.FC<{
                 return (
                 <div key={metric.id} className={`ds-kpi${isAccent ? ' ds-kpi-accent' : ''}`}>
                   <div className="ds-kpi-row">
-                    <div className="ds-kpi-label">
+                    <div className="ds-kpi-label" style={{ gap: 5 }}>
                       <Award size={12} />
                       {metric.label}
+                      {(metric as { tooltip?: string }).tooltip && (
+                        <TooltipInfo text={(metric as { tooltip?: string }).tooltip!} />
+                      )}
                     </div>
                     <span className={`ds-kpi-delta ${metric.trend === 'up' ? 'up' : metric.trend === 'down' ? 'down' : 'up'}`}>
                       {metric.trend === 'up' ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
@@ -679,12 +719,12 @@ const DashboardContent: React.FC<{
               const pct = (v: number) => `${v.toFixed(1)}%`;
               const dash = '—';
               const tiles = [
-                { label: 'Total Investido', value: insightsLoading ? dash : fmt(totalInvest), icon: DollarSign, color: 'var(--af-600)' },
-                { label: 'CPL',             value: insightsLoading ? dash : (cpl > 0 ? fmt(cpl) : dash), icon: Target, color: 'var(--green-600)' },
-                { label: 'Lead → MQL',      value: insightsLoading ? dash : pct(conversionRates.leadToMql),  icon: TrendingUp, color: 'var(--af-500)' },
-                { label: 'MQL → SQL',       value: insightsLoading ? dash : pct(conversionRates.mqlToSql),   icon: TrendingUp, color: '#818cf8' },
-                { label: 'SQL → Venda',     value: insightsLoading ? dash : pct(conversionRates.sqlToSale),  icon: TrendingUp, color: 'var(--yellow-600)' },
-                { label: 'Lead → Venda',    value: insightsLoading ? dash : pct(conversionRates.leadToSale), icon: Target,    color: 'var(--green-500)' },
+                { label: 'Total Investido', value: insightsLoading ? dash : fmt(totalInvest), icon: DollarSign, color: 'var(--af-600)',    tooltip: 'Soma do gasto em Meta Ads (Facebook/Instagram) + Google Ads no período selecionado. Atualizado via sincronização automática.' },
+                { label: 'CPL',             value: insightsLoading ? dash : (cpl > 0 ? fmt(cpl) : dash), icon: Target, color: 'var(--green-600)', tooltip: 'Custo por Lead: quanto foi investido em mídia paga para cada novo lead captado no período. Calculado como: Total Investido ÷ Total de Leads.' },
+                { label: 'Lead → MQL',      value: insightsLoading ? dash : pct(conversionRates.leadToMql),  icon: TrendingUp, color: 'var(--af-500)',    tooltip: 'Taxa de conversão de Lead para MQL no período. Calculado como: MQLs no período ÷ Leads no período. Indica a qualidade dos leads gerados.' },
+                { label: 'MQL → SQL',       value: insightsLoading ? dash : pct(conversionRates.mqlToSql),   icon: TrendingUp, color: '#818cf8',          tooltip: 'Taxa de conversão de MQL para SQL (Sales Qualified Lead). Indica quantos leads qualificados pelo marketing evoluíram para o estágio comercial.' },
+                { label: 'SQL → Venda',     value: insightsLoading ? dash : pct(conversionRates.sqlToSale),  icon: TrendingUp, color: 'var(--yellow-600)', tooltip: 'Taxa de conversão de SQL para negócio ganho. Indica a eficiência do time de vendas em fechar os negócios que chegaram até eles.' },
+                { label: 'Lead → Venda',    value: insightsLoading ? dash : pct(conversionRates.leadToSale), icon: Target,     color: 'var(--green-500)', tooltip: 'Taxa de conversão total: do primeiro contato até o fechamento. Calculado como: Vendas no período ÷ Leads no período.' },
               ];
               return (
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -694,7 +734,10 @@ const DashboardContent: React.FC<{
                         <t.icon size={14} style={{ color: t.color }} />
                       </div>
                       <div style={{ minWidth: 0 }}>
-                        <p style={{ fontSize: 10, color: 'var(--fg-subtle)', margin: 0, textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{t.label}</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <p style={{ fontSize: 10, color: 'var(--fg-subtle)', margin: 0, textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>{t.label}</p>
+                          <TooltipInfo text={t.tooltip} position="bottom" />
+                        </div>
                         <p style={{ fontSize: 17, fontWeight: 700, color: 'var(--fg-primary)', margin: 0, fontVariantNumeric: 'tabular-nums' }}>{t.value}</p>
                       </div>
                     </div>
