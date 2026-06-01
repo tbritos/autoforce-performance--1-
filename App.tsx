@@ -1,4 +1,5 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation, useParams } from 'react-router-dom';
 import Login from './components/Login';
 import LPView from './components/LPView';
@@ -47,30 +48,52 @@ import { FunnelChart, FunnelStep } from './components/Charts';
 
 // ─── Tooltip info icon ────────────────────────────────────────────────────────
 
-const TooltipInfo: React.FC<{ text: string; position?: 'top' | 'bottom' }> = ({ text, position = 'top' }) => {
+const TooltipInfo: React.FC<{ text: string; position?: 'top' | 'bottom' }> = ({ text, position = 'bottom' }) => {
   const [show, setShow] = useState(false);
+  const [coords, setCoords] = useState({ x: 0, y: 0 });
+  const iconRef = useRef<HTMLSpanElement>(null);
+
+  const handleMouseEnter = () => {
+    if (iconRef.current) {
+      const r = iconRef.current.getBoundingClientRect();
+      setCoords({ x: r.left + r.width / 2, y: position === 'top' ? r.top : r.bottom });
+    }
+    setShow(true);
+  };
+
   return (
     <span
-      className="relative inline-flex items-center"
-      onMouseEnter={() => setShow(true)}
+      ref={iconRef}
+      className="inline-flex items-center"
+      onMouseEnter={handleMouseEnter}
       onMouseLeave={() => setShow(false)}
     >
       <Info size={11} style={{ color: 'var(--fg-subtle)', cursor: 'help', flexShrink: 0 }} />
-      {show && (
+      {show && createPortal(
         <span
-          className="absolute z-[9999] w-60 rounded-xl p-3 text-xs leading-relaxed pointer-events-none"
           style={{
+            position: 'fixed',
+            zIndex: 9999,
+            width: 240,
+            borderRadius: 12,
+            padding: '10px 12px',
+            fontSize: 12,
+            lineHeight: 1.5,
+            pointerEvents: 'none',
             background: 'var(--bg-surface)',
             border: '1px solid var(--border)',
             color: 'var(--fg-muted)',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.22)',
+            left: coords.x,
+            transform: 'translateX(-50%)',
             ...(position === 'top'
-              ? { bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)' }
-              : { top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)' }),
+              ? { bottom: window.innerHeight - coords.y + 8 }
+              : { top: coords.y + 8 }),
           }}
         >
           {text}
-        </span>
+        </span>,
+        document.body
       )}
     </span>
   );
