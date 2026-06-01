@@ -2,7 +2,172 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { RevenueEntry } from '../types';
 import { DataService } from '../services/dataService';
-import { DollarSign, Briefcase, Globe, Package, TrendingUp, Loader2, Filter, X, Calendar, Trash2, ExternalLink, Link } from 'lucide-react';
+import {
+  DollarSign, Briefcase, Globe, Package, TrendingUp, Loader2, Filter,
+  Calendar, Trash2, ExternalLink, Link, X, User, FileText, ShoppingBag,
+  MessageSquare, ChevronRight,
+} from 'lucide-react';
+
+// ─── Detail Modal ─────────────────────────────────────────────────────────────
+
+const EntryDetailModal: React.FC<{
+  entry: RevenueEntry;
+  onClose: () => void;
+  onDelete: (entry: RevenueEntry) => void;
+  deleting: boolean;
+  formatCurrency: (v: number) => string;
+}> = ({ entry, onClose, onDelete, deleting, formatCurrency }) => {
+  // close on backdrop click
+  const handleBackdrop = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) onClose();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      onClick={handleBackdrop}
+    >
+      <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-2xl w-full max-w-lg shadow-2xl animate-fade-in-up overflow-hidden">
+
+        {/* Header */}
+        <div className="p-6 border-b border-autoforce-grey/20 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="text-lg font-bold text-white truncate">{entry.businessName}</h3>
+            {entry.leadEmail && (
+              <div className="flex items-center gap-1.5 mt-1">
+                <Link size={11} className="text-autoforce-blue flex-shrink-0" />
+                <span className="text-xs text-autoforce-blue truncate">{entry.leadName || entry.leadEmail}</span>
+              </div>
+            )}
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-autoforce-grey hover:text-white hover:bg-autoforce-grey/10 flex-shrink-0">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Values */}
+        <div className="grid grid-cols-2 divide-x divide-autoforce-grey/20 border-b border-autoforce-grey/20">
+          <div className="p-5">
+            <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">MRR</p>
+            <p className="text-2xl font-display font-bold text-green-400">{formatCurrency(entry.mrrValue)}</p>
+          </div>
+          <div className="p-5">
+            <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">Setup</p>
+            <p className="text-2xl font-display font-bold text-white">{formatCurrency(entry.setupValue)}</p>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="p-6 space-y-4">
+
+          {/* Data + Origem */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1.5">Data do Ganho</p>
+              <p className="text-sm text-white">{new Date(entry.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1.5">Origem</p>
+              <div className="flex items-center gap-1.5">
+                <Globe size={12} className="text-autoforce-lightGrey" />
+                <p className="text-sm text-white">{entry.origin || '—'}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Vendedor */}
+          {entry.closedBy && (
+            <div>
+              <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1.5">Vendedor</p>
+              <div className="flex items-center gap-1.5">
+                <User size={12} className="text-autoforce-blue" />
+                <p className="text-sm text-white">{entry.closedBy}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Produtos */}
+          {(entry.product?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1.5">Produtos</p>
+              <div className="flex flex-wrap gap-1.5">
+                {entry.product.map(p => (
+                  <span key={p} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-autoforce-blue/10 text-autoforce-blue border border-autoforce-blue/20">
+                    <Package size={10} /> {p}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Porque Comprou */}
+          {(entry.whyBought?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1.5">Porque Comprou</p>
+              <div className="flex flex-wrap gap-1.5">
+                {entry.whyBought!.map(r => (
+                  <span key={r} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-autoforce-grey/10 text-autoforce-lightGrey border border-autoforce-grey/20">
+                    <MessageSquare size={10} /> {r}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Fornecedor Anterior */}
+          {(entry.currentSupplier?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1.5">Fornecedor Anterior</p>
+              <div className="flex flex-wrap gap-1.5">
+                {entry.currentSupplier!.map(s => (
+                  <span key={s} className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-autoforce-grey/10 text-autoforce-lightGrey border border-autoforce-grey/20">
+                    <ShoppingBag size={10} /> {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Links */}
+          {(entry.dealUrl || entry.contractLink) && (
+            <div>
+              <p className="text-[10px] font-bold text-autoforce-lightGrey uppercase tracking-wider mb-2">Links</p>
+              <div className="flex flex-wrap gap-2">
+                {entry.dealUrl && (
+                  <a href={entry.dealUrl} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-autoforce-blue/30 text-autoforce-blue hover:bg-autoforce-blue/10 transition">
+                    <ExternalLink size={12} /> Abrir no Pipedrive
+                  </a>
+                )}
+                {entry.contractLink && (
+                  <a href={entry.contractLink} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-autoforce-grey/30 text-autoforce-lightGrey hover:text-white hover:border-autoforce-grey/50 transition">
+                    <FileText size={12} /> Ver Contrato
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 pb-6">
+          <button
+            type="button"
+            onClick={() => onDelete(entry)}
+            disabled={deleting}
+            className="flex items-center gap-2 text-xs text-red-400 hover:text-red-300 disabled:opacity-50 transition"
+          >
+            {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+            Remover este ganho
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 const RevenueTracker: React.FC = () => {
   const originOptions = ['Google Ads', 'Facebook/Meta', 'Indicação', 'Organico', 'Outros'];
@@ -11,6 +176,7 @@ const RevenueTracker: React.FC = () => {
   const [history, setHistory] = useState<RevenueEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedEntry, setSelectedEntry] = useState<RevenueEntry | null>(null);
 
   // Filters
   const [filterStart, setFilterStart] = useState('');
@@ -46,6 +212,7 @@ const RevenueTracker: React.FC = () => {
     setDeletingId(entry.id);
     try {
       await DataService.deleteRevenueEntry(entry.id);
+      setSelectedEntry(null);
       await loadData();
     } catch (err) {
       console.error(err);
@@ -102,6 +269,17 @@ const RevenueTracker: React.FC = () => {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-8 animate-fade-in-up">
+
+      {/* Detail Modal */}
+      {selectedEntry && (
+        <EntryDetailModal
+          entry={selectedEntry}
+          onClose={() => setSelectedEntry(null)}
+          onDelete={handleDelete}
+          deleting={deletingId === selectedEntry.id}
+          formatCurrency={formatCurrency}
+        />
+      )}
 
       {/* Header */}
       <div>
@@ -217,12 +395,16 @@ const RevenueTracker: React.FC = () => {
                 <tr><td colSpan={6} className="p-8 text-center text-autoforce-lightGrey">Nenhuma venda encontrada.</td></tr>
               ) : (
                 paginatedHistory.map(entry => (
-                  <tr key={entry.id} className="hover:bg-autoforce-blue/5 transition-colors">
+                  <tr
+                    key={entry.id}
+                    onClick={() => setSelectedEntry(entry)}
+                    className="hover:bg-autoforce-blue/5 transition-colors cursor-pointer group"
+                  >
                     <td className="p-4 text-autoforce-lightGrey whitespace-nowrap">
                       {new Date(entry.date).toLocaleDateString('pt-BR')}
                     </td>
                     <td className="p-4">
-                      <div className="font-bold text-white">{entry.businessName}</div>
+                      <div className="font-bold text-white group-hover:text-autoforce-blue transition-colors">{entry.businessName}</div>
                       {entry.leadEmail && (
                         <div className="flex items-center gap-1 mt-0.5">
                           <Link size={10} className="text-autoforce-blue" />
@@ -256,7 +438,7 @@ const RevenueTracker: React.FC = () => {
                       {formatCurrency(entry.mrrValue)}
                     </td>
                     <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2" onClick={e => e.stopPropagation()}>
                         {entry.dealUrl && (
                           <a href={entry.dealUrl} target="_blank" rel="noopener noreferrer"
                             className="p-2 rounded-lg border border-autoforce-grey/20 text-autoforce-blue hover:text-white hover:border-autoforce-blue/40"
@@ -269,6 +451,7 @@ const RevenueTracker: React.FC = () => {
                           title="Remover">
                           {deletingId === entry.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                         </button>
+                        <ChevronRight size={14} className="text-autoforce-grey/40 group-hover:text-autoforce-blue/60 transition-colors" />
                       </div>
                     </td>
                   </tr>
