@@ -4,6 +4,7 @@ import { RevenueEntry } from '../types/shared.types';
 type RevenueFilters = {
   origin?: string;
   products?: string[];
+  leadEmail?: string;
 };
 
 export class RevenueService {
@@ -11,6 +12,7 @@ export class RevenueService {
     const where: {
       origin?: string;
       product?: { hasSome: string[] };
+      leadEmail?: string;
     } = {};
 
     if (filters?.origin) {
@@ -21,9 +23,14 @@ export class RevenueService {
       where.product = { hasSome: filters.products };
     }
 
+    if (filters?.leadEmail) {
+      where.leadEmail = filters.leadEmail;
+    }
+
     const revenues = await prisma.revenueEntry.findMany({
       where,
       orderBy: { date: 'desc' },
+      include: { lead: { select: { name: true } } },
     });
 
     return revenues.map(rev => ({
@@ -34,6 +41,8 @@ export class RevenueService {
       mrrValue: rev.mrrValue,
       origin: rev.origin,
       product: rev.product,
+      leadEmail: rev.leadEmail ?? null,
+      leadName: rev.lead?.name ?? null,
     }));
   }
 
@@ -47,7 +56,9 @@ export class RevenueService {
         mrrValue: data.mrrValue,
         origin: data.origin,
         product: normalizedProducts,
+        leadEmail: data.leadEmail || null,
       },
+      include: { lead: { select: { name: true } } },
     });
 
     return {
@@ -58,6 +69,8 @@ export class RevenueService {
       mrrValue: revenue.mrrValue,
       origin: revenue.origin,
       product: revenue.product,
+      leadEmail: revenue.leadEmail ?? null,
+      leadName: revenue.lead?.name ?? null,
     };
   }
 
@@ -75,7 +88,9 @@ export class RevenueService {
         mrrValue: data.mrrValue,
         origin: data.origin,
         product: normalizedProducts,
+        leadEmail: data.leadEmail !== undefined ? (data.leadEmail || null) : undefined,
       },
+      include: { lead: { select: { name: true } } },
     });
 
     return {
@@ -86,6 +101,8 @@ export class RevenueService {
       mrrValue: revenue.mrrValue,
       origin: revenue.origin,
       product: revenue.product,
+      leadEmail: revenue.leadEmail ?? null,
+      leadName: revenue.lead?.name ?? null,
     };
   }
 

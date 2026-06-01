@@ -1,8 +1,8 @@
 ﻿
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { RevenueEntry } from '../types';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { RevenueEntry, Lead } from '../types';
 import { DataService } from '../services/dataService';
-import { DollarSign, Plus, Briefcase, Globe, Package, TrendingUp, Loader2, Filter, X, Calendar, ChevronDown, Pencil, Trash2 } from 'lucide-react';
+import { DollarSign, Plus, Briefcase, Globe, Package, TrendingUp, Loader2, Filter, X, Calendar, ChevronDown, Pencil, Trash2, User, Link } from 'lucide-react';
 
 const RevenueTracker: React.FC = () => {
   const productOptions = ['Autodromo', 'Autopilot', 'Autobot', 'Nitroads', 'Fluxo de IA'];
@@ -23,6 +23,15 @@ const RevenueTracker: React.FC = () => {
   const [isProductMenuOpen, setIsProductMenuOpen] = useState(false);
   const productMenuRef = useRef<HTMLDivElement | null>(null);
 
+  // Lead link state
+  const [leadEmail, setLeadEmail] = useState<string | null>(null);
+  const [leadSearchQuery, setLeadSearchQuery] = useState('');
+  const [leadSearchResults, setLeadSearchResults] = useState<Lead[]>([]);
+  const [isLeadDropdownOpen, setIsLeadDropdownOpen] = useState(false);
+  const [isSearchingLeads, setIsSearchingLeads] = useState(false);
+  const [selectedLeadName, setSelectedLeadName] = useState<string | null>(null);
+  const leadSearchRef = useRef<HTMLDivElement | null>(null);
+
   // Filters State
   const [filterStart, setFilterStart] = useState('');
   const [filterEnd, setFilterEnd] = useState('');
@@ -39,14 +48,40 @@ const RevenueTracker: React.FC = () => {
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
-      if (!productMenuRef.current) return;
-      if (!productMenuRef.current.contains(event.target as Node)) {
+      if (productMenuRef.current && !productMenuRef.current.contains(event.target as Node)) {
         setIsProductMenuOpen(false);
+      }
+      if (leadSearchRef.current && !leadSearchRef.current.contains(event.target as Node)) {
+        setIsLeadDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
+
+  // Debounced lead search
+  const searchLeads = useCallback(async (query: string) => {
+    if (!query || query.length < 2) {
+      setLeadSearchResults([]);
+      setIsLeadDropdownOpen(false);
+      return;
+    }
+    setIsSearchingLeads(true);
+    try {
+      const result = await DataService.listLeads({ search: query, pageSize: 6 });
+      setLeadSearchResults(result.leads || []);
+      setIsLeadDropdownOpen(true);
+    } catch {
+      setLeadSearchResults([]);
+    } finally {
+      setIsSearchingLeads(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => searchLeads(leadSearchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [leadSearchQuery, searchLeads]);
 
   const loadData = async () => {
     setLoading(true);
@@ -76,14 +111,15 @@ const RevenueTracker: React.FC = () => {
             setupValue: parseFloat(setupValue),
             mrrValue: parseFloat(mrrValue),
             origin,
-            product: selectedProducts
+            product: selectedProducts,
+            leadEmail: leadEmail || null,
         };
         if (editingId) {
             await DataService.updateRevenueEntry(editingId, payload);
         } else {
             await DataService.saveRevenueEntry(payload);
         }
-        
+
         // Reset Form
         setBusinessName('');
         setSaleDate(new Date().toISOString().split('T')[0]);
@@ -91,6 +127,9 @@ const RevenueTracker: React.FC = () => {
         setMrrValue('');
         setSelectedProducts(['Autodromo']);
         setEditingId(null);
+        setLeadEmail(null);
+        setLeadSearchQuery('');
+        setSelectedLeadName(null);
         
         await loadData();
     } catch (err) {
@@ -108,6 +147,9 @@ const RevenueTracker: React.FC = () => {
       setMrrValue(String(entry.mrrValue ?? 0));
       setOrigin(entry.origin);
       setSelectedProducts(Array.isArray(entry.product) ? entry.product : [entry.product]);
+      setLeadEmail(entry.leadEmail ?? null);
+      setSelectedLeadName(entry.leadName ?? entry.leadEmail ?? null);
+      setLeadSearchQuery('');
       setIsProductMenuOpen(false);
   };
 
@@ -126,6 +168,9 @@ const RevenueTracker: React.FC = () => {
               setMrrValue('');
               setOrigin('Google Ads');
               setSelectedProducts(['Autodromo']);
+              setLeadEmail(null);
+              setLeadSearchQuery('');
+              setSelectedLeadName(null);
           }
       } catch (err) {
           console.error(err);
@@ -142,6 +187,9 @@ const RevenueTracker: React.FC = () => {
       setMrrValue('');
       setOrigin('Google Ads');
       setSelectedProducts(['Autodromo']);
+      setLeadEmail(null);
+      setLeadSearchQuery('');
+      setSelectedLeadName(null);
   };
 
   const clearFilters = () => {
@@ -344,11 +392,61 @@ const RevenueTracker: React.FC = () => {
                 </div>
                 
                 <form onSubmit={handleSave} className="space-y-4">
+                    {/* Lead Link */}
+                    <div>
+                        <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">Lead Vinculado <span className="normal-case font-normal">(opcional)</span></label>
+                        <div className="relative" ref={leadSearchRef}>
+                            {leadEmail ? (
+                                <div className="flex items-center gap-2 bg-autoforce-blue/10 border border-autoforce-blue/30 rounded-lg px-3 py-2">
+                                    <User size={14} className="text-autoforce-blue shrink-0" />
+                                    <span className="text-white text-sm truncate flex-1">{selectedLeadName || leadEmail}</span>
+                                    <button type="button" onClick={() => { setLeadEmail(null); setSelectedLeadName(null); setLeadSearchQuery(''); }} className="text-autoforce-lightGrey hover:text-white">
+                                        <X size={14} />
+                                    </button>
+                                </div>
+                            ) : (
+                                <>
+                                    <input
+                                        type="text"
+                                        value={leadSearchQuery}
+                                        onChange={(e) => setLeadSearchQuery(e.target.value)}
+                                        onFocus={() => leadSearchQuery.length >= 2 && setIsLeadDropdownOpen(true)}
+                                        placeholder="Buscar por nome ou email..."
+                                        className="w-full bg-autoforce-black border border-autoforce-grey/50 rounded-lg px-3 py-2 text-white focus:border-autoforce-blue focus:outline-none pl-9 text-sm"
+                                    />
+                                    <User className="absolute left-3 top-2.5 text-autoforce-grey" size={14} />
+                                    {isSearchingLeads && <Loader2 className="absolute right-3 top-2.5 text-autoforce-grey animate-spin" size={14} />}
+                                    {isLeadDropdownOpen && leadSearchResults.length > 0 && (
+                                        <div className="absolute z-30 mt-1 w-full bg-autoforce-darkest border border-autoforce-grey/30 rounded-lg shadow-lg overflow-hidden">
+                                            {leadSearchResults.map(lead => (
+                                                <button
+                                                    key={lead.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setLeadEmail(lead.email);
+                                                        setSelectedLeadName(lead.name || lead.email);
+                                                        setLeadSearchQuery('');
+                                                        setIsLeadDropdownOpen(false);
+                                                        if (!businessName) setBusinessName(lead.company || lead.name || '');
+                                                    }}
+                                                    className="w-full text-left px-3 py-2.5 hover:bg-white/5 transition flex flex-col gap-0.5"
+                                                >
+                                                    <span className="text-white text-xs font-medium">{lead.name || '—'}</span>
+                                                    <span className="text-autoforce-lightGrey text-[11px]">{lead.email}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    </div>
+
                     <div>
                         <label className="block text-xs font-bold text-autoforce-lightGrey uppercase tracking-wider mb-1">Nome do Negocio</label>
                         <div className="relative">
-                            <input 
-                                type="text" 
+                            <input
+                                type="text"
                                 value={businessName}
                                 onChange={(e) => setBusinessName(e.target.value)}
                                 placeholder="Ex: Grupo Sinal"
@@ -511,7 +609,15 @@ const RevenueTracker: React.FC = () => {
                                 paginatedHistory.map((entry) => (
                                     <tr key={entry.id} className="hover:bg-autoforce-blue/5 transition-colors">
                                         <td className="p-4 text-autoforce-lightGrey">{new Date(entry.date).toLocaleDateString('pt-BR')}</td>
-                                        <td className="p-4 font-bold text-white">{entry.businessName}</td>
+                                        <td className="p-4">
+                            <div className="font-bold text-white">{entry.businessName}</div>
+                            {entry.leadEmail && (
+                                <div className="flex items-center gap-1 mt-0.5">
+                                    <Link size={10} className="text-autoforce-blue" />
+                                    <span className="text-[11px] text-autoforce-blue">{entry.leadName || entry.leadEmail}</span>
+                                </div>
+                            )}
+                        </td>
                                         <td className="p-4">
                                             <div className="flex flex-col gap-1">
                                                 <span className="flex items-center gap-1 text-xs text-autoforce-lightGrey"><Globe size={10}/> {entry.origin}</span>

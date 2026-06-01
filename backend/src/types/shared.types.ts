@@ -25,6 +25,8 @@ export interface RevenueEntry {
   mrrValue: number;
   origin: string;
   product: string[];
+  leadEmail?: string | null;
+  leadName?: string | null;
 }
 
 export interface DailyLeadEntry {

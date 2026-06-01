@@ -50,6 +50,17 @@ interface PipedriveListResponse<T> {
 
 // ─── Stage name → LeadStatus mapping ─────────────────────────────────────────
 
+function sourceToOrigin(firstSource: string | null | undefined): string {
+  if (!firstSource) return 'Outros';
+  const s = firstSource.toLowerCase();
+  if (s.includes('google'))                                return 'Google Ads';
+  if (s.includes('facebook') || s.includes('instagram') || s.includes('meta')) return 'Facebook/Meta';
+  if (s.includes('linkedin') || s.includes('tiktok') || s.includes('youtube')) return 'Organico';
+  if (s.includes('indica') || s.includes('whatsapp') || s.includes('email'))   return 'Indicação';
+  if (s === 'organico' || s === 'direto')                  return 'Organico';
+  return 'Outros';
+}
+
 function stageNameToLeadStatus(stageName: string): LeadStatus | null {
   const n = stageName.toLowerCase();
   if (n.includes('mql'))                                     return 'MQL';
@@ -501,25 +512,23 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
           const dateObj = new Date(closeDate);
 
           await tx.revenueEntry.upsert({
-            where: {
-              // Composite approach: find by leadEmail + date
-              // Using findFirst + upsert is safer; use create with unique check
-              id: `pipedrive-${deal.id}`,
-            },
+            where: { id: `pipedrive-${deal.id}` },
             update: {
-              mrrValue:  deal.value,
-              updatedAt: new Date(),
+              mrrValue:     deal.value,
+              businessName: lead!.company || deal.person_name || lead!.name || lead!.email,
+              origin:       sourceToOrigin(lead!.firstSource),
+              updatedAt:    new Date(),
             },
             create: {
               id:           `pipedrive-${deal.id}`,
               leadEmail:    lead!.email,
-              businessName: deal.person_name || lead!.name || lead!.email,
+              businessName: lead!.company || deal.person_name || lead!.name || lead!.email,
               date:         dateObj,
               setupValue:   0,
               mrrValue:     deal.value,
-              origin:       'Pipedrive',
+              origin:       sourceToOrigin(lead!.firstSource),
               originType:   'INBOUND',
-              product:      [deal.title],
+              product:      [],
               closedBy:     null,
             },
           });
