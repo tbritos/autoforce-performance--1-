@@ -295,6 +295,121 @@ app.post('/api/admin/backfill-revenue', async (req, res) => {
   }
 });
 
+// ── Admin: enriquecer ganhos existentes com dados do Pipedrive ────────────────
+// Chame: POST /api/admin/enrich-revenue?token=<PIPEDRIVE_WEBHOOK_SECRET>
+// Para cada RevenueEntry já no sistema, busca o deal correspondente no Pipedrive
+// pelo nome e atualiza com vendedor, produtos, dealUrl, MRR, etc.
+app.post('/api/admin/enrich-revenue', async (req, res) => {
+  const secret = process.env.PIPEDRIVE_WEBHOOK_SECRET;
+  if (secret && req.query.token !== secret) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const token  = process.env.PIPEDRIVE_API_TOKEN ?? '';
+  const domain = process.env.PIPEDRIVE_DOMAIN ?? '';
+  if (!token || !domain) {
+    res.status(500).json({ error: 'PIPEDRIVE_API_TOKEN ou PIPEDRIVE_DOMAIN não configurados.' });
+    return;
+  }
+
+  try {
+    const { PIPEDRIVE_FIELDS, PIPEDRIVE_OPTIONS, resolveSetField, resolveEnumField, extractSetupValue } = await import('./services/pipedrive.service');
+    const { prisma } = await import('./config/database');
+
+    const FIELD_CANAL_ORIGEM = '9459f9b49acca8552e69c0ee0898f751b05b4fe6';
+    const OPT_CANAL_INBOUND  = 66;
+
+    // Normaliza nome para comparação: minúsculas, só alfanumérico
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    // Busca todos os deals ganhos das pipelines 2 e 5
+    async function fetchAllWonDeals(pipelineId: number): Promise<Record<string, unknown>[]> {
+      const all: Record<string, unknown>[] = [];
+      let start = 0;
+      while (true) {
+        const url = new URL(`https://${domain}.pipedrive.com/api/v1/deals`);
+        url.searchParams.set('api_token', token);
+        url.searchParams.set('pipeline_id', String(pipelineId));
+        url.searchParams.set('status', 'won');
+        url.searchParams.set('start', String(start));
+        url.searchParams.set('limit', '100');
+        const json = await fetch(url.toString()).then(r => r.json()) as { success: boolean; data: Record<string, unknown>[] | null; additional_data?: { pagination?: { more_items_in_collection: boolean; next_start?: number } } };
+        if (!json.success || !json.data) break;
+        all.push(...json.data);
+        const p = json.additional_data?.pagination;
+        if (!p?.more_items_in_collection) break;
+        start = p.next_start ?? start + 100;
+      }
+      return all;
+    }
+
+    const [deals2, deals5] = await Promise.all([fetchAllWonDeals(2), fetchAllWonDeals(5)]);
+    // Deduplica por deal ID (mesmo deal pode aparecer em mais de uma pipeline)
+    const dealMap = new Map<string, Record<string, unknown>>();
+    for (const d of [...deals2, ...deals5]) dealMap.set(String(d.id), d);
+    const inboundDeals = [...dealMap.values()].filter(d => Number(d[FIELD_CANAL_ORIGEM]) === OPT_CANAL_INBOUND);
+
+    // Busca todos os ganhos do sistema
+    const entries = await prisma.revenueEntry.findMany();
+
+    let enriched = 0, notFound = 0, errors = 0;
+    const log: string[] = [];
+
+    for (const entry of entries) {
+      const entryNorm = norm(entry.businessName);
+
+      // Encontra o deal com maior sobreposição de nome
+      const match = inboundDeals.find(d => {
+        const dealNorm = norm(String(d.title ?? ''));
+        return dealNorm.includes(entryNorm) || entryNorm.includes(dealNorm);
+      });
+
+      if (!match) {
+        notFound++;
+        log.push(`NOT FOUND: "${entry.businessName}"`);
+        continue;
+      }
+
+      try {
+        const dealId     = String(match.id);
+        const setupVal   = extractSetupValue(match[PIPEDRIVE_FIELDS.SETUP_VALUE]);
+        const produtos   = resolveSetField(match[PIPEDRIVE_FIELDS.PRODUTO_VENDA],    PIPEDRIVE_OPTIONS.PRODUTO_VENDA);
+        const porqueComp = resolveSetField(match[PIPEDRIVE_FIELDS.PORQUE_COMPROU],   PIPEDRIVE_OPTIONS.PORQUE_COMPROU);
+        const fornecedor = resolveSetField(match[PIPEDRIVE_FIELDS.FORNECEDOR_ATUAL], PIPEDRIVE_OPTIONS.FORNECEDOR_ATUAL);
+        const vendedor   = resolveEnumField(match[PIPEDRIVE_FIELDS.VENDEDOR],        PIPEDRIVE_OPTIONS.VENDEDOR);
+        const contrato   = (match[PIPEDRIVE_FIELDS.CONTRACT_LINK] as string | null) ?? null;
+        const dealUrl    = `https://${domain}.pipedrive.com/deal/${dealId}`;
+
+        await prisma.revenueEntry.update({
+          where: { id: entry.id },
+          data: {
+            mrrValue:        match.value as number,
+            setupValue:      setupVal,
+            product:         produtos,
+            closedBy:        vendedor,
+            whyBought:       porqueComp,
+            currentSupplier: fornecedor,
+            contractLink:    contrato,
+            dealUrl,
+            updatedAt:       new Date(),
+          },
+        });
+
+        enriched++;
+        log.push(`OK "${entry.businessName}" → deal #${dealId} "${match.title}" | MRR=R$${match.value} Vendedor=${vendedor ?? '-'} Produtos=${produtos.join(', ') || '-'}`);
+      } catch (err) {
+        errors++;
+        log.push(`ERROR "${entry.businessName}": ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    res.json({ ok: true, total: entries.length, inboundDeals: inboundDeals.length, enriched, notFound, errors, log });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 // Auth middleware for protected routes
 app.use('/api', authMiddleware);
 
