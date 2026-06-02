@@ -541,7 +541,7 @@ const AutomationJourneysView: React.FC = () => {
             }}
           >
             <Plus size={15} />
-            Nova regra
+            Automação
           </button>
         </header>
 
