@@ -1,4 +1,4 @@
-import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, GoogleAdsCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, LeadConversion, WebhookLead, PlatformConnection, ConnectionRequirement, Lead, LeadListResult, LeadProfile, LeadCustomFieldDef, FunnelCounts, LeadStatus, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction, UTMLink, UTMLinkListResult, UTMTemplate, UTMCampaignPicker, UTMDestination, FunnelDef, FunnelStats } from '../types';
+import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, GoogleAdsCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, LeadConversion, WebhookLead, PlatformConnection, ConnectionRequirement, Lead, LeadListResult, LeadProfile, LeadCustomFieldDef, FunnelCounts, LeadStatus, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction, AutomationJourney, AutomationJourneyNode, AutomationJourneyEdge, AutomationJourneyStatus, UTMLink, UTMLinkListResult, UTMTemplate, UTMCampaignPicker, UTMDestination, FunnelDef, FunnelStats } from '../types';
 import { apiClient } from './apiClient';
 
 // ============================================================================
@@ -1245,6 +1245,38 @@ export const DataService = {
     errors: number;
   }> => {
     return apiClient.post(`/lead-rules/${encodeURIComponent(id)}/run-existing`, payload);
+  },
+
+  listAutomationJourneys: async (): Promise<AutomationJourney[]> => {
+    return apiClient.get<AutomationJourney[]>('/automation-journeys');
+  },
+
+  createAutomationJourney: async (payload: {
+    name: string;
+    description?: string | null;
+    status?: AutomationJourneyStatus;
+    nodes?: AutomationJourneyNode[];
+    edges?: AutomationJourneyEdge[];
+    triggerType?: string | null;
+    isActive?: boolean;
+  }): Promise<AutomationJourney> => {
+    return apiClient.post<AutomationJourney>('/automation-journeys', payload);
+  },
+
+  updateAutomationJourney: async (id: string, payload: Partial<{
+    name: string;
+    description: string | null;
+    status: AutomationJourneyStatus;
+    nodes: AutomationJourneyNode[];
+    edges: AutomationJourneyEdge[];
+    triggerType: string | null;
+    isActive: boolean;
+  }>): Promise<AutomationJourney> => {
+    return apiClient.patch<AutomationJourney>(`/automation-journeys/${encodeURIComponent(id)}`, payload);
+  },
+
+  deleteAutomationJourney: async (id: string): Promise<void> => {
+    await apiClient.delete(`/automation-journeys/${encodeURIComponent(id)}`);
   },
 
   // --- Funnels ---

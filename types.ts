@@ -233,6 +233,46 @@ export interface LeadClassificationRule {
   _count?: { executions: number };
 }
 
+export type AutomationJourneyStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED';
+
+export type AutomationNodeType =
+  | 'trigger'
+  | 'condition'
+  | 'wait'
+  | 'internal_action'
+  | 'rd_conversion'
+  | 'whatsapp_message'
+  | 'pipedrive_action'
+  | 'end';
+
+export interface AutomationJourneyNode {
+  id: string;
+  type: AutomationNodeType;
+  label: string;
+  x: number;
+  y: number;
+  config?: Record<string, string | number | boolean | string[] | null>;
+}
+
+export interface AutomationJourneyEdge {
+  id: string;
+  source: string;
+  target: string;
+}
+
+export interface AutomationJourney {
+  id: string;
+  name: string;
+  description: string | null;
+  status: AutomationJourneyStatus;
+  nodes: AutomationJourneyNode[];
+  edges: AutomationJourneyEdge[];
+  triggerType: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── Funnels ──────────────────────────────────────────────────────────────────
 
 export interface FunnelDef {

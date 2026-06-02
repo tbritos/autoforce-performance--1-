@@ -29,6 +29,7 @@ import utmDestinationsRoutes from './routes/utm-destinations.routes';
 import funnelRoutes from './routes/funnel.routes';
 import { protectedLeadWebhooksRouter, publicLeadWebhooksRouter } from './routes/lead-webhooks.routes';
 import leadClassificationRulesRoutes from './routes/lead-classification-rules.routes';
+import automationJourneysRoutes from './routes/automation-journeys.routes';
 
 dotenv.config();
 
@@ -501,6 +502,7 @@ app.use('/api/webhooks', webhookLeadsRoutes);
 app.use('/api/lead-hub', leadHubRoutes);
 app.use('/api/lead-webhooks', protectedLeadWebhooksRouter);
 app.use('/api/lead-rules', leadClassificationRulesRoutes);
+app.use('/api/automation-journeys', automationJourneysRoutes);
 app.use('/api/connections', connectionsRoutes);
 app.use('/api/utm-links', utmLinksRoutes);
 app.use('/api/utm-destinations', utmDestinationsRoutes);

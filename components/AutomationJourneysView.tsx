@@ -1,22 +1,697 @@
-import React from 'react';
-import { LeadRulesPanel } from './LeadHubView';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Activity,
+  Clock,
+  Database,
+  GitBranch,
+  Mail,
+  MessageCircle,
+  MousePointer2,
+  Pause,
+  Play,
+  Plus,
+  RefreshCw,
+  Save,
+  Search,
+  Tags,
+  Trash2,
+  Workflow,
+  X,
+} from 'lucide-react';
+import { DataService } from '../services/dataService';
+import {
+  AutomationJourney,
+  AutomationJourneyEdge,
+  AutomationJourneyNode,
+  AutomationJourneyStatus,
+  AutomationNodeType,
+} from '../types';
+
+const NODE_W = 230;
+const NODE_H = 88;
+
+const BLOCKS: Array<{
+  type: AutomationNodeType;
+  label: string;
+  description: string;
+  color: string;
+  icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
+}> = [
+  { type: 'trigger', label: 'Entrada', description: 'Lead entrou, tag aplicada ou webhook recebido', color: '#456CEC', icon: Play },
+  { type: 'condition', label: 'Condicao', description: 'Cargo, tag, score, dor, origem ou campo', color: '#22C55E', icon: GitBranch },
+  { type: 'wait', label: 'Esperar', description: 'Aguardar horas ou dias antes do proximo passo', color: '#F59E0B', icon: Clock },
+  { type: 'internal_action', label: 'Acao interna', description: 'Adicionar tag, score, etapa ou campo', color: '#14B8A6', icon: Tags },
+  { type: 'rd_conversion', label: 'RD Station', description: 'Criar conversao para entrar em fluxo de e-mail', color: '#8B5CF6', icon: Mail },
+  { type: 'whatsapp_message', label: 'WhatsApp', description: 'Enviar template ou mensagem da cadencia', color: '#10B981', icon: MessageCircle },
+  { type: 'pipedrive_action', label: 'Pipedrive', description: 'Criar ou atualizar negocio comercial', color: '#EF4444', icon: Database },
+  { type: 'end', label: 'Fim', description: 'Encerrar a jornada ou parar nutricao', color: '#64748B', icon: Pause },
+];
+
+const defaultNodes = (): AutomationJourneyNode[] => [
+  {
+    id: `node-${Date.now()}-1`,
+    type: 'trigger',
+    label: 'Lead entrou',
+    x: 80,
+    y: 180,
+    config: { event: 'webhook_received' },
+  },
+  {
+    id: `node-${Date.now()}-2`,
+    type: 'rd_conversion',
+    label: 'Criar conversao RD',
+    x: 380,
+    y: 180,
+    config: { conversionIdentifier: 'inicio_nutricao', conversionName: 'Inicio da nutricao' },
+  },
+];
+
+const defaultEdges = (nodes: AutomationJourneyNode[]): AutomationJourneyEdge[] => [
+  { id: `edge-${Date.now()}`, source: nodes[0].id, target: nodes[1].id },
+];
+
+const blockMeta = (type: AutomationNodeType) => BLOCKS.find(block => block.type === type) ?? BLOCKS[0];
+
+const statusLabel: Record<AutomationJourneyStatus, string> = {
+  DRAFT: 'Rascunho',
+  ACTIVE: 'Ativa',
+  PAUSED: 'Pausada',
+};
+
+const emptyDraft = () => {
+  const nodes = defaultNodes();
+  return {
+    id: '',
+    name: 'Nova jornada',
+    description: null,
+    status: 'DRAFT' as AutomationJourneyStatus,
+    nodes,
+    edges: defaultEdges(nodes),
+    triggerType: 'webhook_received',
+    isActive: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+};
 
 const AutomationJourneysView: React.FC = () => {
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [journeys, setJourneys] = useState<AutomationJourney[]>([]);
+  const [selected, setSelected] = useState<AutomationJourney>(emptyDraft());
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | AutomationJourneyStatus>('all');
+  const [connectFrom, setConnectFrom] = useState<string | null>(null);
+  const [dragNodeId, setDragNodeId] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await DataService.listAutomationJourneys();
+      setJourneys(data);
+      if (data.length > 0 && !selected.id) setSelected(data[0]);
+    } catch (error) {
+      console.error('Erro ao carregar jornadas', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [selected.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filteredJourneys = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return journeys.filter(journey => {
+      if (statusFilter !== 'all' && journey.status !== statusFilter) return false;
+      if (!q) return true;
+      return journey.name.toLowerCase().includes(q) || (journey.description ?? '').toLowerCase().includes(q);
+    });
+  }, [journeys, search, statusFilter]);
+
+  const selectedNode = selected.nodes.find(node => node.id === selectedNodeId) ?? null;
+
+  const updateSelected = (changes: Partial<AutomationJourney>) => {
+    setSelected(prev => ({ ...prev, ...changes, updatedAt: new Date().toISOString() }));
+  };
+
+  const updateNode = (id: string, changes: Partial<AutomationJourneyNode>) => {
+    updateSelected({
+      nodes: selected.nodes.map(node => node.id === id ? { ...node, ...changes } : node),
+    });
+  };
+
+  const createJourney = () => {
+    const draft = emptyDraft();
+    setSelected(draft);
+    setSelectedNodeId(draft.nodes[0]?.id ?? null);
+    setConnectFrom(null);
+  };
+
+  const saveJourney = async () => {
+    if (!selected.name.trim()) return;
+    setSaving(true);
+    try {
+      const payload = {
+        name: selected.name.trim(),
+        description: selected.description,
+        status: selected.status,
+        nodes: selected.nodes,
+        edges: selected.edges,
+        triggerType: selected.triggerType,
+        isActive: selected.status === 'ACTIVE',
+      };
+      const saved = selected.id
+        ? await DataService.updateAutomationJourney(selected.id, payload)
+        : await DataService.createAutomationJourney(payload);
+
+      setSelected(saved);
+      setJourneys(prev => {
+        const exists = prev.some(item => item.id === saved.id);
+        return exists ? prev.map(item => item.id === saved.id ? saved : item) : [saved, ...prev];
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteJourney = async () => {
+    if (!selected.id) {
+      createJourney();
+      return;
+    }
+    if (!window.confirm(`Excluir a jornada "${selected.name}"?`)) return;
+    await DataService.deleteAutomationJourney(selected.id);
+    const remaining = journeys.filter(item => item.id !== selected.id);
+    setJourneys(remaining);
+    setSelected(remaining[0] ?? emptyDraft());
+    setSelectedNodeId(null);
+  };
+
+  const setStatus = (status: AutomationJourneyStatus) => {
+    updateSelected({ status, isActive: status === 'ACTIVE' });
+  };
+
+  const addNode = (type: AutomationNodeType, x = 120, y = 120) => {
+    const meta = blockMeta(type);
+    const node: AutomationJourneyNode = {
+      id: `node-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      type,
+      label: meta.label,
+      x,
+      y,
+      config: {},
+    };
+    updateSelected({ nodes: [...selected.nodes, node] });
+    setSelectedNodeId(node.id);
+  };
+
+  const removeNode = (id: string) => {
+    updateSelected({
+      nodes: selected.nodes.filter(node => node.id !== id),
+      edges: selected.edges.filter(edge => edge.source !== id && edge.target !== id),
+    });
+    if (selectedNodeId === id) setSelectedNodeId(null);
+    if (connectFrom === id) setConnectFrom(null);
+  };
+
+  const connectNode = (targetId: string) => {
+    if (!connectFrom) {
+      setConnectFrom(targetId);
+      return;
+    }
+    if (connectFrom === targetId) {
+      setConnectFrom(null);
+      return;
+    }
+    const exists = selected.edges.some(edge => edge.source === connectFrom && edge.target === targetId);
+    if (!exists) {
+      updateSelected({
+        edges: [...selected.edges, { id: `edge-${Date.now()}`, source: connectFrom, target: targetId }],
+      });
+    }
+    setConnectFrom(null);
+  };
+
+  const removeEdge = (id: string) => {
+    updateSelected({ edges: selected.edges.filter(edge => edge.id !== id) });
+  };
+
+  const canvasPoint = (event: React.DragEvent | React.MouseEvent) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 120, y: 120 };
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  };
+
+  const onDropBlock = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const type = event.dataTransfer.getData('application/x-automation-node') as AutomationNodeType;
+    if (!type) return;
+    const point = canvasPoint(event);
+    addNode(type, Math.max(20, point.x - NODE_W / 2), Math.max(20, point.y - 30));
+  };
+
+  const startMoveNode = (event: React.MouseEvent, node: AutomationJourneyNode) => {
+    event.stopPropagation();
+    const point = canvasPoint(event);
+    setDragNodeId(node.id);
+    setDragOffset({ x: point.x - node.x, y: point.y - node.y });
+    setSelectedNodeId(node.id);
+  };
+
+  const moveNode = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!dragNodeId) return;
+    const point = canvasPoint(event);
+    updateNode(dragNodeId, {
+      x: Math.max(12, point.x - dragOffset.x),
+      y: Math.max(12, point.y - dragOffset.y),
+    });
+  };
+
+  const updateNodeConfig = (key: string, value: string) => {
+    if (!selectedNode) return;
+    updateNode(selectedNode.id, {
+      config: { ...(selectedNode.config ?? {}), [key]: value },
+    });
+  };
+
+  const renderConfigFields = () => {
+    if (!selectedNode) {
+      return (
+        <div style={{ color: 'var(--fg-muted)', fontSize: 13, lineHeight: 1.5 }}>
+          Selecione um bloco no canvas para editar nome e configuracoes.
+        </div>
+      );
+    }
+
+    const config = selectedNode.config ?? {};
+    const textField = (key: string, label: string, placeholder: string) => (
+      <label style={{ display: 'grid', gap: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</span>
+        <input
+          value={String(config[key] ?? '')}
+          onChange={event => updateNodeConfig(key, event.target.value)}
+          placeholder={placeholder}
+          className="ds-input"
+          style={{ width: '100%' }}
+        />
+      </label>
+    );
+
+    return (
+      <div style={{ display: 'grid', gap: 12 }}>
+        <label style={{ display: 'grid', gap: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Nome do bloco</span>
+          <input
+            value={selectedNode.label}
+            onChange={event => updateNode(selectedNode.id, { label: event.target.value })}
+            className="ds-input"
+            style={{ width: '100%' }}
+          />
+        </label>
+
+        {selectedNode.type === 'trigger' && textField('event', 'Evento de entrada', 'webhook_received, tag_added...')}
+        {selectedNode.type === 'condition' && (
+          <>
+            {textField('field', 'Campo ou tag', 'jobTitle, tags, score...')}
+            {textField('operator', 'Operador', 'contém, igual, maior que...')}
+            {textField('value', 'Valor', 'CEO, decisor, 50...')}
+          </>
+        )}
+        {selectedNode.type === 'wait' && (
+          <>
+            {textField('amount', 'Tempo', '2')}
+            {textField('unit', 'Unidade', 'horas ou dias')}
+          </>
+        )}
+        {selectedNode.type === 'internal_action' && (
+          <>
+            {textField('action', 'Acao', 'add_tag, set_status, add_score...')}
+            {textField('value', 'Valor', 'persona:decisor, MQL, 10...')}
+          </>
+        )}
+        {selectedNode.type === 'rd_conversion' && (
+          <>
+            {textField('conversionIdentifier', 'Identificador', 'interesse_decisor')}
+            {textField('conversionName', 'Nome da conversao', 'Interesse - Decisor')}
+          </>
+        )}
+        {selectedNode.type === 'whatsapp_message' && (
+          <>
+            {textField('templateName', 'Template WhatsApp', 'diagnostico_site_01')}
+            {textField('messageGoal', 'Objetivo', 'Convidar para diagnostico')}
+          </>
+        )}
+        {selectedNode.type === 'pipedrive_action' && (
+          <>
+            {textField('action', 'Acao Pipedrive', 'create_deal, update_stage...')}
+            {textField('pipeline', 'Pipeline', 'novo_cliente')}
+          </>
+        )}
+        {selectedNode.type === 'end' && textField('reason', 'Motivo de encerramento', 'mql_created, opted_out...')}
+
+        <button
+          type="button"
+          onClick={() => removeNode(selectedNode.id)}
+          className="ds-btn danger"
+          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+        >
+          <Trash2 size={14} />
+          Remover bloco
+        </button>
+      </div>
+    );
+  };
+
   return (
-    <div style={{ padding: '24px 28px 64px', maxWidth: 1480, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }} className="animate-fade-in-up">
-      <header style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+    <div style={{ padding: '24px 28px 64px', maxWidth: 1600, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }} className="animate-fade-in-up">
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
         <div>
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--fg-primary)', margin: 0 }}>
-            Automacao/Jornadas
-          </h1>
+          <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--fg-primary)', margin: 0 }}>Automacao/Jornadas</h1>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button type="button" onClick={load} className="ds-btn secondary" disabled={loading}>
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </button>
+          <button type="button" onClick={createJourney} className="ds-btn secondary" style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+            <Plus size={14} />
+            Nova jornada
+          </button>
+          <button type="button" onClick={saveJourney} className="ds-btn primary" disabled={saving || !selected.name.trim()} style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+            {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+            Salvar
+          </button>
         </div>
       </header>
 
-      <section className="ds-card" style={{ padding: 0, overflow: 'visible' }}>
-        <div style={{ padding: 18 }}>
-          <LeadRulesPanel />
-        </div>
-      </section>
+      <div style={{ display: 'grid', gridTemplateColumns: '280px minmax(680px, 1fr) 300px', gap: 14, alignItems: 'stretch' }}>
+        <aside className="ds-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 720 }}>
+          <div style={{ position: 'relative' }}>
+            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-muted)' }} />
+            <input
+              value={search}
+              onChange={event => setSearch(event.target.value)}
+              placeholder="Buscar jornada..."
+              className="ds-input"
+              style={{ width: '100%', paddingLeft: 32 }}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+            {[
+              ['all', 'Todas'],
+              ['ACTIVE', 'Ativas'],
+              ['DRAFT', 'Rascunho'],
+              ['PAUSED', 'Pausadas'],
+            ].map(([key, label]) => {
+              const active = statusFilter === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setStatusFilter(key as typeof statusFilter)}
+                  style={{
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--r-md)',
+                    padding: '7px 8px',
+                    background: active ? 'var(--accent-soft)' : 'var(--bg-elevated)',
+                    color: active ? 'var(--accent)' : 'var(--fg-muted)',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', paddingRight: 2 }}>
+            {filteredJourneys.map(journey => {
+              const active = selected.id === journey.id;
+              return (
+                <button
+                  key={journey.id}
+                  type="button"
+                  onClick={() => { setSelected(journey); setSelectedNodeId(null); setConnectFrom(null); }}
+                  style={{
+                    textAlign: 'left',
+                    border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                    borderRadius: 'var(--r-lg)',
+                    padding: 12,
+                    background: active ? 'var(--accent-soft)' : 'var(--bg-elevated)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <strong style={{ color: 'var(--fg-primary)', fontSize: 13 }}>{journey.name}</strong>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 8, color: 'var(--fg-muted)', fontSize: 11 }}>
+                    <span>{journey.nodes.length} blocos</span>
+                    <span>{statusLabel[journey.status]}</span>
+                  </div>
+                </button>
+              );
+            })}
+            {!loading && filteredJourneys.length === 0 && (
+              <div style={{ color: 'var(--fg-muted)', fontSize: 13, padding: 12 }}>Nenhuma jornada encontrada.</div>
+            )}
+          </div>
+        </aside>
+
+        <main className="ds-card" style={{ overflow: 'hidden', minHeight: 720, display: 'grid', gridTemplateRows: 'auto 1fr' }}>
+          <div style={{ padding: 14, borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr 170px 90px', gap: 10, alignItems: 'center' }}>
+            <input
+              value={selected.name}
+              onChange={event => updateSelected({ name: event.target.value })}
+              className="ds-input"
+              style={{ width: '100%', fontWeight: 800, fontSize: 15 }}
+            />
+            <select value={selected.status} onChange={event => setStatus(event.target.value as AutomationJourneyStatus)} className="ds-input">
+              <option value="DRAFT">Rascunho</option>
+              <option value="ACTIVE">Ativa</option>
+              <option value="PAUSED">Pausada</option>
+            </select>
+            <button type="button" onClick={deleteJourney} className="ds-btn danger" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <Trash2 size={13} />
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '190px 1fr', minHeight: 0 }}>
+            <div style={{ borderRight: '1px solid var(--border)', padding: 12, background: 'var(--bg-muted)', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, color: 'var(--fg-primary)', fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                <Workflow size={14} />
+                Blocos
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {BLOCKS.map(block => {
+                  const Icon = block.icon;
+                  return (
+                    <div
+                      key={block.type}
+                      draggable
+                      onDragStart={event => event.dataTransfer.setData('application/x-automation-node', block.type)}
+                      style={{
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--r-md)',
+                        padding: 10,
+                        background: 'var(--bg-surface)',
+                        cursor: 'grab',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ width: 28, height: 28, borderRadius: 8, display: 'grid', placeItems: 'center', background: `${block.color}22`, color: block.color }}>
+                          <Icon size={14} />
+                        </span>
+                        <strong style={{ color: 'var(--fg-primary)', fontSize: 12 }}>{block.label}</strong>
+                      </div>
+                      <p style={{ margin: '7px 0 0', color: 'var(--fg-muted)', fontSize: 11, lineHeight: 1.35 }}>{block.description}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div
+              ref={canvasRef}
+              onDrop={onDropBlock}
+              onDragOver={event => event.preventDefault()}
+              onMouseMove={moveNode}
+              onMouseUp={() => setDragNodeId(null)}
+              onMouseLeave={() => setDragNodeId(null)}
+              onClick={() => setSelectedNodeId(null)}
+              style={{
+                position: 'relative',
+                overflow: 'auto',
+                minHeight: 650,
+                background:
+                  'linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)',
+                backgroundSize: '28px 28px',
+                backgroundColor: 'var(--bg-app)',
+              }}
+            >
+              <svg style={{ position: 'absolute', inset: 0, width: 1800, height: 1200, pointerEvents: 'none', overflow: 'visible' }}>
+                {selected.edges.map(edge => {
+                  const source = selected.nodes.find(node => node.id === edge.source);
+                  const target = selected.nodes.find(node => node.id === edge.target);
+                  if (!source || !target) return null;
+                  const x1 = source.x + NODE_W;
+                  const y1 = source.y + NODE_H / 2;
+                  const x2 = target.x;
+                  const y2 = target.y + NODE_H / 2;
+                  const mid = Math.max(70, Math.abs(x2 - x1) / 2);
+                  return (
+                    <g key={edge.id}>
+                      <path
+                        d={`M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`}
+                        fill="none"
+                        stroke="var(--accent)"
+                        strokeWidth="2"
+                        markerEnd="url(#arrow)"
+                      />
+                    </g>
+                  );
+                })}
+                <defs>
+                  <marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                    <path d="M0,0 L0,6 L8,3 z" fill="var(--accent)" />
+                  </marker>
+                </defs>
+              </svg>
+
+              {selected.edges.map(edge => {
+                const source = selected.nodes.find(node => node.id === edge.source);
+                const target = selected.nodes.find(node => node.id === edge.target);
+                if (!source || !target) return null;
+                return (
+                  <button
+                    key={`btn-${edge.id}`}
+                    type="button"
+                    onClick={event => { event.stopPropagation(); removeEdge(edge.id); }}
+                    title="Remover conexao"
+                    style={{
+                      position: 'absolute',
+                      left: (source.x + target.x + NODE_W) / 2,
+                      top: (source.y + target.y + NODE_H) / 2 - 12,
+                      width: 22,
+                      height: 22,
+                      borderRadius: 999,
+                      border: '1px solid var(--border)',
+                      background: 'var(--bg-surface)',
+                      color: 'var(--fg-muted)',
+                      display: 'grid',
+                      placeItems: 'center',
+                      cursor: 'pointer',
+                      zIndex: 4,
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                );
+              })}
+
+              {selected.nodes.map(node => {
+                const meta = blockMeta(node.type);
+                const Icon = meta.icon;
+                const active = selectedNodeId === node.id;
+                const connecting = connectFrom === node.id;
+                return (
+                  <div
+                    key={node.id}
+                    onMouseDown={event => startMoveNode(event, node)}
+                    onClick={event => { event.stopPropagation(); setSelectedNodeId(node.id); }}
+                    style={{
+                      position: 'absolute',
+                      left: node.x,
+                      top: node.y,
+                      width: NODE_W,
+                      minHeight: NODE_H,
+                      border: `1px solid ${active || connecting ? meta.color : 'var(--border)'}`,
+                      borderRadius: 'var(--r-lg)',
+                      background: 'var(--bg-surface)',
+                      boxShadow: active ? `0 0 0 3px ${meta.color}22` : 'var(--shadow-sm)',
+                      padding: 12,
+                      cursor: dragNodeId === node.id ? 'grabbing' : 'grab',
+                      zIndex: active ? 8 : 5,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                      <span style={{ width: 32, height: 32, borderRadius: 9, display: 'grid', placeItems: 'center', background: `${meta.color}22`, color: meta.color }}>
+                        <Icon size={16} />
+                      </span>
+                      <div style={{ minWidth: 0 }}>
+                        <strong style={{ display: 'block', color: 'var(--fg-primary)', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{node.label}</strong>
+                        <span style={{ display: 'block', color: 'var(--fg-muted)', fontSize: 11, marginTop: 2 }}>{meta.label}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 10 }}>
+                      <button
+                        type="button"
+                        onMouseDown={event => event.stopPropagation()}
+                        onClick={event => { event.stopPropagation(); connectNode(node.id); }}
+                        style={{
+                          border: '1px solid var(--border)',
+                          borderRadius: 'var(--r-sm)',
+                          padding: '5px 8px',
+                          background: connecting ? `${meta.color}22` : 'var(--bg-elevated)',
+                          color: connecting ? meta.color : 'var(--fg-muted)',
+                          fontSize: 11,
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {connectFrom && connectFrom !== node.id ? 'Ligar aqui' : 'Conectar'}
+                      </button>
+                      <MousePointer2 size={13} style={{ color: 'var(--fg-subtle)' }} />
+                    </div>
+                  </div>
+                );
+              })}
+
+              {selected.nodes.length === 0 && (
+                <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'var(--fg-muted)', fontSize: 14 }}>
+                  Arraste blocos da esquerda para montar a jornada.
+                </div>
+              )}
+            </div>
+          </div>
+        </main>
+
+        <aside className="ds-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 14, minHeight: 720 }}>
+          <div>
+            <h2 style={{ margin: 0, color: 'var(--fg-primary)', fontSize: 15, fontWeight: 900 }}>Configuracao</h2>
+          </div>
+
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Descricao</span>
+            <textarea
+              value={selected.description ?? ''}
+              onChange={event => updateSelected({ description: event.target.value })}
+              className="ds-input"
+              rows={3}
+              style={{ width: '100%', resize: 'vertical' }}
+            />
+          </label>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: 10, background: 'var(--bg-elevated)' }}>
+              <Activity size={14} style={{ color: 'var(--accent)', marginBottom: 7 }} />
+              <strong style={{ display: 'block', color: 'var(--fg-primary)', fontSize: 18 }}>{selected.nodes.length}</strong>
+              <span style={{ color: 'var(--fg-muted)', fontSize: 11 }}>blocos</span>
+            </div>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: 10, background: 'var(--bg-elevated)' }}>
+              <Workflow size={14} style={{ color: 'var(--accent)', marginBottom: 7 }} />
+              <strong style={{ display: 'block', color: 'var(--fg-primary)', fontSize: 18 }}>{selected.edges.length}</strong>
+              <span style={{ color: 'var(--fg-muted)', fontSize: 11 }}>ligacoes</span>
+            </div>
+          </div>
+
+          <div style={{ height: 1, background: 'var(--border)' }} />
+
+          {renderConfigFields()}
+        </aside>
+      </div>
     </div>
   );
 };

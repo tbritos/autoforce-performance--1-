@@ -219,6 +219,26 @@ model LeadClassificationRuleExecution {
   @@index([createdAt])
 }
 
+model AutomationJourney {
+  id          String  @id @default(uuid())
+  name        String
+  description String? @db.Text
+  status      String  @default("DRAFT")
+
+  nodes Json @default("[]")
+  edges Json @default("[]")
+
+  triggerType String?
+  isActive    Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([isActive])
+  @@index([createdAt])
+}
+
 // ============================================================
 // CONEXÕES DE PLATAFORMAS
 // ============================================================
