@@ -110,7 +110,7 @@ const FunnelBar: React.FC<{
 
 const LeadHubView: React.FC = () => {
   const navigate = useNavigate();
-  const [activeView, setActiveView] = useState<'leads' | 'webhooks' | 'rules'>('leads');
+  const [activeView, setActiveView] = useState<'leads' | 'webhooks'>('leads');
   const [result, setResult]         = useState<LeadListResult | null>(null);
   const [funnel, setFunnel]         = useState<FunnelCounts | null>(null);
   const [loading, setLoading]       = useState(true);
@@ -223,14 +223,13 @@ const LeadHubView: React.FC = () => {
         {[
           { id: 'leads', label: 'Leads' },
           { id: 'webhooks', label: 'Webhooks de entrada' },
-          { id: 'rules', label: 'Regras de classificacao' },
         ].map(item => {
           const active = activeView === item.id;
           return (
             <button
               key={item.id}
               type="button"
-              onClick={() => setActiveView(item.id as 'leads' | 'webhooks' | 'rules')}
+              onClick={() => setActiveView(item.id as 'leads' | 'webhooks')}
               style={{
                 padding: '9px 12px',
                 border: 'none',
@@ -250,8 +249,6 @@ const LeadHubView: React.FC = () => {
 
       {activeView === 'webhooks' ? (
         <LeadWebhooksPanel />
-      ) : activeView === 'rules' ? (
-        <LeadRulesPanel />
       ) : (
       <>
       {/* Funnel bar */}

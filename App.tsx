@@ -14,6 +14,7 @@ import LeadHubView from './components/LeadHubView';
 import LeadProfilePanel from './components/LeadProfilePanel';
 import UTMTrackerView from './components/UTMTrackerView';
 import FunnelView from './components/FunnelView';
+import AutomationJourneysView from './components/AutomationJourneysView';
 import { DataService } from './services/dataService';
 import { User, Metric, LandingPage, DailyLeadEntry, RevenueEntry, FunnelCounts, LeadStatus } from './types';
 import {
@@ -42,6 +43,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Info,
+  Workflow,
 } from 'lucide-react';
 import { FunnelChart, FunnelStep } from './components/Charts';
 
@@ -918,6 +920,12 @@ const AppContent: React.FC = () => {
       ],
     },
     {
+      label: 'AUTOMACAO',
+      items: [
+        { label: 'Automacao/Jornadas', path: '/automation', icon: Workflow },
+      ],
+    },
+    {
       label: 'PERFORMANCE',
       items: [
         { label: 'Funil Unificado', path: '/funnel',      icon: Layers },
@@ -1169,6 +1177,7 @@ const AppContent: React.FC = () => {
             <Route path="/leads/:leadId" element={<LeadProfilePage />} />
             <Route path="/leads" element={<LeadHubView />} />
             <Route path="/utm" element={<UTMTrackerView />} />
+            <Route path="/automation" element={<AutomationJourneysView />} />
 
             {/* Performance */}
             <Route path="/funnel" element={<FunnelView />} />
@@ -1192,6 +1201,7 @@ const AppContent: React.FC = () => {
             <Route path="/lead-tracker" element={<LeadTracker />} />
             <Route path="/webhook-leads" element={<WebhookLeadsView />} />
             <Route path="/rd-leads" element={<Navigate to="/webhook-leads" replace />} />
+            <Route path="/lead-rules" element={<Navigate to="/automation" replace />} />
             <Route path="/settings" element={<Navigate to="/emails" replace />} />
             <Route path="/weekly" element={<Navigate to="/" replace />} />
             <Route path="/site" element={<Navigate to="/analytics" replace />} />
