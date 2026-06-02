@@ -1850,7 +1850,7 @@ const RuleFormPage: React.FC<{
 
 // ─── Rules panel ──────────────────────────────────────────────────────────────
 
-const LeadRulesPanel: React.FC = () => {
+export const LeadRulesPanel: React.FC = () => {
   const [rules, setRules] = useState<LeadClassificationRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
