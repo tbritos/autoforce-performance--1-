@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Check,
@@ -217,19 +218,20 @@ const AutomationJourneysView: React.FC = () => {
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [editingName, setEditingName] = useState(false);
   const [panelValues, setPanelValues] = useState<{ label: string; config: Record<string, string> } | null>(null);
+  const [modalNodeId, setModalNodeId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!selectedNodeId) { setPanelValues(null); return; }
-    const node = selected.nodes.find(n => n.id === selectedNodeId);
+    if (!modalNodeId) { setPanelValues(null); return; }
+    const node = selected.nodes.find(n => n.id === modalNodeId);
     if (!node) { setPanelValues(null); return; }
     setPanelValues({ label: node.label, config: { ...(node.config ?? {}) } });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedNodeId]);
+  }, [modalNodeId]);
 
   const savePanel = () => {
-    if (!selectedNodeId || !panelValues) return;
-    updateNode(selectedNodeId, { label: panelValues.label, config: panelValues.config });
-    setSelectedNodeId(null);
+    if (!modalNodeId || !panelValues) return;
+    updateNode(modalNodeId, { label: panelValues.label, config: panelValues.config });
+    setModalNodeId(null);
   };
 
   const load = useCallback(async () => {
@@ -885,6 +887,7 @@ const AutomationJourneysView: React.FC = () => {
                 key={node.id}
                 onMouseDown={event => startMoveNode(event, node)}
                 onClick={event => { event.stopPropagation(); setSelectedNodeId(node.id); }}
+                onDoubleClick={event => { event.stopPropagation(); setModalNodeId(node.id); }}
                 style={{
                   position: 'absolute',
                   left: node.x,
@@ -951,107 +954,156 @@ const AutomationJourneysView: React.FC = () => {
           </div>
         </div>
 
-        {/* ── CONFIG PANEL (n8n style) ─────────────────────────────────────────── */}
+        {/* ── CONFIG MODAL (portal, centralizado) ─────────────────────────────── */}
         {(() => {
-          if (!selectedNodeId || !panelValues) return null;
-          const panelNode = selected.nodes.find(n => n.id === selectedNodeId);
+          if (!modalNodeId || !panelValues) return null;
+          const panelNode = selected.nodes.find(n => n.id === modalNodeId);
           if (!panelNode) return null;
           const meta = blockMeta(panelNode.type);
           const Icon = meta.icon;
-          return (
-            <div
-              style={{
-                position: 'absolute', top: 0, right: 0, bottom: 0, width: 340,
-                background: 'var(--bg-surface)', borderLeft: '1px solid var(--border)',
-                display: 'flex', flexDirection: 'column', zIndex: 30,
-                boxShadow: '-8px 0 32px rgba(0,0,0,0.12)',
-              }}
-            >
-              {/* Panel header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ width: 40, height: 40, borderRadius: 11, display: 'grid', placeItems: 'center', background: `${meta.color}18`, color: meta.color, flexShrink: 0 }}>
-                    <Icon size={20} />
-                  </span>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--fg-primary)' }}>{meta.label}</div>
-                    <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 2 }}>Configurar bloco</div>
+          return createPortal(
+            <>
+              {/* Backdrop */}
+              <div
+                onClick={() => setModalNodeId(null)}
+                style={{
+                  position: 'fixed', inset: 0, zIndex: 1000,
+                  background: 'rgba(0,0,0,0.45)',
+                  backdropFilter: 'blur(2px)',
+                }}
+              />
+              {/* Modal */}
+              <div
+                style={{
+                  position: 'fixed', zIndex: 1001,
+                  top: '50%', left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  width: 480, maxHeight: '82vh',
+                  borderRadius: 16,
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border)',
+                  boxShadow: '0 24px 64px rgba(0,0,0,0.28)',
+                  display: 'flex', flexDirection: 'column',
+                  overflow: 'hidden',
+                }}
+              >
+                {/* Modal header */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '20px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <span style={{
+                      width: 44, height: 44, borderRadius: 12, display: 'grid', placeItems: 'center',
+                      background: `${meta.color}18`, color: meta.color, flexShrink: 0,
+                      border: `1px solid ${meta.color}30`,
+                    }}>
+                      <Icon size={22} />
+                    </span>
+                    <div>
+                      <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--fg-primary)' }}>{meta.label}</div>
+                      <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 2 }}>{meta.description}</div>
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setModalNodeId(null)}
+                    style={{
+                      border: '1px solid var(--border)', background: 'var(--bg-soft)', color: 'var(--fg-muted)',
+                      cursor: 'pointer', display: 'grid', placeItems: 'center',
+                      width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                    }}
+                  >
+                    <X size={15} />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedNodeId(null)}
-                  style={{ border: 'none', background: 'var(--bg-soft)', color: 'var(--fg-muted)', cursor: 'pointer', display: 'grid', placeItems: 'center', width: 30, height: 30, borderRadius: 'var(--r-sm)' }}
-                >
-                  <X size={15} />
-                </button>
-              </div>
 
-              {/* Panel form */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-                {/* Node name */}
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Nome do bloco</span>
-                  <input
-                    value={panelValues.label}
-                    onChange={e => setPanelValues(prev => prev ? { ...prev, label: e.target.value } : prev)}
-                    className="ds-input"
-                    style={{ width: '100%' }}
-                  />
-                </label>
+                {/* Modal form */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+                  {/* Node name */}
+                  <label style={{ display: 'grid', gap: 7 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                      Nome do bloco
+                    </span>
+                    <input
+                      autoFocus
+                      value={panelValues.label}
+                      onChange={e => setPanelValues(prev => prev ? { ...prev, label: e.target.value } : prev)}
+                      className="ds-input"
+                      style={{ width: '100%', fontSize: 14 }}
+                    />
+                  </label>
 
-                {/* Type-specific fields */}
-                {panelNode.type === 'trigger' && panelTextField('event', 'Evento de entrada', 'webhook_received, tag_added...')}
-                {panelNode.type === 'condition' && (<>
-                  {panelTextField('field', 'Campo ou tag', 'jobTitle, tags, score...')}
-                  {panelTextField('operator', 'Operador', 'contém, igual, maior que...')}
-                  {panelTextField('value', 'Valor', 'CEO, decisor, 50...')}
-                </>)}
-                {panelNode.type === 'wait' && (<>
-                  {panelTextField('amount', 'Tempo', '2')}
-                  {panelTextField('unit', 'Unidade', 'horas ou dias')}
-                </>)}
-                {panelNode.type === 'internal_action' && (<>
-                  {panelTextField('action', 'Ação', 'add_tag, set_status, add_score...')}
-                  {panelTextField('value', 'Valor', 'persona:decisor, MQL, 10...')}
-                </>)}
-                {panelNode.type === 'rd_conversion' && (<>
-                  {panelTextField('conversionIdentifier', 'Identificador', 'interesse_decisor')}
-                  {panelTextField('conversionName', 'Nome da conversão', 'Interesse - Decisor')}
-                </>)}
-                {panelNode.type === 'whatsapp_message' && (<>
-                  {panelTextField('templateName', 'Template WhatsApp', 'diagnostico_site_01')}
-                  {panelTextField('messageGoal', 'Objetivo da mensagem', 'Convidar para diagnóstico')}
-                </>)}
-                {panelNode.type === 'pipedrive_action' && (<>
-                  {panelTextField('action', 'Ação Pipedrive', 'create_deal, update_stage...')}
-                  {panelTextField('pipeline', 'Pipeline', 'novo_cliente')}
-                </>)}
-                {panelNode.type === 'end' && panelTextField('reason', 'Motivo de encerramento', 'mql_created, opted_out...')}
-              </div>
+                  {/* Divider */}
+                  {panelNode.type !== 'end' && (
+                    <div style={{ height: 1, background: 'var(--border)', margin: '0 -24px', alignSelf: 'stretch' }} />
+                  )}
 
-              {/* Panel footer */}
-              <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, flexShrink: 0 }}>
-                <button
-                  type="button"
-                  onClick={savePanel}
-                  className="ds-btn primary"
-                  style={{ flex: 1, display: 'inline-flex', gap: 7, alignItems: 'center', justifyContent: 'center', height: 40 }}
-                >
-                  <Check size={14} />
-                  Salvar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { removeNode(panelNode.id); }}
-                  className="ds-btn danger"
-                  style={{ width: 40, height: 40, display: 'grid', placeItems: 'center' }}
-                  title="Remover bloco"
-                >
-                  <Trash2 size={14} />
-                </button>
+                  {/* Type-specific fields */}
+                  {panelNode.type === 'trigger' && panelTextField('event', 'Evento de entrada', 'webhook_received, tag_added...')}
+                  {panelNode.type === 'condition' && (<>
+                    {panelTextField('field', 'Campo ou tag', 'jobTitle, tags, score...')}
+                    {panelTextField('operator', 'Operador', 'contém, igual, maior que...')}
+                    {panelTextField('value', 'Valor esperado', 'CEO, decisor, 50...')}
+                  </>)}
+                  {panelNode.type === 'wait' && (<>
+                    {panelTextField('amount', 'Quantidade de tempo', '2')}
+                    {panelTextField('unit', 'Unidade', 'horas ou dias')}
+                  </>)}
+                  {panelNode.type === 'internal_action' && (<>
+                    {panelTextField('action', 'Ação a executar', 'add_tag, set_status, add_score...')}
+                    {panelTextField('value', 'Valor', 'persona:decisor, MQL, 10...')}
+                  </>)}
+                  {panelNode.type === 'rd_conversion' && (<>
+                    {panelTextField('conversionIdentifier', 'Identificador da conversão', 'interesse_decisor')}
+                    {panelTextField('conversionName', 'Nome da conversão', 'Interesse - Decisor')}
+                  </>)}
+                  {panelNode.type === 'whatsapp_message' && (<>
+                    {panelTextField('templateName', 'Nome do template WhatsApp', 'diagnostico_site_01')}
+                    {panelTextField('messageGoal', 'Objetivo da mensagem', 'Convidar para diagnóstico')}
+                  </>)}
+                  {panelNode.type === 'pipedrive_action' && (<>
+                    {panelTextField('action', 'Ação no Pipedrive', 'create_deal, update_stage...')}
+                    {panelTextField('pipeline', 'Pipeline de destino', 'novo_cliente')}
+                  </>)}
+                  {panelNode.type === 'end' && panelTextField('reason', 'Motivo de encerramento', 'mql_created, opted_out...')}
+                </div>
+
+                {/* Modal footer */}
+                <div style={{
+                  display: 'flex', gap: 10, padding: '16px 24px',
+                  borderTop: '1px solid var(--border)', flexShrink: 0,
+                  background: 'var(--bg-muted)',
+                }}>
+                  <button
+                    type="button"
+                    onClick={savePanel}
+                    style={{
+                      flex: 1, display: 'inline-flex', gap: 7, alignItems: 'center', justifyContent: 'center',
+                      height: 42, border: 'none', borderRadius: 10,
+                      background: 'var(--accent)', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                      boxShadow: '0 2px 8px rgba(69,108,236,0.3)',
+                    }}
+                  >
+                    <Check size={15} />
+                    Salvar alterações
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { removeNode(panelNode.id); setModalNodeId(null); }}
+                    style={{
+                      width: 42, height: 42, display: 'grid', placeItems: 'center',
+                      border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10,
+                      background: 'rgba(239,68,68,0.06)', color: '#EF4444', cursor: 'pointer',
+                    }}
+                    title="Remover bloco"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
               </div>
-            </div>
+            </>,
+            document.body
           );
         })()}
 
