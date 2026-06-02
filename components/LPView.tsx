@@ -9,10 +9,10 @@ import {
 
 const ITEMS_PER_PAGE = 10;
 const HOST_FILTERS = [
-  { value: 'all',  label: 'Todos os sites', hostName: undefined },
-  { value: 'lp',   label: 'Landing pages',  hostName: 'lp.autodromo.com.br' },
-  { value: 'site', label: 'Site',            hostName: 'site.autoforce.com' },
-  { value: 'blog', label: 'Blog',            hostName: 'blog.autoforce.com' },
+  { value: 'all',  label: 'Todos os sites' },
+  { value: 'lp',   label: 'Landing pages' },
+  { value: 'site', label: 'Site' },
+  { value: 'blog', label: 'Blog' },
 ] as const;
 
 type SortKey = 'name' | 'users' | 'avgEngagementTime' | 'bounceRate' | 'totalClicks';
@@ -86,12 +86,11 @@ const LPView: React.FC = () => {
     setLoading(true);
     setErrorMessage('');
 
-    const selectedFilter = HOST_FILTERS.find(item => item.value === hostFilter);
     try {
       const data = await DataService.getLandingPagesGA(
         s,
         e,
-        selectedFilter?.hostName,
+        undefined,
         hostFilter,
         { throwOnError: true }
       );

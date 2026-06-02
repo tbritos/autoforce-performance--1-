@@ -15,6 +15,12 @@ function parseHostNames(value?: string | null): string[] {
     .filter(Boolean);
 }
 
+function normalizeHostFilter(hostName?: string): string | undefined {
+  const value = hostName?.trim();
+  if (!value || value === '*') return undefined;
+  return value;
+}
+
 export type GA4SourceType = 'all' | 'lp' | 'site' | 'blog';
 
 type GA4SourceConfig = {
@@ -86,19 +92,19 @@ async function getGA4SourceConfigs(source?: string | null, hostName?: string | n
         process.env.GA4_LP_PROPERTY_ID ||
         '459584870,266875338'
       ),
-      hostNames: parseHostNames(getStringMetadata(meta, ['lpHostNames', 'lpHostName']) || process.env.GA4_LP_HOSTNAMES || process.env.LP_HOSTNAME || 'lp.autodromo.com.br'),
+      hostNames: parseHostNames(getStringMetadata(meta, ['lpHostNames', 'lpHostName']) || process.env.GA4_LP_HOSTNAMES || process.env.LP_HOSTNAME || '*'),
     },
     {
       source: 'site',
       label: 'Site',
       propertyIds: parsePropertyIds(getStringMetadata(meta, ['sitePropertyIds', 'sitePropertyId']) || process.env.GA4_SITE_PROPERTY_IDS || process.env.GA4_SITE_PROPERTY_ID || '379673982'),
-      hostNames: parseHostNames(getStringMetadata(meta, ['siteHostNames', 'siteHostName']) || process.env.GA4_SITE_HOSTNAMES || 'site.autoforce.com'),
+      hostNames: parseHostNames(getStringMetadata(meta, ['siteHostNames', 'siteHostName']) || process.env.GA4_SITE_HOSTNAMES || '*'),
     },
     {
       source: 'blog',
       label: 'Blog',
       propertyIds: parsePropertyIds(getStringMetadata(meta, ['blogPropertyIds', 'blogPropertyId']) || process.env.GA4_BLOG_PROPERTY_IDS || process.env.GA4_BLOG_PROPERTY_ID || '349265313'),
-      hostNames: parseHostNames(getStringMetadata(meta, ['blogHostNames', 'blogHostName']) || process.env.GA4_BLOG_HOSTNAMES || 'blog.autoforce.com'),
+      hostNames: parseHostNames(getStringMetadata(meta, ['blogHostNames', 'blogHostName']) || process.env.GA4_BLOG_HOSTNAMES || '*'),
     },
   ];
   const defaults = defaultCandidates.filter(item => item.propertyIds.length > 0 && item.hostNames.length > 0);
@@ -117,10 +123,15 @@ async function getGA4SourceConfigs(source?: string | null, hostName?: string | n
   const requestedHosts = parseHostNames(hostName);
   if (requestedHosts.length) {
     configs = configs
-      .map(item => ({
-        ...item,
-        hostNames: item.hostNames.filter(host => requestedHosts.includes(host)),
-      }))
+      .map(item => {
+        const allowsAnyHost = item.hostNames.includes('*');
+        return {
+          ...item,
+          hostNames: allowsAnyHost
+            ? requestedHosts
+            : item.hostNames.filter(host => requestedHosts.includes(host)),
+        };
+      })
       .filter(item => item.hostNames.length > 0);
   }
 
@@ -130,7 +141,7 @@ async function getGA4SourceConfigs(source?: string | null, hostName?: string | n
       source: 'lp',
       label: `GA4 ${index + 1}`,
       propertyIds: [propertyId],
-      hostNames: requestedHosts,
+      hostNames: requestedHosts.length ? requestedHosts : ['*'],
     }));
   }
 
@@ -322,7 +333,7 @@ export async function getLandingPagesFromAllGA4Properties(
   const jobs = configs.flatMap(config =>
     config.propertyIds.flatMap(propertyId =>
       config.hostNames.map(host =>
-        getLandingPagesFromGA4(startDate, endDate, host, propertyId, config.source)
+        getLandingPagesFromGA4(startDate, endDate, normalizeHostFilter(host), propertyId, config.source)
       )
     )
   );
