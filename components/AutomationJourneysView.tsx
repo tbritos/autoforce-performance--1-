@@ -537,6 +537,7 @@ const AutomationJourneysView: React.FC = () => {
               color: '#fff',
               borderColor: 'var(--accent)',
               boxShadow: 'var(--shadow-md)',
+              borderRadius: 999,
             }}
           >
             <Plus size={15} />
