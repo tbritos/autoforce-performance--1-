@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Check,
   ChevronDown,
@@ -200,9 +201,11 @@ const emptyDraft = () => {
 
 const AutomationJourneysView: React.FC = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+  const { id: routeId } = useParams<{ id: string }>();
+
   const [journeys, setJourneys] = useState<AutomationJourney[]>([]);
   const [selected, setSelected] = useState<AutomationJourney>(emptyDraft());
-  const [viewMode, setViewMode] = useState<'list' | 'editor'>('list');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -234,15 +237,32 @@ const AutomationJourneysView: React.FC = () => {
     try {
       const data = await DataService.listAutomationJourneys();
       setJourneys(data);
-      if (data.length > 0 && !selected.id) setSelected(data[0]);
     } catch (error) {
       console.error('Erro ao carregar jornadas', error);
     } finally {
       setLoading(false);
     }
-  }, [selected.id]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Sync selected journey with URL param
+  useEffect(() => {
+    if (!routeId) return;
+    if (routeId === 'new') {
+      setSelected(emptyDraft());
+      setSelectedNodeId(null);
+      setConnectFrom(null);
+      return;
+    }
+    const found = journeys.find(j => j.id === routeId);
+    if (found) {
+      setSelected(found);
+      setSelectedNodeId(null);
+      setConnectFrom(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeId, journeys]);
 
   const filteredJourneys = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -269,18 +289,11 @@ const AutomationJourneysView: React.FC = () => {
   };
 
   const createJourney = () => {
-    const draft = emptyDraft();
-    setSelected(draft);
-    setSelectedNodeId(draft.nodes[0]?.id ?? null);
-    setConnectFrom(null);
-    setViewMode('editor');
+    navigate('/automation/new');
   };
 
   const openJourney = (journey: AutomationJourney) => {
-    setSelected(journey);
-    setSelectedNodeId(null);
-    setConnectFrom(null);
-    setViewMode('editor');
+    navigate('/automation/' + journey.id);
   };
 
   const saveJourney = async () => {
@@ -305,6 +318,7 @@ const AutomationJourneysView: React.FC = () => {
         const exists = prev.some(item => item.id === saved.id);
         return exists ? prev.map(item => item.id === saved.id ? saved : item) : [saved, ...prev];
       });
+      if (routeId === 'new') navigate('/automation/' + saved.id, { replace: true });
     } finally {
       setSaving(false);
     }
@@ -331,6 +345,7 @@ const AutomationJourneysView: React.FC = () => {
         const exists = prev.some(item => item.id === saved.id);
         return exists ? prev.map(item => item.id === saved.id ? saved : item) : [saved, ...prev];
       });
+      if (routeId === 'new') navigate('/automation/' + saved.id, { replace: true });
     } finally {
       setSaving(false);
     }
@@ -345,9 +360,8 @@ const AutomationJourneysView: React.FC = () => {
     await DataService.deleteAutomationJourney(selected.id);
     const remaining = journeys.filter(item => item.id !== selected.id);
     setJourneys(remaining);
-    setSelected(remaining[0] ?? emptyDraft());
     setSelectedNodeId(null);
-    setViewMode('list');
+    navigate('/automation');
   };
 
   const setStatus = (status: AutomationJourneyStatus) => {
@@ -475,7 +489,7 @@ const AutomationJourneysView: React.FC = () => {
     cursor: 'pointer',
   });
 
-  if (viewMode === 'list') {
+  if (!routeId) {
     return (
       <div style={{ padding: '38px 28px 64px', maxWidth: 1140, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 18 }} className="animate-fade-in-up">
         <header style={{ display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'start' }}>
@@ -617,7 +631,7 @@ const AutomationJourneysView: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
           <button
             type="button"
-            onClick={() => setViewMode('list')}
+            onClick={() => navigate('/automation')}
             className="ds-btn secondary"
             style={{ width: 32, height: 32, padding: 0, display: 'grid', placeItems: 'center', flexShrink: 0 }}
           >

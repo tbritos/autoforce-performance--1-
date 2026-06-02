@@ -1178,6 +1178,7 @@ const AppContent: React.FC = () => {
             <Route path="/leads" element={<LeadHubView />} />
             <Route path="/utm" element={<UTMTrackerView />} />
             <Route path="/automation" element={<AutomationJourneysView />} />
+            <Route path="/automation/:id" element={<AutomationJourneysView />} />
 
             {/* Performance */}
             <Route path="/funnel" element={<FunnelView />} />
