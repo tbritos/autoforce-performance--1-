@@ -44,13 +44,13 @@ const BLOCKS: Array<{
   icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
 }> = [
   { type: 'trigger', label: 'Entrada', description: 'Lead entrou, tag aplicada ou webhook recebido', color: '#456CEC', icon: Zap },
-  { type: 'condition', label: 'Condicao', description: 'Cargo, tag, score, dor, origem ou campo', color: '#22C55E', icon: GitBranch },
-  { type: 'wait', label: 'Esperar', description: 'Aguardar horas ou dias antes do proximo passo', color: '#F59E0B', icon: Clock },
-  { type: 'internal_action', label: 'Acao interna', description: 'Adicionar tag, score, etapa ou campo', color: '#14B8A6', icon: Tags },
-  { type: 'rd_conversion', label: 'RD Station', description: 'Criar conversao para entrar em fluxo de e-mail', color: '#8B5CF6', icon: Mail },
-  { type: 'whatsapp_message', label: 'WhatsApp', description: 'Enviar template ou mensagem da cadencia', color: '#10B981', icon: MessageCircle },
-  { type: 'pipedrive_action', label: 'Pipedrive', description: 'Criar ou atualizar negocio comercial', color: '#EF4444', icon: Database },
-  { type: 'end', label: 'Fim', description: 'Encerrar a jornada ou parar nutricao', color: '#64748B', icon: Pause },
+  { type: 'condition', label: 'Condição', description: 'Cargo, tag, score, dor, origem ou campo', color: '#22C55E', icon: GitBranch },
+  { type: 'wait', label: 'Esperar', description: 'Aguardar horas ou dias antes do próximo passo', color: '#F59E0B', icon: Clock },
+  { type: 'internal_action', label: 'Ação interna', description: 'Adicionar tag, score, etapa ou campo', color: '#14B8A6', icon: Tags },
+  { type: 'rd_conversion', label: 'RD Station', description: 'Criar conversão para entrar em fluxo de e-mail', color: '#8B5CF6', icon: Mail },
+  { type: 'whatsapp_message', label: 'WhatsApp', description: 'Enviar template ou mensagem da cadência', color: '#10B981', icon: MessageCircle },
+  { type: 'pipedrive_action', label: 'Pipedrive', description: 'Criar ou atualizar negócio comercial', color: '#EF4444', icon: Database },
+  { type: 'end', label: 'Fim', description: 'Encerrar a jornada ou aguardar evento', color: '#64748B', icon: Pause },
 ];
 
 const defaultNodes = (): AutomationJourneyNode[] => [
@@ -755,46 +755,46 @@ const AutomationJourneysView: React.FC = () => {
         </div>
       </header>
 
-      {/* ── EDITOR BODY: sidebar + canvas ──────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '190px 1fr', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      {/* ── EDITOR BODY: toolbar + canvas ──────────────────────────────────────── */}
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
 
-        {/* Blocks sidebar */}
-        <div style={{ borderRight: '1px solid var(--border)', padding: 12, background: 'var(--bg-muted)', overflowY: 'auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, color: 'var(--fg-primary)', fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-            <Workflow size={14} />
+        {/* Horizontal blocks toolbar */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
+          borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)',
+          flexShrink: 0, overflowX: 'auto',
+        }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 900, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.07em', flexShrink: 0, marginRight: 6 }}>
+            <Workflow size={13} />
             Blocos
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {BLOCKS.map(block => {
-              const Icon = block.icon;
-              return (
-                <div
-                  key={block.type}
-                  draggable
-                  onDragStart={event => event.dataTransfer.setData('application/x-automation-node', block.type)}
-                  style={{
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--r-md)',
-                    padding: 10,
-                    background: 'var(--bg-surface)',
-                    cursor: 'grab',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ width: 28, height: 28, borderRadius: 8, display: 'grid', placeItems: 'center', background: `${block.color}22`, color: block.color }}>
-                      <Icon size={14} />
-                    </span>
-                    <strong style={{ color: 'var(--fg-primary)', fontSize: 12 }}>{block.label}</strong>
-                  </div>
-                  <p style={{ margin: '7px 0 0', color: 'var(--fg-muted)', fontSize: 11, lineHeight: 1.35 }}>{block.description}</p>
-                </div>
-              );
-            })}
-          </div>
+          </span>
+          <span style={{ width: 1, height: 18, background: 'var(--border)', flexShrink: 0, marginRight: 2 }} />
+          {BLOCKS.map(block => {
+            const Icon = block.icon;
+            return (
+              <div
+                key={block.type}
+                draggable
+                onDragStart={event => event.dataTransfer.setData('application/x-automation-node', block.type)}
+                title={block.description}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '5px 11px 5px 7px', borderRadius: 8, flexShrink: 0,
+                  border: '1px solid var(--border)', background: 'var(--bg-surface)',
+                  cursor: 'grab', userSelect: 'none',
+                }}
+              >
+                <span style={{ width: 24, height: 24, borderRadius: 6, display: 'grid', placeItems: 'center', background: `${block.color}18`, color: block.color, flexShrink: 0 }}>
+                  <Icon size={13} />
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--fg-primary)', whiteSpace: 'nowrap' }}>{block.label}</span>
+              </div>
+            );
+          })}
         </div>
 
         {/* Canvas + panel wrapper */}
-        <div style={{ position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
 
         {/* Canvas */}
         <div
