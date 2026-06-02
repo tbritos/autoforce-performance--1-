@@ -191,8 +191,14 @@ const DashboardContent: React.FC<{
           const [funnel, source, meta, google, curr, prev, funnelStatsResult] = await Promise.all([
             DataService.getFunnelCounts(),
             DataService.getLeadsBySource(),
-            DataService.getMetaCampaigns(dateRange.start, dateRange.end),
-            DataService.getGoogleAdsCampaigns(dateRange.start, dateRange.end),
+            DataService.getMetaCampaigns(dateRange.start, dateRange.end).catch(error => {
+              console.warn('Meta Ads dashboard load skipped:', error);
+              return [];
+            }),
+            DataService.getGoogleAdsCampaigns(dateRange.start, dateRange.end).catch(error => {
+              console.warn('Google Ads dashboard load skipped:', error);
+              return [];
+            }),
             DataService.getLeadStats(dateRange.start, dateRange.end),
             DataService.getLeadStats(prevStartStr, prevEndStr),
             DataService.getFunnelStats(null, dateRange.start, dateRange.end)
