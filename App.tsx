@@ -206,10 +206,14 @@ const DashboardContent: React.FC<{
           setGoogleSpend(google.reduce((s, c) => s + (c.spend || 0), 0));
           if (lpsResult.ok) {
             setVisits(lpsResult.data.views || 0);
-            setVisitsError((lpsResult.data.views || 0) === 0 && lpsResult.data.errors.length > 0
-              ? lpsResult.data.errors.join(' | ')
-              : ''
-            );
+            if ((lpsResult.data.views || 0) === 0) {
+              setVisitsError(lpsResult.data.errors.length > 0
+                ? lpsResult.data.errors.join(' | ')
+                : 'GA4 retornou 0 visualizações para esse período.'
+              );
+            } else {
+              setVisitsError('');
+            }
           } else {
             console.error('GA4 visitors load error:', lpsResult.error);
             setVisits(0);

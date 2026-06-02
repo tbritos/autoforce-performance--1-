@@ -318,34 +318,26 @@ export async function getGA4SourceTotals(
     start = past.toISOString().split('T')[0];
   }
 
-  const jobs = configs.flatMap(config =>
-    config.propertyIds.map(async propertyId => {
+  const propertyIds = Array.from(new Set(configs.flatMap(config => config.propertyIds)));
+  const jobs = propertyIds.map(async propertyId => {
       const response = await client.properties.runReport({
         property: `properties/${propertyId}`,
         requestBody: {
           dateRanges: [{ startDate: start, endDate: end }],
-          dimensions: [{ name: 'pagePath' }],
           metrics: [
             { name: 'screenPageViews' },
             { name: 'activeUsers' },
           ],
-          limit: 100000,
         },
       });
 
-      const rows = response.data.rows || [];
-      return rows.reduce(
-        (acc: { views: number; users: number; pages: number }, row: any) => {
-          const metrics = row.metricValues || [];
-          acc.views += parseInt(metrics[0]?.value || '0', 10);
-          acc.users += parseInt(metrics[1]?.value || '0', 10);
-          acc.pages += 1;
-          return acc;
-        },
-        { views: 0, users: 0, pages: 0 }
-      );
-    })
-  );
+      const metrics = response.data.rows?.[0]?.metricValues || [];
+      return {
+        views: parseInt(metrics[0]?.value || '0', 10),
+        users: parseInt(metrics[1]?.value || '0', 10),
+        pages: 0,
+      };
+    });
 
   const results = await Promise.allSettled(jobs);
   const totals = results.reduce(
