@@ -1,8 +1,6 @@
 import { google } from 'googleapis';
 import { LandingPage } from '../types/dashboard.types'; 
 
-let analyticsDataClient: any = null;
-
 function parsePropertyIds(value?: string | null): string[] {
   return String(value || '')
     .split(',')
@@ -32,8 +30,6 @@ async function getGA4PropertyIds(): Promise<string[]> {
 }
 
 export async function initializeGA4Client() {
-  if (analyticsDataClient) return analyticsDataClient;
-
   let auth: any;
 
   // Try PlatformConnection OAuth token first
@@ -65,8 +61,7 @@ export async function initializeGA4Client() {
     }
   }
 
-  analyticsDataClient = google.analyticsdata({ version: 'v1beta', auth });
-  return analyticsDataClient;
+  return google.analyticsdata({ version: 'v1beta', auth });
 }
 
 export async function getLandingPagesFromGA4(
