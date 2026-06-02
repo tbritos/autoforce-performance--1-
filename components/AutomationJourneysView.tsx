@@ -1,13 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
+  ChevronLeft,
   Clock,
   Database,
   GitBranch,
   Mail,
   MessageCircle,
+  MoreHorizontal,
   MousePointer2,
   Pause,
+  Pencil,
   Play,
   Plus,
   RefreshCw,
@@ -98,11 +101,13 @@ const AutomationJourneysView: React.FC = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [journeys, setJourneys] = useState<AutomationJourney[]>([]);
   const [selected, setSelected] = useState<AutomationJourney>(emptyDraft());
+  const [viewMode, setViewMode] = useState<'list' | 'editor'>('list');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AutomationJourneyStatus>('all');
+  const [sortOrder, setSortOrder] = useState<'recent' | 'name' | 'executions'>('recent');
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
   const [dragNodeId, setDragNodeId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -128,8 +133,12 @@ const AutomationJourneysView: React.FC = () => {
       if (statusFilter !== 'all' && journey.status !== statusFilter) return false;
       if (!q) return true;
       return journey.name.toLowerCase().includes(q) || (journey.description ?? '').toLowerCase().includes(q);
+    }).sort((a, b) => {
+      if (sortOrder === 'name') return a.name.localeCompare(b.name);
+      if (sortOrder === 'executions') return getExecutions(b) - getExecutions(a);
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
-  }, [journeys, search, statusFilter]);
+  }, [journeys, search, statusFilter, sortOrder]);
 
   const selectedNode = selected.nodes.find(node => node.id === selectedNodeId) ?? null;
 
@@ -148,6 +157,14 @@ const AutomationJourneysView: React.FC = () => {
     setSelected(draft);
     setSelectedNodeId(draft.nodes[0]?.id ?? null);
     setConnectFrom(null);
+    setViewMode('editor');
+  };
+
+  const openJourney = (journey: AutomationJourney) => {
+    setSelected(journey);
+    setSelectedNodeId(null);
+    setConnectFrom(null);
+    setViewMode('editor');
   };
 
   const saveJourney = async () => {
@@ -188,6 +205,7 @@ const AutomationJourneysView: React.FC = () => {
     setJourneys(remaining);
     setSelected(remaining[0] ?? emptyDraft());
     setSelectedNodeId(null);
+    setViewMode('list');
   };
 
   const setStatus = (status: AutomationJourneyStatus) => {
@@ -365,11 +383,155 @@ const AutomationJourneysView: React.FC = () => {
     );
   };
 
+  const totalActive = journeys.filter(journey => journey.status === 'ACTIVE').length;
+  const totalPaused = journeys.filter(journey => journey.status === 'PAUSED').length;
+  const getExecutions = (journey: AutomationJourney) => {
+    const stored = journey.nodes.reduce((sum, node) => {
+      const value = node.config?.executions;
+      return sum + (typeof value === 'number' ? value : 0);
+    }, 0);
+    return stored || 0;
+  };
+
+  const toggleJourneyStatus = async (journey: AutomationJourney) => {
+    const nextStatus: AutomationJourneyStatus = journey.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
+    const updated = await DataService.updateAutomationJourney(journey.id, {
+      status: nextStatus,
+      isActive: nextStatus === 'ACTIVE',
+    });
+    setJourneys(prev => prev.map(item => item.id === journey.id ? updated : item));
+    if (selected.id === journey.id) setSelected(updated);
+  };
+
+  const pillStyle = (active: boolean): React.CSSProperties => ({
+    height: 38,
+    padding: '0 14px',
+    borderRadius: 'var(--r-md)',
+    border: '1px solid var(--border)',
+    background: active ? 'var(--accent-soft)' : 'var(--bg-surface)',
+    color: active ? 'var(--accent)' : 'var(--fg-primary)',
+    fontSize: 13,
+    fontWeight: 800,
+    cursor: 'pointer',
+  });
+
+  if (viewMode === 'list') {
+    return (
+      <div style={{ padding: '38px 28px 64px', maxWidth: 1140, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 18 }} className="animate-fade-in-up">
+        <header style={{ display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'start' }}>
+          <div>
+            <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--fg-primary)', margin: 0 }}>Automação / Jornadas</h1>
+            <p style={{ fontSize: 14, color: 'var(--fg-muted)', margin: '8px 0 0', maxWidth: 620, lineHeight: 1.45 }}>
+              Crie regras que classificam, roteiam e agem sobre seus leads automaticamente sem intervenção manual.
+            </p>
+          </div>
+          <button type="button" onClick={createJourney} className="ds-btn primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 42, padding: '0 20px', boxShadow: 'var(--shadow-md)' }}>
+            <Plus size={15} />
+            Nova regra
+          </button>
+        </header>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', width: 360, maxWidth: '100%' }}>
+              <Search size={15} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-muted)' }} />
+              <input
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+                placeholder="Buscar regra por nome ou campo..."
+                className="ds-input"
+                style={{ width: '100%', height: 38, paddingLeft: 38 }}
+              />
+            </div>
+            <button type="button" onClick={() => setStatusFilter('all')} style={pillStyle(statusFilter === 'all')}>Todas {journeys.length}</button>
+            <button type="button" onClick={() => setStatusFilter('ACTIVE')} style={pillStyle(statusFilter === 'ACTIVE')}>Ativas {totalActive}</button>
+            <button type="button" onClick={() => setStatusFilter('PAUSED')} style={pillStyle(statusFilter === 'PAUSED')}>Pausadas {totalPaused}</button>
+          </div>
+          <select value={sortOrder} onChange={event => setSortOrder(event.target.value as typeof sortOrder)} className="ds-input" style={{ width: 160, height: 38 }}>
+            <option value="recent">Mais recentes</option>
+            <option value="name">Nome</option>
+            <option value="executions">Execuções</option>
+          </select>
+        </div>
+
+        <section className="ds-card" style={{ padding: 0, overflow: 'hidden' }}>
+          {loading ? (
+            <div style={{ padding: 28, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--fg-muted)' }}>
+              <RefreshCw size={16} className="animate-spin" />
+              Carregando automações...
+            </div>
+          ) : filteredJourneys.length === 0 ? (
+            <div style={{ padding: 34, color: 'var(--fg-muted)', textAlign: 'center' }}>Nenhuma automação encontrada.</div>
+          ) : filteredJourneys.map((journey, index) => {
+            const isActive = journey.status === 'ACTIVE';
+            const executions = getExecutions(journey);
+            return (
+              <div
+                key={journey.id}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '58px 1fr 180px 42px 42px',
+                  gap: 14,
+                  alignItems: 'center',
+                  padding: '20px 18px',
+                  borderBottom: index === filteredJourneys.length - 1 ? 'none' : '1px solid var(--border)',
+                  minHeight: 64,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleJourneyStatus(journey)}
+                  title={isActive ? 'Pausar automação' : 'Ativar automação'}
+                  style={{
+                    width: 36,
+                    height: 22,
+                    borderRadius: 999,
+                    border: 'none',
+                    background: isActive ? 'var(--success)' : 'var(--bg-soft)',
+                    padding: 2,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    justifyContent: isActive ? 'flex-end' : 'flex-start',
+                    alignItems: 'center',
+                  }}
+                >
+                  <span style={{ width: 18, height: 18, borderRadius: 999, background: '#fff', display: 'block' }} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openJourney(journey)}
+                  style={{ border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer' }}
+                >
+                  <strong style={{ color: isActive ? 'var(--fg-primary)' : 'var(--fg-muted)', fontSize: 15 }}>{journey.name}</strong>
+                </button>
+                <div style={{ color: 'var(--fg-muted)', fontSize: 13 }}>
+                  {isActive ? (
+                    <><strong style={{ color: 'var(--fg-primary)' }}>{executions.toLocaleString('pt-BR')}</strong> execuções</>
+                  ) : 'Pausada'}
+                </div>
+                <button type="button" onClick={() => openJourney(journey)} title="Editar fluxo" style={{ border: 'none', background: 'transparent', color: 'var(--fg-muted)', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+                  <Pencil size={16} />
+                </button>
+                <button type="button" title="Mais opções" style={{ border: 'none', background: 'transparent', color: 'var(--fg-muted)', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+                  <MoreHorizontal size={17} />
+                </button>
+              </div>
+            );
+          })}
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: '24px 28px 64px', maxWidth: 1600, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }} className="animate-fade-in-up">
       <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-        <div>
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--fg-primary)', margin: 0 }}>Automacao/Jornadas</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button type="button" onClick={() => setViewMode('list')} className="ds-btn secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <ChevronLeft size={15} />
+            Voltar
+          </button>
+          <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--fg-primary)', margin: 0 }}>Editor da jornada</h1>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button type="button" onClick={load} className="ds-btn secondary" disabled={loading}>
@@ -386,80 +548,7 @@ const AutomationJourneysView: React.FC = () => {
         </div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '280px minmax(680px, 1fr) 300px', gap: 14, alignItems: 'stretch' }}>
-        <aside className="ds-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 720 }}>
-          <div style={{ position: 'relative' }}>
-            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-muted)' }} />
-            <input
-              value={search}
-              onChange={event => setSearch(event.target.value)}
-              placeholder="Buscar jornada..."
-              className="ds-input"
-              style={{ width: '100%', paddingLeft: 32 }}
-            />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-            {[
-              ['all', 'Todas'],
-              ['ACTIVE', 'Ativas'],
-              ['DRAFT', 'Rascunho'],
-              ['PAUSED', 'Pausadas'],
-            ].map(([key, label]) => {
-              const active = statusFilter === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setStatusFilter(key as typeof statusFilter)}
-                  style={{
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--r-md)',
-                    padding: '7px 8px',
-                    background: active ? 'var(--accent-soft)' : 'var(--bg-elevated)',
-                    color: active ? 'var(--accent)' : 'var(--fg-muted)',
-                    fontSize: 12,
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', paddingRight: 2 }}>
-            {filteredJourneys.map(journey => {
-              const active = selected.id === journey.id;
-              return (
-                <button
-                  key={journey.id}
-                  type="button"
-                  onClick={() => { setSelected(journey); setSelectedNodeId(null); setConnectFrom(null); }}
-                  style={{
-                    textAlign: 'left',
-                    border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-                    borderRadius: 'var(--r-lg)',
-                    padding: 12,
-                    background: active ? 'var(--accent-soft)' : 'var(--bg-elevated)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <strong style={{ color: 'var(--fg-primary)', fontSize: 13 }}>{journey.name}</strong>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 8, color: 'var(--fg-muted)', fontSize: 11 }}>
-                    <span>{journey.nodes.length} blocos</span>
-                    <span>{statusLabel[journey.status]}</span>
-                  </div>
-                </button>
-              );
-            })}
-            {!loading && filteredJourneys.length === 0 && (
-              <div style={{ color: 'var(--fg-muted)', fontSize: 13, padding: 12 }}>Nenhuma jornada encontrada.</div>
-            )}
-          </div>
-        </aside>
-
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(680px, 1fr) 300px', gap: 14, alignItems: 'stretch' }}>
         <main className="ds-card" style={{ overflow: 'hidden', minHeight: 720, display: 'grid', gridTemplateRows: 'auto 1fr' }}>
           <div style={{ padding: 14, borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr 170px 90px', gap: 10, alignItems: 'center' }}>
             <input
