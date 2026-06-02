@@ -90,14 +90,14 @@ async function getGA4SourceConfigs(source?: string | null, hostName?: string | n
         getStringMetadata(meta, ['lpPropertyIds', 'landingPagesPropertyIds', 'lpPropertyId', 'landingPagesPropertyId']) ||
         process.env.GA4_LP_PROPERTY_IDS ||
         process.env.GA4_LP_PROPERTY_ID ||
-        '459584870'
+        '484560591'
       ),
       hostNames: parseHostNames(getStringMetadata(meta, ['lpHostNames', 'lpHostName']) || process.env.GA4_LP_HOSTNAMES || process.env.LP_HOSTNAME || '*'),
     },
     {
       source: 'site',
       label: 'Site',
-      propertyIds: parsePropertyIds(getStringMetadata(meta, ['sitePropertyIds', 'sitePropertyId']) || process.env.GA4_SITE_PROPERTY_IDS || process.env.GA4_SITE_PROPERTY_ID || '379673982'),
+      propertyIds: parsePropertyIds(getStringMetadata(meta, ['sitePropertyIds', 'sitePropertyId']) || process.env.GA4_SITE_PROPERTY_IDS || process.env.GA4_SITE_PROPERTY_ID || '484560591'),
       hostNames: parseHostNames(getStringMetadata(meta, ['siteHostNames', 'siteHostName']) || process.env.GA4_SITE_HOSTNAMES || '*'),
     },
     {
