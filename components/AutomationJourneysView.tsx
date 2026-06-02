@@ -624,7 +624,7 @@ const AutomationJourneysView: React.FC = () => {
       {/* ── TOP HEADER BAR ─────────────────────────────────────────────────────── */}
       <header style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        gap: 16, padding: '0 20px', height: 60, flexShrink: 0,
+        gap: 16, padding: '0 20px', height: 58, flexShrink: 0,
         borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)',
       }}>
         {/* Left: back + breadcrumb + name + status */}
@@ -632,8 +632,11 @@ const AutomationJourneysView: React.FC = () => {
           <button
             type="button"
             onClick={() => navigate('/automation')}
-            className="ds-btn secondary"
-            style={{ width: 32, height: 32, padding: 0, display: 'grid', placeItems: 'center', flexShrink: 0 }}
+            style={{
+              width: 34, height: 34, padding: 0, display: 'grid', placeItems: 'center', flexShrink: 0,
+              border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-surface)',
+              color: 'var(--fg-muted)', cursor: 'pointer',
+            }}
           >
             <ChevronLeft size={16} />
           </button>
@@ -666,7 +669,7 @@ const AutomationJourneysView: React.FC = () => {
               </button>
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 5,
-                padding: '3px 9px', borderRadius: 999, fontSize: 12, fontWeight: 700, flexShrink: 0,
+                padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, flexShrink: 0,
                 background: selected.status === 'ACTIVE' ? 'rgba(34,197,94,0.12)' : selected.status === 'PAUSED' ? 'rgba(245,158,11,0.12)' : 'var(--bg-soft)',
                 color: selected.status === 'ACTIVE' ? '#22C55E' : selected.status === 'PAUSED' ? '#F59E0B' : 'var(--fg-muted)',
               }}>
@@ -678,34 +681,58 @@ const AutomationJourneysView: React.FC = () => {
         </div>
 
         {/* Right: action buttons */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+          {/* Icon-only circle buttons */}
           <button
             type="button"
             title="Histórico de execuções"
-            className="ds-btn secondary"
-            style={{ width: 36, height: 36, padding: 0, display: 'grid', placeItems: 'center' }}
+            style={{
+              width: 34, height: 34, padding: 0, display: 'grid', placeItems: 'center', flexShrink: 0,
+              border: '1px solid var(--border)', borderRadius: 999, background: 'var(--bg-surface)',
+              color: 'var(--fg-muted)', cursor: 'pointer',
+            }}
           >
             <Clock size={15} />
           </button>
           <button
             type="button"
             onClick={load}
-            className="ds-btn secondary"
             disabled={loading}
-            style={{ width: 36, height: 36, padding: 0, display: 'grid', placeItems: 'center' }}
+            title="Recarregar"
+            style={{
+              width: 34, height: 34, padding: 0, display: 'grid', placeItems: 'center', flexShrink: 0,
+              border: '1px solid var(--border)', borderRadius: 999, background: 'var(--bg-surface)',
+              color: 'var(--fg-muted)', cursor: 'pointer', opacity: loading ? 0.5 : 1,
+            }}
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           </button>
-          <button type="button" className="ds-btn secondary" style={{ display: 'inline-flex', gap: 6, alignItems: 'center', height: 36, padding: '0 14px' }}>
-            <Play size={12} style={{ fill: 'currentColor' }} />
+
+          {/* Divider */}
+          <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
+
+          {/* Text buttons */}
+          <button
+            type="button"
+            style={{
+              display: 'inline-flex', gap: 6, alignItems: 'center', height: 34, padding: '0 14px',
+              border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-surface)',
+              color: 'var(--fg-primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            <Play size={11} style={{ fill: 'currentColor' }} />
             Testar
           </button>
           <button
             type="button"
             onClick={saveJourney}
-            className="ds-btn secondary"
             disabled={saving || !selected.name.trim()}
-            style={{ display: 'inline-flex', gap: 6, alignItems: 'center', height: 36, padding: '0 14px' }}
+            style={{
+              display: 'inline-flex', gap: 6, alignItems: 'center', height: 34, padding: '0 14px',
+              border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-surface)',
+              color: 'var(--fg-primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              opacity: saving || !selected.name.trim() ? 0.5 : 1,
+            }}
           >
             {saving ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
             Salvar rascunho
@@ -713,9 +740,14 @@ const AutomationJourneysView: React.FC = () => {
           <button
             type="button"
             onClick={publishJourney}
-            className="ds-btn primary"
             disabled={saving || !selected.name.trim()}
-            style={{ display: 'inline-flex', gap: 6, alignItems: 'center', height: 36, padding: '0 16px', borderRadius: 999 }}
+            style={{
+              display: 'inline-flex', gap: 6, alignItems: 'center', height: 34, padding: '0 18px',
+              border: 'none', borderRadius: 999, background: 'var(--accent)',
+              color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              opacity: saving || !selected.name.trim() ? 0.6 : 1,
+              boxShadow: '0 2px 8px rgba(69,108,236,0.35)',
+            }}
           >
             <Check size={13} />
             Publicar
