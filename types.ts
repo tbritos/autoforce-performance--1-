@@ -260,6 +260,7 @@ export interface FunnelStats {
   impressions:   number;
   gaClicks:      number;
   gaUsers:       number;
+  gaErrors?:     string[];
   adSpend:       number;
   adImpressions: number;
   adClicks:      number;

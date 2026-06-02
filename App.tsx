@@ -188,14 +188,14 @@ const DashboardContent: React.FC<{
 
           setVisitsError('');
 
-          const [funnel, source, meta, google, curr, prev, lpsResult] = await Promise.all([
+          const [funnel, source, meta, google, curr, prev, funnelStatsResult] = await Promise.all([
             DataService.getFunnelCounts(),
             DataService.getLeadsBySource(),
             DataService.getMetaCampaigns(dateRange.start, dateRange.end),
             DataService.getGoogleAdsCampaigns(dateRange.start, dateRange.end),
             DataService.getLeadStats(dateRange.start, dateRange.end),
             DataService.getLeadStats(prevStartStr, prevEndStr),
-            DataService.getGA4Totals(dateRange.start, dateRange.end, 'all')
+            DataService.getFunnelStats(null, dateRange.start, dateRange.end)
               .then(data => ({ ok: true as const, data }))
               .catch(error => ({ ok: false as const, error })),
           ]);
@@ -204,20 +204,20 @@ const DashboardContent: React.FC<{
           setLeadsBySource(source);
           setMetaSpend(meta.reduce((s, c) => s + (c.spend || 0), 0));
           setGoogleSpend(google.reduce((s, c) => s + (c.spend || 0), 0));
-          if (lpsResult.ok) {
-            setVisits(lpsResult.data.views || 0);
-            if ((lpsResult.data.views || 0) === 0) {
-              setVisitsError(lpsResult.data.errors.length > 0
-                ? lpsResult.data.errors.join(' | ')
+          if (funnelStatsResult.ok) {
+            setVisits(funnelStatsResult.data.impressions || 0);
+            if ((funnelStatsResult.data.impressions || 0) === 0) {
+              setVisitsError((funnelStatsResult.data.gaErrors || []).length > 0
+                ? (funnelStatsResult.data.gaErrors || []).join(' | ')
                 : 'GA4 retornou 0 visualizações para esse período.'
               );
             } else {
               setVisitsError('');
             }
           } else {
-            console.error('GA4 visitors load error:', lpsResult.error);
+            console.error('GA4 visitors load error:', funnelStatsResult.error);
             setVisits(0);
-            setVisitsError(lpsResult.error instanceof Error ? lpsResult.error.message : 'Erro ao buscar visitantes no GA4.');
+            setVisitsError(funnelStatsResult.error instanceof Error ? funnelStatsResult.error.message : 'Erro ao buscar visitantes no GA4.');
           }
           setLeadStats(curr);
           setPrevLeadStats(prev);
