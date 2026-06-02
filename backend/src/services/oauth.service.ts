@@ -226,23 +226,25 @@ async function exchangeGoogleCode(code: string, platform: Platform): Promise<voi
     ? new Date(Date.now() + data.expires_in * 1000)
     : undefined;
 
-  // All Google platforms share the same tokens — save to each that was connected
-  const googlePlatforms: Platform[] = ['GOOGLE_ADS', 'GOOGLE_ANALYTICS', 'GOOGLE_CALENDAR'];
-  for (const p of googlePlatforms) {
-    await PlatformConnectionService.saveConnection({
-      platform: p,
-      accountId: info.email,
-      accountName: info.name || info.email,
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token,
-      tokenExpiry: expiry,
-      metadata: {
-        propertyId: process.env.GA4_PROPERTY_ID,
-        propertyIds: process.env.GA4_PROPERTY_IDS || process.env.GA4_PROPERTY_ID,
-        calendarId: process.env.GOOGLE_CALENDAR_ID || info.email,
-      },
-    });
+  // Save the token only for the Google product that completed OAuth.
+  const metadata: Record<string, unknown> = {};
+  if (platform === 'GOOGLE_ANALYTICS') {
+    metadata.propertyId = process.env.GA4_PROPERTY_ID;
+    metadata.propertyIds = process.env.GA4_PROPERTY_IDS || process.env.GA4_PROPERTY_ID;
   }
+  if (platform === 'GOOGLE_CALENDAR') {
+    metadata.calendarId = process.env.GOOGLE_CALENDAR_ID || info.email;
+  }
+
+  await PlatformConnectionService.saveConnection({
+    platform,
+    accountId: info.email,
+    accountName: info.name || info.email,
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    tokenExpiry: expiry,
+    metadata,
+  });
 }
 
 async function refreshGoogleToken(platform: Platform): Promise<string> {

@@ -54,6 +54,7 @@ const LPView: React.FC = () => {
   const [hostFilter, setHostFilter]   = useState<(typeof HOST_FILTERS)[number]['value']>('all');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd]     = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   const getDateRange = () => {
     const end = new Date();
@@ -71,11 +72,25 @@ const LPView: React.FC = () => {
     if (dateRange === 'custom' && (!s || !e)) return;
 
     setLoading(true);
+    setErrorMessage('');
 
-    const selectedHost = HOST_FILTERS.find(item => item.value === hostFilter)?.hostName;
-    const data = await DataService.getLandingPagesGA(s, e, selectedHost).catch(() => []);
-    setPages(Array.isArray(data) ? data : []);
-    setLoading(false);
+    const selectedFilter = HOST_FILTERS.find(item => item.value === hostFilter);
+    try {
+      const data = await DataService.getLandingPagesGA(
+        s,
+        e,
+        selectedFilter?.hostName,
+        hostFilter,
+        { throwOnError: true }
+      );
+      setPages(Array.isArray(data) ? data : []);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro ao buscar dados do Google Analytics.';
+      setErrorMessage(message);
+      setPages([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -186,6 +201,12 @@ const LPView: React.FC = () => {
       </div>
 
       {/* GA4 summary cards */}
+      {errorMessage && (
+        <div className="ds-card" style={{ padding: '12px 14px', borderColor: 'rgba(239,68,68,0.35)', background: 'rgba(239,68,68,0.08)', color: 'var(--red-500)', fontSize: 12, lineHeight: 1.5 }}>
+          {errorMessage}
+        </div>
+      )}
+
       {!loading && pages.length > 0 && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="ds-card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>

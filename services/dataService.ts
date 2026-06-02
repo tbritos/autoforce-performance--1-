@@ -77,13 +77,16 @@ export const DataService = {
   getLandingPagesGA: async (
     startDate?: string,
     endDate?: string,
-    hostName?: string
+    hostName?: string,
+    source?: 'all' | 'lp' | 'site' | 'blog',
+    options?: { throwOnError?: boolean }
   ): Promise<LandingPage[]> => {
     try {
       const params = new URLSearchParams();
       if (startDate) params.set('startDate', startDate);
       if (endDate) params.set('endDate', endDate);
       if (hostName) params.set('hostName', hostName);
+      if (source && source !== 'all') params.set('source', source);
       const query = params.toString();
       const url = query ? `/analytics/landing-pages?${query}` : '/analytics/landing-pages';
       const rawData = await apiClient.get<any[]>(url);
@@ -103,7 +106,10 @@ export const DataService = {
           source: item.source,
         }));
       }
-    } catch (error) { console.error(error); }
+    } catch (error) {
+      console.error(error);
+      if (options?.throwOnError) throw error;
+    }
     return [];
   },
 

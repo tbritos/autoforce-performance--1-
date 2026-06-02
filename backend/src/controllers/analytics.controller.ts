@@ -10,14 +10,15 @@ export const getLandingPages = async (
 ) => {
   try {
     // Pega as datas que o Frontend mandou
-    const { startDate, endDate, hostName } = req.query;
+    const { startDate, endDate, hostName, source } = req.query;
 
     // CHAMA A FUNÇÃO DE SINCRONIZAR (SALVAR)
     // Passamos as datas para ele buscar o período correto no Google e salvar no banco
     const pages = await AnalyticsService.getLandingPages(
       startDate as string,
       endDate as string,
-      hostName as string
+      hostName as string,
+      source as string
     );
     
     res.json(pages);
@@ -29,7 +30,13 @@ export const getLandingPages = async (
 
 export const syncGA4 = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const pages = await syncLandingPagesFromGA4();
+    const { startDate, endDate, hostName, source } = req.query;
+    const pages = await syncLandingPagesFromGA4(
+      startDate as string,
+      endDate as string,
+      hostName as string,
+      source as string
+    );
     res.json({ 
       message: 'Sincronização com Google Analytics concluída',
       pages: pages.length 

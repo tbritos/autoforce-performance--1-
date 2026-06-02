@@ -1,30 +1,46 @@
 import { prisma } from '../config/database';
 import { LandingPage } from '../types/dashboard.types';
 import { syncLandingPagesFromGA4 } from './googleAnalytics.service';
+import { PlatformConnectionService } from './platform-connection.service';
 
 export class AnalyticsService {
+  private static async canUseGA4(): Promise<boolean> {
+    if (process.env.GA4_PROPERTY_IDS || process.env.GA4_PROPERTY_ID) return true;
+
+    const conn = await PlatformConnectionService.getInternalConnection('GOOGLE_ANALYTICS');
+    const meta = conn?.metadata as Record<string, any> | null;
+
+    return Boolean(
+      conn?.accessToken ||
+      meta?.propertyId ||
+      meta?.propertyIds ||
+      meta?.sources ||
+      meta?.lpPropertyId ||
+      meta?.sitePropertyId ||
+      meta?.blogPropertyId
+    );
+  }
+
   /**
-   * Busca landing pages do Google Analytics 4 e sincroniza com o banco
+   * Busca paginas do Google Analytics 4 e sincroniza com o banco.
    */
   static async getLandingPages(
     startDate?: string,
     endDate?: string,
-    hostName?: string
+    hostName?: string,
+    source?: string
   ): Promise<LandingPage[]> {
-    const useGA4 = !!(process.env.GA4_PROPERTY_IDS || process.env.GA4_PROPERTY_ID);
-
-    if (useGA4) {
+    if (await this.canUseGA4()) {
       try {
-        const pages = await syncLandingPagesFromGA4(startDate, endDate, hostName);
-        return pages;
+        return await syncLandingPagesFromGA4(startDate, endDate, hostName, source);
       } catch (error: any) {
-        console.error('Erro ao buscar do GA4, usando dados do banco:', error.message);
-        // Se falhar, retorna dados do banco (pode estar vazio)
+        console.error('Erro ao buscar do GA4:', error.message);
+        throw error;
       }
     }
 
-    // Se GA4 não configurado ou erro, retorna do banco
     const pages = await prisma.landingPage.findMany({
+      where: hostName ? { path: { startsWith: hostName } } : undefined,
       orderBy: { conversionRate: 'desc' },
     });
 
@@ -44,13 +60,13 @@ export class AnalyticsService {
   }
 
   /**
-   * Força sincronização com GA4 (endpoint manual)
+   * Forca sincronizacao manual com GA4.
    */
   static async syncWithGA4(): Promise<LandingPage[]> {
-    if (!process.env.GA4_PROPERTY_IDS && !process.env.GA4_PROPERTY_ID) {
-      throw new Error('Google Analytics 4 não está configurado. Configure GA4_PROPERTY_IDS no .env ou na tela de Integrações');
+    if (!(await this.canUseGA4())) {
+      throw new Error('Google Analytics 4 nao esta configurado. Configure as propriedades no .env ou na tela de Integracoes.');
     }
 
-    return await syncLandingPagesFromGA4();
+    return syncLandingPagesFromGA4();
   }
 }
