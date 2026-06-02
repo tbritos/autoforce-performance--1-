@@ -24,6 +24,9 @@ import {
   Workflow,
   X,
   Zap,
+  UserPlus,
+  TrendingUp,
+  ArrowRight,
 } from 'lucide-react';
 import { DataService } from '../services/dataService';
 import {
@@ -1040,7 +1043,72 @@ const AutomationJourneysView: React.FC = () => {
                   )}
 
                   {/* Type-specific fields */}
-                  {panelNode.type === 'trigger' && panelTextField('event', 'Evento de entrada', 'webhook_received, tag_added...')}
+                  {panelNode.type === 'trigger' && (() => {
+                    const triggerOptions = [
+                      { value: 'lead_created',    icon: UserPlus,     label: 'Lead entrou na base',     description: 'Novo lead cadastrado na base',           subField: null },
+                      { value: 'tag_added',       icon: Tags,         label: 'Tag aplicada',            description: 'Uma tag foi adicionada ao lead',         subField: { label: 'Qual tag?', placeholder: 'ex: lead_quente, decisor...' } },
+                      { value: 'score_reached',   icon: TrendingUp,   label: 'Score atingiu limite',    description: 'Score chegou a um valor mínimo',         subField: { label: 'Score mínimo', placeholder: 'ex: 50' } },
+                      { value: 'rd_conversion',   icon: Mail,         label: 'Conversão RD Station',    description: 'Conversão registrada no RD Station',     subField: { label: 'Identificador', placeholder: 'ex: interesse_produto' } },
+                      { value: 'webhook_received',icon: Zap,          label: 'Webhook recebido',        description: 'Evento enviado por webhook externo',     subField: { label: 'Nome do evento', placeholder: 'ex: form_submitted' } },
+                      { value: 'status_changed',  icon: ArrowRight,   label: 'Etapa mudou',             description: 'Status do lead mudou para uma etapa',   subField: { label: 'Nova etapa', placeholder: 'ex: MQL, SQL, Oportunidade...' } },
+                    ];
+                    const selected = panelValues.config.event || '';
+                    const active = triggerOptions.find(o => o.value === selected);
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                          Qual é o gatilho?
+                        </span>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          {triggerOptions.map(opt => {
+                            const OIcon = opt.icon;
+                            const isSelected = selected === opt.value;
+                            return (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, event: opt.value, eventValue: '' } } : prev)}
+                                style={{
+                                  display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 13px',
+                                  border: `1.5px solid ${isSelected ? '#456CEC' : 'var(--border)'}`,
+                                  borderRadius: 10,
+                                  background: isSelected ? 'rgba(69,108,236,0.07)' : 'var(--bg-surface)',
+                                  cursor: 'pointer', textAlign: 'left',
+                                  transition: 'border-color .12s, background .12s',
+                                }}
+                              >
+                                <span style={{
+                                  width: 30, height: 30, borderRadius: 8, display: 'grid', placeItems: 'center', flexShrink: 0,
+                                  background: isSelected ? 'rgba(69,108,236,0.14)' : 'var(--bg-soft)',
+                                  color: isSelected ? '#456CEC' : 'var(--fg-muted)',
+                                }}>
+                                  <OIcon size={14} />
+                                </span>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: isSelected ? '#456CEC' : 'var(--fg-primary)', lineHeight: 1.3 }}>{opt.label}</div>
+                                  <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 3, lineHeight: 1.35 }}>{opt.description}</div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {active?.subField && (
+                          <label style={{ display: 'grid', gap: 7 }}>
+                            <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+                              {active.subField.label}
+                            </span>
+                            <input
+                              value={String(panelValues.config.eventValue ?? '')}
+                              onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, eventValue: e.target.value } } : prev)}
+                              placeholder={active.subField.placeholder}
+                              className="ds-input"
+                              style={{ width: '100%', fontSize: 14 }}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {panelNode.type === 'condition' && (<>
                     {panelTextField('field', 'Campo ou tag', 'jobTitle, tags, score...')}
                     {panelTextField('operator', 'Operador', 'contém, igual, maior que...')}
