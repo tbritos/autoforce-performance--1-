@@ -163,6 +163,7 @@ const DashboardContent: React.FC<{
     const [metaSpend, setMetaSpend]   = useState(0);
     const [googleSpend, setGoogleSpend] = useState(0);
     const [visits, setVisits]         = useState(0);
+    const [visitsError, setVisitsError] = useState('');
     const [insightsLoading, setInsightsLoading] = useState(true);
 
     // ── Lead KPI stats from Lead table (replaces DailyLead) ──────────────────
@@ -184,21 +185,31 @@ const DashboardContent: React.FC<{
           const prevStartStr = prevStart.toISOString().split('T')[0];
           const prevEndStr   = prevEnd.toISOString().split('T')[0];
 
-          const [funnel, source, meta, google, lps, curr, prev] = await Promise.all([
+          setVisitsError('');
+
+          const [funnel, source, meta, google, curr, prev, lpsResult] = await Promise.all([
             DataService.getFunnelCounts(),
             DataService.getLeadsBySource(),
             DataService.getMetaCampaigns(dateRange.start, dateRange.end),
             DataService.getGoogleAdsCampaigns(dateRange.start, dateRange.end),
-            DataService.getLandingPagesGA(dateRange.start, dateRange.end),
             DataService.getLeadStats(dateRange.start, dateRange.end),
             DataService.getLeadStats(prevStartStr, prevEndStr),
+            DataService.getLandingPagesGA(dateRange.start, dateRange.end, undefined, 'all', { throwOnError: true })
+              .then(data => ({ ok: true as const, data }))
+              .catch(error => ({ ok: false as const, error })),
           ]);
           if (cancelled) return;
           setFunnelCounts(funnel);
           setLeadsBySource(source);
           setMetaSpend(meta.reduce((s, c) => s + (c.spend || 0), 0));
           setGoogleSpend(google.reduce((s, c) => s + (c.spend || 0), 0));
-          setVisits(lps.reduce((s, lp) => s + (lp.users || 0), 0));
+          if (lpsResult.ok) {
+            setVisits(lpsResult.data.reduce((s, lp) => s + (lp.users || 0), 0));
+          } else {
+            console.error('GA4 visitors load error:', lpsResult.error);
+            setVisits(0);
+            setVisitsError(lpsResult.error instanceof Error ? lpsResult.error.message : 'Erro ao buscar visitantes no GA4.');
+          }
           setLeadStats(curr);
           setPrevLeadStats(prev);
         } catch (err) {
@@ -540,6 +551,11 @@ const DashboardContent: React.FC<{
               </div>
               <div style={{ padding: '16px 20px 20px' }}>
                 <FunnelChart steps={funnelSteps} isLoading={loadingData || insightsLoading} />
+                {visitsError && (
+                  <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 'var(--r-md)', border: '1px solid rgba(239,68,68,0.28)', background: 'rgba(239,68,68,0.08)', color: 'var(--red-500)', fontSize: 12 }}>
+                    Visitantes não carregaram porque o Google Analytics retornou erro. {visitsError}
+                  </div>
+                )}
               </div>
             </div>
 
