@@ -122,9 +122,9 @@ export class FunnelService {
     const [statusRows, leadEmails, ga4Agg, adsAgg] = await Promise.all([
       prisma.lead.groupBy({ by: ['status'], where, _count: { id: true } }),
       prisma.lead.findMany({ where, select: { email: true } }),
-      ga4Where
+      (ga4Where || funnelId === null)
         ? prisma.landingPage.aggregate({
-            where: ga4Where,
+            where: ga4Where,   // undefined on unified view = aggregate ALL pages
             _sum: { views: true, totalClicks: true, users: true },
           })
         : Promise.resolve({ _sum: { views: 0, totalClicks: 0, users: 0 } }),
