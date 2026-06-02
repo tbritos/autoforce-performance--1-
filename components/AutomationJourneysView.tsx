@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Activity,
   ChevronLeft,
   Clock,
   Database,
@@ -296,13 +295,7 @@ const AutomationJourneysView: React.FC = () => {
   };
 
   const renderConfigFields = () => {
-    if (!selectedNode) {
-      return (
-        <div style={{ color: 'var(--fg-muted)', fontSize: 13, lineHeight: 1.5 }}>
-          Selecione um bloco no canvas para editar nome e configuracoes.
-        </div>
-      );
-    }
+    if (!selectedNode) return null;
 
     const config = selectedNode.config ?? {};
     const textField = (key: string, label: string, placeholder: string) => (
@@ -319,7 +312,11 @@ const AutomationJourneysView: React.FC = () => {
     );
 
     return (
-      <div style={{ display: 'grid', gap: 12 }}>
+      <div
+        onMouseDown={event => event.stopPropagation()}
+        onClick={event => event.stopPropagation()}
+        style={{ display: 'grid', gap: 10, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}
+      >
         <label style={{ display: 'grid', gap: 6 }}>
           <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Nome do bloco</span>
           <input
@@ -374,7 +371,7 @@ const AutomationJourneysView: React.FC = () => {
           type="button"
           onClick={() => removeNode(selectedNode.id)}
           className="ds-btn danger"
-          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 34 }}
         >
           <Trash2 size={14} />
           Remover bloco
@@ -548,7 +545,7 @@ const AutomationJourneysView: React.FC = () => {
         </div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(680px, 1fr) 300px', gap: 14, alignItems: 'stretch' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(680px, 1fr)', gap: 14, alignItems: 'stretch' }}>
         <main className="ds-card" style={{ overflow: 'hidden', minHeight: 720, display: 'grid', gridTemplateRows: 'auto 1fr' }}>
           <div style={{ padding: 14, borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr 170px 90px', gap: 10, alignItems: 'center' }}>
             <input
@@ -625,7 +622,8 @@ const AutomationJourneysView: React.FC = () => {
                   const source = selected.nodes.find(node => node.id === edge.source);
                   const target = selected.nodes.find(node => node.id === edge.target);
                   if (!source || !target) return null;
-                  const x1 = source.x + NODE_W;
+                  const sourceWidth = selectedNodeId === source.id ? 320 : NODE_W;
+                  const x1 = source.x + sourceWidth;
                   const y1 = source.y + NODE_H / 2;
                   const x2 = target.x;
                   const y2 = target.y + NODE_H / 2;
@@ -661,7 +659,7 @@ const AutomationJourneysView: React.FC = () => {
                     title="Remover conexao"
                     style={{
                       position: 'absolute',
-                      left: (source.x + target.x + NODE_W) / 2,
+                      left: (source.x + target.x + (selectedNodeId === source.id ? 320 : NODE_W)) / 2,
                       top: (source.y + target.y + NODE_H) / 2 - 12,
                       width: 22,
                       height: 22,
@@ -685,6 +683,7 @@ const AutomationJourneysView: React.FC = () => {
                 const Icon = meta.icon;
                 const active = selectedNodeId === node.id;
                 const connecting = connectFrom === node.id;
+                const nodeWidth = active ? 320 : NODE_W;
                 return (
                   <div
                     key={node.id}
@@ -694,7 +693,7 @@ const AutomationJourneysView: React.FC = () => {
                       position: 'absolute',
                       left: node.x,
                       top: node.y,
-                      width: NODE_W,
+                      width: nodeWidth,
                       minHeight: NODE_H,
                       border: `1px solid ${active || connecting ? meta.color : 'var(--border)'}`,
                       borderRadius: 'var(--r-lg)',
@@ -734,6 +733,7 @@ const AutomationJourneysView: React.FC = () => {
                       </button>
                       <MousePointer2 size={13} style={{ color: 'var(--fg-subtle)' }} />
                     </div>
+                    {active && renderConfigFields()}
                   </div>
                 );
               })}
@@ -747,39 +747,6 @@ const AutomationJourneysView: React.FC = () => {
           </div>
         </main>
 
-        <aside className="ds-card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 14, minHeight: 720 }}>
-          <div>
-            <h2 style={{ margin: 0, color: 'var(--fg-primary)', fontSize: 15, fontWeight: 900 }}>Configuracao</h2>
-          </div>
-
-          <label style={{ display: 'grid', gap: 6 }}>
-            <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Descricao</span>
-            <textarea
-              value={selected.description ?? ''}
-              onChange={event => updateSelected({ description: event.target.value })}
-              className="ds-input"
-              rows={3}
-              style={{ width: '100%', resize: 'vertical' }}
-            />
-          </label>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: 10, background: 'var(--bg-elevated)' }}>
-              <Activity size={14} style={{ color: 'var(--accent)', marginBottom: 7 }} />
-              <strong style={{ display: 'block', color: 'var(--fg-primary)', fontSize: 18 }}>{selected.nodes.length}</strong>
-              <span style={{ color: 'var(--fg-muted)', fontSize: 11 }}>blocos</span>
-            </div>
-            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: 10, background: 'var(--bg-elevated)' }}>
-              <Workflow size={14} style={{ color: 'var(--accent)', marginBottom: 7 }} />
-              <strong style={{ display: 'block', color: 'var(--fg-primary)', fontSize: 18 }}>{selected.edges.length}</strong>
-              <span style={{ color: 'var(--fg-muted)', fontSize: 11 }}>ligacoes</span>
-            </div>
-          </div>
-
-          <div style={{ height: 1, background: 'var(--border)' }} />
-
-          {renderConfigFields()}
-        </aside>
       </div>
     </div>
   );
