@@ -188,6 +188,29 @@ const DashboardContent: React.FC<{
 
           setVisitsError('');
 
+          const loadGA4Visits = async () => {
+            const sources = ['lp', 'site', 'blog'] as const;
+            const results = await Promise.allSettled(
+              sources.map(src => DataService.getLandingPagesGA(dateRange.start, dateRange.end, undefined, src, { throwOnError: true }))
+            );
+            const pages = results.flatMap(result => result.status === 'fulfilled' ? result.value : []);
+            const errors = results
+              .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+              .map(result => result.reason instanceof Error ? result.reason.message : String(result.reason));
+            const uniquePages = new Map<string, LandingPage>();
+            for (const page of pages) {
+              const current = uniquePages.get(page.path);
+              if (!current) {
+                uniquePages.set(page.path, { ...page });
+                continue;
+              }
+              current.views += page.views || 0;
+              current.users += page.users || 0;
+              current.totalClicks += page.totalClicks || 0;
+            }
+            return { pages: Array.from(uniquePages.values()), errors };
+          };
+
           const [funnel, source, meta, google, curr, prev, lpsResult] = await Promise.all([
             DataService.getFunnelCounts(),
             DataService.getLeadsBySource(),
@@ -195,7 +218,7 @@ const DashboardContent: React.FC<{
             DataService.getGoogleAdsCampaigns(dateRange.start, dateRange.end),
             DataService.getLeadStats(dateRange.start, dateRange.end),
             DataService.getLeadStats(prevStartStr, prevEndStr),
-            DataService.getLandingPagesGA(dateRange.start, dateRange.end, undefined, 'all', { throwOnError: true })
+            loadGA4Visits()
               .then(data => ({ ok: true as const, data }))
               .catch(error => ({ ok: false as const, error })),
           ]);
@@ -205,7 +228,11 @@ const DashboardContent: React.FC<{
           setMetaSpend(meta.reduce((s, c) => s + (c.spend || 0), 0));
           setGoogleSpend(google.reduce((s, c) => s + (c.spend || 0), 0));
           if (lpsResult.ok) {
-            setVisits(lpsResult.data.reduce((s, lp) => s + (lp.users || 0), 0));
+            setVisits(lpsResult.data.pages.reduce((s, lp) => s + (lp.views || 0), 0));
+            setVisitsError(lpsResult.data.pages.length === 0 && lpsResult.data.errors.length > 0
+              ? lpsResult.data.errors.join(' | ')
+              : ''
+            );
           } else {
             console.error('GA4 visitors load error:', lpsResult.error);
             setVisits(0);
