@@ -847,26 +847,41 @@ const AppContent: React.FC = () => {
     try {
       // Sempre busca mÃ©tricas do header se nÃ£o tiver
       if (metrics.length === 0) {
-        const dashboardMetrics = await DataService.getDashboardMetrics();
+        const dashboardMetrics = await DataService.getDashboardMetrics().catch(error => {
+          console.warn('Dashboard metrics load skipped:', error);
+          return [];
+        });
         setMetrics(Array.isArray(dashboardMetrics) ? dashboardMetrics : []);
       }
 
       // LÃ³gica de Fetch baseada na URL
       if (pathname === '/' || pathname === '/dashboard') {
         if (dailyLeads.length === 0) {
-            const history = await DataService.getDailyLeadsHistory();
+            const history = await DataService.getDailyLeadsHistory().catch(error => {
+              console.warn('Daily leads history load skipped:', error);
+              return [];
+            });
             setDailyLeads(history || []);
         }
         if (revenueHistory.length === 0) {
-            const revenue = await DataService.getRevenueHistory();
+            const revenue = await DataService.getRevenueHistory().catch(error => {
+              console.warn('Revenue history load skipped:', error);
+              return [];
+            });
             setRevenueHistory(revenue || []);
         }
         if (landingPages.length === 0) {
-            const lps = await DataService.getLandingPagesGA(); 
+            const lps = await DataService.getLandingPagesGA().catch(error => {
+              console.warn('Landing pages load skipped:', error);
+              return [];
+            }); 
             setLandingPages(lps || []);
         }
       } else if (pathname.includes('analytics') && landingPages.length === 0) {
-        const lps = await DataService.getLandingPagesGA();
+        const lps = await DataService.getLandingPagesGA().catch(error => {
+          console.warn('Analytics landing pages load skipped:', error);
+          return [];
+        });
         setLandingPages(lps || []);
       }
     } catch (error) {

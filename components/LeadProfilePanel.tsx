@@ -672,7 +672,10 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
     setLoading(true);
     Promise.all([
       leadId ? DataService.getLeadProfileById(leadId) : DataService.getLeadProfile(email ?? ''),
-      DataService.listCustomFieldDefs(),
+      DataService.listCustomFieldDefs().catch(err => {
+        console.warn('Lead profile custom fields load skipped:', err);
+        return [];
+      }),
     ]).then(([p, defs]) => {
       if (cancelled) return;
       setProfile(p);

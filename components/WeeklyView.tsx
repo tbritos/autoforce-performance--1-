@@ -42,8 +42,14 @@ const WeeklyView: React.FC = () => {
       setLoading(true);
       try {
         const [leadsData, revenueData] = await Promise.all([
-          DataService.getDailyLeadsHistory(),
-          DataService.getRevenueHistory(),
+          DataService.getDailyLeadsHistory().catch(error => {
+            console.warn('Weekly daily leads load skipped:', error);
+            return [];
+          }),
+          DataService.getRevenueHistory().catch(error => {
+            console.warn('Weekly revenue load skipped:', error);
+            return [];
+          }),
         ]);
         setDailyLeads(Array.isArray(leadsData) ? leadsData : []);
         setRevenueHistory(Array.isArray(revenueData) ? revenueData : []);
@@ -239,7 +245,7 @@ const WeeklyView: React.FC = () => {
     }));
 
     try {
-      const rows = await Promise.all(
+      const results = await Promise.allSettled(
         campaignPeriods.map(async (period) => {
           const data = await DataService.getMetaCampaigns(formatISO(period.start), formatISO(period.end));
           const match = (data || []).find(item => item.id === campaign.id);
@@ -253,6 +259,18 @@ const WeeklyView: React.FC = () => {
             cpm: match?.cpm || 0,
           };
         })
+      );
+      const rows = results.map((result, index) => result.status === 'fulfilled'
+        ? result.value
+        : {
+            label: campaignPeriods[index]?.label || '',
+            spend: 0,
+            ctr: 0,
+            reach: 0,
+            impressions: 0,
+            cpc: 0,
+            cpm: 0,
+          }
       );
 
       setCampaignDetails(prev => ({

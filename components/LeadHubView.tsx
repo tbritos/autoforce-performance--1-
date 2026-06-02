@@ -161,10 +161,13 @@ const LeadHubView: React.FC = () => {
           page,
           pageSize: 25,
         }),
-        DataService.getFunnelCounts(),
+        DataService.getFunnelCounts().catch(err => {
+          console.warn('Lead hub funnel counts load skipped:', err);
+          return null;
+        }),
       ]);
       setResult(listRes);
-      setFunnel(funnelRes);
+      if (funnelRes) setFunnel(funnelRes);
     } catch (err) {
       console.error('Erro ao carregar leads:', err);
     } finally {

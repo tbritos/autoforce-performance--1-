@@ -271,8 +271,14 @@ const ConnectionsView: React.FC = () => {
     setLoading(true);
     try {
       const [data, requirementData] = await Promise.all([
-        DataService.listConnections(),
-        DataService.listConnectionRequirements(),
+        DataService.listConnections().catch(err => {
+          console.warn('Connections list load skipped:', err);
+          return [];
+        }),
+        DataService.listConnectionRequirements().catch(err => {
+          console.warn('Connection requirements load skipped:', err);
+          return [];
+        }),
       ]);
       setConnections(Array.isArray(data) ? data : []);
       setRequirements(Array.isArray(requirementData) ? requirementData : []);

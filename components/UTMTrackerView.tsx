@@ -486,8 +486,14 @@ const UTMTrackerView: React.FC = () => {
 
   useEffect(() => {
     Promise.all([
-      DataService.listUTMDestinations(),
-      DataService.listUTMCampaigns(),
+      DataService.listUTMDestinations().catch(err => {
+        console.warn('UTM destinations load skipped:', err);
+        return [];
+      }),
+      DataService.listUTMCampaigns().catch(err => {
+        console.warn('UTM campaigns load skipped:', err);
+        return [];
+      }),
     ]).then(([d, c]) => {
       setDestinations(d);
       setCampaigns(c);
