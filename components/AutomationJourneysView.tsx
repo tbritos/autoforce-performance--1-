@@ -518,7 +518,7 @@ const AutomationJourneysView: React.FC = () => {
       <div style={{ padding: '38px 28px 64px', maxWidth: 1140, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 18 }} className="animate-fade-in-up">
         <header style={{ display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'start' }}>
           <div>
-            <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--fg-primary)', margin: 0 }}>Automação / Jornadas</h1>
+            <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--fg-primary)', margin: 0 }}>Automação</h1>
             <p style={{ fontSize: 14, color: 'var(--fg-muted)', margin: '8px 0 0', maxWidth: 620, lineHeight: 1.45 }}>
               Crie regras que classificam, roteiam e agem sobre seus leads automaticamente sem intervenção manual.
             </p>

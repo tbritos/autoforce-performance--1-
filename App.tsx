@@ -922,7 +922,7 @@ const AppContent: React.FC = () => {
     {
       label: 'AUTOMACAO',
       items: [
-        { label: 'Automacao/Jornadas', path: '/automation', icon: Workflow },
+        { label: 'Automacao', path: '/automation', icon: Workflow },
       ],
     },
     {
