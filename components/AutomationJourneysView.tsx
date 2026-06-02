@@ -21,6 +21,7 @@ import {
   Trash2,
   Workflow,
   X,
+  Zap,
 } from 'lucide-react';
 import { DataService } from '../services/dataService';
 import {
@@ -41,7 +42,7 @@ const BLOCKS: Array<{
   color: string;
   icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
 }> = [
-  { type: 'trigger', label: 'Entrada', description: 'Lead entrou, tag aplicada ou webhook recebido', color: '#456CEC', icon: Play },
+  { type: 'trigger', label: 'Entrada', description: 'Lead entrou, tag aplicada ou webhook recebido', color: '#456CEC', icon: Zap },
   { type: 'condition', label: 'Condicao', description: 'Cargo, tag, score, dor, origem ou campo', color: '#22C55E', icon: GitBranch },
   { type: 'wait', label: 'Esperar', description: 'Aguardar horas ou dias antes do proximo passo', color: '#F59E0B', icon: Clock },
   { type: 'internal_action', label: 'Acao interna', description: 'Adicionar tag, score, etapa ou campo', color: '#14B8A6', icon: Tags },
@@ -212,6 +213,21 @@ const AutomationJourneysView: React.FC = () => {
   const [dragNodeId, setDragNodeId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [editingName, setEditingName] = useState(false);
+  const [panelValues, setPanelValues] = useState<{ label: string; config: Record<string, string> } | null>(null);
+
+  useEffect(() => {
+    if (!selectedNodeId) { setPanelValues(null); return; }
+    const node = selected.nodes.find(n => n.id === selectedNodeId);
+    if (!node) { setPanelValues(null); return; }
+    setPanelValues({ label: node.label, config: { ...(node.config ?? {}) } });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedNodeId]);
+
+  const savePanel = () => {
+    if (!selectedNodeId || !panelValues) return;
+    updateNode(selectedNodeId, { label: panelValues.label, config: panelValues.config });
+    setSelectedNodeId(null);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -241,7 +257,6 @@ const AutomationJourneysView: React.FC = () => {
     });
   }, [journeys, search, statusFilter, sortOrder]);
 
-  const selectedNode = selected.nodes.find(node => node.id === selectedNodeId) ?? null;
 
   const updateSelected = (changes: Partial<AutomationJourney>) => {
     setSelected(prev => ({ ...prev, ...changes, updatedAt: new Date().toISOString() }));
@@ -415,98 +430,18 @@ const AutomationJourneysView: React.FC = () => {
     });
   };
 
-  const updateNodeConfig = (key: string, value: string) => {
-    if (!selectedNode) return;
-    updateNode(selectedNode.id, {
-      config: { ...(selectedNode.config ?? {}), [key]: value },
-    });
-  };
-
-  const renderConfigFields = () => {
-    if (!selectedNode) return null;
-
-    const config = selectedNode.config ?? {};
-    const textField = (key: string, label: string, placeholder: string) => (
-      <label style={{ display: 'grid', gap: 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</span>
-        <input
-          value={String(config[key] ?? '')}
-          onChange={event => updateNodeConfig(key, event.target.value)}
-          placeholder={placeholder}
-          className="ds-input"
-          style={{ width: '100%' }}
-        />
-      </label>
-    );
-
-    return (
-      <div
-        onMouseDown={event => event.stopPropagation()}
-        onClick={event => event.stopPropagation()}
-        style={{ display: 'grid', gap: 10, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}
-      >
-        <label style={{ display: 'grid', gap: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Nome do bloco</span>
-          <input
-            value={selectedNode.label}
-            onChange={event => updateNode(selectedNode.id, { label: event.target.value })}
-            className="ds-input"
-            style={{ width: '100%' }}
-          />
-        </label>
-
-        {selectedNode.type === 'trigger' && textField('event', 'Evento de entrada', 'webhook_received, tag_added...')}
-        {selectedNode.type === 'condition' && (
-          <>
-            {textField('field', 'Campo ou tag', 'jobTitle, tags, score...')}
-            {textField('operator', 'Operador', 'contém, igual, maior que...')}
-            {textField('value', 'Valor', 'CEO, decisor, 50...')}
-          </>
-        )}
-        {selectedNode.type === 'wait' && (
-          <>
-            {textField('amount', 'Tempo', '2')}
-            {textField('unit', 'Unidade', 'horas ou dias')}
-          </>
-        )}
-        {selectedNode.type === 'internal_action' && (
-          <>
-            {textField('action', 'Acao', 'add_tag, set_status, add_score...')}
-            {textField('value', 'Valor', 'persona:decisor, MQL, 10...')}
-          </>
-        )}
-        {selectedNode.type === 'rd_conversion' && (
-          <>
-            {textField('conversionIdentifier', 'Identificador', 'interesse_decisor')}
-            {textField('conversionName', 'Nome da conversao', 'Interesse - Decisor')}
-          </>
-        )}
-        {selectedNode.type === 'whatsapp_message' && (
-          <>
-            {textField('templateName', 'Template WhatsApp', 'diagnostico_site_01')}
-            {textField('messageGoal', 'Objetivo', 'Convidar para diagnostico')}
-          </>
-        )}
-        {selectedNode.type === 'pipedrive_action' && (
-          <>
-            {textField('action', 'Acao Pipedrive', 'create_deal, update_stage...')}
-            {textField('pipeline', 'Pipeline', 'novo_cliente')}
-          </>
-        )}
-        {selectedNode.type === 'end' && textField('reason', 'Motivo de encerramento', 'mql_created, opted_out...')}
-
-        <button
-          type="button"
-          onClick={() => removeNode(selectedNode.id)}
-          className="ds-btn danger"
-          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 34 }}
-        >
-          <Trash2 size={14} />
-          Remover bloco
-        </button>
-      </div>
-    );
-  };
+  const panelTextField = (key: string, label: string, placeholder: string) => (
+    <label key={key} style={{ display: 'grid', gap: 6 }}>
+      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</span>
+      <input
+        value={String(panelValues?.config[key] ?? '')}
+        onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, [key]: e.target.value } } : prev)}
+        placeholder={placeholder}
+        className="ds-input"
+        style={{ width: '100%' }}
+      />
+    </label>
+  );
 
   const totalActive = journeys.filter(journey => journey.status === 'ACTIVE').length;
   const totalPaused = journeys.filter(journey => journey.status === 'PAUSED').length;
@@ -812,6 +747,9 @@ const AutomationJourneysView: React.FC = () => {
           </div>
         </div>
 
+        {/* Canvas + panel wrapper */}
+        <div style={{ position: 'relative', overflow: 'hidden' }}>
+
         {/* Canvas */}
         <div
           ref={canvasRef}
@@ -822,7 +760,8 @@ const AutomationJourneysView: React.FC = () => {
           onMouseLeave={() => setDragNodeId(null)}
           onClick={() => setSelectedNodeId(null)}
           style={{
-            position: 'relative',
+            position: 'absolute',
+            inset: 0,
             overflow: 'auto',
             background:
               'linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)',
@@ -835,8 +774,7 @@ const AutomationJourneysView: React.FC = () => {
               const source = selected.nodes.find(node => node.id === edge.source);
               const target = selected.nodes.find(node => node.id === edge.target);
               if (!source || !target) return null;
-              const sourceWidth = selectedNodeId === source.id ? 320 : NODE_W;
-              const x1 = source.x + sourceWidth;
+              const x1 = source.x + NODE_W;
               const y1 = source.y + NODE_H / 2;
               const x2 = target.x;
               const y2 = target.y + NODE_H / 2;
@@ -872,7 +810,7 @@ const AutomationJourneysView: React.FC = () => {
                 title="Remover conexao"
                 style={{
                   position: 'absolute',
-                  left: (source.x + target.x + (selectedNodeId === source.id ? 320 : NODE_W)) / 2,
+                  left: (source.x + target.x + NODE_W) / 2,
                   top: (source.y + target.y + NODE_H) / 2 - 12,
                   width: 22,
                   height: 22,
@@ -896,7 +834,6 @@ const AutomationJourneysView: React.FC = () => {
             const Icon = meta.icon;
             const active = selectedNodeId === node.id;
             const connecting = connectFrom === node.id;
-            const nodeWidth = active ? 320 : NODE_W;
             return (
               <div
                 key={node.id}
@@ -906,7 +843,7 @@ const AutomationJourneysView: React.FC = () => {
                   position: 'absolute',
                   left: node.x,
                   top: node.y,
-                  width: nodeWidth,
+                  width: NODE_W,
                   minHeight: NODE_H,
                   border: `1px solid ${active || connecting ? meta.color : 'var(--border)'}`,
                   borderRadius: 'var(--r-lg)',
@@ -915,6 +852,7 @@ const AutomationJourneysView: React.FC = () => {
                   padding: 12,
                   cursor: dragNodeId === node.id ? 'grabbing' : 'grab',
                   zIndex: active ? 8 : 5,
+                  transition: 'box-shadow .12s, border-color .12s',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
@@ -946,7 +884,6 @@ const AutomationJourneysView: React.FC = () => {
                   </button>
                   <MousePointer2 size={13} style={{ color: 'var(--fg-subtle)' }} />
                 </div>
-                {active && renderConfigFields()}
               </div>
             );
           })}
@@ -967,6 +904,112 @@ const AutomationJourneysView: React.FC = () => {
             <button type="button" style={{ width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--bg-surface)', color: 'var(--fg-muted)', cursor: 'default', display: 'grid', placeItems: 'center', fontSize: 16, lineHeight: 1 }}>−</button>
           </div>
         </div>
+
+        {/* ── CONFIG PANEL (n8n style) ─────────────────────────────────────────── */}
+        {(() => {
+          if (!selectedNodeId || !panelValues) return null;
+          const panelNode = selected.nodes.find(n => n.id === selectedNodeId);
+          if (!panelNode) return null;
+          const meta = blockMeta(panelNode.type);
+          const Icon = meta.icon;
+          return (
+            <div
+              style={{
+                position: 'absolute', top: 0, right: 0, bottom: 0, width: 340,
+                background: 'var(--bg-surface)', borderLeft: '1px solid var(--border)',
+                display: 'flex', flexDirection: 'column', zIndex: 30,
+                boxShadow: '-8px 0 32px rgba(0,0,0,0.12)',
+              }}
+            >
+              {/* Panel header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ width: 40, height: 40, borderRadius: 11, display: 'grid', placeItems: 'center', background: `${meta.color}18`, color: meta.color, flexShrink: 0 }}>
+                    <Icon size={20} />
+                  </span>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--fg-primary)' }}>{meta.label}</div>
+                    <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 2 }}>Configurar bloco</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedNodeId(null)}
+                  style={{ border: 'none', background: 'var(--bg-soft)', color: 'var(--fg-muted)', cursor: 'pointer', display: 'grid', placeItems: 'center', width: 30, height: 30, borderRadius: 'var(--r-sm)' }}
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              {/* Panel form */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {/* Node name */}
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Nome do bloco</span>
+                  <input
+                    value={panelValues.label}
+                    onChange={e => setPanelValues(prev => prev ? { ...prev, label: e.target.value } : prev)}
+                    className="ds-input"
+                    style={{ width: '100%' }}
+                  />
+                </label>
+
+                {/* Type-specific fields */}
+                {panelNode.type === 'trigger' && panelTextField('event', 'Evento de entrada', 'webhook_received, tag_added...')}
+                {panelNode.type === 'condition' && (<>
+                  {panelTextField('field', 'Campo ou tag', 'jobTitle, tags, score...')}
+                  {panelTextField('operator', 'Operador', 'contém, igual, maior que...')}
+                  {panelTextField('value', 'Valor', 'CEO, decisor, 50...')}
+                </>)}
+                {panelNode.type === 'wait' && (<>
+                  {panelTextField('amount', 'Tempo', '2')}
+                  {panelTextField('unit', 'Unidade', 'horas ou dias')}
+                </>)}
+                {panelNode.type === 'internal_action' && (<>
+                  {panelTextField('action', 'Ação', 'add_tag, set_status, add_score...')}
+                  {panelTextField('value', 'Valor', 'persona:decisor, MQL, 10...')}
+                </>)}
+                {panelNode.type === 'rd_conversion' && (<>
+                  {panelTextField('conversionIdentifier', 'Identificador', 'interesse_decisor')}
+                  {panelTextField('conversionName', 'Nome da conversão', 'Interesse - Decisor')}
+                </>)}
+                {panelNode.type === 'whatsapp_message' && (<>
+                  {panelTextField('templateName', 'Template WhatsApp', 'diagnostico_site_01')}
+                  {panelTextField('messageGoal', 'Objetivo da mensagem', 'Convidar para diagnóstico')}
+                </>)}
+                {panelNode.type === 'pipedrive_action' && (<>
+                  {panelTextField('action', 'Ação Pipedrive', 'create_deal, update_stage...')}
+                  {panelTextField('pipeline', 'Pipeline', 'novo_cliente')}
+                </>)}
+                {panelNode.type === 'end' && panelTextField('reason', 'Motivo de encerramento', 'mql_created, opted_out...')}
+              </div>
+
+              {/* Panel footer */}
+              <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={savePanel}
+                  className="ds-btn primary"
+                  style={{ flex: 1, display: 'inline-flex', gap: 7, alignItems: 'center', justifyContent: 'center', height: 40 }}
+                >
+                  <Check size={14} />
+                  Salvar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { removeNode(panelNode.id); }}
+                  className="ds-btn danger"
+                  style={{ width: 40, height: 40, display: 'grid', placeItems: 'center' }}
+                  title="Remover bloco"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
+        </div>{/* end canvas+panel wrapper */}
       </div>
     </div>
   );
