@@ -1,5 +1,6 @@
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
+import { getGA4PageTotals } from './googleAnalytics.service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -113,21 +114,15 @@ export class FunnelService {
       }
     }
 
-    // Parallel: leads, GA4 pages, campaign ad spend
+    // Parallel: leads, live GA4 totals, campaign ad spend
     const pages       = funnel?.impressionPages ?? [];
     const campaignIds = funnel?.campaignIds     ?? [];
-    const ga4Where    = pages.length       > 0 ? { path: { in: pages } }          : undefined;
     const adsWhere    = campaignIds.length > 0 ? { campaignId: { in: campaignIds } } : undefined;
 
     const [statusRows, leadEmails, ga4Agg, adsAgg] = await Promise.all([
       prisma.lead.groupBy({ by: ['status'], where, _count: { id: true } }),
       prisma.lead.findMany({ where, select: { email: true } }),
-      (ga4Where || funnelId === null)
-        ? prisma.landingPage.aggregate({
-            where: ga4Where,   // undefined on unified view = aggregate ALL pages
-            _sum: { views: true, totalClicks: true, users: true },
-          })
-        : Promise.resolve({ _sum: { views: 0, totalClicks: 0, users: 0 } }),
+      getGA4PageTotals(startDate, endDate, pages),
       adsWhere
         ? prisma.campaignMetrics.aggregate({
             where: adsWhere,
@@ -157,12 +152,13 @@ export class FunnelService {
       funnelCounts:   counts,
       totalLeads:     emails.length,
       mrr:            mrrAgg._sum.mrrValue    || 0,
-      impressions:    ga4Agg._sum.views       || 0,
-      gaClicks:       ga4Agg._sum.totalClicks || 0,
-      gaUsers:        ga4Agg._sum.users       || 0,
+      impressions:    ga4Agg.views            || 0,
+      gaClicks:       ga4Agg.totalClicks      || 0,
+      gaUsers:        ga4Agg.users            || 0,
       adSpend:        adsAgg._sum.spend       || 0,
       adImpressions:  adsAgg._sum.impressions || 0,
       adClicks:       adsAgg._sum.clicks      || 0,
+      gaErrors:       ga4Agg.errors,
     };
   }
 }

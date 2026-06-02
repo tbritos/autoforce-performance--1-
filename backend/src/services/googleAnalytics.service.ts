@@ -304,7 +304,7 @@ export async function getGA4SourceTotals(
   startDate?: string,
   endDate?: string,
   source?: string
-): Promise<{ views: number; users: number; pages: number; errors: string[] }> {
+): Promise<{ views: number; users: number; totalClicks: number; pages: number; errors: string[] }> {
   const configs = await getGA4SourceConfigs(source, undefined);
   const client = await initializeGA4Client();
 
@@ -327,6 +327,7 @@ export async function getGA4SourceTotals(
           metrics: [
             { name: 'screenPageViews' },
             { name: 'activeUsers' },
+            { name: 'eventCount' },
           ],
         },
       });
@@ -335,6 +336,7 @@ export async function getGA4SourceTotals(
       return {
         views: parseInt(metrics[0]?.value || '0', 10),
         users: parseInt(metrics[1]?.value || '0', 10),
+        totalClicks: parseInt(metrics[2]?.value || '0', 10),
         pages: 0,
       };
     });
@@ -345,16 +347,105 @@ export async function getGA4SourceTotals(
       if (result.status === 'fulfilled') {
         acc.views += result.value.views;
         acc.users += result.value.users;
+        acc.totalClicks += result.value.totalClicks;
         acc.pages += result.value.pages;
       } else {
         acc.errors.push(result.reason?.message || String(result.reason));
       }
       return acc;
     },
-    { views: 0, users: 0, pages: 0, errors: [] as string[] }
+    { views: 0, users: 0, totalClicks: 0, pages: 0, errors: [] as string[] }
   );
 
   return totals;
+}
+
+function normalizeGA4Path(value: string): string {
+  return value
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/$/, '')
+    .toLowerCase();
+}
+
+export async function getGA4PageTotals(
+  startDate?: string,
+  endDate?: string,
+  pagePaths: string[] = []
+): Promise<{ views: number; users: number; totalClicks: number; pages: number; errors: string[] }> {
+  const normalizedPaths = Array.from(new Set(pagePaths.map(normalizeGA4Path).filter(Boolean)));
+  if (!normalizedPaths.length) return getGA4SourceTotals(startDate, endDate, 'all');
+
+  const configs = await getGA4SourceConfigs('all', undefined);
+  const client = await initializeGA4Client();
+
+  let start = startDate;
+  let end = endDate;
+  if (!start || !end) {
+    const today = new Date();
+    const past = new Date();
+    past.setDate(today.getDate() - 30);
+    end = today.toISOString().split('T')[0];
+    start = past.toISOString().split('T')[0];
+  }
+
+  const pageSet = new Set(normalizedPaths);
+  const propertyIds = Array.from(new Set(configs.flatMap(config => config.propertyIds)));
+
+  const jobs = propertyIds.map(async propertyId => {
+    const response = await client.properties.runReport({
+      property: `properties/${propertyId}`,
+      requestBody: {
+        dateRanges: [{ startDate: start, endDate: end }],
+        dimensions: [
+          { name: 'hostName' },
+          { name: 'pagePath' },
+        ],
+        metrics: [
+          { name: 'screenPageViews' },
+          { name: 'activeUsers' },
+          { name: 'eventCount' },
+        ],
+        limit: 10000,
+      },
+    });
+
+    return (response.data.rows || []).reduce(
+      (acc: { views: number; users: number; totalClicks: number; pages: number }, row: any) => {
+        const dimensions = row.dimensionValues || [];
+        const metrics = row.metricValues || [];
+        const host = dimensions[0]?.value || '';
+        const path = dimensions[1]?.value || '/';
+        const fullPath = normalizeGA4Path(`${host}${path}`);
+        const pathOnly = normalizeGA4Path(path);
+
+        if (!pageSet.has(fullPath) && !pageSet.has(pathOnly)) return acc;
+
+        acc.views += parseInt(metrics[0]?.value || '0', 10);
+        acc.users += parseInt(metrics[1]?.value || '0', 10);
+        acc.totalClicks += parseInt(metrics[2]?.value || '0', 10);
+        acc.pages += 1;
+        return acc;
+      },
+      { views: 0, users: 0, totalClicks: 0, pages: 0 }
+    );
+  });
+
+  const results = await Promise.allSettled(jobs);
+  return results.reduce(
+    (acc, result) => {
+      if (result.status === 'fulfilled') {
+        acc.views += result.value.views;
+        acc.users += result.value.users;
+        acc.totalClicks += result.value.totalClicks;
+        acc.pages += result.value.pages;
+      } else {
+        acc.errors.push(result.reason?.message || String(result.reason));
+      }
+      return acc;
+    },
+    { views: 0, users: 0, totalClicks: 0, pages: 0, errors: [] as string[] }
+  );
 }
 
 function mergeLandingPages(pages: LandingPage[]): LandingPage[] {
