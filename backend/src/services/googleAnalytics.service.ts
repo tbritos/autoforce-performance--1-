@@ -29,7 +29,7 @@ async function getGA4PropertyIds(): Promise<string[]> {
   return ids;
 }
 
-export async function initializeGA4Client() {
+export async function initializeGA4Client(): Promise<any> {
   let auth: any;
 
   // Try PlatformConnection OAuth token first
