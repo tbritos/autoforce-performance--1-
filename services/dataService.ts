@@ -104,6 +104,8 @@ export const DataService = {
           bounceRate: item.bounceRate || 0,
           totalClicks: item.totalClicks || 0,
           source: item.source,
+          dataOrigin: item.dataOrigin,
+          lastSyncAt: item.lastSyncAt,
         }));
       }
     } catch (error) {

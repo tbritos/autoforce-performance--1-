@@ -272,6 +272,8 @@ export async function getLandingPagesFromGA4(
         bounceRate,        
         totalClicks: eventCount,
         source: source && source !== 'all' ? `google_analytics:${source}` : 'google_analytics',
+        dataOrigin: 'ga4_live',
+        lastSyncAt: new Date().toISOString(),
       };
     });
   } catch (error: any) {

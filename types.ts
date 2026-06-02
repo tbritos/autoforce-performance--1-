@@ -418,6 +418,8 @@ export interface LandingPage {
   bounceRate: number;       // <--- NOVO
   totalClicks: number;      // <--- NOVO
   source?: string;
+  dataOrigin?: 'ga4_live' | 'database_cache';
+  lastSyncAt?: string | null;
 }
 
 export interface DailyLeadEntry {

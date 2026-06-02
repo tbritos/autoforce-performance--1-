@@ -24,6 +24,18 @@ const parseTime = (timeStr: string | undefined): number => {
   return (m ? parseInt(m[1]) * 60 : 0) + (s ? parseInt(s[1]) : 0);
 };
 
+const formatSyncTime = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
 const SortBtn: React.FC<{
   col: SortKey; active: SortKey; dir: 'asc' | 'desc';
   onSort: (k: SortKey) => void; label: string; right?: boolean;
@@ -132,6 +144,12 @@ const LPView: React.FC = () => {
   const totalUsers  = pages.reduce((s, p) => s + (p.users || 0), 0);
   const totalEvents = pages.reduce((s, p) => s + (p.totalClicks || 0), 0);
   const avgBounce   = pages.length > 0 ? pages.reduce((s, p) => s + (p.bounceRate || 0), 0) / pages.length : 0;
+  const isDatabaseCache = pages.some(p => p.dataOrigin === 'database_cache');
+  const latestSyncAt = pages
+    .map(p => p.lastSyncAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
 
   const inputStyle: React.CSSProperties = {
     padding: '7px 12px', fontSize: 12, borderRadius: 'var(--r-md)',
@@ -263,7 +281,13 @@ const LPView: React.FC = () => {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: loading ? 'var(--yellow-500)' : 'var(--green-500)', display: 'inline-block' }} className={loading ? 'animate-pulse' : ''} />
-            <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{loading ? 'Sincronizando...' : 'Atualizado'}</span>
+            <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>
+              {loading
+                ? 'Sincronizando...'
+                : isDatabaseCache
+                  ? `Cache do banco${formatSyncTime(latestSyncAt) ? ` · último sync ${formatSyncTime(latestSyncAt)}` : ''}`
+                  : `GA4 atualizado agora${formatSyncTime(latestSyncAt) ? ` · ${formatSyncTime(latestSyncAt)}` : ''}`}
+            </span>
           </div>
         </div>
 
@@ -303,6 +327,9 @@ const LPView: React.FC = () => {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2, fontSize: 11, color: 'var(--accent)', overflow: 'hidden', maxWidth: 320 }}>
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{page.path}</span>
                             <ExternalLink size={9} style={{ flexShrink: 0 }} />
+                          </div>
+                          <div style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 7px', borderRadius: 999, fontSize: 10, fontWeight: 700, background: page.dataOrigin === 'database_cache' ? 'rgba(234,179,8,0.12)' : 'rgba(34,197,94,0.12)', color: page.dataOrigin === 'database_cache' ? 'var(--yellow-500)' : 'var(--green-500)' }}>
+                            {page.dataOrigin === 'database_cache' ? 'Cache do banco' : 'GA4 atualizado'}
                           </div>
                         </td>
                         <td style={{ padding: '10px 14px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--fg-primary)', fontWeight: 600 }}>

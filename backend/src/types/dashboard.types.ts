@@ -31,6 +31,8 @@ export interface LandingPage {
   bounceRate: number;       // <--- NOVO (Taxa de Rejeição)
   totalClicks: number;      // <--- NOVO (Total de Eventos)
   source?: string;
+  dataOrigin?: 'ga4_live' | 'database_cache';
+  lastSyncAt?: Date | string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }

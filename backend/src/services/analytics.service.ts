@@ -56,6 +56,8 @@ export class AnalyticsService {
       bounceRate: page.bounceRate,
       totalClicks: page.totalClicks,
       source: page.source as LandingPage['source'],
+      dataOrigin: 'database_cache',
+      lastSyncAt: page.lastSyncAt,
     }));
   }
 
