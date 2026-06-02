@@ -20,7 +20,7 @@ export type GA4SourceType = 'all' | 'lp' | 'site' | 'blog';
 type GA4SourceConfig = {
   source: Exclude<GA4SourceType, 'all'>;
   label: string;
-  propertyId: string;
+  propertyIds: string[];
   hostNames: string[];
 };
 
@@ -65,36 +65,43 @@ async function getGA4SourceConfigs(source?: string | null, hostName?: string | n
           return {
             source: parsedSource,
             label: String(item?.label || item?.name || item?.source || ''),
-            propertyId: String(item?.propertyId || '').trim(),
+            propertyIds: Array.isArray(item?.propertyIds)
+              ? item.propertyIds.map((id: unknown) => String(id).trim()).filter(Boolean)
+              : parsePropertyIds(item?.propertyIds || item?.propertyId),
             hostNames: Array.isArray(item?.hostNames)
               ? item.hostNames.map((host: unknown) => String(host).trim()).filter(Boolean)
               : parseHostNames(item?.hostName || item?.hosts),
           };
         })
-        .filter((item): item is GA4SourceConfig => Boolean(item?.propertyId && item.hostNames.length > 0))
+        .filter((item): item is GA4SourceConfig => Boolean(item?.propertyIds.length && item.hostNames.length > 0))
     : [];
 
   const defaultCandidates: GA4SourceConfig[] = [
     {
       source: 'lp',
       label: 'Landing pages',
-      propertyId: getStringMetadata(meta, ['lpPropertyId', 'landingPagesPropertyId']) || process.env.GA4_LP_PROPERTY_ID || '459584870',
+      propertyIds: parsePropertyIds(
+        getStringMetadata(meta, ['lpPropertyIds', 'landingPagesPropertyIds', 'lpPropertyId', 'landingPagesPropertyId']) ||
+        process.env.GA4_LP_PROPERTY_IDS ||
+        process.env.GA4_LP_PROPERTY_ID ||
+        '459584870,266875338'
+      ),
       hostNames: parseHostNames(getStringMetadata(meta, ['lpHostNames', 'lpHostName']) || process.env.GA4_LP_HOSTNAMES || process.env.LP_HOSTNAME || 'lp.autodromo.com.br'),
     },
     {
       source: 'site',
       label: 'Site',
-      propertyId: getStringMetadata(meta, ['sitePropertyId']) || process.env.GA4_SITE_PROPERTY_ID || '379673982',
+      propertyIds: parsePropertyIds(getStringMetadata(meta, ['sitePropertyIds', 'sitePropertyId']) || process.env.GA4_SITE_PROPERTY_IDS || process.env.GA4_SITE_PROPERTY_ID || '379673982'),
       hostNames: parseHostNames(getStringMetadata(meta, ['siteHostNames', 'siteHostName']) || process.env.GA4_SITE_HOSTNAMES || 'site.autoforce.com'),
     },
     {
       source: 'blog',
       label: 'Blog',
-      propertyId: getStringMetadata(meta, ['blogPropertyId']) || process.env.GA4_BLOG_PROPERTY_ID || '349265313',
+      propertyIds: parsePropertyIds(getStringMetadata(meta, ['blogPropertyIds', 'blogPropertyId']) || process.env.GA4_BLOG_PROPERTY_IDS || process.env.GA4_BLOG_PROPERTY_ID || '349265313'),
       hostNames: parseHostNames(getStringMetadata(meta, ['blogHostNames', 'blogHostName']) || process.env.GA4_BLOG_HOSTNAMES || 'blog.autoforce.com'),
     },
   ];
-  const defaults = defaultCandidates.filter(item => item.propertyId && item.hostNames.length > 0);
+  const defaults = defaultCandidates.filter(item => item.propertyIds.length > 0 && item.hostNames.length > 0);
 
   const bySource = new Map<Exclude<GA4SourceType, 'all'>, GA4SourceConfig>();
   for (const item of [...defaults, ...configuredSources]) {
@@ -122,7 +129,7 @@ async function getGA4SourceConfigs(source?: string | null, hostName?: string | n
     configs = propertyIds.map((propertyId, index) => ({
       source: 'lp',
       label: `GA4 ${index + 1}`,
-      propertyId,
+      propertyIds: [propertyId],
       hostNames: requestedHosts,
     }));
   }
@@ -313,8 +320,10 @@ export async function getLandingPagesFromAllGA4Properties(
   const sourceType = normalizeSource(source);
   const configs = await getGA4SourceConfigs(source, hostName);
   const jobs = configs.flatMap(config =>
-    config.hostNames.map(host =>
-      getLandingPagesFromGA4(startDate, endDate, host, config.propertyId, config.source)
+    config.propertyIds.flatMap(propertyId =>
+      config.hostNames.map(host =>
+        getLandingPagesFromGA4(startDate, endDate, host, propertyId, config.source)
+      )
     )
   );
 
