@@ -211,6 +211,7 @@ const AutomationJourneysView: React.FC = () => {
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
   const [dragNodeId, setDragNodeId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [editingName, setEditingName] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -284,6 +285,32 @@ const AutomationJourneysView: React.FC = () => {
         ? await DataService.updateAutomationJourney(selected.id, payload)
         : await DataService.createAutomationJourney(payload);
 
+      setSelected(saved);
+      setJourneys(prev => {
+        const exists = prev.some(item => item.id === saved.id);
+        return exists ? prev.map(item => item.id === saved.id ? saved : item) : [saved, ...prev];
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const publishJourney = async () => {
+    if (!selected.name.trim()) return;
+    setSaving(true);
+    try {
+      const payload = {
+        name: selected.name.trim(),
+        description: selected.description,
+        status: 'ACTIVE' as AutomationJourneyStatus,
+        nodes: selected.nodes,
+        edges: selected.edges,
+        triggerType: selected.triggerType,
+        isActive: true,
+      };
+      const saved = selected.id
+        ? await DataService.updateAutomationJourney(selected.id, payload)
+        : await DataService.createAutomationJourney(payload);
       setSelected(saved);
       setJourneys(prev => {
         const exists = prev.some(item => item.id === saved.id);
@@ -643,237 +670,303 @@ const AutomationJourneysView: React.FC = () => {
   }
 
   return (
-    <div style={{ padding: '24px 28px 64px', maxWidth: 1600, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }} className="animate-fade-in-up">
-      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button type="button" onClick={() => setViewMode('list')} className="ds-btn secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <ChevronLeft size={15} />
-            Voltar
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 56px)', overflow: 'hidden' }} className="animate-fade-in-up">
+
+      {/* ── TOP HEADER BAR ─────────────────────────────────────────────────────── */}
+      <header style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 16, padding: '0 20px', height: 60, flexShrink: 0,
+        borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)',
+      }}>
+        {/* Left: back + breadcrumb + name + status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+          <button
+            type="button"
+            onClick={() => setViewMode('list')}
+            className="ds-btn secondary"
+            style={{ width: 32, height: 32, padding: 0, display: 'grid', placeItems: 'center', flexShrink: 0 }}
+          >
+            <ChevronLeft size={16} />
           </button>
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--fg-primary)', margin: 0 }}>Editor da jornada</h1>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 11, color: 'var(--fg-subtle)', fontWeight: 600, letterSpacing: '.03em', marginBottom: 3 }}>
+              Automação
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {editingName ? (
+                <input
+                  autoFocus
+                  value={selected.name}
+                  onChange={e => updateSelected({ name: e.target.value })}
+                  onBlur={() => setEditingName(false)}
+                  onKeyDown={e => e.key === 'Enter' && setEditingName(false)}
+                  className="ds-input"
+                  style={{ fontSize: 15, fontWeight: 800, height: 30, padding: '0 8px', width: Math.max(180, selected.name.length * 10) }}
+                />
+              ) : (
+                <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--fg-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 320 }}>
+                  {selected.name}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setEditingName(v => !v)}
+                style={{ border: 'none', background: 'transparent', color: 'var(--fg-subtle)', cursor: 'pointer', display: 'grid', placeItems: 'center', padding: 2, flexShrink: 0 }}
+              >
+                <Pencil size={13} />
+              </button>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                padding: '3px 9px', borderRadius: 999, fontSize: 12, fontWeight: 700, flexShrink: 0,
+                background: selected.status === 'ACTIVE' ? 'rgba(34,197,94,0.12)' : selected.status === 'PAUSED' ? 'rgba(245,158,11,0.12)' : 'var(--bg-soft)',
+                color: selected.status === 'ACTIVE' ? '#22C55E' : selected.status === 'PAUSED' ? '#F59E0B' : 'var(--fg-muted)',
+              }}>
+                <span style={{ width: 6, height: 6, borderRadius: 999, background: 'currentColor', display: 'block', flexShrink: 0 }} />
+                {statusLabel[selected.status]}
+              </span>
+            </div>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button type="button" onClick={load} className="ds-btn secondary" disabled={loading}>
+
+        {/* Right: action buttons */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+          <button
+            type="button"
+            title="Histórico de execuções"
+            className="ds-btn secondary"
+            style={{ width: 36, height: 36, padding: 0, display: 'grid', placeItems: 'center' }}
+          >
+            <Clock size={15} />
+          </button>
+          <button
+            type="button"
+            onClick={load}
+            className="ds-btn secondary"
+            disabled={loading}
+            style={{ width: 36, height: 36, padding: 0, display: 'grid', placeItems: 'center' }}
+          >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           </button>
-          <button type="button" onClick={createJourney} className="ds-btn secondary" style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-            <Plus size={14} />
-            Nova jornada
+          <button type="button" className="ds-btn secondary" style={{ display: 'inline-flex', gap: 6, alignItems: 'center', height: 36, padding: '0 14px' }}>
+            <Play size={12} style={{ fill: 'currentColor' }} />
+            Testar
           </button>
-          <button type="button" onClick={saveJourney} className="ds-btn primary" disabled={saving || !selected.name.trim()} style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-            {saving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
-            Salvar
+          <button
+            type="button"
+            onClick={saveJourney}
+            className="ds-btn secondary"
+            disabled={saving || !selected.name.trim()}
+            style={{ display: 'inline-flex', gap: 6, alignItems: 'center', height: 36, padding: '0 14px' }}
+          >
+            {saving ? <RefreshCw size={13} className="animate-spin" /> : <Save size={13} />}
+            Salvar rascunho
+          </button>
+          <button
+            type="button"
+            onClick={publishJourney}
+            className="ds-btn primary"
+            disabled={saving || !selected.name.trim()}
+            style={{ display: 'inline-flex', gap: 6, alignItems: 'center', height: 36, padding: '0 16px', borderRadius: 999 }}
+          >
+            <Check size={13} />
+            Publicar
           </button>
         </div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(680px, 1fr)', gap: 14, alignItems: 'stretch' }}>
-        <main className="ds-card" style={{ overflow: 'hidden', minHeight: 720, display: 'grid', gridTemplateRows: 'auto 1fr' }}>
-          <div style={{ padding: 14, borderBottom: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr 170px 90px', gap: 10, alignItems: 'center' }}>
-            <input
-              value={selected.name}
-              onChange={event => updateSelected({ name: event.target.value })}
-              className="ds-input"
-              style={{ width: '100%', fontWeight: 800, fontSize: 15 }}
-            />
-            <CustomSelect
-              value={selected.status}
-              onChange={setStatus}
-              width={170}
-              options={[
-                { value: 'DRAFT', label: 'Rascunho' },
-                { value: 'ACTIVE', label: 'Ativa' },
-                { value: 'PAUSED', label: 'Pausada' },
-              ]}
-            />
-            <button type="button" onClick={deleteJourney} className="ds-btn danger" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-              <Trash2 size={13} />
-            </button>
+      {/* ── EDITOR BODY: sidebar + canvas ──────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '190px 1fr', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+
+        {/* Blocks sidebar */}
+        <div style={{ borderRight: '1px solid var(--border)', padding: 12, background: 'var(--bg-muted)', overflowY: 'auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, color: 'var(--fg-primary)', fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.05em' }}>
+            <Workflow size={14} />
+            Blocos
           </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '190px 1fr', minHeight: 0 }}>
-            <div style={{ borderRight: '1px solid var(--border)', padding: 12, background: 'var(--bg-muted)', overflowY: 'auto' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, color: 'var(--fg-primary)', fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.05em' }}>
-                <Workflow size={14} />
-                Blocos
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {BLOCKS.map(block => {
-                  const Icon = block.icon;
-                  return (
-                    <div
-                      key={block.type}
-                      draggable
-                      onDragStart={event => event.dataTransfer.setData('application/x-automation-node', block.type)}
-                      style={{
-                        border: '1px solid var(--border)',
-                        borderRadius: 'var(--r-md)',
-                        padding: 10,
-                        background: 'var(--bg-surface)',
-                        cursor: 'grab',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ width: 28, height: 28, borderRadius: 8, display: 'grid', placeItems: 'center', background: `${block.color}22`, color: block.color }}>
-                          <Icon size={14} />
-                        </span>
-                        <strong style={{ color: 'var(--fg-primary)', fontSize: 12 }}>{block.label}</strong>
-                      </div>
-                      <p style={{ margin: '7px 0 0', color: 'var(--fg-muted)', fontSize: 11, lineHeight: 1.35 }}>{block.description}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div
-              ref={canvasRef}
-              onDrop={onDropBlock}
-              onDragOver={event => event.preventDefault()}
-              onMouseMove={moveNode}
-              onMouseUp={() => setDragNodeId(null)}
-              onMouseLeave={() => setDragNodeId(null)}
-              onClick={() => setSelectedNodeId(null)}
-              style={{
-                position: 'relative',
-                overflow: 'auto',
-                minHeight: 650,
-                background:
-                  'linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)',
-                backgroundSize: '28px 28px',
-                backgroundColor: 'var(--bg-app)',
-              }}
-            >
-              <svg style={{ position: 'absolute', inset: 0, width: 1800, height: 1200, pointerEvents: 'none', overflow: 'visible' }}>
-                {selected.edges.map(edge => {
-                  const source = selected.nodes.find(node => node.id === edge.source);
-                  const target = selected.nodes.find(node => node.id === edge.target);
-                  if (!source || !target) return null;
-                  const sourceWidth = selectedNodeId === source.id ? 320 : NODE_W;
-                  const x1 = source.x + sourceWidth;
-                  const y1 = source.y + NODE_H / 2;
-                  const x2 = target.x;
-                  const y2 = target.y + NODE_H / 2;
-                  const mid = Math.max(70, Math.abs(x2 - x1) / 2);
-                  return (
-                    <g key={edge.id}>
-                      <path
-                        d={`M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`}
-                        fill="none"
-                        stroke="var(--accent)"
-                        strokeWidth="2"
-                        markerEnd="url(#arrow)"
-                      />
-                    </g>
-                  );
-                })}
-                <defs>
-                  <marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-                    <path d="M0,0 L0,6 L8,3 z" fill="var(--accent)" />
-                  </marker>
-                </defs>
-              </svg>
-
-              {selected.edges.map(edge => {
-                const source = selected.nodes.find(node => node.id === edge.source);
-                const target = selected.nodes.find(node => node.id === edge.target);
-                if (!source || !target) return null;
-                return (
-                  <button
-                    key={`btn-${edge.id}`}
-                    type="button"
-                    onClick={event => { event.stopPropagation(); removeEdge(edge.id); }}
-                    title="Remover conexao"
-                    style={{
-                      position: 'absolute',
-                      left: (source.x + target.x + (selectedNodeId === source.id ? 320 : NODE_W)) / 2,
-                      top: (source.y + target.y + NODE_H) / 2 - 12,
-                      width: 22,
-                      height: 22,
-                      borderRadius: 999,
-                      border: '1px solid var(--border)',
-                      background: 'var(--bg-surface)',
-                      color: 'var(--fg-muted)',
-                      display: 'grid',
-                      placeItems: 'center',
-                      cursor: 'pointer',
-                      zIndex: 4,
-                    }}
-                  >
-                    <X size={12} />
-                  </button>
-                );
-              })}
-
-              {selected.nodes.map(node => {
-                const meta = blockMeta(node.type);
-                const Icon = meta.icon;
-                const active = selectedNodeId === node.id;
-                const connecting = connectFrom === node.id;
-                const nodeWidth = active ? 320 : NODE_W;
-                return (
-                  <div
-                    key={node.id}
-                    onMouseDown={event => startMoveNode(event, node)}
-                    onClick={event => { event.stopPropagation(); setSelectedNodeId(node.id); }}
-                    style={{
-                      position: 'absolute',
-                      left: node.x,
-                      top: node.y,
-                      width: nodeWidth,
-                      minHeight: NODE_H,
-                      border: `1px solid ${active || connecting ? meta.color : 'var(--border)'}`,
-                      borderRadius: 'var(--r-lg)',
-                      background: 'var(--bg-surface)',
-                      boxShadow: active ? `0 0 0 3px ${meta.color}22` : 'var(--shadow-sm)',
-                      padding: 12,
-                      cursor: dragNodeId === node.id ? 'grabbing' : 'grab',
-                      zIndex: active ? 8 : 5,
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                      <span style={{ width: 32, height: 32, borderRadius: 9, display: 'grid', placeItems: 'center', background: `${meta.color}22`, color: meta.color }}>
-                        <Icon size={16} />
-                      </span>
-                      <div style={{ minWidth: 0 }}>
-                        <strong style={{ display: 'block', color: 'var(--fg-primary)', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{node.label}</strong>
-                        <span style={{ display: 'block', color: 'var(--fg-muted)', fontSize: 11, marginTop: 2 }}>{meta.label}</span>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 10 }}>
-                      <button
-                        type="button"
-                        onMouseDown={event => event.stopPropagation()}
-                        onClick={event => { event.stopPropagation(); connectNode(node.id); }}
-                        style={{
-                          border: '1px solid var(--border)',
-                          borderRadius: 'var(--r-sm)',
-                          padding: '5px 8px',
-                          background: connecting ? `${meta.color}22` : 'var(--bg-elevated)',
-                          color: connecting ? meta.color : 'var(--fg-muted)',
-                          fontSize: 11,
-                          fontWeight: 800,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {connectFrom && connectFrom !== node.id ? 'Ligar aqui' : 'Conectar'}
-                      </button>
-                      <MousePointer2 size={13} style={{ color: 'var(--fg-subtle)' }} />
-                    </div>
-                    {active && renderConfigFields()}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {BLOCKS.map(block => {
+              const Icon = block.icon;
+              return (
+                <div
+                  key={block.type}
+                  draggable
+                  onDragStart={event => event.dataTransfer.setData('application/x-automation-node', block.type)}
+                  style={{
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--r-md)',
+                    padding: 10,
+                    background: 'var(--bg-surface)',
+                    cursor: 'grab',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 28, height: 28, borderRadius: 8, display: 'grid', placeItems: 'center', background: `${block.color}22`, color: block.color }}>
+                      <Icon size={14} />
+                    </span>
+                    <strong style={{ color: 'var(--fg-primary)', fontSize: 12 }}>{block.label}</strong>
                   </div>
-                );
-              })}
-
-              {selected.nodes.length === 0 && (
-                <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'var(--fg-muted)', fontSize: 14 }}>
-                  Arraste blocos da esquerda para montar a jornada.
+                  <p style={{ margin: '7px 0 0', color: 'var(--fg-muted)', fontSize: 11, lineHeight: 1.35 }}>{block.description}</p>
                 </div>
-              )}
-            </div>
+              );
+            })}
           </div>
-        </main>
+        </div>
 
+        {/* Canvas */}
+        <div
+          ref={canvasRef}
+          onDrop={onDropBlock}
+          onDragOver={event => event.preventDefault()}
+          onMouseMove={moveNode}
+          onMouseUp={() => setDragNodeId(null)}
+          onMouseLeave={() => setDragNodeId(null)}
+          onClick={() => setSelectedNodeId(null)}
+          style={{
+            position: 'relative',
+            overflow: 'auto',
+            background:
+              'linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)',
+            backgroundSize: '28px 28px',
+            backgroundColor: 'var(--bg-app)',
+          }}
+        >
+          <svg style={{ position: 'absolute', inset: 0, width: 1800, height: 1200, pointerEvents: 'none', overflow: 'visible' }}>
+            {selected.edges.map(edge => {
+              const source = selected.nodes.find(node => node.id === edge.source);
+              const target = selected.nodes.find(node => node.id === edge.target);
+              if (!source || !target) return null;
+              const sourceWidth = selectedNodeId === source.id ? 320 : NODE_W;
+              const x1 = source.x + sourceWidth;
+              const y1 = source.y + NODE_H / 2;
+              const x2 = target.x;
+              const y2 = target.y + NODE_H / 2;
+              const mid = Math.max(70, Math.abs(x2 - x1) / 2);
+              return (
+                <g key={edge.id}>
+                  <path
+                    d={`M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`}
+                    fill="none"
+                    stroke="var(--accent)"
+                    strokeWidth="2"
+                    markerEnd="url(#arrow)"
+                  />
+                </g>
+              );
+            })}
+            <defs>
+              <marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L8,3 z" fill="var(--accent)" />
+              </marker>
+            </defs>
+          </svg>
+
+          {selected.edges.map(edge => {
+            const source = selected.nodes.find(node => node.id === edge.source);
+            const target = selected.nodes.find(node => node.id === edge.target);
+            if (!source || !target) return null;
+            return (
+              <button
+                key={`btn-${edge.id}`}
+                type="button"
+                onClick={event => { event.stopPropagation(); removeEdge(edge.id); }}
+                title="Remover conexao"
+                style={{
+                  position: 'absolute',
+                  left: (source.x + target.x + (selectedNodeId === source.id ? 320 : NODE_W)) / 2,
+                  top: (source.y + target.y + NODE_H) / 2 - 12,
+                  width: 22,
+                  height: 22,
+                  borderRadius: 999,
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-surface)',
+                  color: 'var(--fg-muted)',
+                  display: 'grid',
+                  placeItems: 'center',
+                  cursor: 'pointer',
+                  zIndex: 4,
+                }}
+              >
+                <X size={12} />
+              </button>
+            );
+          })}
+
+          {selected.nodes.map(node => {
+            const meta = blockMeta(node.type);
+            const Icon = meta.icon;
+            const active = selectedNodeId === node.id;
+            const connecting = connectFrom === node.id;
+            const nodeWidth = active ? 320 : NODE_W;
+            return (
+              <div
+                key={node.id}
+                onMouseDown={event => startMoveNode(event, node)}
+                onClick={event => { event.stopPropagation(); setSelectedNodeId(node.id); }}
+                style={{
+                  position: 'absolute',
+                  left: node.x,
+                  top: node.y,
+                  width: nodeWidth,
+                  minHeight: NODE_H,
+                  border: `1px solid ${active || connecting ? meta.color : 'var(--border)'}`,
+                  borderRadius: 'var(--r-lg)',
+                  background: 'var(--bg-surface)',
+                  boxShadow: active ? `0 0 0 3px ${meta.color}22` : 'var(--shadow-sm)',
+                  padding: 12,
+                  cursor: dragNodeId === node.id ? 'grabbing' : 'grab',
+                  zIndex: active ? 8 : 5,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                  <span style={{ width: 32, height: 32, borderRadius: 9, display: 'grid', placeItems: 'center', background: `${meta.color}22`, color: meta.color }}>
+                    <Icon size={16} />
+                  </span>
+                  <div style={{ minWidth: 0 }}>
+                    <strong style={{ display: 'block', color: 'var(--fg-primary)', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{node.label}</strong>
+                    <span style={{ display: 'block', color: 'var(--fg-muted)', fontSize: 11, marginTop: 2 }}>{meta.label}</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 10 }}>
+                  <button
+                    type="button"
+                    onMouseDown={event => event.stopPropagation()}
+                    onClick={event => { event.stopPropagation(); connectNode(node.id); }}
+                    style={{
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--r-sm)',
+                      padding: '5px 8px',
+                      background: connecting ? `${meta.color}22` : 'var(--bg-elevated)',
+                      color: connecting ? meta.color : 'var(--fg-muted)',
+                      fontSize: 11,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {connectFrom && connectFrom !== node.id ? 'Ligar aqui' : 'Conectar'}
+                  </button>
+                  <MousePointer2 size={13} style={{ color: 'var(--fg-subtle)' }} />
+                </div>
+                {active && renderConfigFields()}
+              </div>
+            );
+          })}
+
+          {selected.nodes.length === 0 && (
+            <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'var(--fg-muted)', fontSize: 14 }}>
+              Arraste blocos da esquerda para montar a jornada.
+            </div>
+          )}
+
+          {/* Canvas footer */}
+          <div style={{ position: 'absolute', bottom: 16, left: 16, display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: '6px 12px', fontSize: 12, color: 'var(--fg-muted)', pointerEvents: 'none' }}>
+            <Search size={12} />
+            {selected.nodes.length} blocos · {selected.edges.length} conexões
+          </div>
+          <div style={{ position: 'absolute', bottom: 16, right: 16, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <button type="button" style={{ width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--bg-surface)', color: 'var(--fg-muted)', cursor: 'default', display: 'grid', placeItems: 'center', fontSize: 16, lineHeight: 1 }}>+</button>
+            <button type="button" style={{ width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--bg-surface)', color: 'var(--fg-muted)', cursor: 'default', display: 'grid', placeItems: 'center', fontSize: 16, lineHeight: 1 }}>−</button>
+          </div>
+        </div>
       </div>
     </div>
   );
