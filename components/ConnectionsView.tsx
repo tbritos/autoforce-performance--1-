@@ -301,8 +301,16 @@ const ConnectionsView: React.FC = () => {
     const w = 620, h = 720;
     const left = Math.round(window.screenX + (window.outerWidth - w) / 2);
     const top = Math.round(window.screenY + (window.outerHeight - h) / 2);
-    window.open(url, 'oauth_popup', `width=${w},height=${h},left=${left},top=${top},resizable=yes`);
-  }, []);
+    const popup = window.open(url, 'oauth_popup', `width=${w},height=${h},left=${left},top=${top},resizable=yes`);
+    if (popup) {
+      const poll = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(poll);
+          loadConnections();
+        }
+      }, 1000);
+    }
+  }, [loadConnections]);
 
   const handleDisconnect = useCallback(async (platform: string) => {
     await DataService.disconnectPlatform(platform);
