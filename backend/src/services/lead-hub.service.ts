@@ -516,7 +516,7 @@ export class LeadHubService {
   static async getLeadStats(start: Date, end: Date) {
     const [leads, mqls, sqls] = await Promise.all([
       prisma.lead.count({
-        where: { deletedAt: null, createdAt: { gte: start, lte: end } },
+        where: { deletedAt: null, firstSeenAt: { gte: start, lte: end } },
       }),
       prisma.leadStatusHistory.count({
         where: { toStatus: 'MQL', changedAt: { gte: start, lte: end } },

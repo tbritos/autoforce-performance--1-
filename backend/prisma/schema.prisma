@@ -98,6 +98,7 @@ model Lead {
   @@index([score])
   @@index([assignedTo])
   @@index([lastSeenAt])
+  @@index([firstSeenAt])
   @@index([createdAt])
   @@index([deletedAt])
   @@index([pipedrivePersonId])
