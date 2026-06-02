@@ -205,11 +205,12 @@ const DashboardContent: React.FC<{
           setMetaSpend(meta.reduce((s, c) => s + (c.spend || 0), 0));
           setGoogleSpend(google.reduce((s, c) => s + (c.spend || 0), 0));
           if (funnelStatsResult.ok) {
-            setVisits(funnelStatsResult.data.gaUsers || 0);
-            if ((funnelStatsResult.data.gaUsers || 0) === 0) {
+            const gaTopOfFunnel = funnelStatsResult.data.gaUsers || funnelStatsResult.data.impressions || 0;
+            setVisits(gaTopOfFunnel);
+            if (gaTopOfFunnel === 0) {
               setVisitsError((funnelStatsResult.data.gaErrors || []).length > 0
                 ? (funnelStatsResult.data.gaErrors || []).join(' | ')
-                : 'GA4 retornou 0 usuários para esse período.'
+                : 'GA4 retornou 0 usuários e 0 visualizações para esse período.'
               );
             } else {
               setVisitsError('');
