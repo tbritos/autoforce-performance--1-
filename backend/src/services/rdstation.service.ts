@@ -15,6 +15,63 @@ type AnyRecord = Record<string, any>;
 
 const RD_API_BASE = 'https://api.rd.services/platform';
 
+const isInvalidTokenResponse = (status: number, body: string): boolean => (
+  status === 401 ||
+  body.includes('invalid_token') ||
+  body.toLowerCase().includes('access token is invalid') ||
+  body.toLowerCase().includes('expired')
+);
+
+const refreshRdAccessToken = async (): Promise<string> => {
+  const clientId = process.env.RD_STATION_CLIENT_ID;
+  const clientSecret = process.env.RD_STATION_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    throw new Error('RD Station credentials not configured');
+  }
+
+  const { PlatformConnectionService } = await import('./platform-connection.service');
+  const tokens = await PlatformConnectionService.getTokens('RD_STATION');
+  const refreshToken = tokens?.refreshToken || process.env.RD_STATION_REFRESH_TOKEN;
+
+  if (!refreshToken) {
+    throw new Error('RD Station refresh token not configured');
+  }
+
+  const response = await fetch('https://api.rd.services/auth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      grant_type: 'refresh_token',
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    await PlatformConnectionService.markError('RD_STATION', `Token refresh failed: ${text}`);
+    throw new Error(`RD token error: ${text}`);
+  }
+
+  const data = (await response.json()) as RdTokenResponse;
+  if (!data.access_token) {
+    throw new Error('RD token response missing access_token');
+  }
+
+  const expiry = data.expires_in ? new Date(Date.now() + data.expires_in * 1000) : undefined;
+  await PlatformConnectionService.saveConnection({
+    platform: 'RD_STATION',
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token || refreshToken,
+    tokenExpiry: expiry,
+    metadata: { workspaceId: process.env.RD_STATION_WORKSPACE_ID },
+  });
+
+  return data.access_token;
+};
+
 export const getRdAccessToken = async (): Promise<string> => {
   // PlatformConnection first (Phase 2+), .env fallback (Phase 1 compat)
   try {
@@ -23,9 +80,6 @@ export const getRdAccessToken = async (): Promise<string> => {
   } catch {
     // Fall through to legacy .env approach
   }
-
-  const token = process.env.RD_STATION_ACCESS_TOKEN;
-  if (token) return token;
 
   const clientId = process.env.RD_STATION_CLIENT_ID;
   const clientSecret = process.env.RD_STATION_CLIENT_SECRET;
@@ -57,6 +111,29 @@ export const getRdAccessToken = async (): Promise<string> => {
   }
 
   return data.access_token;
+};
+
+const rdFetch = async (
+  url: string,
+  accessToken: string,
+  workspaceId?: string,
+  init: RequestInit = {}
+): Promise<Response> => {
+  const buildHeaders = (token: string): Record<string, string> => ({
+    accept: 'application/json',
+    Authorization: `Bearer ${token}`,
+    ...(workspaceId ? { 'X-RD-Station-Workspace-Id': workspaceId } : {}),
+    ...((init.headers as Record<string, string> | undefined) || {}),
+  });
+
+  const response = await fetch(url, { ...init, headers: buildHeaders(accessToken) });
+  if (response.ok) return response;
+
+  const body = await response.clone().text().catch(() => '');
+  if (!isInvalidTokenResponse(response.status, body)) return response;
+
+  const refreshedToken = await refreshRdAccessToken();
+  return fetch(url, { ...init, headers: buildHeaders(refreshedToken) });
 };
 
 const extractMetric = (row: RdEmailRow, keys: string[]): number => {
@@ -126,13 +203,7 @@ const fetchRdEmailsWindow = async (
       url.searchParams.set('workspace_id', workspaceId);
     }
 
-    const response = await fetch(url.toString(), {
-      headers: {
-        accept: 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-        ...(workspaceId ? { 'X-RD-Station-Workspace-Id': workspaceId } : {}),
-      },
-    });
+    const response = await rdFetch(url.toString(), accessToken, workspaceId);
 
     if (!response.ok) {
       const text = await response.text();
@@ -259,13 +330,7 @@ export const fetchRdWorkflowEmails = async (
       url.searchParams.set('workspace_id', workspaceId);
     }
 
-    const response = await fetch(url.toString(), {
-      headers: {
-        accept: 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-        ...(workspaceId ? { 'X-RD-Station-Workspace-Id': workspaceId } : {}),
-      },
-    });
+    const response = await rdFetch(url.toString(), accessToken, workspaceId);
 
     if (!response.ok) {
       const text = await response.text();
@@ -328,13 +393,7 @@ export const fetchRdConversions = async (
       url.searchParams.set('assets_type', assetTypes.join(','));
     }
 
-    const response = await fetch(url.toString(), {
-      headers: {
-        accept: 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-        ...(workspaceId ? { 'X-RD-Station-Workspace-Id': workspaceId } : {}),
-      },
-    });
+    const response = await rdFetch(url.toString(), accessToken, workspaceId);
 
     if (!response.ok) {
       const text = await response.text();
@@ -367,13 +426,7 @@ export const fetchRdSegmentationContacts = async (
   url.searchParams.set('page', String(page));
   url.searchParams.set('page_size', String(pageSize));
 
-  const response = await fetch(url.toString(), {
-    headers: {
-      accept: 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-      ...(workspaceId ? { 'X-RD-Station-Workspace-Id': workspaceId } : {}),
-    },
-  });
+  const response = await rdFetch(url.toString(), accessToken, workspaceId);
 
   if (!response.ok) {
     const text = await response.text();
@@ -403,13 +456,7 @@ export const fetchRdContactDetails = async (contactUuid: string): Promise<RdCont
 
   const url = new URL(`${RD_API_BASE}/contacts/${contactUuid}`);
 
-  const response = await fetch(url.toString(), {
-    headers: {
-      accept: 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-      ...(workspaceId ? { 'X-RD-Station-Workspace-Id': workspaceId } : {}),
-    },
-  });
+  const response = await rdFetch(url.toString(), accessToken, workspaceId);
 
   if (!response.ok) {
     const text = await response.text();
@@ -426,13 +473,10 @@ export const sendRdConversionEvent = async (payload: RdConversionPayload): Promi
   const url = new URL(`${RD_API_BASE}/events`);
   url.searchParams.set('event_type', 'conversion');
 
-  const response = await fetch(url.toString(), {
+  const response = await rdFetch(url.toString(), accessToken, workspaceId, {
     method: 'POST',
     headers: {
-      accept: 'application/json',
       'content-type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-      ...(workspaceId ? { 'X-RD-Station-Workspace-Id': workspaceId } : {}),
     },
     body: JSON.stringify({
       event_type: 'CONVERSION',
