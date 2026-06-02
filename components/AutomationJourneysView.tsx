@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Check,
+  ChevronDown,
   ChevronLeft,
   Clock,
   Database,
@@ -79,6 +81,105 @@ const statusLabel: Record<AutomationJourneyStatus, string> = {
   ACTIVE: 'Ativa',
   PAUSED: 'Pausada',
 };
+
+type CustomSelectOption<T extends string> = {
+  value: T;
+  label: string;
+};
+
+function CustomSelect<T extends string>({
+  value,
+  options,
+  onChange,
+  width = 170,
+}: {
+  value: T;
+  options: CustomSelectOption<T>[];
+  onChange: (value: T) => void;
+  width?: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedOption = options.find(option => option.value === value) ?? options[0];
+
+  return (
+    <div style={{ position: 'relative', width }}>
+      <button
+        type="button"
+        onClick={() => setOpen(prev => !prev)}
+        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+        style={{
+          width: '100%',
+          height: 38,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10,
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--r-md)',
+          background: 'var(--bg-surface)',
+          color: 'var(--fg-primary)',
+          padding: '0 11px',
+          fontSize: 13,
+          fontWeight: 700,
+          cursor: 'pointer',
+          boxShadow: open ? '0 0 0 3px var(--accent-soft)' : 'none',
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedOption.label}</span>
+        <ChevronDown size={15} style={{ color: 'var(--fg-muted)', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform .15s' }} />
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            zIndex: 40,
+            top: 44,
+            right: 0,
+            width: '100%',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--r-md)',
+            background: 'var(--bg-elevated)',
+            boxShadow: 'var(--shadow-lg)',
+            padding: 5,
+          }}
+        >
+          {options.map(option => {
+            const active = option.value === value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onMouseDown={event => event.preventDefault()}
+                onClick={() => { onChange(option.value); setOpen(false); }}
+                style={{
+                  width: '100%',
+                  minHeight: 34,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  border: 'none',
+                  borderRadius: 'var(--r-sm)',
+                  background: active ? 'var(--accent-soft)' : 'transparent',
+                  color: active ? 'var(--accent)' : 'var(--fg-primary)',
+                  padding: '7px 8px',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+              >
+                {option.label}
+                {active && <Check size={14} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const emptyDraft = () => {
   const nodes = defaultNodes();
@@ -422,7 +523,22 @@ const AutomationJourneysView: React.FC = () => {
               Crie regras que classificam, roteiam e agem sobre seus leads automaticamente sem intervenção manual.
             </p>
           </div>
-          <button type="button" onClick={createJourney} className="ds-btn primary" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 42, padding: '0 20px', boxShadow: 'var(--shadow-md)' }}>
+          <button
+            type="button"
+            onClick={createJourney}
+            className="ds-btn primary"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              height: 42,
+              padding: '0 20px',
+              background: 'var(--accent)',
+              color: '#fff',
+              borderColor: 'var(--accent)',
+              boxShadow: 'var(--shadow-md)',
+            }}
+          >
             <Plus size={15} />
             Nova regra
           </button>
@@ -444,11 +560,16 @@ const AutomationJourneysView: React.FC = () => {
             <button type="button" onClick={() => setStatusFilter('ACTIVE')} style={pillStyle(statusFilter === 'ACTIVE')}>Ativas {totalActive}</button>
             <button type="button" onClick={() => setStatusFilter('PAUSED')} style={pillStyle(statusFilter === 'PAUSED')}>Pausadas {totalPaused}</button>
           </div>
-          <select value={sortOrder} onChange={event => setSortOrder(event.target.value as typeof sortOrder)} className="ds-input" style={{ width: 160, height: 38 }}>
-            <option value="recent">Mais recentes</option>
-            <option value="name">Nome</option>
-            <option value="executions">Execuções</option>
-          </select>
+          <CustomSelect
+            value={sortOrder}
+            onChange={setSortOrder}
+            width={160}
+            options={[
+              { value: 'recent', label: 'Mais recentes' },
+              { value: 'name', label: 'Nome' },
+              { value: 'executions', label: 'Execuções' },
+            ]}
+          />
         </div>
 
         <section className="ds-card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -554,11 +675,16 @@ const AutomationJourneysView: React.FC = () => {
               className="ds-input"
               style={{ width: '100%', fontWeight: 800, fontSize: 15 }}
             />
-            <select value={selected.status} onChange={event => setStatus(event.target.value as AutomationJourneyStatus)} className="ds-input">
-              <option value="DRAFT">Rascunho</option>
-              <option value="ACTIVE">Ativa</option>
-              <option value="PAUSED">Pausada</option>
-            </select>
+            <CustomSelect
+              value={selected.status}
+              onChange={setStatus}
+              width={170}
+              options={[
+                { value: 'DRAFT', label: 'Rascunho' },
+                { value: 'ACTIVE', label: 'Ativa' },
+                { value: 'PAUSED', label: 'Pausada' },
+              ]}
+            />
             <button type="button" onClick={deleteJourney} className="ds-btn danger" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
               <Trash2 size={13} />
             </button>
