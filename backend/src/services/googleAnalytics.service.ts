@@ -90,7 +90,7 @@ async function getGA4SourceConfigs(source?: string | null, hostName?: string | n
         getStringMetadata(meta, ['lpPropertyIds', 'landingPagesPropertyIds', 'lpPropertyId', 'landingPagesPropertyId']) ||
         process.env.GA4_LP_PROPERTY_IDS ||
         process.env.GA4_LP_PROPERTY_ID ||
-        '459584870,266875338'
+        '459584870'
       ),
       hostNames: parseHostNames(getStringMetadata(meta, ['lpHostNames', 'lpHostName']) || process.env.GA4_LP_HOSTNAMES || process.env.LP_HOSTNAME || '*'),
     },
