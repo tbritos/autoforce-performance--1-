@@ -300,6 +300,71 @@ export async function getLandingPagesFromGA4(
   }
 }
 
+export async function getGA4SourceTotals(
+  startDate?: string,
+  endDate?: string,
+  source?: string
+): Promise<{ views: number; users: number; pages: number; errors: string[] }> {
+  const configs = await getGA4SourceConfigs(source, undefined);
+  const client = await initializeGA4Client();
+
+  let start = startDate;
+  let end = endDate;
+  if (!start || !end) {
+    const today = new Date();
+    const past = new Date();
+    past.setDate(today.getDate() - 30);
+    end = today.toISOString().split('T')[0];
+    start = past.toISOString().split('T')[0];
+  }
+
+  const jobs = configs.flatMap(config =>
+    config.propertyIds.map(async propertyId => {
+      const response = await client.properties.runReport({
+        property: `properties/${propertyId}`,
+        requestBody: {
+          dateRanges: [{ startDate: start, endDate: end }],
+          dimensions: [{ name: 'pagePath' }],
+          metrics: [
+            { name: 'screenPageViews' },
+            { name: 'activeUsers' },
+          ],
+          limit: 100000,
+        },
+      });
+
+      const rows = response.data.rows || [];
+      return rows.reduce(
+        (acc: { views: number; users: number; pages: number }, row: any) => {
+          const metrics = row.metricValues || [];
+          acc.views += parseInt(metrics[0]?.value || '0', 10);
+          acc.users += parseInt(metrics[1]?.value || '0', 10);
+          acc.pages += 1;
+          return acc;
+        },
+        { views: 0, users: 0, pages: 0 }
+      );
+    })
+  );
+
+  const results = await Promise.allSettled(jobs);
+  const totals = results.reduce(
+    (acc, result) => {
+      if (result.status === 'fulfilled') {
+        acc.views += result.value.views;
+        acc.users += result.value.users;
+        acc.pages += result.value.pages;
+      } else {
+        acc.errors.push(result.reason?.message || String(result.reason));
+      }
+      return acc;
+    },
+    { views: 0, users: 0, pages: 0, errors: [] as string[] }
+  );
+
+  return totals;
+}
+
 function mergeLandingPages(pages: LandingPage[]): LandingPage[] {
   const map = new Map<string, LandingPage>();
 

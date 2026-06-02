@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { AnalyticsService } from '../services/analytics.service';
-import { syncLandingPagesFromGA4 } from '../services/googleAnalytics.service';
+import { getGA4SourceTotals, syncLandingPagesFromGA4 } from '../services/googleAnalytics.service';
 import { getClarityMetrics, testClarityConnection } from '../services/clarity.service';
 
 export const getLandingPages = async (
@@ -24,6 +24,21 @@ export const getLandingPages = async (
     res.json(pages);
   } catch (error) {
     console.error('Error fetching landing pages:', error);
+    next(error);
+  }
+};
+
+export const getGA4Totals = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { startDate, endDate, source } = req.query;
+    const totals = await getGA4SourceTotals(
+      startDate as string,
+      endDate as string,
+      source as string
+    );
+    res.json(totals);
+  } catch (error) {
+    console.error('Error fetching GA4 totals:', error);
     next(error);
   }
 };

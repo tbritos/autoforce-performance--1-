@@ -129,6 +129,19 @@ export const DataService = {
     } catch { return null; }
   },
 
+  getGA4Totals: async (
+    startDate?: string,
+    endDate?: string,
+    source?: 'all' | 'lp' | 'site' | 'blog'
+  ): Promise<{ views: number; users: number; pages: number; errors: string[] }> => {
+    const params = new URLSearchParams();
+    if (startDate) params.set('startDate', startDate);
+    if (endDate) params.set('endDate', endDate);
+    if (source && source !== 'all') params.set('source', source);
+    const query = params.toString();
+    return apiClient.get(`/analytics/ga4/totals${query ? `?${query}` : ''}`);
+  },
+
   saveClarityConfig: async (projectId: string, apiKey: string): Promise<void> => {
     await apiClient.put('/connections/CLARITY/config', {
       accessToken: apiKey || undefined,
