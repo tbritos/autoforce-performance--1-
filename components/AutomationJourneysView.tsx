@@ -47,14 +47,14 @@ const BLOCKS: Array<{
   color: string;
   icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
 }> = [
-  { type: 'trigger', label: 'Entrada', description: 'Lead entrou, tag aplicada ou webhook recebido', color: '#456CEC', icon: Zap },
-  { type: 'condition', label: 'Condição', description: 'Cargo, tag, score, dor, origem ou campo', color: '#22C55E', icon: GitBranch },
-  { type: 'wait', label: 'Esperar', description: 'Aguardar horas ou dias antes do próximo passo', color: '#F59E0B', icon: Clock },
-  { type: 'internal_action', label: 'Ação interna', description: 'Adicionar tag, score, etapa ou campo', color: '#14B8A6', icon: Tags },
-  { type: 'rd_conversion', label: 'RD Station', description: 'Criar conversão para entrar em fluxo de e-mail', color: '#8B5CF6', icon: Mail },
-  { type: 'whatsapp_message', label: 'WhatsApp', description: 'Enviar template ou mensagem da cadência', color: '#10B981', icon: MessageCircle },
-  { type: 'pipedrive_action', label: 'Pipedrive', description: 'Criar ou atualizar negócio comercial', color: '#EF4444', icon: Database },
-  { type: 'end', label: 'Fim', description: 'Encerrar a jornada ou aguardar evento', color: '#64748B', icon: Pause },
+  { type: 'trigger',          label: 'Entrada',      description: 'Lead entrou, tag aplicada ou webhook recebido',  color: '#456CEC', icon: Zap },
+  { type: 'condition',        label: 'Condição',     description: 'Cargo, tag, score, dor, origem ou campo',        color: '#22C55E', icon: GitBranch },
+  { type: 'wait',             label: 'Esperar',      description: 'Aguardar horas ou dias antes do próximo passo',  color: '#F59E0B', icon: Clock },
+  { type: 'internal_action',  label: 'Ação interna', description: 'Adicionar tag, score, etapa ou campo',           color: '#14B8A6', icon: Tags },
+  { type: 'rd_conversion',    label: 'RD Station',   description: 'Criar conversão para entrar em fluxo de e-mail', color: '#8B5CF6', icon: Mail },
+  { type: 'whatsapp_message', label: 'WhatsApp',     description: 'Enviar template ou mensagem da cadência',        color: '#10B981', icon: MessageCircle },
+  { type: 'pipedrive_action', label: 'Pipedrive',    description: 'Criar ou atualizar negócio comercial',           color: '#EF4444', icon: Database },
+  { type: 'end',              label: 'Fim',          description: 'Encerrar a jornada ou aguardar evento',          color: '#64748B', icon: Pause },
 ];
 
 const LEAD_STATUS_OPTIONS = [
@@ -70,24 +70,14 @@ const defaultNodes = (): AutomationJourneyNode[] => [
   {
     id: `node-${Date.now()}-1`,
     type: 'trigger',
-    label: 'Lead entrou',
-    x: 80,
-    y: 180,
-    config: { event: 'webhook_received' },
-  },
-  {
-    id: `node-${Date.now()}-2`,
-    type: 'rd_conversion',
-    label: 'Criar conversao RD',
-    x: 380,
-    y: 180,
-    config: { conversionIdentifier: 'inicio_nutricao', conversionName: 'Inicio da nutricao' },
+    label: 'Entrada',
+    x: 160,
+    y: 200,
+    config: {},
   },
 ];
 
-const defaultEdges = (nodes: AutomationJourneyNode[]): AutomationJourneyEdge[] => [
-  { id: `edge-${Date.now()}`, source: nodes[0].id, target: nodes[1].id },
-];
+const defaultEdges = (): AutomationJourneyEdge[] => [];
 
 const blockMeta = (type: AutomationNodeType) => BLOCKS.find(block => block.type === type) ?? BLOCKS[0];
 
@@ -376,7 +366,7 @@ const emptyDraft = () => {
     description: null,
     status: 'DRAFT' as AutomationJourneyStatus,
     nodes,
-    edges: defaultEdges(nodes),
+    edges: defaultEdges(),
     triggerType: 'webhook_received',
     isActive: false,
     createdAt: new Date().toISOString(),
@@ -512,6 +502,12 @@ const AutomationJourneysView: React.FC = () => {
 
   const publishJourney = async () => {
     if (!selected.name.trim()) return;
+    const triggerNode = selected.nodes.find(n => n.type === 'trigger');
+    if (!triggerNode?.config?.event) {
+      alert('Configure o bloco Entrada antes de publicar. Dê um duplo clique nele para abrir as configurações.');
+      setModalNodeId(triggerNode?.id ?? null);
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -569,6 +565,8 @@ const AutomationJourneysView: React.FC = () => {
   };
 
   const removeNode = (id: string) => {
+    const node = selected.nodes.find(n => n.id === id);
+    if (node?.type === 'trigger') return; // trigger is mandatory and cannot be deleted
     updateSelected({
       nodes: selected.nodes.filter(node => node.id !== id),
       edges: selected.edges.filter(edge => edge.source !== id && edge.target !== id),
@@ -609,6 +607,8 @@ const AutomationJourneysView: React.FC = () => {
     event.preventDefault();
     const type = event.dataTransfer.getData('application/x-automation-node') as AutomationNodeType;
     if (!type) return;
+    // Trigger is mandatory and unique — block adding a second one
+    if (type === 'trigger' && selected.nodes.some(n => n.type === 'trigger')) return;
     const point = canvasPoint(event);
     addNode(type, Math.max(20, point.x - NODE_W / 2), Math.max(20, point.y - 30));
   };
@@ -999,7 +999,7 @@ const AutomationJourneysView: React.FC = () => {
             Blocos
           </span>
           <span style={{ width: 1, height: 18, background: 'var(--border)', flexShrink: 0, marginRight: 2 }} />
-          {BLOCKS.map(block => {
+          {BLOCKS.filter(block => block.type !== 'trigger').map(block => {
             const Icon = block.icon;
             return (
               <div
@@ -1122,7 +1122,7 @@ const AutomationJourneysView: React.FC = () => {
                   top: node.y,
                   width: NODE_W,
                   minHeight: NODE_H,
-                  border: `1px solid ${active || connecting ? meta.color : 'var(--border)'}`,
+                  border: `1.5px solid ${active || connecting ? meta.color : node.type === 'trigger' && !node.config?.event ? '#F59E0B' : 'var(--border)'}`,
                   borderRadius: 'var(--r-lg)',
                   background: 'var(--bg-surface)',
                   boxShadow: active ? `0 0 0 3px ${meta.color}22` : 'var(--shadow-sm)',
@@ -1133,12 +1133,21 @@ const AutomationJourneysView: React.FC = () => {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                  <span style={{ width: 32, height: 32, borderRadius: 9, display: 'grid', placeItems: 'center', background: `${meta.color}22`, color: meta.color }}>
+                  <span style={{ position: 'relative', width: 32, height: 32, borderRadius: 9, display: 'grid', placeItems: 'center', background: `${meta.color}22`, color: meta.color, flexShrink: 0 }}>
                     <Icon size={16} />
+                    {node.type === 'trigger' && !node.config?.event && (
+                      <span style={{
+                        position: 'absolute', top: -3, right: -3,
+                        width: 10, height: 10, borderRadius: 999,
+                        background: '#F59E0B', border: '2px solid var(--bg-surface)',
+                      }} />
+                    )}
                   </span>
                   <div style={{ minWidth: 0 }}>
                     <strong style={{ display: 'block', color: 'var(--fg-primary)', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{node.label}</strong>
-                    <span style={{ display: 'block', color: 'var(--fg-muted)', fontSize: 11, marginTop: 2 }}>{meta.label}</span>
+                    <span style={{ display: 'block', color: node.type === 'trigger' && !node.config?.event ? '#F59E0B' : 'var(--fg-muted)', fontSize: 11, marginTop: 2 }}>
+                      {node.type === 'trigger' && !node.config?.event ? '⚠ Configure o gatilho' : meta.label}
+                    </span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 10 }}>
@@ -1539,18 +1548,20 @@ const AutomationJourneysView: React.FC = () => {
                     <Check size={15} />
                     Salvar alterações
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => { removeNode(panelNode.id); setModalNodeId(null); }}
-                    style={{
-                      width: 42, height: 42, display: 'grid', placeItems: 'center',
-                      border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10,
-                      background: 'rgba(239,68,68,0.06)', color: '#EF4444', cursor: 'pointer',
-                    }}
-                    title="Remover bloco"
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                  {panelNode.type !== 'trigger' && (
+                    <button
+                      type="button"
+                      onClick={() => { removeNode(panelNode.id); setModalNodeId(null); }}
+                      style={{
+                        width: 42, height: 42, display: 'grid', placeItems: 'center',
+                        border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10,
+                        background: 'rgba(239,68,68,0.06)', color: '#EF4444', cursor: 'pointer',
+                      }}
+                      title="Remover bloco"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
                 </div>
               </div>
             </>,
