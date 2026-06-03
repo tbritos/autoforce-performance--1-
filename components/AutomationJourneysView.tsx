@@ -1516,11 +1516,6 @@ const AutomationJourneysView: React.FC = () => {
                 {/* Modal form */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
 
-                  {/* Divider */}
-                  {panelNode.type !== 'end' && (
-                    <div style={{ height: 1, background: 'var(--border)', margin: '0 -24px', alignSelf: 'stretch' }} />
-                  )}
-
                   {/* ── TRIGGER ── */}
                   {panelNode.type === 'trigger' && (() => {
                     const triggerOptions = [
