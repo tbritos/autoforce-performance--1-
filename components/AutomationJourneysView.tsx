@@ -356,6 +356,36 @@ function TagSelector({ value, onChange }: { value: string; onChange: (v: string)
   );
 }
 
+// ── Webhook Source Selector (async, fetches webhook sources from API) ─────────
+
+function WebhookSourceSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [sources, setSources] = useState<Array<{ id: string; name: string; type: string }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    DataService.listLeadWebhooks()
+      .then(s => setSources(s.filter(w => w.isActive)))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const options: SmartSelectOption[] = sources.map(s => ({
+    value: s.id,
+    label: s.name,
+    description: s.type,
+  }));
+
+  return (
+    <SmartSelect
+      value={value}
+      options={options}
+      onChange={onChange}
+      placeholder="Selecionar conversão..."
+      loading={loading}
+    />
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 const emptyDraft = () => {
@@ -1294,27 +1324,14 @@ const AutomationJourneysView: React.FC = () => {
                   {/* ── TRIGGER ── */}
                   {panelNode.type === 'trigger' && (() => {
                     const triggerOptions = [
-                      { value: 'lead_created',     icon: UserPlus,   label: 'Lead entrou na base',   description: 'Novo lead cadastrado na base',         subField: null },
-                      { value: 'tag_added',         icon: Tags,       label: 'Tag aplicada',          description: 'Uma tag foi adicionada ao lead',       subField: 'tag' },
-                      { value: 'score_reached',     icon: TrendingUp, label: 'Score atingiu limite',  description: 'Score chegou a um valor mínimo',       subField: 'score' },
-                      { value: 'rd_conversion',     icon: Mail,       label: 'Conversão RD Station',  description: 'Conversão registrada no RD Station',   subField: 'text' },
-                      { value: 'webhook_received',  icon: Zap,        label: 'Webhook recebido',      description: 'Evento enviado por webhook externo',   subField: 'text' },
-                      { value: 'status_changed',    icon: ArrowRight, label: 'Etapa mudou',           description: 'Status do lead mudou para uma etapa', subField: 'status' },
+                      { value: 'lead_created',    icon: UserPlus,   label: 'Lead entrou na base',     description: 'Qualquer novo lead cadastrado na base',      subField: null },
+                      { value: 'conversion',      icon: Zap,        label: 'Conversão específica',    description: 'Lead chegou por um webhook específico',       subField: 'webhook' },
+                      { value: 'tag_added',       icon: Tags,       label: 'Tag aplicada',            description: 'Uma tag foi adicionada ao lead',             subField: 'tag' },
+                      { value: 'score_reached',   icon: TrendingUp, label: 'Score atingiu limite',    description: 'Score chegou a um valor mínimo definido',    subField: 'score' },
+                      { value: 'status_changed',  icon: ArrowRight, label: 'Etapa mudou',             description: 'Lead mudou para uma etapa específica',       subField: 'status' },
                     ];
                     const selectedEvent = panelValues.config.event || '';
                     const activeOpt = triggerOptions.find(o => o.value === selectedEvent);
-
-                    const subFieldLabels: Record<string, string> = {
-                      tag_added: 'Qual tag dispara?',
-                      score_reached: 'Score mínimo',
-                      rd_conversion: 'Identificador da conversão',
-                      webhook_received: 'Nome do evento',
-                      status_changed: 'Nova etapa',
-                    };
-                    const subFieldPlaceholders: Record<string, string> = {
-                      rd_conversion: 'ex: interesse_produto',
-                      webhook_received: 'ex: form_submitted',
-                    };
 
                     return (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -1354,9 +1371,21 @@ const AutomationJourneysView: React.FC = () => {
                         </div>
 
                         {/* Sub-field for selected trigger */}
+                        {activeOpt?.subField === 'webhook' && (
+                          <div style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>Qual conversão?</span>
+                            <WebhookSourceSelector
+                              value={String(panelValues.config.eventValue ?? '')}
+                              onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, eventValue: v } } : prev)}
+                            />
+                            <span style={{ fontSize: 11, color: 'var(--fg-muted)', lineHeight: 1.4 }}>
+                              Crie o webhook em Banco de Leads → Webhooks de entrada, faça um disparo teste e ele aparecerá aqui.
+                            </span>
+                          </div>
+                        )}
                         {activeOpt?.subField === 'tag' && (
                           <div style={{ display: 'grid', gap: 7 }}>
-                            <span style={fieldLabelStyle}>{subFieldLabels[selectedEvent]}</span>
+                            <span style={fieldLabelStyle}>Qual tag dispara?</span>
                             <TagSelector
                               value={String(panelValues.config.eventValue ?? '')}
                               onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, eventValue: v } } : prev)}
@@ -1365,7 +1394,7 @@ const AutomationJourneysView: React.FC = () => {
                         )}
                         {activeOpt?.subField === 'status' && (
                           <div style={{ display: 'grid', gap: 7 }}>
-                            <span style={fieldLabelStyle}>{subFieldLabels[selectedEvent]}</span>
+                            <span style={fieldLabelStyle}>Qual etapa?</span>
                             <SmartSelect
                               value={String(panelValues.config.eventValue ?? '')}
                               options={LEAD_STATUS_OPTIONS}
@@ -1376,25 +1405,12 @@ const AutomationJourneysView: React.FC = () => {
                         )}
                         {activeOpt?.subField === 'score' && (
                           <label style={{ display: 'grid', gap: 7 }}>
-                            <span style={fieldLabelStyle}>{subFieldLabels[selectedEvent]}</span>
+                            <span style={fieldLabelStyle}>Score mínimo</span>
                             <input
                               type="number" min={0}
                               value={String(panelValues.config.eventValue ?? '')}
                               onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, eventValue: e.target.value } } : prev)}
                               placeholder="ex: 50"
-                              style={fieldInputStyle}
-                              onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
-                              onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
-                            />
-                          </label>
-                        )}
-                        {activeOpt?.subField === 'text' && (
-                          <label style={{ display: 'grid', gap: 7 }}>
-                            <span style={fieldLabelStyle}>{subFieldLabels[selectedEvent]}</span>
-                            <input
-                              value={String(panelValues.config.eventValue ?? '')}
-                              onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, eventValue: e.target.value } } : prev)}
-                              placeholder={subFieldPlaceholders[selectedEvent] ?? ''}
                               style={fieldInputStyle}
                               onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
                               onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
