@@ -805,18 +805,25 @@ const AutomationJourneysView: React.FC = () => {
                   title={isActive ? 'Pausar automação' : 'Ativar automação'}
                   style={{
                     width: 36,
-                    height: 22,
+                    height: 20,
                     borderRadius: 999,
-                    border: 'none',
-                    background: isActive ? 'var(--success)' : 'var(--bg-soft)',
+                    border: `1.5px solid ${isActive ? 'var(--success)' : 'var(--border)'}`,
+                    background: isActive ? 'var(--success)' : 'transparent',
                     padding: 2,
                     cursor: 'pointer',
                     display: 'flex',
                     justifyContent: isActive ? 'flex-end' : 'flex-start',
                     alignItems: 'center',
+                    flexShrink: 0,
+                    transition: 'background .15s, border-color .15s',
                   }}
                 >
-                  <span style={{ width: 18, height: 18, borderRadius: 999, background: '#fff', display: 'block' }} />
+                  <span style={{
+                    width: 14, height: 14, borderRadius: 999,
+                    background: isActive ? '#fff' : 'var(--fg-muted)',
+                    display: 'block', flexShrink: 0,
+                    transition: 'background .15s',
+                  }} />
                 </button>
                 <button
                   type="button"
