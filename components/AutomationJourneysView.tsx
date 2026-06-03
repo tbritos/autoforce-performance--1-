@@ -12,7 +12,6 @@ import {
   MessageCircle,
   MoreHorizontal,
   MousePointer2,
-  Pause,
   Pencil,
   Play,
   Plus,
@@ -56,7 +55,6 @@ const BLOCKS: Array<{
   { type: 'rd_conversion',    label: 'RD Station',   description: 'Criar conversão para entrar em fluxo de e-mail', color: '#8B5CF6', icon: Mail },
   { type: 'whatsapp_message', label: 'WhatsApp',     description: 'Enviar template ou mensagem da cadência',        color: '#10B981', icon: MessageCircle },
   { type: 'pipedrive_action', label: 'Pipedrive',    description: 'Criar ou atualizar negócio comercial',           color: '#EF4444', icon: Database },
-  { type: 'end',              label: 'Fim',          description: 'Encerrar a jornada ou aguardar evento',          color: '#64748B', icon: Pause },
 ];
 
 const LEAD_STATUS_OPTIONS = [
@@ -126,8 +124,6 @@ function nodeSubtitle(node: AutomationJourneyNode): { text: string; warn: boolea
       };
       return { text: c.action ? (labels[c.action] ?? c.action) : 'Definir ação...', warn: false };
     }
-    case 'end':
-      return { text: c.reason || 'Encerrar jornada', warn: false };
     default:
       return { text: blockMeta(node.type).label, warn: false };
   }
@@ -2025,7 +2021,6 @@ const AutomationJourneysView: React.FC = () => {
                   })()}
 
                   {/* ── END ── */}
-                  {panelNode.type === 'end' && panelTextField('reason', 'Motivo de encerramento', 'ex: mql_created, opted_out...')}
                 </div>
 
                 {/* Modal footer */}
