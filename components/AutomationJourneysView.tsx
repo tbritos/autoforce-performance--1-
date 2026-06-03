@@ -1772,15 +1772,16 @@ const AutomationJourneysView: React.FC = () => {
             </div>
           )}
 
-          {/* Canvas footer */}
-          <div style={{ position: 'absolute', bottom: 16, left: 16, display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: '6px 12px', fontSize: 12, color: 'var(--fg-muted)', pointerEvents: 'none' }}>
-            <Search size={12} />
-            {selected.nodes.length} blocos · {selected.edges.length} conexões
-          </div>
-          <div style={{ position: 'absolute', bottom: 16, right: 16, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <button type="button" style={{ width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--bg-surface)', color: 'var(--fg-muted)', cursor: 'default', display: 'grid', placeItems: 'center', fontSize: 16, lineHeight: 1 }}>+</button>
-            <button type="button" style={{ width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--bg-surface)', color: 'var(--fg-muted)', cursor: 'default', display: 'grid', placeItems: 'center', fontSize: 16, lineHeight: 1 }}>−</button>
-          </div>
+        </div>
+
+        {/* Canvas footer — fora do div scrollável, fixo no wrapper */}
+        <div style={{ position: 'absolute', bottom: 16, left: 16, display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: '6px 12px', fontSize: 12, color: 'var(--fg-muted)', pointerEvents: 'none', zIndex: 10 }}>
+          <Search size={12} />
+          {selected.nodes.length} blocos · {selected.edges.length} conexões
+        </div>
+        <div style={{ position: 'absolute', bottom: 16, right: 16, display: 'flex', flexDirection: 'column', gap: 4, zIndex: 10 }}>
+          <button type="button" style={{ width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--bg-surface)', color: 'var(--fg-muted)', cursor: 'default', display: 'grid', placeItems: 'center', fontSize: 16, lineHeight: 1 }}>+</button>
+          <button type="button" style={{ width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--bg-surface)', color: 'var(--fg-muted)', cursor: 'default', display: 'grid', placeItems: 'center', fontSize: 16, lineHeight: 1 }}>−</button>
         </div>
 
         {/* ── CONFIG MODAL (portal, centralizado) ─────────────────────────────── */}
