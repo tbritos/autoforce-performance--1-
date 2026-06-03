@@ -155,7 +155,7 @@ function CustomSelect<T extends string>({
             border: '1px solid var(--border)',
             borderRadius: 'var(--r-md)',
             background: 'var(--bg-elevated)',
-            boxShadow: 'var(--shadow-lg)',
+            boxShadow: 'var(--shadow-md)',
             padding: 5,
           }}
         >
@@ -807,8 +807,8 @@ const AutomationJourneysView: React.FC = () => {
                     width: 36,
                     height: 20,
                     borderRadius: 999,
-                    border: `1.5px solid ${isActive ? 'var(--success)' : 'var(--border)'}`,
-                    background: isActive ? 'var(--success)' : 'transparent',
+                    border: `1.5px solid ${isActive ? 'var(--green-500)' : 'var(--border)'}`,
+                    background: isActive ? 'var(--green-500)' : 'transparent',
                     padding: 2,
                     cursor: 'pointer',
                     display: 'flex',
@@ -903,7 +903,7 @@ const AutomationJourneysView: React.FC = () => {
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: 5,
                 padding: '3px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, flexShrink: 0,
-                background: selected.status === 'ACTIVE' ? 'rgba(34,197,94,0.12)' : selected.status === 'PAUSED' ? 'rgba(245,158,11,0.12)' : 'var(--bg-soft)',
+                background: selected.status === 'ACTIVE' ? 'rgba(34,197,94,0.12)' : selected.status === 'PAUSED' ? 'rgba(245,158,11,0.12)' : 'var(--bg-muted)',
                 color: selected.status === 'ACTIVE' ? '#22C55E' : selected.status === 'PAUSED' ? '#F59E0B' : 'var(--fg-muted)',
               }}>
                 <span style={{ width: 6, height: 6, borderRadius: 999, background: 'currentColor', display: 'block', flexShrink: 0 }} />
@@ -1237,7 +1237,7 @@ const AutomationJourneysView: React.FC = () => {
                     type="button"
                     onClick={() => setModalNodeId(null)}
                     style={{
-                      border: '1px solid var(--border)', background: 'var(--bg-soft)', color: 'var(--fg-muted)',
+                      border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-muted)',
                       cursor: 'pointer', display: 'grid', placeItems: 'center',
                       width: 32, height: 32, borderRadius: 8, flexShrink: 0,
                     }}
@@ -1315,7 +1315,7 @@ const AutomationJourneysView: React.FC = () => {
                               >
                                 <span style={{
                                   width: 30, height: 30, borderRadius: 8, display: 'grid', placeItems: 'center', flexShrink: 0,
-                                  background: isSelected ? 'rgba(69,108,236,0.14)' : 'var(--bg-soft)',
+                                  background: isSelected ? 'rgba(69,108,236,0.14)' : 'var(--bg-subtle)',
                                   color: isSelected ? '#456CEC' : 'var(--fg-muted)',
                                 }}>
                                   <OIcon size={14} />
@@ -1456,7 +1456,7 @@ const AutomationJourneysView: React.FC = () => {
                           </div>
                         </div>
                         {amount && unit && (
-                          <div style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--bg-soft)', fontSize: 13, color: 'var(--fg-muted)' }}>
+                          <div style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--bg-subtle)', fontSize: 13, color: 'var(--fg-muted)' }}>
                             Aguarda <strong style={{ color: 'var(--fg-primary)' }}>{amount} {unitLabel}</strong> antes de continuar.
                           </div>
                         )}
