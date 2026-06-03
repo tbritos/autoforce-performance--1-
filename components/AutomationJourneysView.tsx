@@ -493,7 +493,9 @@ const AutomationJourneysView: React.FC = () => {
 
   const savePanel = () => {
     if (!modalNodeId || !panelValues) return;
-    updateNode(modalNodeId, { label: panelValues.label, config: panelValues.config });
+    const node = selected.nodes.find(n => n.id === modalNodeId);
+    const label = node ? blockMeta(node.type).label : panelValues.label;
+    updateNode(modalNodeId, { label, config: panelValues.config });
     setModalNodeId(null);
   };
 
@@ -1361,19 +1363,6 @@ const AutomationJourneysView: React.FC = () => {
 
                 {/* Modal form */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-
-                  {/* Node name */}
-                  <label style={{ display: 'grid', gap: 7 }}>
-                    <span style={fieldLabelStyle}>Nome do bloco</span>
-                    <input
-                      autoFocus
-                      value={panelValues.label}
-                      onChange={e => setPanelValues(prev => prev ? { ...prev, label: e.target.value } : prev)}
-                      style={fieldInputStyle}
-                      onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
-                      onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
-                    />
-                  </label>
 
                   {/* Divider */}
                   {panelNode.type !== 'end' && (
