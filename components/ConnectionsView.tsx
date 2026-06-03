@@ -327,12 +327,12 @@ const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ initialValues, onSave, on
     background: 'var(--bg-input, var(--bg-subtle))', color: 'var(--fg-primary)', fontSize: 13,
     outline: 'none', boxSizing: 'border-box',
   };
-  const labelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)', marginBottom: 4, display: 'block' };
+  const labelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: 'var(--fg-primary)', marginBottom: 4, display: 'block' };
 
   return (
     <div ref={overlayRef} onClick={e => { if (e.target === overlayRef.current) onClose(); }}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9000, padding: 20 }}>
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)', padding: 24, width: '100%', maxWidth: 440, display: 'flex', flexDirection: 'column', gap: 18 }}>
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9000, padding: 20 }}>
+      <div className="ds-card" style={{ padding: 24, width: '100%', maxWidth: 440, display: 'flex', flexDirection: 'column', gap: 18, borderColor: 'var(--border)' }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
