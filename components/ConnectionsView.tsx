@@ -284,8 +284,8 @@ const ConnectionsView: React.FC = () => {
   const [requirements, setRequirements] = useState<ConnectionRequirement[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadConnections = useCallback(async () => {
-    setLoading(true);
+  const loadConnections = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [data, requirementData] = await Promise.all([
         DataService.listConnections().catch(err => {
@@ -304,7 +304,7 @@ const ConnectionsView: React.FC = () => {
       setConnections([]);
       setRequirements([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -347,7 +347,7 @@ const ConnectionsView: React.FC = () => {
 
   const handleTest = useCallback(async (platform: string) => {
     const result = await DataService.testPlatformConnection(platform);
-    await loadConnections(); // refresh status badge from DB after test
+    await loadConnections(true); // silent refresh — preserves card feedback state
     return result;
   }, [loadConnections]);
 
