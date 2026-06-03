@@ -234,9 +234,34 @@ model AutomationJourney {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  executions AutomationExecution[]
+
   @@index([status])
   @@index([isActive])
   @@index([createdAt])
+}
+
+model AutomationExecution {
+  id        String @id @default(uuid())
+  journeyId String
+  journey   AutomationJourney @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  leadEmail String
+
+  status        String    @default("running") // 'running' | 'waiting' | 'completed' | 'failed'
+  currentNodeId String?
+  resumeAt      DateTime?
+
+  log   Json    @default("[]")
+  error String? @db.Text
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([status])
+  @@index([journeyId])
+  @@index([leadEmail])
+  @@index([resumeAt])
+  @@index([startedAt])
 }
 
 // ============================================================

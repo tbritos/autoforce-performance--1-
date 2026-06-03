@@ -421,10 +421,18 @@ export class LeadHubService {
       ...(input.score !== undefined ? { score: input.score ?? 0 } : {}),
     };
 
-    return prisma.lead.update({
+    const updated = await prisma.lead.update({
       where: { id },
       data,
     });
+
+    if (input.score !== undefined) {
+      import('./automation-engine.service').then(({ fireTrigger }) => {
+        fireTrigger('score_updated', updated.email, { score: updated.score });
+      }).catch(() => {});
+    }
+
+    return updated;
   }
 
   // ----------------------------------------------------------
@@ -444,7 +452,7 @@ export class LeadHubService {
 
     if (lead.status === newStatus) return lead;
 
-    return prisma.$transaction(async (tx) => {
+    const updated = await prisma.$transaction(async (tx) => {
       const timestamps: Partial<Prisma.LeadUpdateInput> = {};
       if (newStatus === 'MQL' && !lead.qualifiedAt) {
         timestamps.qualifiedAt = new Date();
@@ -453,7 +461,7 @@ export class LeadHubService {
         timestamps.convertedAt = new Date();
       }
 
-      const updated = await tx.lead.update({
+      const result = await tx.lead.update({
         where: { email },
         data: { status: newStatus, ...timestamps },
       });
@@ -468,8 +476,17 @@ export class LeadHubService {
         },
       });
 
-      return updated;
+      return result;
     });
+
+    // Skip automation trigger when the engine itself is changing status (avoids loops)
+    if (changedBy !== 'automation') {
+      import('./automation-engine.service').then(({ fireTrigger }) => {
+        fireTrigger('status_changed', email, { fromStatus: lead.status, toStatus: newStatus });
+      }).catch(() => {});
+    }
+
+    return updated;
   }
 
   static async updateLeadStatusById(
@@ -556,10 +573,14 @@ export class LeadHubService {
     const email = normalizeEmail(emailRaw);
     const lead = await prisma.lead.findUniqueOrThrow({ where: { email } });
     if (lead.tags.includes(tag)) return lead;
-    return prisma.lead.update({
+    const updated = await prisma.lead.update({
       where: { email },
       data: { tags: { push: tag } },
     });
+    import('./automation-engine.service').then(({ fireTrigger }) => {
+      fireTrigger('tag_added', email, { tag });
+    }).catch(() => {});
+    return updated;
   }
 
   static async addTagById(id: string, tag: string) {

@@ -436,6 +436,8 @@ export class LeadWebhooksService {
         error: rule.error,
       }));
 
+      const leadAction = lead.createdAt.getTime() === lead.updatedAt.getTime() ? 'created' : 'updated';
+
       await prisma.webhookLog.update({
         where: { id: log.id },
         data: {
@@ -447,11 +449,23 @@ export class LeadWebhooksService {
             conversionId: conversion.id,
             tagsApplied: tags,
             rules: rulesResult,
-            leadAction: lead.createdAt.getTime() === lead.updatedAt.getTime() ? 'created' : 'updated',
+            leadAction,
           } as Prisma.JsonObject,
           processedAt: new Date(),
         },
       });
+
+      // Fire automation triggers (fire-and-forget)
+      import('./automation-engine.service').then(({ fireTrigger }) => {
+        const conversionName = cleanString(normalized.conversion.formName) || source.name;
+        if (leadAction === 'created') {
+          fireTrigger('lead_created', updatedLead.email, {
+            conversionName,
+            source: firstSource,
+          });
+        }
+        fireTrigger('conversion_received', updatedLead.email, { conversionName });
+      }).catch(() => {});
 
       return {
         ok: true,

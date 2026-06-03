@@ -896,6 +896,64 @@ export async function createDealForLead(
   return { dealId, personId };
 }
 
+// ─── Deal mutation helpers (used by automation engine) ───────────────────────
+
+async function pipedriveUpdate<T>(
+  path: string,
+  token: string,
+  domain: string,
+  authType: 'api_token' | 'oauth',
+  body: Record<string, unknown>
+): Promise<T> {
+  const url = new URL(`${BASE(domain)}${path}`);
+  if (authType === 'api_token') url.searchParams.set('api_token', token);
+
+  const res = await fetch(url.toString(), {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(authType === 'oauth' ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+
+  const json = await res.json() as { success: boolean; data: T; error?: string };
+  if (!json.success) throw new Error(`Pipedrive PUT ${path} failed: ${json.error ?? res.status}`);
+  return json.data;
+}
+
+export async function createPipedriveDeal(
+  leadEmail: string,
+  title: string,
+  pipeline: string,
+  note?: string
+): Promise<{ dealId: string; personId: string }> {
+  const pipelineKey = (pipeline === 'upsell' ? 'upsell' : 'novo_cliente') as 'novo_cliente' | 'upsell';
+  return createDealForLead(leadEmail, pipelineKey, [
+    { fieldKey: 'title', sourceType: 'fixed', fixedValue: title },
+    { fieldKey: FIELD_CANAL_ORIGEM, sourceType: 'fixed', fixedValue: String(OPT_CANAL_INBOUND) },
+  ], note);
+}
+
+export async function updatePipedriveDealStage(
+  dealId: string,
+  stageId: number
+): Promise<void> {
+  const { token, domain, authType } = await getCredentials();
+  await pipedriveUpdate(`/deals/${dealId}`, token, domain, authType, { stage_id: stageId });
+}
+
+export async function markPipedriveDeal(
+  dealId: string,
+  status: 'won' | 'lost',
+  lostReason?: string
+): Promise<void> {
+  const { token, domain, authType } = await getCredentials();
+  const body: Record<string, unknown> = { status };
+  if (status === 'lost' && lostReason) body.lost_reason = lostReason;
+  await pipedriveUpdate(`/deals/${dealId}`, token, domain, authType, body);
+}
+
 // ─── Deal stage map helper (for configuration UI) ────────────────────────────
 
 export async function fetchPipedriveStages(): Promise<Array<{ id: number; name: string; pipeline_name: string }>> {

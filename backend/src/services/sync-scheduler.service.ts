@@ -104,6 +104,14 @@ export function startSyncScheduler(): void {
     const timer = setInterval(() => runSync(platform), SYNC_INTERVALS_MS[platform]);
     timers.set(platform, timer);
   }
+
+  // Resume waiting automation executions every 60 seconds
+  setInterval(() => {
+    import('./automation-engine.service').then(({ resumeWaitingExecutions }) => {
+      resumeWaitingExecutions().catch(err => console.error('[automation] resume error:', err));
+    }).catch(() => {});
+  }, 60_000);
+
   console.log('[sync] Scheduler started for:', Object.keys(SYNC_INTERVALS_MS).join(', '));
 }
 
