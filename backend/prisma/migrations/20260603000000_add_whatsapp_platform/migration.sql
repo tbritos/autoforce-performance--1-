@@ -1,0 +1,2 @@
+-- Add WHATSAPP to Platform enum
+ALTER TYPE "Platform" ADD VALUE IF NOT EXISTS 'WHATSAPP';
