@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { Platform } from '@prisma/client';
 import { OAuthService } from '../services/oauth.service';
 import { PlatformConnectionService } from '../services/platform-connection.service';
+import { getWhatsAppCredentials } from '../services/whatsapp.service';
 
 const VALID_PLATFORMS = [
   'META_ADS', 'GOOGLE_ADS', 'GOOGLE_ANALYTICS', 'RD_STATION', 'PIPEDRIVE', 'CLARITY', 'WHATSAPP',
@@ -24,15 +25,15 @@ const OAUTH_ENV_REQUIREMENTS: Record<(typeof VALID_PLATFORMS)[number], string[]>
 async function testPlatformConnection(platform: Platform): Promise<{ ok: boolean; message: string }> {
   try {
     if ((platform as string) === 'WHATSAPP') {
-      const conn = await PlatformConnectionService.getInternalConnection('WHATSAPP' as Platform);
-      const waToken = conn?.accessToken;
-      const meta = (conn?.metadata ?? {}) as Record<string, unknown>;
-      const businessAccountId = meta.businessAccountId as string | undefined;
-      if (!waToken || !businessAccountId) return { ok: false, message: 'Credenciais WhatsApp não configuradas' };
-      const res = await fetch(`https://graph.facebook.com/v19.0/${businessAccountId}?fields=id,name&access_token=${waToken}`);
-      const data = await res.json() as { id?: string; name?: string; error?: { message: string } };
-      if (data.error) return { ok: false, message: data.error.message };
-      return { ok: true, message: `WhatsApp Business conectado — ${data.name || businessAccountId}` };
+      try {
+        const { accessToken, businessAccountId } = await getWhatsAppCredentials();
+        const res = await fetch(`https://graph.facebook.com/v19.0/${businessAccountId}?fields=id,name&access_token=${accessToken}`);
+        const data = await res.json() as { id?: string; name?: string; error?: { message: string } };
+        if (data.error) return { ok: false, message: data.error.message };
+        return { ok: true, message: `WhatsApp Business conectado — ${data.name || businessAccountId}` };
+      } catch (err) {
+        return { ok: false, message: err instanceof Error ? err.message : 'Erro ao testar WhatsApp' };
+      }
     }
 
     const token = await OAuthService.getValidToken(platform);
@@ -453,5 +454,32 @@ export async function startupConnectionCheck(): Promise<void> {
     } catch (err) {
       console.error(`[connections] ${platform}: exceção no startup — ${err instanceof Error ? err.message : err}`);
     }
+  }
+
+  // WhatsApp — handled separately due to env-var-first pattern
+  try {
+    const waToken = process.env.WHATSAPP_ACCESS_TOKEN?.trim();
+    const waAccountId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID?.trim();
+    if (waToken && waAccountId) {
+      const waPlatform = 'WHATSAPP' as Platform;
+      const existing = await PlatformConnectionService.getInternalConnection(waPlatform);
+      if (!existing || existing.status === 'DISCONNECTED') {
+        await PlatformConnectionService.saveConnection({
+          platform: waPlatform,
+          accessToken: waToken,
+          metadata: { businessAccountId: waAccountId },
+        });
+        const result = await testPlatformConnection(waPlatform);
+        if (result.ok) {
+          await PlatformConnectionService.updateConnectionConfig({ platform: waPlatform, status: 'CONNECTED' });
+          console.log(`[connections] WHATSAPP: OK — ${result.message}`);
+        } else {
+          await PlatformConnectionService.markError(waPlatform, result.message);
+          console.log(`[connections] WHATSAPP: ERRO — ${result.message}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[connections] WHATSAPP: exceção no startup — ${err instanceof Error ? err.message : err}`);
   }
 }

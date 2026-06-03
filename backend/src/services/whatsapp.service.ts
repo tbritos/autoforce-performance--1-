@@ -17,19 +17,31 @@ export interface WhatsAppTemplate {
   components: WhatsAppTemplateComponent[];
 }
 
-export async function fetchWhatsAppTemplates(): Promise<WhatsAppTemplate[]> {
+async function getWhatsAppCredentials(): Promise<{ accessToken: string; businessAccountId: string }> {
+  // env vars take priority (Railway config)
+  const envToken = process.env.WHATSAPP_ACCESS_TOKEN?.trim();
+  const envAccountId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID?.trim();
+  if (envToken && envAccountId) {
+    return { accessToken: envToken, businessAccountId: envAccountId };
+  }
+
+  // fall back to DB (saved via Integrações UI)
   const conn = await PlatformConnectionService.getInternalConnection('WHATSAPP' as Platform);
-  if (!conn?.accessToken) {
-    throw new Error('WhatsApp não configurado. Acesse Integrações e configure a API Business.');
+  const accessToken = conn?.accessToken?.trim();
+  const meta = (conn?.metadata ?? {}) as Record<string, unknown>;
+  const businessAccountId = (meta.businessAccountId as string | undefined)?.trim();
+
+  if (!accessToken || !businessAccountId) {
+    throw new Error('WhatsApp não configurado. Defina WHATSAPP_ACCESS_TOKEN e WHATSAPP_BUSINESS_ACCOUNT_ID no Railway.');
   }
 
-  const meta = (conn.metadata ?? {}) as Record<string, unknown>;
-  const businessAccountId = meta.businessAccountId as string | undefined;
-  if (!businessAccountId) {
-    throw new Error('WhatsApp Business Account ID não encontrado. Reconfigure a integração.');
-  }
+  return { accessToken, businessAccountId };
+}
 
-  const url = `https://graph.facebook.com/v19.0/${businessAccountId}/message_templates?limit=100&fields=id,name,status,category,language,components&access_token=${conn.accessToken}`;
+export async function fetchWhatsAppTemplates(): Promise<WhatsAppTemplate[]> {
+  const { accessToken, businessAccountId } = await getWhatsAppCredentials();
+
+  const url = `https://graph.facebook.com/v19.0/${businessAccountId}/message_templates?limit=100&fields=id,name,status,category,language,components&access_token=${accessToken}`;
   const res = await fetch(url);
 
   if (!res.ok) {
@@ -42,3 +54,5 @@ export async function fetchWhatsAppTemplates(): Promise<WhatsAppTemplate[]> {
 
   return (data.data ?? []).filter(t => t.status === 'APPROVED');
 }
+
+export { getWhatsAppCredentials };
