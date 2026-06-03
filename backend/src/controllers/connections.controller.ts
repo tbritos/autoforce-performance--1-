@@ -4,7 +4,7 @@ import { OAuthService } from '../services/oauth.service';
 import { PlatformConnectionService } from '../services/platform-connection.service';
 
 const VALID_PLATFORMS = [
-  'META_ADS', 'GOOGLE_ADS', 'GOOGLE_ANALYTICS', 'RD_STATION', 'PIPEDRIVE', 'CLARITY',
+  'META_ADS', 'GOOGLE_ADS', 'GOOGLE_ANALYTICS', 'RD_STATION', 'PIPEDRIVE', 'CLARITY', 'WHATSAPP',
 ] as const satisfies readonly Platform[];
 
 function parsePlatform(raw: string): Platform | null {
@@ -17,11 +17,23 @@ const OAUTH_ENV_REQUIREMENTS: Record<(typeof VALID_PLATFORMS)[number], string[]>
   GOOGLE_ANALYTICS:  ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'APP_URL'],
   RD_STATION:        ['RD_STATION_CLIENT_ID', 'RD_STATION_CLIENT_SECRET', 'APP_URL'],
   PIPEDRIVE:         ['PIPEDRIVE_CLIENT_ID', 'PIPEDRIVE_CLIENT_SECRET', 'APP_URL'],
-  CLARITY:           [], // API key — sem OAuth
+  CLARITY:           [],
+  WHATSAPP:          [],
 };
 
 async function testPlatformConnection(platform: Platform): Promise<{ ok: boolean; message: string }> {
   try {
+    if ((platform as string) === 'WHATSAPP') {
+      const conn = await PlatformConnectionService.getInternalConnection('WHATSAPP' as Platform);
+      const waToken = conn?.accessToken;
+      const phoneNumberId = (conn?.metadata as Record<string, unknown>)?.phoneNumberId as string | undefined;
+      if (!waToken || !phoneNumberId) return { ok: false, message: 'Credenciais WhatsApp não configuradas' };
+      const res = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}?access_token=${waToken}`);
+      const data = await res.json() as { display_phone_number?: string; error?: { message: string } };
+      if (data.error) return { ok: false, message: data.error.message };
+      return { ok: true, message: `WhatsApp conectado — ${data.display_phone_number || phoneNumberId}` };
+    }
+
     const token = await OAuthService.getValidToken(platform);
 
     switch (platform) {
@@ -98,6 +110,7 @@ function hasEnvCredentials(platform: (typeof VALID_PLATFORMS)[number]): boolean 
     case 'PIPEDRIVE':       return !!(process.env.PIPEDRIVE_API_TOKEN && process.env.PIPEDRIVE_DOMAIN);
     case 'GOOGLE_ANALYTICS':return !!(process.env.GA4_CREDENTIALS_JSON || process.env.GA4_CREDENTIALS_PATH);
     case 'GOOGLE_ADS':      return !!(process.env.GOOGLE_ADS_CUSTOMER_ID && process.env.GOOGLE_ADS_DEVELOPER_TOKEN);
+    case 'WHATSAPP':        return !!(process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID);
     default:                return false;
   }
 }
@@ -144,6 +157,11 @@ export class ConnectionsController {
         let readyForOAuth = missingEnv.length === 0;
 
         if (platform === 'PIPEDRIVE' && process.env.PIPEDRIVE_API_TOKEN && process.env.PIPEDRIVE_DOMAIN) {
+          missingEnv = [];
+          readyForOAuth = true;
+        }
+
+        if ((platform as string) === 'WHATSAPP') {
           missingEnv = [];
           readyForOAuth = true;
         }

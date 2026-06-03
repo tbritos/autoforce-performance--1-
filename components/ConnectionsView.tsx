@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Megaphone,
   BarChart3,
@@ -12,6 +12,8 @@ import {
   Loader2,
   Eye,
   Wifi,
+  MessageCircle,
+  X,
 } from 'lucide-react';
 import { PlatformConnection, ConnectionStatus, ConnectionRequirement } from '../types';
 import { DataService } from '../services/dataService';
@@ -26,6 +28,7 @@ interface PlatformMeta {
   accentColor: string;
   accentBg: string;
   disabled?: boolean;
+  manualAuth?: boolean;
 }
 
 const PLATFORMS: PlatformMeta[] = [
@@ -33,8 +36,9 @@ const PLATFORMS: PlatformMeta[] = [
   { id: 'GOOGLE_ADS',       label: 'Google Ads',         description: 'Campanhas de pesquisa e display',      Icon: Megaphone, accentColor: '#facc15', accentBg: 'rgba(250,204,21,0.12)' },
   { id: 'GOOGLE_ANALYTICS', label: 'Google Analytics',   description: 'GA4 — Landing pages e comportamento',  Icon: BarChart3, accentColor: '#fb923c', accentBg: 'rgba(251,146,60,0.12)' },
   { id: 'RD_STATION',       label: 'RD Station',         description: 'CRM, e-mails e automações',            Icon: Mail,      accentColor: '#a78bfa', accentBg: 'rgba(167,139,250,0.12)' },
-  { id: 'PIPEDRIVE',        label: 'Pipedrive',          description: 'CRM — Negócios, contatos e pipeline',  Icon: PlugZap,   accentColor: '#34d399', accentBg: 'rgba(52,211,153,0.12)' },
-  { id: 'CLARITY',          label: 'Microsoft Clarity',  description: 'Heatmaps, rage clicks e comportamento', Icon: Eye,      accentColor: '#38bdf8', accentBg: 'rgba(56,189,248,0.12)', disabled: true },
+  { id: 'PIPEDRIVE',        label: 'Pipedrive',          description: 'CRM — Negócios, contatos e pipeline',  Icon: PlugZap,       accentColor: '#34d399', accentBg: 'rgba(52,211,153,0.12)' },
+  { id: 'WHATSAPP',         label: 'WhatsApp Business',  description: 'API Oficial — envio de mensagens e templates', Icon: MessageCircle, accentColor: '#25d366', accentBg: 'rgba(37,211,102,0.12)', manualAuth: true },
+  { id: 'CLARITY',          label: 'Microsoft Clarity',  description: 'Heatmaps, rage clicks e comportamento', Icon: Eye,           accentColor: '#38bdf8', accentBg: 'rgba(56,189,248,0.12)', disabled: true },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -123,9 +127,10 @@ interface CardProps {
   onDisconnect: (platform: string) => Promise<void>;
   onSync: (platform: string) => Promise<void>;
   onTest: (platform: string) => Promise<{ ok: boolean; message: string }>;
+  onManualConfig?: (platform: string) => void;
 }
 
-const PlatformCard: React.FC<CardProps> = ({ meta, connection, requirement, onConnect, onDisconnect, onSync, onTest }) => {
+const PlatformCard: React.FC<CardProps> = ({ meta, connection, requirement, onConnect, onDisconnect, onSync, onTest, onManualConfig }) => {
   const [loadingAction, setLoadingAction] = useState<'connect' | 'disconnect' | 'sync' | 'test' | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
   const status: ConnectionStatus = connection?.status ?? 'DISCONNECTED';
@@ -216,6 +221,17 @@ const PlatformCard: React.FC<CardProps> = ({ meta, connection, requirement, onCo
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto', paddingTop: 4 }}>
         {canManageConnection ? (
           <>
+            {meta.manualAuth && (
+              <button
+                type="button"
+                disabled={loadingAction !== null}
+                onClick={() => onManualConfig?.(meta.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 'var(--r-md)', fontSize: 12, fontWeight: 600, background: 'var(--bg-subtle)', color: 'var(--fg-secondary)', border: '1px solid var(--border)', cursor: 'pointer', opacity: loadingAction !== null ? 0.4 : 1, transition: 'all .15s' }}
+              >
+                <PlugZap size={11} />
+                Reconfigurar
+              </button>
+            )}
             <button
               type="button"
               disabled={loadingAction !== null}
@@ -225,15 +241,17 @@ const PlatformCard: React.FC<CardProps> = ({ meta, connection, requirement, onCo
               {loadingAction === 'test' ? <Loader2 size={11} className="animate-spin" /> : <Wifi size={11} />}
               Testar
             </button>
-            <button
-              type="button"
-              disabled={loadingAction !== null}
-              onClick={() => run('sync', () => onSync(meta.id))}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 'var(--r-md)', fontSize: 12, fontWeight: 600, background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--border)', cursor: 'pointer', opacity: loadingAction !== null ? 0.4 : 1, transition: 'all .15s' }}
-            >
-              {loadingAction === 'sync' ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-              Sincronizar
-            </button>
+            {!meta.manualAuth && (
+              <button
+                type="button"
+                disabled={loadingAction !== null}
+                onClick={() => run('sync', () => onSync(meta.id))}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 'var(--r-md)', fontSize: 12, fontWeight: 600, background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--border)', cursor: 'pointer', opacity: loadingAction !== null ? 0.4 : 1, transition: 'all .15s' }}
+              >
+                {loadingAction === 'sync' ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                Sincronizar
+              </button>
+            )}
             <button
               type="button"
               disabled={loadingAction !== null}
@@ -244,6 +262,16 @@ const PlatformCard: React.FC<CardProps> = ({ meta, connection, requirement, onCo
               Desconectar
             </button>
           </>
+        ) : meta.manualAuth ? (
+          <button
+            type="button"
+            disabled={loadingAction !== null}
+            onClick={() => onManualConfig?.(meta.id)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 14px', borderRadius: 'var(--r-md)', fontSize: 12, fontWeight: 600, background: 'var(--accent)', color: 'white', border: 'none', cursor: 'pointer', opacity: loadingAction !== null ? 0.4 : 1, transition: 'all .15s' }}
+          >
+            <PlugZap size={11} />
+            Configurar
+          </button>
         ) : (
           <button
             type="button"
@@ -260,12 +288,116 @@ const PlatformCard: React.FC<CardProps> = ({ meta, connection, requirement, onCo
   );
 };
 
+// ─── WhatsApp Credentials Modal ──────────────────────────────────────────────
+
+interface WhatsAppModalProps {
+  initialValues: { phoneNumberId: string; businessAccountId: string; accessToken: string };
+  onSave: (values: { phoneNumberId: string; businessAccountId: string; accessToken: string }) => Promise<void>;
+  onClose: () => void;
+}
+
+const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ initialValues, onSave, onClose }) => {
+  const [form, setForm] = useState(initialValues);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm(prev => ({ ...prev, [key]: e.target.value }));
+
+  const handleSave = async () => {
+    if (!form.phoneNumberId.trim() || !form.accessToken.trim()) {
+      setError('Phone Number ID e Access Token são obrigatórios.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await onSave(form);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao salvar');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '8px 10px', borderRadius: 'var(--r-md)', border: '1px solid var(--border)',
+    background: 'var(--bg-input, var(--bg-subtle))', color: 'var(--fg-primary)', fontSize: 13,
+    outline: 'none', boxSizing: 'border-box',
+  };
+  const labelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)', marginBottom: 4, display: 'block' };
+
+  return (
+    <div ref={overlayRef} onClick={e => { if (e.target === overlayRef.current) onClose(); }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9000, padding: 20 }}>
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)', padding: 24, width: '100%', maxWidth: 440, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 'var(--r-md)', background: 'rgba(37,211,102,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <MessageCircle size={16} style={{ color: '#25d366' }} />
+            </div>
+            <div>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>WhatsApp Business API</p>
+              <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-muted)' }}>Credenciais do Meta Developer Console</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} style={{ padding: 4, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--fg-muted)', borderRadius: 'var(--r-sm)' }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Fields */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label style={labelStyle}>Phone Number ID *</label>
+            <input style={inputStyle} value={form.phoneNumberId} onChange={set('phoneNumberId')} placeholder="ex: 123456789012345" />
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>Encontrado em Meta for Developers → WhatsApp → API Setup</p>
+          </div>
+          <div>
+            <label style={labelStyle}>WhatsApp Business Account ID</label>
+            <input style={inputStyle} value={form.businessAccountId} onChange={set('businessAccountId')} placeholder="ex: 987654321098765" />
+          </div>
+          <div>
+            <label style={labelStyle}>Access Token Permanente *</label>
+            <input style={inputStyle} type="password" value={form.accessToken} onChange={set('accessToken')} placeholder="EAAxxxxxxxxxxxxxxxx..." />
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>Gere um token de longa duração em Meta Business → Configurações do sistema</p>
+          </div>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <p style={{ margin: 0, fontSize: 12, color: 'var(--red-700)', background: 'var(--red-50)', border: '1px solid var(--red-100)', borderRadius: 'var(--r-md)', padding: '7px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <AlertCircle size={12} /> {error}
+          </p>
+        )}
+
+        {/* Actions */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 4 }}>
+          <button type="button" onClick={onClose} disabled={saving}
+            style={{ padding: '7px 16px', borderRadius: 'var(--r-md)', fontSize: 12, fontWeight: 600, background: 'var(--bg-subtle)', color: 'var(--fg-secondary)', border: '1px solid var(--border)', cursor: 'pointer' }}>
+            Cancelar
+          </button>
+          <button type="button" onClick={handleSave} disabled={saving}
+            style={{ padding: '7px 16px', borderRadius: 'var(--r-md)', fontSize: 12, fontWeight: 600, background: '#25d366', color: '#fff', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+            {saving ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+            Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Main View ────────────────────────────────────────────────────────────────
 
 const ConnectionsView: React.FC = () => {
   const [connections, setConnections] = useState<PlatformConnection[]>([]);
   const [requirements, setRequirements] = useState<ConnectionRequirement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [whatsappModal, setWhatsappModal] = useState(false);
 
   const loadConnections = useCallback(async () => {
     setLoading(true);
@@ -334,14 +466,42 @@ const ConnectionsView: React.FC = () => {
     return result;
   }, [loadConnections]);
 
+  const handleManualConfig = useCallback((platform: string) => {
+    if (platform === 'WHATSAPP') setWhatsappModal(true);
+  }, []);
+
+  const handleSaveWhatsApp = useCallback(async (values: { phoneNumberId: string; businessAccountId: string; accessToken: string }) => {
+    await DataService.updateConnectionConfig('WHATSAPP', {
+      accountId: values.phoneNumberId,
+      accountName: `WhatsApp ${values.phoneNumberId}`,
+      accessToken: values.accessToken,
+      metadata: { phoneNumberId: values.phoneNumberId, businessAccountId: values.businessAccountId },
+    });
+    await loadConnections();
+  }, [loadConnections]);
+
   const connectionMap = new Map(connections.map(c => [c.platform, c]));
   const requirementMap = new Map(requirements.map(item => [item.platform, item]));
 
 
   const connectedCount = connections.filter(c => c.status === 'CONNECTED' || (c.status === 'ERROR' && hasConnectionData(c))).length;
 
+  const whatsappConn = connectionMap.get('WHATSAPP');
+  const whatsappMeta = (whatsappConn?.metadata ?? {}) as Record<string, unknown>;
+
   return (
     <div style={{ padding: '24px 28px 64px', maxWidth: 1480, margin: '0 auto' }} className="space-y-8 animate-fade-in-up">
+      {whatsappModal && (
+        <WhatsAppModal
+          initialValues={{
+            phoneNumberId: (whatsappMeta.phoneNumberId as string) ?? '',
+            businessAccountId: (whatsappMeta.businessAccountId as string) ?? '',
+            accessToken: '',
+          }}
+          onSave={handleSaveWhatsApp}
+          onClose={() => setWhatsappModal(false)}
+        />
+      )}
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -377,6 +537,7 @@ const ConnectionsView: React.FC = () => {
                   onDisconnect={handleDisconnect}
                   onSync={handleSync}
                   onTest={handleTest}
+                  onManualConfig={handleManualConfig}
                 />
         ))}
       </div>
