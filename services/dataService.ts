@@ -1299,6 +1299,10 @@ export const DataService = {
     return apiClient.get(`/automation-journeys/${encodeURIComponent(journeyId)}/execution-stats`);
   },
 
+  testAutomationJourney: async (journeyId: string, email: string): Promise<{ executionId: string }> => {
+    return apiClient.post(`/automation-journeys/${encodeURIComponent(journeyId)}/test`, { email });
+  },
+
   // --- Funnels ---
 
   listFunnels: async (): Promise<FunnelDef[]> => {

@@ -906,6 +906,10 @@ const AutomationJourneysView: React.FC = () => {
   const [panelValues, setPanelValues] = useState<{ label: string; config: Record<string, string> } | null>(null);
   const [modalNodeId, setModalNodeId] = useState<string | null>(null);
   const [monitoringJourneyId, setMonitoringJourneyId] = useState<string | null>(null);
+  const [testModalOpen, setTestModalOpen] = useState(false);
+  const [testEmail, setTestEmail] = useState('');
+  const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
+  const [testError, setTestError] = useState('');
 
   useEffect(() => {
     if (!modalNodeId) { setPanelValues(null); return; }
@@ -1223,6 +1227,24 @@ const AutomationJourneysView: React.FC = () => {
     return stored || 0;
   };
 
+  const handleTest = async () => {
+    if (!selected.id || !testEmail.trim()) return;
+    setTestStatus('loading');
+    setTestError('');
+    try {
+      await DataService.testAutomationJourney(selected.id, testEmail.trim());
+      setTestStatus('ok');
+      setTimeout(() => {
+        setTestModalOpen(false);
+        setTestStatus('idle');
+        setMonitoringJourneyId(selected.id!);
+      }, 1200);
+    } catch (err) {
+      setTestError(err instanceof Error ? err.message : 'Erro ao executar teste');
+      setTestStatus('error');
+    }
+  };
+
   const toggleJourneyStatus = async (journey: AutomationJourney) => {
     const nextStatus: AutomationJourneyStatus = journey.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
     const updated = await DataService.updateAutomationJourney(journey.id, {
@@ -1494,10 +1516,14 @@ const AutomationJourneysView: React.FC = () => {
 
           <button
             type="button"
+            onClick={() => { setTestEmail(''); setTestStatus('idle'); setTestError(''); setTestModalOpen(true); }}
+            disabled={!selected.id}
+            title={!selected.id ? 'Salve a automação antes de testar' : 'Testar com um lead'}
             style={{
               display: 'inline-flex', gap: 6, alignItems: 'center', height: 34, padding: '0 14px',
               border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-surface)',
-              color: 'var(--fg-primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              color: selected.id ? 'var(--fg-primary)' : 'var(--fg-subtle)', fontSize: 13, fontWeight: 600,
+              cursor: selected.id ? 'pointer' : 'not-allowed', opacity: selected.id ? 1 : 0.5,
             }}
           >
             <Play size={11} style={{ fill: 'currentColor' }} />
@@ -2310,6 +2336,77 @@ const AutomationJourneysView: React.FC = () => {
           />
         );
       })()}
+
+      {testModalOpen && createPortal(
+        <>
+          <div onClick={() => setTestModalOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000 }} />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+            width: 420, background: 'var(--bg-surface)', borderRadius: 16,
+            border: '1px solid var(--border)', boxShadow: 'var(--shadow-xl)', zIndex: 1001,
+            padding: 28, display: 'flex', flexDirection: 'column', gap: 18,
+          }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: 'var(--fg-primary)' }}>Testar automação</h2>
+              <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--fg-muted)' }}>
+                Informe o email de um lead existente para rodar o fluxo agora.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-muted)' }}>Email do lead</label>
+              <input
+                autoFocus
+                className="ds-input"
+                type="email"
+                placeholder="lead@empresa.com"
+                value={testEmail}
+                onChange={e => setTestEmail(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleTest()}
+                style={{ height: 40 }}
+                disabled={testStatus === 'loading' || testStatus === 'ok'}
+              />
+            </div>
+
+            {testStatus === 'error' && (
+              <p style={{ margin: 0, fontSize: 13, color: 'var(--red-500)', background: 'var(--red-500)12', border: '1px solid var(--red-500)33', borderRadius: 8, padding: '8px 12px' }}>
+                {testError}
+              </p>
+            )}
+
+            {testStatus === 'ok' && (
+              <p style={{ margin: 0, fontSize: 13, color: 'var(--green-500)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <CheckCircle2 size={14} /> Execução iniciada! Abrindo monitoramento...
+              </p>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setTestModalOpen(false)} className="ds-btn" style={{ height: 38, padding: '0 16px', fontSize: 13 }}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleTest}
+                disabled={!testEmail.trim() || testStatus === 'loading' || testStatus === 'ok'}
+                className="ds-btn"
+                style={{
+                  height: 38, padding: '0 20px', fontSize: 13, fontWeight: 700,
+                  background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8,
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  opacity: !testEmail.trim() || testStatus === 'loading' ? 0.6 : 1,
+                  cursor: !testEmail.trim() || testStatus === 'loading' ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {testStatus === 'loading'
+                  ? <><Loader2 size={13} className="animate-spin" /> Executando...</>
+                  : <><Play size={11} style={{ fill: 'currentColor' }} /> Executar</>
+                }
+              </button>
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
     </div>
   );
 };

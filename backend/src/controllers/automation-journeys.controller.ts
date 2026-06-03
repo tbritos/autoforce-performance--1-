@@ -51,4 +51,26 @@ export class AutomationJourneysController {
       next(error);
     }
   }
+
+  static async testRun(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { email } = req.body as { email?: string };
+      if (!email?.trim()) {
+        res.status(400).json({ error: 'email é obrigatório' });
+        return;
+      }
+
+      // Verify lead exists
+      const { prisma } = await import('../config/database');
+      const lead = await prisma.lead.findUnique({ where: { email: email.toLowerCase().trim() }, select: { id: true } });
+      if (!lead) {
+        res.status(404).json({ error: `Lead não encontrado: ${email}` });
+        return;
+      }
+
+      res.json(await AutomationJourneysService.testRun(req.params.id, email));
+    } catch (error) {
+      next(error);
+    }
+  }
 }

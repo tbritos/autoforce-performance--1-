@@ -88,6 +88,32 @@ export async function fireTrigger(
   }
 }
 
+export async function testJourneyForLead(
+  journeyId: string,
+  leadEmail: string
+): Promise<{ executionId: string }> {
+  const journey = await prisma.automationJourney.findUniqueOrThrow({ where: { id: journeyId } });
+  const nodes = (journey.nodes as unknown as AutomationNode[]) ?? [];
+  const edges = (journey.edges as unknown as AutomationEdge[]) ?? [];
+  const triggerNode = nodes.find(n => n.type === 'trigger');
+
+  const execution = await prisma.automationExecution.create({
+    data: {
+      journeyId,
+      leadEmail,
+      status: 'running',
+      currentNodeId: triggerNode?.id ?? null,
+      log: [],
+    },
+  });
+
+  runExecution(execution.id, nodes, edges, leadEmail, { _test: true }).catch(err => {
+    console.error(`[automation] test execution ${execution.id} failed:`, err);
+  });
+
+  return { executionId: execution.id };
+}
+
 export async function resumeWaitingExecutions(): Promise<void> {
   const now = new Date();
 

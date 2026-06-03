@@ -98,6 +98,11 @@ export class AutomationJourneysService {
     }));
   }
 
+  static async testRun(journeyId: string, leadEmail: string): Promise<{ executionId: string }> {
+    const { testJourneyForLead } = await import('./automation-engine.service');
+    return testJourneyForLead(journeyId, leadEmail.toLowerCase().trim());
+  }
+
   static async getExecutionStats(journeyId: string) {
     const counts = await prisma.automationExecution.groupBy({
       by: ['status'],
