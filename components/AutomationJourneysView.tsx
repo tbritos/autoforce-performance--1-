@@ -57,6 +57,15 @@ const BLOCKS: Array<{
   { type: 'end', label: 'Fim', description: 'Encerrar a jornada ou aguardar evento', color: '#64748B', icon: Pause },
 ];
 
+const LEAD_STATUS_OPTIONS = [
+  { value: 'Novo', label: 'Novo' },
+  { value: 'MQL', label: 'MQL' },
+  { value: 'SQL', label: 'SQL' },
+  { value: 'Oportunidade', label: 'Oportunidade' },
+  { value: 'Cliente', label: 'Cliente' },
+  { value: 'Inativo', label: 'Inativo' },
+];
+
 const defaultNodes = (): AutomationJourneyNode[] => [
   {
     id: `node-${Date.now()}-1`,
@@ -187,6 +196,178 @@ function CustomSelect<T extends string>({
   );
 }
 
+// ── Smart Select (searchable, portal dropdown, works inside modals) ──────────
+
+type SmartSelectOption = {
+  value: string;
+  label: string;
+  description?: string;
+};
+
+function SmartSelect({
+  value,
+  options,
+  onChange,
+  placeholder = 'Selecionar...',
+  loading = false,
+}: {
+  value: string;
+  options: SmartSelectOption[];
+  onChange: (value: string) => void;
+  placeholder?: string;
+  loading?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [dropRect, setDropRect] = useState<DOMRect | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleOpen = () => {
+    if (!open && buttonRef.current) setDropRect(buttonRef.current.getBoundingClientRect());
+    setOpen(prev => !prev);
+    if (!open) setSearch('');
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!buttonRef.current?.contains(t) && !dropdownRef.current?.contains(t)) {
+        setOpen(false);
+      }
+    };
+    const id = setTimeout(() => document.addEventListener('mousedown', handler), 10);
+    return () => { clearTimeout(id); document.removeEventListener('mousedown', handler); };
+  }, [open]);
+
+  const filtered = search
+    ? options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()))
+    : options;
+  const selectedOpt = options.find(o => o.value === value);
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', height: 42,
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+    border: `1.5px solid ${open ? 'var(--accent)' : 'var(--border)'}`,
+    borderRadius: 10, background: 'var(--bg-surface)',
+    color: selectedOpt ? 'var(--fg-primary)' : 'var(--fg-muted)',
+    padding: '0 12px', fontSize: 14, cursor: 'pointer',
+    boxShadow: open ? '0 0 0 3px var(--accent-soft)' : 'none',
+    transition: 'border-color .12s, box-shadow .12s',
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button ref={buttonRef} type="button" onClick={handleOpen} style={inputStyle}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left', flex: 1 }}>
+          {loading ? 'Carregando...' : (selectedOpt?.label ?? placeholder)}
+        </span>
+        <ChevronDown
+          size={15}
+          style={{ color: 'var(--fg-muted)', flexShrink: 0, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}
+        />
+      </button>
+
+      {open && dropRect && createPortal(
+        <div
+          ref={dropdownRef}
+          style={{
+            position: 'fixed', zIndex: 1200,
+            top: dropRect.bottom + 4,
+            left: dropRect.left,
+            width: dropRect.width,
+            border: '1.5px solid var(--border)', borderRadius: 10,
+            background: 'var(--bg-elevated)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+            overflow: 'hidden',
+          }}
+        >
+          {options.length > 5 && (
+            <div style={{ padding: '8px 8px 4px' }}>
+              <input
+                autoFocus
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Buscar..."
+                style={{
+                  width: '100%', height: 34, padding: '0 10px', boxSizing: 'border-box',
+                  border: '1px solid var(--border)', borderRadius: 7,
+                  background: 'var(--bg-surface)', color: 'var(--fg-primary)',
+                  fontSize: 13, outline: 'none',
+                }}
+              />
+            </div>
+          )}
+          <div style={{ maxHeight: 220, overflowY: 'auto', padding: 5 }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: '10px 8px', fontSize: 13, color: 'var(--fg-muted)', textAlign: 'center' }}>
+                Nenhum resultado
+              </div>
+            ) : filtered.map(opt => {
+              const isActive = opt.value === value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => { onChange(opt.value); setOpen(false); setSearch(''); }}
+                  style={{
+                    width: '100%', minHeight: 36, display: 'flex', alignItems: 'center',
+                    justifyContent: 'space-between', gap: 8,
+                    border: 'none', borderRadius: 7,
+                    background: isActive ? 'var(--accent-soft)' : 'transparent',
+                    color: isActive ? 'var(--accent)' : 'var(--fg-primary)',
+                    padding: '7px 10px', fontSize: 13,
+                    fontWeight: isActive ? 700 : 400,
+                    textAlign: 'left', cursor: 'pointer',
+                  }}
+                >
+                  <div>
+                    <div style={{ lineHeight: 1.3 }}>{opt.label}</div>
+                    {opt.description && (
+                      <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 1 }}>{opt.description}</div>
+                    )}
+                  </div>
+                  {isActive && <Check size={14} style={{ flexShrink: 0 }} />}
+                </button>
+              );
+            })}
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+// ── Tag Selector (async, fetches available tags from API) ─────────────────────
+
+function TagSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [tags, setTags] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    DataService.getAllLeadTags()
+      .then(t => setTags(t))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const options: SmartSelectOption[] = tags.map(tag => ({ value: tag, label: tag }));
+
+  return (
+    <SmartSelect
+      value={value}
+      options={options}
+      onChange={onChange}
+      placeholder="Selecionar tag..."
+      loading={loading}
+    />
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const emptyDraft = () => {
   const nodes = defaultNodes();
   return {
@@ -227,7 +408,7 @@ const AutomationJourneysView: React.FC = () => {
     if (!modalNodeId) { setPanelValues(null); return; }
     const node = selected.nodes.find(n => n.id === modalNodeId);
     if (!node) { setPanelValues(null); return; }
-    setPanelValues({ label: node.label, config: { ...(node.config ?? {}) } });
+    setPanelValues({ label: node.label, config: { ...(node.config ?? {}) } as Record<string, string> });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modalNodeId]);
 
@@ -449,18 +630,58 @@ const AutomationJourneysView: React.FC = () => {
     });
   };
 
-  const panelTextField = (key: string, label: string, placeholder: string) => (
-    <label key={key} style={{ display: 'grid', gap: 6 }}>
-      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</span>
+  // ── Panel field helpers ──────────────────────────────────────────────────────
+
+  const fieldInputStyle: React.CSSProperties = {
+    width: '100%', height: 42, padding: '0 12px', boxSizing: 'border-box',
+    border: '1.5px solid var(--border)', borderRadius: 10,
+    background: 'var(--bg-surface)', color: 'var(--fg-primary)',
+    fontSize: 14, outline: 'none',
+  };
+
+  const fieldLabelStyle: React.CSSProperties = {
+    fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)',
+    textTransform: 'uppercase', letterSpacing: '.05em',
+  };
+
+  const panelTextField = (key: string, label: string, placeholder: string, type = 'text') => (
+    <label key={key} style={{ display: 'grid', gap: 7 }}>
+      <span style={fieldLabelStyle}>{label}</span>
       <input
+        type={type}
         value={String(panelValues?.config[key] ?? '')}
         onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, [key]: e.target.value } } : prev)}
         placeholder={placeholder}
-        className="ds-input"
-        style={{ width: '100%' }}
+        style={fieldInputStyle}
+        onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
+        onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
       />
     </label>
   );
+
+  const panelSelectField = (key: string, label: string, options: SmartSelectOption[], placeholder?: string) => (
+    <div key={key} style={{ display: 'grid', gap: 7 }}>
+      <span style={fieldLabelStyle}>{label}</span>
+      <SmartSelect
+        value={String(panelValues?.config[key] ?? '')}
+        options={options}
+        onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, [key]: v } } : prev)}
+        placeholder={placeholder ?? 'Selecionar...'}
+      />
+    </div>
+  );
+
+  const panelTagField = (key: string, label: string) => (
+    <div key={key} style={{ display: 'grid', gap: 7 }}>
+      <span style={fieldLabelStyle}>{label}</span>
+      <TagSelector
+        value={String(panelValues?.config[key] ?? '')}
+        onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, [key]: v } } : prev)}
+      />
+    </div>
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────────
 
   const totalActive = journeys.filter(journey => journey.status === 'ACTIVE').length;
   const totalPaused = journeys.filter(journey => journey.status === 'PAUSED').length;
@@ -687,7 +908,6 @@ const AutomationJourneysView: React.FC = () => {
 
         {/* Right: action buttons */}
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-          {/* Icon-only circle buttons */}
           <button
             type="button"
             title="Histórico de execuções"
@@ -713,10 +933,8 @@ const AutomationJourneysView: React.FC = () => {
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
           </button>
 
-          {/* Divider */}
           <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
 
-          {/* Text buttons */}
           <button
             type="button"
             style={{
@@ -1023,17 +1241,17 @@ const AutomationJourneysView: React.FC = () => {
 
                 {/* Modal form */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+
                   {/* Node name */}
                   <label style={{ display: 'grid', gap: 7 }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
-                      Nome do bloco
-                    </span>
+                    <span style={fieldLabelStyle}>Nome do bloco</span>
                     <input
                       autoFocus
                       value={panelValues.label}
                       onChange={e => setPanelValues(prev => prev ? { ...prev, label: e.target.value } : prev)}
-                      className="ds-input"
-                      style={{ width: '100%', fontSize: 14 }}
+                      style={fieldInputStyle}
+                      onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
+                      onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
                     />
                   </label>
 
@@ -1042,27 +1260,38 @@ const AutomationJourneysView: React.FC = () => {
                     <div style={{ height: 1, background: 'var(--border)', margin: '0 -24px', alignSelf: 'stretch' }} />
                   )}
 
-                  {/* Type-specific fields */}
+                  {/* ── TRIGGER ── */}
                   {panelNode.type === 'trigger' && (() => {
                     const triggerOptions = [
-                      { value: 'lead_created',    icon: UserPlus,     label: 'Lead entrou na base',     description: 'Novo lead cadastrado na base',           subField: null },
-                      { value: 'tag_added',       icon: Tags,         label: 'Tag aplicada',            description: 'Uma tag foi adicionada ao lead',         subField: { label: 'Qual tag?', placeholder: 'ex: lead_quente, decisor...' } },
-                      { value: 'score_reached',   icon: TrendingUp,   label: 'Score atingiu limite',    description: 'Score chegou a um valor mínimo',         subField: { label: 'Score mínimo', placeholder: 'ex: 50' } },
-                      { value: 'rd_conversion',   icon: Mail,         label: 'Conversão RD Station',    description: 'Conversão registrada no RD Station',     subField: { label: 'Identificador', placeholder: 'ex: interesse_produto' } },
-                      { value: 'webhook_received',icon: Zap,          label: 'Webhook recebido',        description: 'Evento enviado por webhook externo',     subField: { label: 'Nome do evento', placeholder: 'ex: form_submitted' } },
-                      { value: 'status_changed',  icon: ArrowRight,   label: 'Etapa mudou',             description: 'Status do lead mudou para uma etapa',   subField: { label: 'Nova etapa', placeholder: 'ex: MQL, SQL, Oportunidade...' } },
+                      { value: 'lead_created',     icon: UserPlus,   label: 'Lead entrou na base',   description: 'Novo lead cadastrado na base',         subField: null },
+                      { value: 'tag_added',         icon: Tags,       label: 'Tag aplicada',          description: 'Uma tag foi adicionada ao lead',       subField: 'tag' },
+                      { value: 'score_reached',     icon: TrendingUp, label: 'Score atingiu limite',  description: 'Score chegou a um valor mínimo',       subField: 'score' },
+                      { value: 'rd_conversion',     icon: Mail,       label: 'Conversão RD Station',  description: 'Conversão registrada no RD Station',   subField: 'text' },
+                      { value: 'webhook_received',  icon: Zap,        label: 'Webhook recebido',      description: 'Evento enviado por webhook externo',   subField: 'text' },
+                      { value: 'status_changed',    icon: ArrowRight, label: 'Etapa mudou',           description: 'Status do lead mudou para uma etapa', subField: 'status' },
                     ];
-                    const selected = panelValues.config.event || '';
-                    const active = triggerOptions.find(o => o.value === selected);
+                    const selectedEvent = panelValues.config.event || '';
+                    const activeOpt = triggerOptions.find(o => o.value === selectedEvent);
+
+                    const subFieldLabels: Record<string, string> = {
+                      tag_added: 'Qual tag dispara?',
+                      score_reached: 'Score mínimo',
+                      rd_conversion: 'Identificador da conversão',
+                      webhook_received: 'Nome do evento',
+                      status_changed: 'Nova etapa',
+                    };
+                    const subFieldPlaceholders: Record<string, string> = {
+                      rd_conversion: 'ex: interesse_produto',
+                      webhook_received: 'ex: form_submitted',
+                    };
+
                     return (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                        <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
-                          Qual é o gatilho?
-                        </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        <span style={fieldLabelStyle}>Qual é o gatilho?</span>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                           {triggerOptions.map(opt => {
                             const OIcon = opt.icon;
-                            const isSelected = selected === opt.value;
+                            const isSelected = selectedEvent === opt.value;
                             return (
                               <button
                                 key={opt.value}
@@ -1092,49 +1321,196 @@ const AutomationJourneysView: React.FC = () => {
                             );
                           })}
                         </div>
-                        {active?.subField && (
+
+                        {/* Sub-field for selected trigger */}
+                        {activeOpt?.subField === 'tag' && (
+                          <div style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>{subFieldLabels[selectedEvent]}</span>
+                            <TagSelector
+                              value={String(panelValues.config.eventValue ?? '')}
+                              onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, eventValue: v } } : prev)}
+                            />
+                          </div>
+                        )}
+                        {activeOpt?.subField === 'status' && (
+                          <div style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>{subFieldLabels[selectedEvent]}</span>
+                            <SmartSelect
+                              value={String(panelValues.config.eventValue ?? '')}
+                              options={LEAD_STATUS_OPTIONS}
+                              onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, eventValue: v } } : prev)}
+                              placeholder="Selecionar etapa..."
+                            />
+                          </div>
+                        )}
+                        {activeOpt?.subField === 'score' && (
                           <label style={{ display: 'grid', gap: 7 }}>
-                            <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
-                              {active.subField.label}
-                            </span>
+                            <span style={fieldLabelStyle}>{subFieldLabels[selectedEvent]}</span>
+                            <input
+                              type="number" min={0}
+                              value={String(panelValues.config.eventValue ?? '')}
+                              onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, eventValue: e.target.value } } : prev)}
+                              placeholder="ex: 50"
+                              style={fieldInputStyle}
+                              onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
+                              onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
+                            />
+                          </label>
+                        )}
+                        {activeOpt?.subField === 'text' && (
+                          <label style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>{subFieldLabels[selectedEvent]}</span>
                             <input
                               value={String(panelValues.config.eventValue ?? '')}
                               onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, eventValue: e.target.value } } : prev)}
-                              placeholder={active.subField.placeholder}
-                              className="ds-input"
-                              style={{ width: '100%', fontSize: 14 }}
+                              placeholder={subFieldPlaceholders[selectedEvent] ?? ''}
+                              style={fieldInputStyle}
+                              onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
+                              onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
                             />
                           </label>
                         )}
                       </div>
                     );
                   })()}
-                  {panelNode.type === 'condition' && (<>
-                    {panelTextField('field', 'Campo ou tag', 'jobTitle, tags, score...')}
-                    {panelTextField('operator', 'Operador', 'contém, igual, maior que...')}
-                    {panelTextField('value', 'Valor esperado', 'CEO, decisor, 50...')}
-                  </>)}
-                  {panelNode.type === 'wait' && (<>
-                    {panelTextField('amount', 'Quantidade de tempo', '2')}
-                    {panelTextField('unit', 'Unidade', 'horas ou dias')}
-                  </>)}
-                  {panelNode.type === 'internal_action' && (<>
-                    {panelTextField('action', 'Ação a executar', 'add_tag, set_status, add_score...')}
-                    {panelTextField('value', 'Valor', 'persona:decisor, MQL, 10...')}
-                  </>)}
+
+                  {/* ── CONDITION ── */}
+                  {panelNode.type === 'condition' && (() => {
+                    const conditionFieldOptions: SmartSelectOption[] = [
+                      { value: 'tag',         label: 'Tag',     description: 'Verifica se o lead tem uma tag' },
+                      { value: 'score',       label: 'Score',   description: 'Verifica o score do lead' },
+                      { value: 'status',      label: 'Etapa',   description: 'Verifica a etapa atual do lead' },
+                      { value: 'jobTitle',    label: 'Cargo',   description: 'Verifica o cargo do lead' },
+                      { value: 'companyName', label: 'Empresa', description: 'Verifica o nome da empresa' },
+                      { value: 'origin',      label: 'Origem',  description: 'Verifica de onde veio o lead' },
+                    ];
+
+                    const operatorsByField: Record<string, SmartSelectOption[]> = {
+                      tag:    [{ value: 'has', label: 'possui a tag' }, { value: 'not_has', label: 'não possui a tag' }],
+                      score:  [{ value: 'gte', label: 'maior ou igual a' }, { value: 'lte', label: 'menor ou igual a' }, { value: 'eq', label: 'igual a' }],
+                      status: [{ value: 'is', label: 'é' }, { value: 'is_not', label: 'não é' }],
+                    };
+                    const defaultOperators: SmartSelectOption[] = [
+                      { value: 'contains',     label: 'contém' },
+                      { value: 'equals',       label: 'igual a' },
+                      { value: 'not_contains', label: 'não contém' },
+                    ];
+
+                    const field = panelValues.config.field ?? '';
+                    const operators = operatorsByField[field] ?? defaultOperators;
+
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        {panelSelectField('field', 'Campo a verificar', conditionFieldOptions, 'Selecionar campo...')}
+                        {field && panelSelectField('operator', 'Condição', operators, 'Selecionar condição...')}
+                        {field === 'tag' && panelTagField('value', 'Qual tag?')}
+                        {field === 'status' && panelSelectField('value', 'Qual etapa?', LEAD_STATUS_OPTIONS, 'Selecionar etapa...')}
+                        {field === 'score' && panelTextField('value', 'Valor do score', 'ex: 50', 'number')}
+                        {field && field !== 'tag' && field !== 'status' && field !== 'score' && panelTextField('value', 'Valor esperado', 'ex: CEO, acelerador...')}
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── WAIT ── */}
+                  {panelNode.type === 'wait' && (() => {
+                    const unitOptions: SmartSelectOption[] = [
+                      { value: 'minutes', label: 'Minutos' },
+                      { value: 'hours',   label: 'Horas' },
+                      { value: 'days',    label: 'Dias' },
+                      { value: 'weeks',   label: 'Semanas' },
+                    ];
+                    const amount = panelValues.config.amount ?? '';
+                    const unit = panelValues.config.unit ?? '';
+                    const unitLabel = unitOptions.find(u => u.value === unit)?.label?.toLowerCase() ?? unit;
+
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          <label style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>Quantidade</span>
+                            <input
+                              type="number" min={1}
+                              value={amount}
+                              onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, amount: e.target.value } } : prev)}
+                              placeholder="ex: 2"
+                              style={fieldInputStyle}
+                              onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
+                              onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
+                            />
+                          </label>
+                          <div style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>Unidade</span>
+                            <SmartSelect
+                              value={unit}
+                              options={unitOptions}
+                              onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, unit: v } } : prev)}
+                              placeholder="Selecionar..."
+                            />
+                          </div>
+                        </div>
+                        {amount && unit && (
+                          <div style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--bg-soft)', fontSize: 13, color: 'var(--fg-muted)' }}>
+                            Aguarda <strong style={{ color: 'var(--fg-primary)' }}>{amount} {unitLabel}</strong> antes de continuar.
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── INTERNAL ACTION ── */}
+                  {panelNode.type === 'internal_action' && (() => {
+                    const actionOptions: SmartSelectOption[] = [
+                      { value: 'add_tag',    label: 'Adicionar tag',   description: 'Aplica uma tag ao lead' },
+                      { value: 'remove_tag', label: 'Remover tag',     description: 'Remove uma tag do lead' },
+                      { value: 'set_status', label: 'Mudar etapa',     description: 'Muda a etapa do lead no funil' },
+                      { value: 'add_score',  label: 'Adicionar score', description: 'Incrementa o score do lead' },
+                      { value: 'set_score',  label: 'Definir score',   description: 'Define um score fixo' },
+                    ];
+                    const action = panelValues.config.action ?? '';
+
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        {panelSelectField('action', 'Ação a executar', actionOptions, 'Selecionar ação...')}
+                        {(action === 'add_tag' || action === 'remove_tag') && panelTagField('value', 'Qual tag?')}
+                        {action === 'set_status' && panelSelectField('value', 'Nova etapa', LEAD_STATUS_OPTIONS, 'Selecionar etapa...')}
+                        {(action === 'add_score' || action === 'set_score') && panelTextField('value', 'Valor do score', 'ex: 10', 'number')}
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── RD STATION ── */}
                   {panelNode.type === 'rd_conversion' && (<>
-                    {panelTextField('conversionIdentifier', 'Identificador da conversão', 'interesse_decisor')}
-                    {panelTextField('conversionName', 'Nome da conversão', 'Interesse - Decisor')}
+                    {panelTextField('conversionIdentifier', 'Identificador da conversão', 'ex: interesse_decisor')}
+                    {panelTextField('conversionName', 'Nome da conversão', 'ex: Interesse - Decisor')}
                   </>)}
+
+                  {/* ── WHATSAPP ── */}
                   {panelNode.type === 'whatsapp_message' && (<>
-                    {panelTextField('templateName', 'Nome do template WhatsApp', 'diagnostico_site_01')}
-                    {panelTextField('messageGoal', 'Objetivo da mensagem', 'Convidar para diagnóstico')}
+                    {panelTextField('templateName', 'Nome do template WhatsApp', 'ex: diagnostico_site_01')}
+                    {panelTextField('messageGoal', 'Objetivo da mensagem', 'ex: Convidar para diagnóstico')}
                   </>)}
-                  {panelNode.type === 'pipedrive_action' && (<>
-                    {panelTextField('action', 'Ação no Pipedrive', 'create_deal, update_stage...')}
-                    {panelTextField('pipeline', 'Pipeline de destino', 'novo_cliente')}
-                  </>)}
-                  {panelNode.type === 'end' && panelTextField('reason', 'Motivo de encerramento', 'mql_created, opted_out...')}
+
+                  {/* ── PIPEDRIVE ── */}
+                  {panelNode.type === 'pipedrive_action' && (() => {
+                    const pipedriveActions: SmartSelectOption[] = [
+                      { value: 'create_deal',   label: 'Criar negócio',        description: 'Abre um novo negócio no Pipedrive' },
+                      { value: 'update_stage',  label: 'Mudar estágio',        description: 'Move o negócio para outro estágio' },
+                      { value: 'mark_won',      label: 'Marcar como ganho',    description: 'Fecha o negócio como ganho' },
+                      { value: 'mark_lost',     label: 'Marcar como perdido',  description: 'Fecha o negócio como perdido' },
+                    ];
+                    const action = panelValues.config.action ?? '';
+
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        {panelSelectField('action', 'Ação no Pipedrive', pipedriveActions, 'Selecionar ação...')}
+                        {action === 'create_deal'  && panelTextField('pipeline', 'Pipeline de destino', 'ex: novo_cliente')}
+                        {action === 'update_stage' && panelTextField('stage',    'Nome do estágio',    'ex: Apresentação, Proposta...')}
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── END ── */}
+                  {panelNode.type === 'end' && panelTextField('reason', 'Motivo de encerramento', 'ex: mql_created, opted_out...')}
                 </div>
 
                 {/* Modal footer */}
