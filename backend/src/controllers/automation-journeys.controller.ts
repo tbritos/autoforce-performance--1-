@@ -34,4 +34,21 @@ export class AutomationJourneysController {
       next(error);
     }
   }
+
+  static async getExecutions(req: Request, res: Response, next: NextFunction) {
+    try {
+      const limit = req.query.limit ? Number(req.query.limit) : 50;
+      res.json(await AutomationJourneysService.getExecutions(req.params.id, limit));
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getExecutionStats(req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json(await AutomationJourneysService.getExecutionStats(req.params.id));
+    } catch (error) {
+      next(error);
+    }
+  }
 }

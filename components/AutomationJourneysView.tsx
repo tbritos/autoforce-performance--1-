@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  Activity,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -26,9 +27,15 @@ import {
   UserPlus,
   TrendingUp,
   ArrowRight,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Hourglass,
 } from 'lucide-react';
 import { DataService } from '../services/dataService';
 import {
+  AutomationExecution,
+  AutomationExecutionStats,
   AutomationJourney,
   AutomationJourneyEdge,
   AutomationJourneyNode,
@@ -687,6 +694,198 @@ const emptyDraft = () => {
   };
 };
 
+// ─── Executions Drawer ───────────────────────────────────────────────────────
+
+const STATUS_EXEC: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+  running:   { label: 'Rodando',   color: 'var(--af-500)',    icon: <Loader2 size={11} className="animate-spin" /> },
+  waiting:   { label: 'Aguard.',   color: '#f59e0b',          icon: <Hourglass size={11} /> },
+  completed: { label: 'Concluído', color: 'var(--green-500)', icon: <CheckCircle2 size={11} /> },
+  failed:    { label: 'Falhou',    color: 'var(--red-500)',   icon: <XCircle size={11} /> },
+};
+
+function fmtDuration(startedAt: string, completedAt: string | null): string {
+  const start = new Date(startedAt).getTime();
+  const end = completedAt ? new Date(completedAt).getTime() : Date.now();
+  const ms = end - start;
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+  return `${Math.round(ms / 60_000)}min`;
+}
+
+function fmtExecDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+const ExecutionsDrawer: React.FC<{
+  journeyId: string;
+  journeyName: string;
+  onClose: () => void;
+}> = ({ journeyId, journeyName, onClose }) => {
+  const [executions, setExecutions] = useState<AutomationExecution[]>([]);
+  const [stats, setStats]           = useState<AutomationExecutionStats | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [execs, s] = await Promise.all([
+        DataService.getAutomationExecutions(journeyId, 50),
+        DataService.getAutomationExecutionStats(journeyId),
+      ]);
+      setExecutions(execs);
+      setStats(s);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [journeyId]);
+
+  const statItems = [
+    { key: 'running',   label: 'Rodando' },
+    { key: 'waiting',   label: 'Aguardando' },
+    { key: 'completed', label: 'Concluídos' },
+    { key: 'failed',    label: 'Falhou' },
+  ] as const;
+
+  return createPortal(
+    <>
+      <div
+        onClick={onClose}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 900 }}
+      />
+      <aside style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: 520, zIndex: 901,
+        background: 'var(--bg-surface)', borderLeft: '1px solid var(--border)',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <div>
+            <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Execuções</p>
+            <h2 style={{ margin: '2px 0 0', fontSize: 15, fontWeight: 800, color: 'var(--fg-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 380 }}>{journeyName}</h2>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={load} title="Atualizar" style={{ border: '1px solid var(--border)', background: 'var(--bg-muted)', color: 'var(--fg-muted)', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            </button>
+            <button type="button" onClick={onClose} style={{ border: '1px solid var(--border)', background: 'var(--bg-muted)', color: 'var(--fg-muted)', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+
+        {/* Stats */}
+        {stats && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, padding: '14px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+            {statItems.map(({ key, label }) => {
+              const cfg = STATUS_EXEC[key];
+              return (
+                <div key={key} style={{ background: 'var(--bg-muted)', borderRadius: 10, padding: '10px 12px', border: `1px solid ${cfg.color}22` }}>
+                  <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: cfg.color }}>{stats[key]}</p>
+                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>{label}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* List */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+          {loading && executions.length === 0 ? (
+            <div style={{ padding: 28, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Loader2 size={15} className="animate-spin" /> Carregando...
+            </div>
+          ) : executions.length === 0 ? (
+            <div style={{ padding: 34, color: 'var(--fg-muted)', textAlign: 'center', fontSize: 13 }}>
+              Nenhuma execução registrada ainda.
+            </div>
+          ) : executions.map(exec => {
+            const cfg = STATUS_EXEC[exec.status] ?? STATUS_EXEC.failed;
+            const isExpanded = expandedId === exec.id;
+            return (
+              <div key={exec.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <button
+                  type="button"
+                  onClick={() => setExpandedId(isExpanded ? null : exec.id)}
+                  style={{ width: '100%', padding: '12px 20px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12 }}
+                >
+                  {/* Status dot */}
+                  <span style={{ width: 8, height: 8, borderRadius: 999, background: cfg.color, flexShrink: 0 }} />
+
+                  {/* Lead info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--fg-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {exec.leadName ?? exec.leadEmail}
+                    </p>
+                    <p style={{ margin: '1px 0 0', fontSize: 11, color: 'var(--fg-subtle)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {exec.leadEmail} · {fmtExecDate(exec.startedAt)}
+                    </p>
+                  </div>
+
+                  {/* Status badge + duration */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: cfg.color, background: `${cfg.color}18`, borderRadius: 6, padding: '2px 7px' }}>
+                      {cfg.icon} {cfg.label}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>
+                      {fmtDuration(exec.startedAt, exec.completedAt)}
+                    </span>
+                  </div>
+                </button>
+
+                {/* Expanded: log + error */}
+                {isExpanded && (
+                  <div style={{ padding: '0 20px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {exec.error && (
+                      <div style={{ background: 'var(--red-500)18', border: '1px solid var(--red-500)44', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: 'var(--red-500)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                        {exec.error}
+                      </div>
+                    )}
+                    {exec.log && exec.log.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        {exec.log.map((entry, i) => (
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: entry.status === 'error' ? 'var(--red-500)' : 'var(--fg-muted)', background: 'var(--bg-muted)', borderRadius: 6, padding: '4px 8px' }}>
+                            <span style={{ color: entry.status === 'ok' ? 'var(--green-500)' : entry.status === 'error' ? 'var(--red-500)' : 'var(--fg-subtle)', fontWeight: 700 }}>
+                              {entry.status === 'ok' ? '✓' : entry.status === 'error' ? '✕' : '—'}
+                            </span>
+                            <span style={{ color: 'var(--fg-subtle)', fontFamily: 'monospace' }}>{entry.nodeType}</span>
+                            {entry.message && <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.message}</span>}
+                            <span style={{ flexShrink: 0, color: 'var(--fg-subtle)' }}>{new Date(entry.ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {exec.resumeAt && exec.status === 'waiting' && (
+                      <p style={{ margin: 0, fontSize: 11, color: '#f59e0b' }}>
+                        Retoma em: {new Date(exec.resumeAt).toLocaleString('pt-BR')}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Footer */}
+        {stats && stats.total > 0 && (
+          <div style={{ padding: '10px 20px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+            <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)', textAlign: 'center' }}>
+              {Math.min(50, executions.length)} de {stats.total} execuções · Ordenado por mais recente
+            </p>
+          </div>
+        )}
+      </aside>
+    </>,
+    document.body
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const AutomationJourneysView: React.FC = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -706,6 +905,7 @@ const AutomationJourneysView: React.FC = () => {
   const [editingName, setEditingName] = useState(false);
   const [panelValues, setPanelValues] = useState<{ label: string; config: Record<string, string> } | null>(null);
   const [modalNodeId, setModalNodeId] = useState<string | null>(null);
+  const [monitoringJourneyId, setMonitoringJourneyId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!modalNodeId) { setPanelValues(null); return; }
@@ -1162,21 +1362,41 @@ const AutomationJourneysView: React.FC = () => {
                 >
                   <strong style={{ color: isActive ? 'var(--fg-primary)' : 'var(--fg-muted)', fontSize: 15 }}>{journey.name}</strong>
                 </button>
-                <div style={{ color: 'var(--fg-muted)', fontSize: 13 }}>
+                <button
+                  type="button"
+                  onClick={() => setMonitoringJourneyId(journey.id)}
+                  style={{ border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer', color: 'var(--fg-muted)', fontSize: 13 }}
+                  title="Ver execuções"
+                >
                   {isActive ? (
-                    <><strong style={{ color: 'var(--fg-primary)' }}>{executions.toLocaleString('pt-BR')}</strong> execuções</>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                      <Activity size={12} style={{ color: 'var(--green-500)' }} />
+                      <strong style={{ color: 'var(--fg-primary)' }}>{executions.toLocaleString('pt-BR')}</strong> exec.
+                    </span>
                   ) : 'Pausada'}
-                </div>
+                </button>
                 <button type="button" onClick={() => openJourney(journey)} title="Editar fluxo" style={{ border: 'none', background: 'transparent', color: 'var(--fg-muted)', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
                   <Pencil size={16} />
                 </button>
-                <button type="button" title="Mais opções" style={{ border: 'none', background: 'transparent', color: 'var(--fg-muted)', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
-                  <MoreHorizontal size={17} />
+                <button type="button" onClick={() => setMonitoringJourneyId(journey.id)} title="Monitorar execuções" style={{ border: 'none', background: 'transparent', color: 'var(--fg-muted)', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+                  <Activity size={16} />
                 </button>
               </div>
             );
           })}
         </section>
+
+        {monitoringJourneyId && (() => {
+          const j = journeys.find(j => j.id === monitoringJourneyId);
+          if (!j) return null;
+          return (
+            <ExecutionsDrawer
+              journeyId={monitoringJourneyId}
+              journeyName={j.name}
+              onClose={() => setMonitoringJourneyId(null)}
+            />
+          );
+        })()}
       </div>
     );
   }
@@ -1283,6 +1503,20 @@ const AutomationJourneysView: React.FC = () => {
             <Play size={11} style={{ fill: 'currentColor' }} />
             Testar
           </button>
+          {selected.id && (
+            <button
+              type="button"
+              onClick={() => setMonitoringJourneyId(selected.id!)}
+              style={{
+                display: 'inline-flex', gap: 6, alignItems: 'center', height: 34, padding: '0 14px',
+                border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-surface)',
+                color: 'var(--fg-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              <Activity size={13} />
+              Execuções
+            </button>
+          )}
           <button
             type="button"
             onClick={saveJourney}
@@ -2065,6 +2299,17 @@ const AutomationJourneysView: React.FC = () => {
 
         </div>{/* end canvas+panel wrapper */}
       </div>
+
+      {monitoringJourneyId && (() => {
+        const j = journeys.find(j => j.id === monitoringJourneyId) ?? selected;
+        return (
+          <ExecutionsDrawer
+            journeyId={monitoringJourneyId}
+            journeyName={j.name}
+            onClose={() => setMonitoringJourneyId(null)}
+          />
+        );
+      })()}
     </div>
   );
 };

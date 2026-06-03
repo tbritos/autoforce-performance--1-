@@ -1291,6 +1291,14 @@ export const DataService = {
     await apiClient.delete(`/automation-journeys/${encodeURIComponent(id)}`);
   },
 
+  getAutomationExecutions: async (journeyId: string, limit = 50): Promise<import('../types').AutomationExecution[]> => {
+    return apiClient.get(`/automation-journeys/${encodeURIComponent(journeyId)}/executions?limit=${limit}`);
+  },
+
+  getAutomationExecutionStats: async (journeyId: string): Promise<import('../types').AutomationExecutionStats> => {
+    return apiClient.get(`/automation-journeys/${encodeURIComponent(journeyId)}/execution-stats`);
+  },
+
   // --- Funnels ---
 
   listFunnels: async (): Promise<FunnelDef[]> => {

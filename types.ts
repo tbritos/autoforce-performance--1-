@@ -293,6 +293,39 @@ export interface AutomationJourney {
   updatedAt: string;
 }
 
+export type AutomationExecutionStatus = 'running' | 'waiting' | 'completed' | 'failed';
+
+export interface AutomationExecutionLogEntry {
+  nodeId: string;
+  nodeType: string;
+  status: 'ok' | 'error' | 'skipped';
+  message?: string;
+  ts: string;
+}
+
+export interface AutomationExecution {
+  id: string;
+  journeyId: string;
+  leadEmail: string;
+  leadName: string | null;
+  leadId: string | null;
+  status: AutomationExecutionStatus;
+  currentNodeId: string | null;
+  resumeAt: string | null;
+  log: AutomationExecutionLogEntry[];
+  error: string | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+export interface AutomationExecutionStats {
+  running: number;
+  waiting: number;
+  completed: number;
+  failed: number;
+  total: number;
+}
+
 // ─── Funnels ──────────────────────────────────────────────────────────────────
 
 export interface FunnelDef {

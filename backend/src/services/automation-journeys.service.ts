@@ -75,4 +75,41 @@ export class AutomationJourneysService {
   static async remove(id: string) {
     return (prisma as any).automationJourney.delete({ where: { id } });
   }
+
+  static async getExecutions(journeyId: string, limit = 50) {
+    const executions = await prisma.automationExecution.findMany({
+      where: { journeyId },
+      orderBy: { startedAt: 'desc' },
+      take: Math.min(100, Math.max(1, limit)),
+    });
+
+    // Enrich with lead name
+    const emails = [...new Set(executions.map(e => e.leadEmail))];
+    const leads = await prisma.lead.findMany({
+      where: { email: { in: emails } },
+      select: { email: true, name: true, id: true },
+    });
+    const leadMap = Object.fromEntries(leads.map(l => [l.email, l]));
+
+    return executions.map(e => ({
+      ...e,
+      leadName: leadMap[e.leadEmail]?.name ?? null,
+      leadId:   leadMap[e.leadEmail]?.id   ?? null,
+    }));
+  }
+
+  static async getExecutionStats(journeyId: string) {
+    const counts = await prisma.automationExecution.groupBy({
+      by: ['status'],
+      where: { journeyId },
+      _count: { _all: true },
+    });
+    const result = { running: 0, waiting: 0, completed: 0, failed: 0, total: 0 };
+    for (const row of counts) {
+      const s = row.status as keyof typeof result;
+      if (s in result) result[s] = row._count._all;
+      result.total += row._count._all;
+    }
+    return result;
+  }
 }
