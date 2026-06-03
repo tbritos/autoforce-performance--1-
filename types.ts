@@ -235,6 +235,21 @@ export interface LeadClassificationRule {
 
 export type AutomationJourneyStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED';
 
+export interface WhatsAppTemplateComponent {
+  type: 'HEADER' | 'BODY' | 'FOOTER' | 'BUTTONS';
+  format?: string;
+  text?: string;
+}
+
+export interface WhatsAppTemplate {
+  id: string;
+  name: string;
+  status: string;
+  category: string;
+  language: string;
+  components: WhatsAppTemplateComponent[];
+}
+
 export type AutomationNodeType =
   | 'trigger'
   | 'condition'

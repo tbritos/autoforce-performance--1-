@@ -35,6 +35,7 @@ import {
   AutomationJourneyNode,
   AutomationJourneyStatus,
   AutomationNodeType,
+  WhatsAppTemplate,
 } from '../types';
 
 const NODE_W = 230;
@@ -426,6 +427,64 @@ function RDFieldSelector({ value, onChange }: { value: string; onChange: (v: str
       options={options}
       onChange={onChange}
       placeholder="Campo do RD Station..."
+      loading={loading}
+    />
+  );
+}
+
+// ── WhatsApp Template Selector ────────────────────────────────────────────────
+
+function extractTemplateVars(components: WhatsAppTemplate['components']): string[] {
+  const vars: string[] = [];
+  for (const comp of components) {
+    if ((comp.type === 'HEADER' || comp.type === 'BODY') && comp.text) {
+      const matches = comp.text.match(/\{\{\d+\}\}/g) ?? [];
+      vars.push(...matches);
+    }
+  }
+  return [...new Set(vars)].sort((a, b) => {
+    return parseInt(a.replace(/\D/g, '')) - parseInt(b.replace(/\D/g, ''));
+  });
+}
+
+function WhatsAppTemplateSelector({
+  value,
+  onSelect,
+}: {
+  value: string;
+  onSelect: (name: string, template: WhatsAppTemplate | undefined) => void;
+}) {
+  const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    DataService.getWhatsAppTemplates()
+      .then(t => setTemplates(t))
+      .catch(e => setError(e instanceof Error ? e.message : 'Erro ao carregar templates'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (error) {
+    return (
+      <div style={{ fontSize: 12, color: 'var(--red-600)', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '8px 12px' }}>
+        {error}
+      </div>
+    );
+  }
+
+  const options: SmartSelectOption[] = templates.map(t => ({
+    value: t.name,
+    label: t.name,
+    description: `${t.category} · ${t.language}`,
+  }));
+
+  return (
+    <SmartSelect
+      value={value}
+      options={options}
+      onChange={name => onSelect(name, templates.find(t => t.name === name))}
+      placeholder="Selecionar template aprovado..."
       loading={loading}
     />
   );
@@ -1641,10 +1700,96 @@ const AutomationJourneysView: React.FC = () => {
                   })()}
 
                   {/* ── WHATSAPP ── */}
-                  {panelNode.type === 'whatsapp_message' && (<>
-                    {panelTextField('templateName', 'Nome do template WhatsApp', 'ex: diagnostico_site_01')}
-                    {panelTextField('messageGoal', 'Objetivo da mensagem', 'ex: Convidar para diagnóstico')}
-                  </>)}
+                  {panelNode.type === 'whatsapp_message' && (() => {
+                    const templateName = panelValues.config.templateName ?? '';
+                    const phoneField = panelValues.config.phoneField ?? 'phone';
+
+                    const storedComponents: WhatsAppTemplate['components'] = (() => {
+                      try { return JSON.parse(panelValues.config.templateComponents || '[]'); } catch { return []; }
+                    })();
+                    const vars = extractTemplateVars(storedComponents);
+
+                    const varMappings: Record<string, string> = (() => {
+                      try { return JSON.parse(panelValues.config.varMappings || '{}'); } catch { return {}; }
+                    })();
+
+                    const setVarMapping = (placeholder: string, leadField: string) => {
+                      const next = { ...varMappings, [placeholder]: leadField };
+                      setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, varMappings: JSON.stringify(next) } } : prev);
+                    };
+
+                    // Body text for preview
+                    const bodyComp = storedComponents.find(c => c.type === 'BODY');
+
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+                        {/* Template */}
+                        <div style={{ display: 'grid', gap: 7 }}>
+                          <span style={fieldLabelStyle}>Template</span>
+                          <WhatsAppTemplateSelector
+                            value={templateName}
+                            onSelect={(name, tpl) => {
+                              setPanelValues(prev => prev ? {
+                                ...prev,
+                                config: {
+                                  ...prev.config,
+                                  templateName: name,
+                                  templateComponents: JSON.stringify(tpl?.components ?? []),
+                                  varMappings: '{}',
+                                },
+                              } : prev);
+                            }}
+                          />
+                          <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>Apenas templates com status APPROVED aparecem aqui.</span>
+                        </div>
+
+                        {/* Phone field */}
+                        <div style={{ display: 'grid', gap: 7 }}>
+                          <span style={fieldLabelStyle}>Campo do telefone</span>
+                          <SmartSelect
+                            value={phoneField}
+                            options={OUR_LEAD_FIELDS.filter(f => f.value === 'phone' || f.value === 'name' || f.value === 'email')}
+                            onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, phoneField: v } } : prev)}
+                            placeholder="Selecionar campo..."
+                          />
+                        </div>
+
+                        {/* Variable mapping */}
+                        {vars.length > 0 && (
+                          <div style={{ display: 'grid', gap: 10 }}>
+                            <span style={fieldLabelStyle}>Variáveis do template</span>
+                            {vars.map(placeholder => (
+                              <div key={placeholder} style={{ display: 'grid', gridTemplateColumns: '64px 1fr', gap: 8, alignItems: 'center' }}>
+                                <div style={{
+                                  height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)',
+                                  borderRadius: 8, fontSize: 13, fontWeight: 700, color: '#10B981', fontFamily: 'monospace',
+                                }}>
+                                  {placeholder}
+                                </div>
+                                <SmartSelect
+                                  value={varMappings[placeholder] ?? ''}
+                                  options={OUR_LEAD_FIELDS}
+                                  onChange={v => setVarMapping(placeholder, v)}
+                                  placeholder="Campo do lead..."
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Body preview */}
+                        {bodyComp?.text && (
+                          <div style={{ borderRadius: 8, background: 'var(--bg-subtle)', border: '1px solid var(--border)', padding: '10px 14px' }}>
+                            <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 6 }}>Prévia do corpo</div>
+                            <div style={{ fontSize: 13, color: 'var(--fg-muted)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{bodyComp.text}</div>
+                          </div>
+                        )}
+
+                      </div>
+                    );
+                  })()}
 
                   {/* ── PIPEDRIVE ── */}
                   {panelNode.type === 'pipedrive_action' && (() => {
