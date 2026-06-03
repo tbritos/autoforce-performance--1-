@@ -250,6 +250,12 @@ export interface WhatsAppTemplate {
   components: WhatsAppTemplateComponent[];
 }
 
+export interface PipedriveStage {
+  id: number;
+  name: string;
+  pipeline_name: string;
+}
+
 export type AutomationNodeType =
   | 'trigger'
   | 'condition'

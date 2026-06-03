@@ -31,6 +31,7 @@ import { protectedLeadWebhooksRouter, publicLeadWebhooksRouter } from './routes/
 import leadClassificationRulesRoutes from './routes/lead-classification-rules.routes';
 import automationJourneysRoutes from './routes/automation-journeys.routes';
 import whatsappRoutes from './routes/whatsapp.routes';
+import pipedriveRoutes from './routes/pipedrive.routes';
 
 dotenv.config();
 
@@ -509,6 +510,7 @@ app.use('/api/utm-links', utmLinksRoutes);
 app.use('/api/utm-destinations', utmDestinationsRoutes);
 app.use('/api/funnels', funnelRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/pipedrive', pipedriveRoutes);
 
 // Error handling middleware (deve ser o último)
 app.use(errorHandler);

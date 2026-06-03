@@ -36,6 +36,7 @@ import {
   AutomationJourneyStatus,
   AutomationNodeType,
   WhatsAppTemplate,
+  PipedriveStage,
 } from '../types';
 
 const NODE_W = 230;
@@ -485,6 +486,46 @@ function WhatsAppTemplateSelector({
       options={options}
       onChange={name => onSelect(name, templates.find(t => t.name === name))}
       placeholder="Selecionar template aprovado..."
+      loading={loading}
+    />
+  );
+}
+
+// ── Pipedrive Stage Selector ──────────────────────────────────────────────────
+
+function PipedriveStageSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [stages, setStages] = useState<PipedriveStage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    DataService.getPipedriveStages()
+      .then(s => setStages(s))
+      .catch(e => setError(e instanceof Error ? e.message : 'Erro ao carregar estágios'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (error) {
+    return (
+      <div style={{ fontSize: 12, color: 'var(--red-600)', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '8px 12px' }}>
+        {error}
+      </div>
+    );
+  }
+
+  // Group by pipeline_name for description
+  const options: SmartSelectOption[] = stages.map(s => ({
+    value: String(s.id),
+    label: s.name,
+    description: s.pipeline_name,
+  }));
+
+  return (
+    <SmartSelect
+      value={value}
+      options={options}
+      onChange={onChange}
+      placeholder="Selecionar estágio..."
       loading={loading}
     />
   );
@@ -1794,18 +1835,62 @@ const AutomationJourneysView: React.FC = () => {
                   {/* ── PIPEDRIVE ── */}
                   {panelNode.type === 'pipedrive_action' && (() => {
                     const pipedriveActions: SmartSelectOption[] = [
-                      { value: 'create_deal',   label: 'Criar negócio',        description: 'Abre um novo negócio no Pipedrive' },
-                      { value: 'update_stage',  label: 'Mudar estágio',        description: 'Move o negócio para outro estágio' },
-                      { value: 'mark_won',      label: 'Marcar como ganho',    description: 'Fecha o negócio como ganho' },
-                      { value: 'mark_lost',     label: 'Marcar como perdido',  description: 'Fecha o negócio como perdido' },
+                      { value: 'create_deal',  label: 'Criar negócio',       description: 'Abre um novo negócio no Pipedrive' },
+                      { value: 'update_stage', label: 'Mudar estágio',       description: 'Move o negócio para outro estágio' },
+                      { value: 'mark_won',     label: 'Marcar como ganho',   description: 'Fecha o negócio como ganho' },
+                      { value: 'mark_lost',    label: 'Marcar como perdido', description: 'Fecha o negócio como perdido' },
                     ];
-                    const action = panelValues.config.action ?? '';
+                    const pipelineOptions: SmartSelectOption[] = [
+                      { value: 'novo_cliente', label: 'Novo Cliente',  description: 'Pipeline de aquisição' },
+                      { value: 'upsell',       label: 'Upsell',        description: 'Pipeline de expansão' },
+                    ];
+                    const action   = panelValues.config.action   ?? '';
+                    const stageId  = panelValues.config.stageId  ?? '';
+                    const pipeline = panelValues.config.pipeline ?? '';
 
                     return (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {/* Ação */}
                         {panelSelectField('action', 'Ação no Pipedrive', pipedriveActions, 'Selecionar ação...')}
-                        {action === 'create_deal'  && panelTextField('pipeline', 'Pipeline de destino', 'ex: novo_cliente')}
-                        {action === 'update_stage' && panelTextField('stage',    'Nome do estágio',    'ex: Apresentação, Proposta...')}
+
+                        {/* create_deal */}
+                        {action === 'create_deal' && <>
+                          <div style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>Pipeline</span>
+                            <SmartSelect
+                              value={pipeline}
+                              options={pipelineOptions}
+                              onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, pipeline: v } } : prev)}
+                              placeholder="Selecionar pipeline..."
+                            />
+                          </div>
+                          {panelTextField('titleTemplate', 'Título do negócio', '{nome} — {empresa}')}
+                          <div style={{ fontSize: 11, color: 'var(--fg-muted)', background: 'var(--bg-subtle)', borderRadius: 8, padding: '8px 12px', lineHeight: 1.5 }}>
+                            Variáveis disponíveis: <code style={{ fontSize: 10 }}>{'{nome}'} {'{empresa}'} {'{email}'} {'{telefone}'} {'{cargo}'} {'{origem}'} {'{campanha}'}</code>
+                          </div>
+                          {panelTextField('noteTemplate', 'Nota (opcional)', 'ex: Lead veio de {campanha} com score {score}')}
+                        </>}
+
+                        {/* update_stage */}
+                        {action === 'update_stage' && (
+                          <div style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>Estágio de destino</span>
+                            <PipedriveStageSelector
+                              value={stageId}
+                              onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, stageId: v } } : prev)}
+                            />
+                          </div>
+                        )}
+
+                        {/* mark_lost */}
+                        {action === 'mark_lost' && panelTextField('lostReason', 'Motivo da perda (opcional)', 'ex: Sem budget, Concorrente...')}
+
+                        {/* mark_won: no extra fields needed */}
+                        {action === 'mark_won' && (
+                          <div style={{ fontSize: 12, color: 'var(--fg-muted)', background: 'var(--bg-subtle)', borderRadius: 8, padding: '10px 12px' }}>
+                            Fecha o negócio do lead como <strong style={{ color: 'var(--green-700)' }}>Ganho</strong> no Pipedrive. O lead precisa ter um negócio vinculado.
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
