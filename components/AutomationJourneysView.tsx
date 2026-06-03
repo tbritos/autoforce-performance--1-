@@ -119,7 +119,7 @@ function nodeSubtitle(node: AutomationJourneyNode): { text: string; warn: boolea
       return { text: c.templateName || 'Selecionar template...', warn: false };
     case 'pipedrive_action': {
       const labels: Record<string, string> = {
-        create_deal:  c.pipeline ? `Criar negócio · ${c.pipeline}` : 'Criar negócio',
+        create_deal:  c.pipeline ? `Criar · ${c.pipeline === 'novo_cliente' ? 'Novo Cliente' : 'Upsell'}` : 'Criar negócio',
         update_stage: 'Mudar estágio',
         mark_won:     'Marcar como ganho',
         mark_lost:    'Marcar como perdido',
@@ -1911,10 +1911,7 @@ const AutomationJourneysView: React.FC = () => {
                               placeholder="Selecionar pipeline..."
                             />
                           </div>
-                          {panelTextField('titleTemplate', 'Título do negócio', '{nome} — {empresa}')}
-                          <div style={{ fontSize: 11, color: 'var(--fg-muted)', background: 'var(--bg-subtle)', borderRadius: 8, padding: '8px 12px', lineHeight: 1.5 }}>
-                            Variáveis disponíveis: <code style={{ fontSize: 10 }}>{'{nome}'} {'{empresa}'} {'{email}'} {'{telefone}'} {'{cargo}'} {'{origem}'} {'{campanha}'}</code>
-                          </div>
+                          {panelSelectField('titleField', 'Título do negócio', OUR_LEAD_FIELDS, 'Selecionar campo...')}
                           {panelTextField('noteTemplate', 'Nota (opcional)', 'ex: Lead veio de {campanha} com score {score}')}
                         </>}
 
