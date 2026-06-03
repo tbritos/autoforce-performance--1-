@@ -83,6 +83,56 @@ const defaultEdges = (): AutomationJourneyEdge[] => [];
 
 const blockMeta = (type: AutomationNodeType) => BLOCKS.find(block => block.type === type) ?? BLOCKS[0];
 
+function nodeSubtitle(node: AutomationJourneyNode): { text: string; warn: boolean } {
+  const c = (node.config ?? {}) as Record<string, string>;
+  switch (node.type) {
+    case 'trigger': {
+      if (!c.event) return { text: '⚠ Configure o gatilho', warn: true };
+      const labels: Record<string, string> = {
+        lead_created:   'Lead entrou na base',
+        conversion:     c.eventValue ? `Conversão: ${c.eventValue}` : 'Conversão específica',
+        tag_added:      c.eventValue ? `Tag: ${c.eventValue}` : 'Tag aplicada',
+        score_reached:  c.eventValue ? `Score ≥ ${c.eventValue}` : 'Score atingiu limite',
+        status_changed: c.eventValue ? `Etapa → ${c.eventValue}` : 'Etapa mudou',
+      };
+      return { text: labels[c.event] ?? c.event, warn: false };
+    }
+    case 'wait':
+      if (c.amount && c.unit) return { text: `Aguardar ${c.amount} ${c.unit}`, warn: false };
+      return { text: 'Definir tempo...', warn: false };
+    case 'condition':
+      if (c.field && c.value) return { text: `${c.field} ${c.operator ?? ''} ${c.value}`.trim(), warn: false };
+      return { text: 'Definir condição...', warn: false };
+    case 'internal_action': {
+      const labels: Record<string, string> = {
+        add_tag:    c.value ? `+tag: ${c.value}` : 'Adicionar tag',
+        remove_tag: c.value ? `-tag: ${c.value}` : 'Remover tag',
+        set_status: c.value ? `Etapa: ${c.value}` : 'Mudar etapa',
+        add_score:  c.value ? `+${c.value} pts` : 'Adicionar score',
+        set_score:  c.value ? `Score: ${c.value}` : 'Definir score',
+      };
+      return { text: c.action ? (labels[c.action] ?? c.action) : 'Definir ação...', warn: false };
+    }
+    case 'rd_conversion':
+      return { text: c.conversionName || c.conversionIdentifier || 'Configurar conversão...', warn: false };
+    case 'whatsapp_message':
+      return { text: c.templateName || 'Selecionar template...', warn: false };
+    case 'pipedrive_action': {
+      const labels: Record<string, string> = {
+        create_deal:  c.pipeline ? `Criar negócio · ${c.pipeline}` : 'Criar negócio',
+        update_stage: 'Mudar estágio',
+        mark_won:     'Marcar como ganho',
+        mark_lost:    'Marcar como perdido',
+      };
+      return { text: c.action ? (labels[c.action] ?? c.action) : 'Definir ação...', warn: false };
+    }
+    case 'end':
+      return { text: c.reason || 'Encerrar jornada', warn: false };
+    default:
+      return { text: blockMeta(node.type).label, warn: false };
+  }
+}
+
 const statusLabel: Record<AutomationJourneyStatus, string> = {
   DRAFT: 'Rascunho',
   ACTIVE: 'Ativa',
@@ -1328,7 +1378,7 @@ const AutomationJourneysView: React.FC = () => {
                   top: node.y,
                   width: NODE_W,
                   minHeight: NODE_H,
-                  border: `1.5px solid ${active || connecting ? meta.color : node.type === 'trigger' && !node.config?.event ? '#F59E0B' : 'var(--border)'}`,
+                  border: `1.5px solid ${active || connecting ? meta.color : nodeSubtitle(node).warn ? '#F59E0B' : 'var(--border)'}`,
                   borderRadius: 'var(--r-lg)',
                   background: 'var(--bg-surface)',
                   boxShadow: active ? `0 0 0 3px ${meta.color}22` : 'var(--shadow-sm)',
@@ -1341,7 +1391,7 @@ const AutomationJourneysView: React.FC = () => {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
                   <span style={{ position: 'relative', width: 32, height: 32, borderRadius: 9, display: 'grid', placeItems: 'center', background: `${meta.color}22`, color: meta.color, flexShrink: 0 }}>
                     <Icon size={16} />
-                    {node.type === 'trigger' && !node.config?.event && (
+                    {nodeSubtitle(node).warn && (
                       <span style={{
                         position: 'absolute', top: -3, right: -3,
                         width: 10, height: 10, borderRadius: 999,
@@ -1351,9 +1401,11 @@ const AutomationJourneysView: React.FC = () => {
                   </span>
                   <div style={{ minWidth: 0 }}>
                     <strong style={{ display: 'block', color: 'var(--fg-primary)', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{node.label}</strong>
-                    <span style={{ display: 'block', color: node.type === 'trigger' && !node.config?.event ? '#F59E0B' : 'var(--fg-muted)', fontSize: 11, marginTop: 2 }}>
-                      {node.type === 'trigger' && !node.config?.event ? '⚠ Configure o gatilho' : meta.label}
-                    </span>
+                    {(() => { const sub = nodeSubtitle(node); return (
+                      <span style={{ display: 'block', color: sub.warn ? '#F59E0B' : 'var(--fg-muted)', fontSize: 11, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {sub.text}
+                      </span>
+                    ); })()}
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 10 }}>
