@@ -291,8 +291,8 @@ const PlatformCard: React.FC<CardProps> = ({ meta, connection, requirement, onCo
 // ─── WhatsApp Credentials Modal ──────────────────────────────────────────────
 
 interface WhatsAppModalProps {
-  initialValues: { phoneNumberId: string; businessAccountId: string; accessToken: string };
-  onSave: (values: { phoneNumberId: string; businessAccountId: string; accessToken: string }) => Promise<void>;
+  initialValues: { businessAccountId: string; accessToken: string };
+  onSave: (values: { businessAccountId: string; accessToken: string }) => Promise<void>;
   onClose: () => void;
 }
 
@@ -306,8 +306,8 @@ const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ initialValues, onSave, on
     setForm(prev => ({ ...prev, [key]: e.target.value }));
 
   const handleSave = async () => {
-    if (!form.phoneNumberId.trim() || !form.accessToken.trim()) {
-      setError('Phone Number ID e Access Token são obrigatórios.');
+    if (!form.businessAccountId.trim() || !form.accessToken.trim()) {
+      setError('Business Account ID e Access Token são obrigatórios.');
       return;
     }
     setSaving(true);
@@ -352,18 +352,14 @@ const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ initialValues, onSave, on
         {/* Fields */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
-            <label style={labelStyle}>Phone Number ID *</label>
-            <input style={inputStyle} value={form.phoneNumberId} onChange={set('phoneNumberId')} placeholder="ex: 123456789012345" />
-            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>Encontrado em Meta for Developers → WhatsApp → API Setup</p>
-          </div>
-          <div>
-            <label style={labelStyle}>WhatsApp Business Account ID</label>
+            <label style={labelStyle}>WhatsApp Business Account ID *</label>
             <input style={inputStyle} value={form.businessAccountId} onChange={set('businessAccountId')} placeholder="ex: 987654321098765" />
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>Encontrado em Meta Business Manager → Contas do WhatsApp</p>
           </div>
           <div>
             <label style={labelStyle}>Access Token Permanente *</label>
             <input style={inputStyle} type="password" value={form.accessToken} onChange={set('accessToken')} placeholder="EAAxxxxxxxxxxxxxxxx..." />
-            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>Gere um token de longa duração em Meta Business → Configurações do sistema</p>
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>Gere em Meta Business → Configurações → Usuários do sistema → token com permissão whatsapp_business_management</p>
           </div>
         </div>
 
@@ -470,12 +466,12 @@ const ConnectionsView: React.FC = () => {
     if (platform === 'WHATSAPP') setWhatsappModal(true);
   }, []);
 
-  const handleSaveWhatsApp = useCallback(async (values: { phoneNumberId: string; businessAccountId: string; accessToken: string }) => {
+  const handleSaveWhatsApp = useCallback(async (values: { businessAccountId: string; accessToken: string }) => {
     await DataService.updateConnectionConfig('WHATSAPP', {
-      accountId: values.phoneNumberId,
-      accountName: `WhatsApp ${values.phoneNumberId}`,
+      accountId: values.businessAccountId,
+      accountName: `WhatsApp Business ${values.businessAccountId}`,
       accessToken: values.accessToken,
-      metadata: { phoneNumberId: values.phoneNumberId, businessAccountId: values.businessAccountId },
+      metadata: { businessAccountId: values.businessAccountId },
     });
     await loadConnections();
   }, [loadConnections]);
@@ -494,7 +490,6 @@ const ConnectionsView: React.FC = () => {
       {whatsappModal && (
         <WhatsAppModal
           initialValues={{
-            phoneNumberId: (whatsappMeta.phoneNumberId as string) ?? '',
             businessAccountId: (whatsappMeta.businessAccountId as string) ?? '',
             accessToken: '',
           }}

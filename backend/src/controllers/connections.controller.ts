@@ -26,12 +26,13 @@ async function testPlatformConnection(platform: Platform): Promise<{ ok: boolean
     if ((platform as string) === 'WHATSAPP') {
       const conn = await PlatformConnectionService.getInternalConnection('WHATSAPP' as Platform);
       const waToken = conn?.accessToken;
-      const phoneNumberId = (conn?.metadata as Record<string, unknown>)?.phoneNumberId as string | undefined;
-      if (!waToken || !phoneNumberId) return { ok: false, message: 'Credenciais WhatsApp não configuradas' };
-      const res = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}?access_token=${waToken}`);
-      const data = await res.json() as { display_phone_number?: string; error?: { message: string } };
+      const meta = (conn?.metadata ?? {}) as Record<string, unknown>;
+      const businessAccountId = meta.businessAccountId as string | undefined;
+      if (!waToken || !businessAccountId) return { ok: false, message: 'Credenciais WhatsApp não configuradas' };
+      const res = await fetch(`https://graph.facebook.com/v19.0/${businessAccountId}?fields=id,name&access_token=${waToken}`);
+      const data = await res.json() as { id?: string; name?: string; error?: { message: string } };
       if (data.error) return { ok: false, message: data.error.message };
-      return { ok: true, message: `WhatsApp conectado — ${data.display_phone_number || phoneNumberId}` };
+      return { ok: true, message: `WhatsApp Business conectado — ${data.name || businessAccountId}` };
     }
 
     const token = await OAuthService.getValidToken(platform);
