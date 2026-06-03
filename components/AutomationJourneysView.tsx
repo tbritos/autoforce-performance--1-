@@ -422,6 +422,21 @@ const AutomationJourneysView: React.FC = () => {
 
   useEffect(() => { load(); }, [load]);
 
+  // Delete selected node with Delete/Backspace key
+  useEffect(() => {
+    if (!routeId) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return; // don't interfere with text editing
+      if (!selectedNodeId || modalNodeId) return;
+      removeNode(selectedNodeId);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeId, selectedNodeId, modalNodeId]);
+
   // Sync selected journey with URL param
   useEffect(() => {
     if (!routeId) return;
