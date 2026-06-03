@@ -209,12 +209,24 @@ function SmartSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [dropRect, setDropRect] = useState<DOMRect | null>(null);
+  const [dropPos, setDropPos] = useState<{ top?: number; bottom?: number; left: number; width: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const DROPDOWN_MAX_H = 260;
+
   const handleOpen = () => {
-    if (!open && buttonRef.current) setDropRect(buttonRef.current.getBoundingClientRect());
+    if (!open && buttonRef.current) {
+      const r = buttonRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - r.bottom;
+      const openUpward = spaceBelow < DROPDOWN_MAX_H + 8 && r.top > DROPDOWN_MAX_H;
+      setDropPos({
+        top: openUpward ? undefined : r.bottom + 4,
+        bottom: openUpward ? window.innerHeight - r.top + 4 : undefined,
+        left: r.left,
+        width: r.width,
+      });
+    }
     setOpen(prev => !prev);
     if (!open) setSearch('');
   };
@@ -259,18 +271,21 @@ function SmartSelect({
         />
       </button>
 
-      {open && dropRect && createPortal(
+      {open && dropPos && createPortal(
         <div
           ref={dropdownRef}
           style={{
             position: 'fixed', zIndex: 1200,
-            top: dropRect.bottom + 4,
-            left: dropRect.left,
-            width: dropRect.width,
+            top: dropPos.top,
+            bottom: dropPos.bottom,
+            left: dropPos.left,
+            width: dropPos.width,
+            maxHeight: DROPDOWN_MAX_H,
             border: '1.5px solid var(--border)', borderRadius: 10,
             background: 'var(--bg-elevated)',
             boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
             overflow: 'hidden',
+            display: 'flex', flexDirection: 'column',
           }}
         >
           {options.length > 5 && (
@@ -289,7 +304,7 @@ function SmartSelect({
               />
             </div>
           )}
-          <div style={{ maxHeight: 220, overflowY: 'auto', padding: 5 }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: 5 }}>
             {filtered.length === 0 ? (
               <div style={{ padding: '10px 8px', fontSize: 13, color: 'var(--fg-muted)', textAlign: 'center' }}>
                 Nenhum resultado
