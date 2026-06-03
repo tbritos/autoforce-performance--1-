@@ -595,6 +595,84 @@ const OUR_LEAD_FIELDS: SmartSelectOption[] = [
   { value: 'score',       label: 'Score',           description: 'lead.score' },
 ];
 
+// ── Template Textarea (textarea + field chips that insert variables) ──────────
+
+const NOTE_VARS = [
+  { label: 'Nome',       var: '{nome}' },
+  { label: 'Empresa',    var: '{empresa}' },
+  { label: 'Cargo',      var: '{cargo}' },
+  { label: 'Email',      var: '{email}' },
+  { label: 'Telefone',   var: '{telefone}' },
+  { label: 'Campanha',   var: '{campanha}' },
+  { label: 'Origem',     var: '{origem}' },
+  { label: 'Score',      var: '{score}' },
+  { label: 'Landing',    var: '{landing_page}' },
+];
+
+function TemplateTextarea({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  const insertVar = (varStr: string) => {
+    const el = ref.current;
+    if (!el) { onChange(value + varStr); return; }
+    const start = el.selectionStart ?? value.length;
+    const end   = el.selectionEnd   ?? value.length;
+    const next  = value.slice(0, start) + varStr + value.slice(end);
+    onChange(next);
+    // Restore cursor after React re-render
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(start + varStr.length, start + varStr.length);
+    });
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <textarea
+        ref={ref}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={3}
+        style={{
+          width: '100%', padding: '10px 12px', boxSizing: 'border-box',
+          border: '1.5px solid var(--border)', borderRadius: 10,
+          background: 'var(--bg-surface)', color: 'var(--fg-primary)',
+          fontSize: 13, outline: 'none', resize: 'vertical', lineHeight: 1.5,
+          fontFamily: 'inherit',
+        }}
+        onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
+        onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
+      />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {NOTE_VARS.map(v => (
+          <button
+            key={v.var}
+            type="button"
+            onClick={() => insertVar(v.var)}
+            style={{
+              padding: '3px 9px', borderRadius: 6, border: '1px solid var(--border)',
+              background: 'var(--bg-subtle)', color: 'var(--fg-secondary)',
+              fontSize: 11, fontWeight: 600, cursor: 'pointer',
+              fontFamily: 'monospace',
+            }}
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 const emptyDraft = () => {
@@ -1912,7 +1990,14 @@ const AutomationJourneysView: React.FC = () => {
                             />
                           </div>
                           {panelSelectField('titleField', 'Título do negócio', OUR_LEAD_FIELDS, 'Selecionar campo...')}
-                          {panelTextField('noteTemplate', 'Nota (opcional)', 'ex: Lead veio de {campanha} com score {score}')}
+                          <div style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>Nota (opcional)</span>
+                            <TemplateTextarea
+                              value={panelValues?.config.noteTemplate ?? ''}
+                              onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, noteTemplate: v } } : prev)}
+                              placeholder="ex: Lead veio pelo {campanha} com score {score}..."
+                            />
+                          </div>
                         </>}
 
                         {/* update_stage */}
