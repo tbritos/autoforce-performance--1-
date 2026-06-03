@@ -331,7 +331,7 @@ const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ initialValues, onSave, on
 
   return (
     <div ref={overlayRef} onClick={e => { if (e.target === overlayRef.current) onClose(); }}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9000, padding: 20 }}>
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9000, padding: 20 }}>
       <div className="ds-card" style={{ padding: 24, width: '100%', maxWidth: 440, display: 'flex', flexDirection: 'column', gap: 18, borderColor: 'var(--border)' }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
