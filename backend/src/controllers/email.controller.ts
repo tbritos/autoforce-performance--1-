@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { EmailService } from '../services/email.service';
+import { fetchRdContactFields } from '../services/rdstation.service';
 
 export const getEmailCampaigns = async (
   req: Request,
@@ -122,6 +123,20 @@ export const getSyncLogs = async (
     const limit = req.query.limit ? Number(req.query.limit) : 50;
     const logs = await EmailService.getSyncLogs(limit);
     res.json(logs);
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+export const getRdContactFields = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const fields = await fetchRdContactFields();
+    res.json(fields);
   } catch (error) {
     next(error);
   }

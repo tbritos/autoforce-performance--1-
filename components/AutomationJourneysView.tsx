@@ -401,6 +401,50 @@ function WebhookSourceSelector({ value, onChange }: { value: string; onChange: (
   );
 }
 
+// ── RD Station Field Selector ─────────────────────────────────────────────────
+
+function RDFieldSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [fields, setFields] = useState<Array<{ uuid: string; api_identifier: string; label: string }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    DataService.getRdStationFields()
+      .then(f => setFields(f))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const options: SmartSelectOption[] = fields.map(f => ({
+    value: f.api_identifier,
+    label: f.label,
+    description: f.api_identifier,
+  }));
+
+  return (
+    <SmartSelect
+      value={value}
+      options={options}
+      onChange={onChange}
+      placeholder="Campo do RD Station..."
+      loading={loading}
+    />
+  );
+}
+
+// ── Lead field options (campos do nosso sistema) ──────────────────────────────
+
+const OUR_LEAD_FIELDS: SmartSelectOption[] = [
+  { value: 'name',        label: 'Nome completo',   description: 'lead.name' },
+  { value: 'email',       label: 'Email',           description: 'lead.email' },
+  { value: 'phone',       label: 'Telefone',        description: 'lead.phone' },
+  { value: 'jobTitle',    label: 'Cargo',           description: 'lead.jobTitle' },
+  { value: 'companyName', label: 'Empresa',         description: 'lead.companyName' },
+  { value: 'origin',      label: 'Origem',          description: 'lead.origin' },
+  { value: 'campaign',    label: 'Campanha',        description: 'lead.campaign' },
+  { value: 'status',      label: 'Etapa',           description: 'lead.status' },
+  { value: 'score',       label: 'Score',           description: 'lead.score' },
+];
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 const emptyDraft = () => {
@@ -1541,10 +1585,71 @@ const AutomationJourneysView: React.FC = () => {
                   })()}
 
                   {/* ── RD STATION ── */}
-                  {panelNode.type === 'rd_conversion' && (<>
-                    {panelTextField('conversionIdentifier', 'Identificador da conversão', 'ex: interesse_decisor')}
-                    {panelTextField('conversionName', 'Nome da conversão', 'ex: Interesse - Decisor')}
-                  </>)}
+                  {panelNode.type === 'rd_conversion' && (() => {
+                    // fieldMappings stored as JSON string in config.fieldMappings
+                    const mappings: Array<{ ourField: string; rdField: string }> = (() => {
+                      try { return JSON.parse(panelValues.config.fieldMappings || '[]'); } catch { return []; }
+                    })();
+                    const setMappings = (next: Array<{ ourField: string; rdField: string }>) => {
+                      setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, fieldMappings: JSON.stringify(next) } } : prev);
+                    };
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        {panelTextField('conversionIdentifier', 'Identificador da conversão', 'ex: interesse_decisor')}
+                        {panelTextField('conversionName', 'Nome da conversão', 'ex: Interesse - Decisor')}
+
+                        <div style={{ display: 'grid', gap: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span style={fieldLabelStyle}>Campos adicionais</span>
+                            <button
+                              type="button"
+                              onClick={() => setMappings([...mappings, { ourField: '', rdField: '' }])}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                border: '1px solid var(--border)', borderRadius: 6,
+                                background: 'var(--bg-subtle)', color: 'var(--fg-primary)',
+                                padding: '4px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                              }}
+                            >
+                              <Plus size={12} /> Adicionar campo
+                            </button>
+                          </div>
+
+                          {mappings.length === 0 && (
+                            <div style={{ fontSize: 12, color: 'var(--fg-muted)', padding: '8px 0' }}>
+                              Nenhum campo adicional. Clique em "Adicionar campo" para mapear campos do lead para o RD Station.
+                            </div>
+                          )}
+
+                          {mappings.map((mapping, i) => (
+                            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 32px', gap: 6, alignItems: 'center' }}>
+                              <SmartSelect
+                                value={mapping.ourField}
+                                options={OUR_LEAD_FIELDS}
+                                onChange={v => setMappings(mappings.map((m, j) => j === i ? { ...m, ourField: v } : m))}
+                                placeholder="Nosso campo..."
+                              />
+                              <RDFieldSelector
+                                value={mapping.rdField}
+                                onChange={v => setMappings(mappings.map((m, j) => j === i ? { ...m, rdField: v } : m))}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setMappings(mappings.filter((_, j) => j !== i))}
+                                style={{
+                                  width: 32, height: 42, display: 'grid', placeItems: 'center',
+                                  border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8,
+                                  background: 'rgba(239,68,68,0.06)', color: '#EF4444', cursor: 'pointer',
+                                }}
+                              >
+                                <X size={13} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* ── WHATSAPP ── */}
                   {panelNode.type === 'whatsapp_message' && (<>

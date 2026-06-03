@@ -877,6 +877,10 @@ export const DataService = {
     return [];
   },
 
+  getRdStationFields: async (): Promise<Array<{ uuid: string; api_identifier: string; label: string; data_type: string }>> => {
+    return apiClient.get('/emails/rdstation/fields');
+  },
+
   getSyncLogs: async (limit = 50): Promise<SyncLog[]> => {
     if (USE_API) {
       try {

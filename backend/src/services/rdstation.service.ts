@@ -492,3 +492,27 @@ export const sendRdConversionEvent = async (payload: RdConversionPayload): Promi
 
   return { event_uuid: data?.event_uuid, raw: data };
 };
+
+export interface RdContactField {
+  uuid: string;
+  api_identifier: string;
+  label: string;
+  data_type: string;
+  presentation_type?: string;
+}
+
+export const fetchRdContactFields = async (): Promise<RdContactField[]> => {
+  const accessToken = await getRdAccessToken();
+  const workspaceId = process.env.RD_STATION_WORKSPACE_ID;
+
+  const url = `${RD_API_BASE}/contacts/fields`;
+  const response = await rdFetch(url, accessToken, workspaceId);
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`RD contact fields error: ${text}`);
+  }
+
+  const data = await response.json() as { fields?: RdContactField[] };
+  return data.fields ?? [];
+};
