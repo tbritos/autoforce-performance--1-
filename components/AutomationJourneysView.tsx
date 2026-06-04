@@ -903,6 +903,7 @@ const AutomationJourneysView: React.FC = () => {
   const [dragNodeId, setDragNodeId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const panRef = useRef<{ startX: number; startY: number; scrollLeft: number; scrollTop: number } | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [panelValues, setPanelValues] = useState<{ label: string; config: Record<string, string> } | null>(null);
   const [modalNodeId, setModalNodeId] = useState<string | null>(null);
@@ -1157,7 +1158,6 @@ const AutomationJourneysView: React.FC = () => {
   };
 
   const startPan = (event: React.MouseEvent<HTMLDivElement>) => {
-    // Only pan on left click on canvas background (nodes stopPropagation on mousedown)
     if (event.button !== 0) return;
     panRef.current = {
       startX: event.clientX,
@@ -1165,6 +1165,7 @@ const AutomationJourneysView: React.FC = () => {
       scrollLeft: canvasRef.current?.scrollLeft ?? 0,
       scrollTop: canvasRef.current?.scrollTop ?? 0,
     };
+    setIsPanning(true);
     setSelectedNodeId(null);
   };
 
@@ -1188,6 +1189,7 @@ const AutomationJourneysView: React.FC = () => {
 
   const stopDrag = () => {
     panRef.current = null;
+    setIsPanning(false);
     setDragNodeId(null);
   };
 
@@ -1657,7 +1659,7 @@ const AutomationJourneysView: React.FC = () => {
             position: 'absolute',
             inset: 0,
             overflow: 'auto',
-            cursor: dragNodeId ? 'default' : 'grab',
+            cursor: dragNodeId ? 'default' : isPanning ? 'grabbing' : 'grab',
             background:
               'linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)',
             backgroundSize: '28px 28px',
