@@ -70,8 +70,10 @@ app.post('/api/auth/google/redirect', async (req, res) => {
     }
     const user = await verifyGoogleToken(credential);
     const token = createSessionToken(user);
+    // FIX: use URL fragment (#) instead of query string — fragments are NOT sent to servers
+    // and do NOT appear in access logs, CDN logs, or Referer headers.
     const params = new URLSearchParams({ auth_token: token, auth_user: JSON.stringify(user) });
-    res.redirect(`${frontendUrl}/?${params.toString()}`);
+    res.redirect(`${frontendUrl}/#auth?${params.toString()}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Google login failed';
     res.redirect(`${frontendUrl}/?auth_error=${encodeURIComponent(message)}`);
@@ -179,7 +181,8 @@ app.get('/r/:code', async (req, res) => {
 // Chame: POST /api/admin/backfill-revenue?token=<PIPEDRIVE_WEBHOOK_SECRET>
 app.post('/api/admin/backfill-revenue', async (req, res) => {
   const secret = process.env.PIPEDRIVE_WEBHOOK_SECRET;
-  if (secret && req.query.token !== secret) {
+  // FIX: block access when secret is not configured (was: `if (secret && ...)`)
+  if (!secret || req.query.token !== secret) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
@@ -305,7 +308,8 @@ app.post('/api/admin/backfill-revenue', async (req, res) => {
 // pelo nome e atualiza com vendedor, produtos, dealUrl, MRR, etc.
 app.post('/api/admin/enrich-revenue', async (req, res) => {
   const secret = process.env.PIPEDRIVE_WEBHOOK_SECRET;
-  if (secret && req.query.token !== secret) {
+  // FIX: block access when secret is not configured
+  if (!secret || req.query.token !== secret) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }

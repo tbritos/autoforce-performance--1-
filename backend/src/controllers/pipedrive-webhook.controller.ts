@@ -127,8 +127,8 @@ export class PipedriveWebhookController {
         if (password === secret) authorized = true;
       }
 
-      // Fallback: query token (for testing via curl / direct URL)
-      if (!authorized && req.query.token === secret) authorized = true;
+      // Fallback: query token only in non-production (token in URL leaks into server logs)
+      if (!authorized && process.env.NODE_ENV !== 'production' && req.query.token === secret) authorized = true;
 
       if (!authorized) {
         res.status(401).json({ error: 'Unauthorized' });

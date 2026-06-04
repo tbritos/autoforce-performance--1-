@@ -11,12 +11,10 @@ const ALGORITHM = 'aes-256-gcm';
 
 function getEncryptionKey(): Buffer {
   const key = process.env.ENCRYPTION_KEY;
-  if ((!key || key.length !== 64) && process.env.NODE_ENV === 'development') {
-    console.warn('ENCRYPTION_KEY nao configurada. Usando chave local apenas para desenvolvimento.');
-    return Buffer.from('0'.repeat(64), 'hex');
-  }
+  // FIX: removed zero-key fallback — a known-zero key makes all stored tokens trivially
+  // decryptable for anyone with DB access. Always require a real key in all environments.
   if (!key || key.length !== 64) {
-    throw new Error('ENCRYPTION_KEY must be a 64-character hex string (32 bytes)');
+    throw new Error('ENCRYPTION_KEY must be a 64-character hex string (32 bytes). Generate with: openssl rand -hex 32');
   }
   return Buffer.from(key, 'hex');
 }

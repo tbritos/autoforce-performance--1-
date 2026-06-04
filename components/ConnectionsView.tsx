@@ -310,7 +310,10 @@ const ConnectionsView: React.FC = () => {
 
   useEffect(() => {
     loadConnections();
+    const API_ORIGIN = (import.meta.env.VITE_API_URL || '').replace(/\/api$/, '') || window.location.origin;
     const handler = (event: MessageEvent) => {
+      // FIX: validate origin before trusting postMessage data
+      if (event.origin !== API_ORIGIN && event.origin !== window.location.origin) return;
       if (event.data?.type === 'oauth_success' || event.data?.type === 'oauth_error') {
         loadConnections();
       }

@@ -10,6 +10,10 @@ import {
   ChevronDown,
 } from 'lucide-react';
 
+// FIX: validate external URLs to prevent javascript: and data: URI injection
+const safeUrl = (url: string | null | undefined): string =>
+  url && /^https?:\/\//i.test(url) ? url : '#';
+
 // ─── Detail Drawer ────────────────────────────────────────────────────────────
 
 const EntryDrawer: React.FC<{
@@ -154,7 +158,7 @@ const EntryDrawer: React.FC<{
               <p className="text-[9px] font-bold text-autoforce-grey uppercase tracking-widest mb-2">Links</p>
               <div className="flex flex-col gap-2">
                 {entry.dealUrl && (
-                  <a href={entry.dealUrl} target="_blank" rel="noopener noreferrer"
+                  <a href={safeUrl(entry.dealUrl)} target="_blank" rel="noopener noreferrer"
                     className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold bg-autoforce-blue/15 text-autoforce-blue border border-autoforce-blue/25 hover:bg-autoforce-blue/25 transition group">
                     <ExternalLink size={13} />
                     Abrir no Pipedrive
@@ -162,7 +166,7 @@ const EntryDrawer: React.FC<{
                   </a>
                 )}
                 {entry.contractLink && (
-                  <a href={entry.contractLink} target="_blank" rel="noopener noreferrer"
+                  <a href={safeUrl(entry.contractLink)} target="_blank" rel="noopener noreferrer"
                     className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold bg-autoforce-grey/15 text-autoforce-lightGrey border border-autoforce-grey/25 hover:text-white transition group">
                     <FileText size={13} />
                     Ver Contrato

@@ -27,6 +27,9 @@ const STATUS_MAP = Object.fromEntries(STATUSES.map(s => [s.value, s])) as Record
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+const safeUrl = (url: string | null | undefined): string =>
+  url && /^https?:\/\//i.test(url) ? url : '#';
+
 function fmt(iso: string | null, opts?: Intl.DateTimeFormatOptions): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('pt-BR', opts ?? { day: '2-digit', month: 'short', year: 'numeric' });
@@ -634,7 +637,7 @@ const PipedriveTimeline: React.FC<{ leadId: string; dealId: string }> = ({ leadI
 
           {!loading && dealUrl && (
             <a
-              href={dealUrl}
+              href={safeUrl(dealUrl)}
               target="_blank"
               rel="noopener noreferrer"
               style={{
@@ -962,8 +965,8 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                         {/* Links */}
                         {(rev.dealUrl || rev.contractLink) && (
                           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                            {rev.dealUrl && <a href={rev.dealUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#3b82f6', textDecoration: 'none' }}>↗ Ver no Pipedrive</a>}
-                            {rev.contractLink && <a href={rev.contractLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#3b82f6', textDecoration: 'none' }}>↗ Contrato</a>}
+                            {rev.dealUrl && <a href={safeUrl(rev.dealUrl)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#3b82f6', textDecoration: 'none' }}>↗ Ver no Pipedrive</a>}
+                            {rev.contractLink && <a href={safeUrl(rev.contractLink)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#3b82f6', textDecoration: 'none' }}>↗ Contrato</a>}
                           </div>
                         )}
                       </div>
