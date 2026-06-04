@@ -103,6 +103,7 @@ publicLeadWebhooksRouter.post(
 export const protectedLeadWebhooksRouter = Router();
 protectedLeadWebhooksRouter.get('/', LeadWebhooksController.listSources);
 protectedLeadWebhooksRouter.post('/', LeadWebhooksController.createSource);
+protectedLeadWebhooksRouter.get('/by-public/:publicId/inspect', LeadWebhooksController.inspectSourceByPublicId);
 protectedLeadWebhooksRouter.patch('/:id', LeadWebhooksController.updateSource);
 protectedLeadWebhooksRouter.delete('/:id', LeadWebhooksController.deleteSource);
 protectedLeadWebhooksRouter.post('/:id/regenerate-url', LeadWebhooksController.regenerateUrl);

@@ -183,6 +183,7 @@ export interface LeadWebhookLog {
 
 export interface LeadWebhookInspection {
   sourceId: string;
+  publicId?: string;
   detectedFields: string[];
   currentMappings: Record<string, string>;
   suggestedMappings: Record<string, string>;

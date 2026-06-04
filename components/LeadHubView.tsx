@@ -2348,13 +2348,20 @@ const LeadWebhooksPanel: React.FC = () => {
     };
   };
 
+  const inspectWebhookForMapping = async (webhook: LeadWebhookSource): Promise<LeadWebhookInspection> => {
+    const data = webhook.publicId
+      ? await DataService.inspectLeadWebhookByPublicId(webhook.publicId)
+      : await DataService.inspectLeadWebhook(webhook.id);
+    return buildInspectionFromLogs(webhook.id, data);
+  };
+
   const openMapping = async (webhook: LeadWebhookSource) => {
     setMappingSource(webhook);
     setInspection(null);
     setVisualMappings({});
     setMappingLoading(true);
     try {
-      const data = await buildInspectionFromLogs(webhook.id, await DataService.inspectLeadWebhook(webhook.id));
+      const data = await inspectWebhookForMapping(webhook);
       setInspection(data);
       setVisualMappings({ ...data.suggestedMappings, ...data.currentMappings });
     } finally {
@@ -2368,7 +2375,7 @@ const LeadWebhooksPanel: React.FC = () => {
     setMappingLoading(true);
     try {
       await DataService.testLeadWebhook(mappingSource.id);
-      const data = await buildInspectionFromLogs(mappingSource.id, await DataService.inspectLeadWebhook(mappingSource.id));
+      const data = await inspectWebhookForMapping(mappingSource);
       setInspection(data);
       setVisualMappings({ ...data.suggestedMappings, ...data.currentMappings });
       await loadWebhooks();
@@ -2387,7 +2394,7 @@ const LeadWebhooksPanel: React.FC = () => {
       );
       await DataService.updateLeadWebhook(mappingSource.id, { fieldMappings: clean });
       await loadWebhooks();
-      const data = await buildInspectionFromLogs(mappingSource.id, await DataService.inspectLeadWebhook(mappingSource.id));
+      const data = await inspectWebhookForMapping(mappingSource);
       setInspection(data);
       setVisualMappings({ ...data.suggestedMappings, ...data.currentMappings });
     } finally {

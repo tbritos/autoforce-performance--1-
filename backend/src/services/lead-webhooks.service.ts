@@ -363,8 +363,17 @@ export class LeadWebhooksService {
 
   static async inspectSource(id: string) {
     const source = await prisma.leadWebhookSource.findUniqueOrThrow({ where: { id } });
+    return LeadWebhooksService.inspectSourceRecord(source);
+  }
+
+  static async inspectSourceByPublicId(publicId: string) {
+    const source = await prisma.leadWebhookSource.findUniqueOrThrow({ where: { publicId } });
+    return LeadWebhooksService.inspectSourceRecord(source);
+  }
+
+  private static async inspectSourceRecord(source: Awaited<ReturnType<typeof prisma.leadWebhookSource.findUniqueOrThrow>>) {
     const recentLogs = await prisma.webhookLog.findMany({
-      where: { sourceId: id },
+      where: { sourceId: source.id },
       orderBy: { receivedAt: 'desc' },
       take: 25,
     });
@@ -385,7 +394,8 @@ export class LeadWebhooksService {
       : null;
 
     return {
-      sourceId: id,
+      sourceId: source.id,
+      publicId: source.publicId,
       detectedFields,
       currentMappings,
       suggestedMappings,

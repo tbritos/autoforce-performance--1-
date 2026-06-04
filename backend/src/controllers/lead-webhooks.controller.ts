@@ -63,6 +63,14 @@ export class LeadWebhooksController {
     }
   }
 
+  static async inspectSourceByPublicId(req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json(await LeadWebhooksService.inspectSourceByPublicId(req.params.publicId));
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async sendTestPayload(req: Request, res: Response, next: NextFunction) {
     try {
       res.status(202).json(await LeadWebhooksService.sendTestPayload(req.params.id, req.body));
