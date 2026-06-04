@@ -43,17 +43,19 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setLoading(true);
     setError('');
     try {
+      // credentials: 'include' so the httpOnly cookie set by the server is accepted
       const result = await fetch(`${API_URL}/auth/google`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ credential: response.credential }),
       });
       if (!result.ok) { const t = await result.text(); throw new Error(t || 'Falha'); }
       const data = await result.json();
-      const sessionToken = data.token || response.credential;
-      localStorage.setItem('autoforce_token', sessionToken);
+      // Token now lives in httpOnly cookie — only store user info in localStorage
       localStorage.setItem('autoforce_user', JSON.stringify(data.user));
-      onLogin(data.user, sessionToken);
+      localStorage.removeItem('autoforce_token');
+      onLogin(data.user);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('Login error:', msg);
