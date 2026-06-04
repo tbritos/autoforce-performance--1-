@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { rateLimit } from 'express-rate-limit';
 import dotenv from 'dotenv';
 import { errorHandler } from './middleware/error.middleware';
@@ -56,6 +57,7 @@ app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false 
 // Body parsing — antes do CORS para estar disponível no redirect do Google
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 // Google Sign-In redirect — registrado ANTES do CORS pois o POST vem de accounts.google.com
 // O Express processa rotas na ordem de registro; esta captura o request antes do middleware global
@@ -70,9 +72,17 @@ app.post('/api/auth/google/redirect', async (req, res) => {
     }
     const user = await verifyGoogleToken(credential);
     const token = createSessionToken(user);
-    // FIX: use URL fragment (#) instead of query string — fragments are NOT sent to servers
-    // and do NOT appear in access logs, CDN logs, or Referer headers.
-    const params = new URLSearchParams({ auth_token: token, auth_user: JSON.stringify(user) });
+    const isProd = process.env.NODE_ENV === 'production';
+    // Set httpOnly cookie — token never touches the URL or localStorage
+    res.cookie('af_session', token, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      path: '/',
+    });
+    // Only user info in fragment — no token
+    const params = new URLSearchParams({ auth_user: JSON.stringify(user) });
     res.redirect(`${frontendUrl}/#auth?${params.toString()}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Google login failed';

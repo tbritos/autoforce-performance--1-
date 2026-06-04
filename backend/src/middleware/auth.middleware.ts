@@ -24,9 +24,11 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
       return;
     }
 
-    // 3. Validação por Token do Google (Para Usuários no Frontend)
+    // 3. Token: httpOnly cookie (priority) or Authorization header (fallback / API clients)
+    const cookieToken = (req.cookies as Record<string, string | undefined>)?.['af_session'];
     const authHeader = req.headers.authorization || '';
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    const headerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    const token = cookieToken || headerToken;
 
     if (!token) {
       res.status(401).json({ error: 'Unauthorized: No token or API Key provided' });

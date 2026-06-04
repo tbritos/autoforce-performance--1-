@@ -763,34 +763,36 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     const restoreSession = async () => {
       try {
-        const search = new URLSearchParams(window.location.search);
-        const authToken = search.get('auth_token');
-        const authUser = search.get('auth_user');
-        const authError = search.get('auth_error');
+        // Read auth result from URL fragment (#auth?auth_user=...&auth_error=...)
+        const hash = window.location.hash;
+        if (hash.startsWith('#auth?')) {
+          const params = new URLSearchParams(hash.slice(6));
+          const authUser  = params.get('auth_user');
+          const authError = params.get('auth_error');
 
-        if (authToken && authUser) {
-          const parsedUser = JSON.parse(authUser) as User;
-          localStorage.setItem('autoforce_token', authToken);
-          localStorage.setItem('autoforce_user', JSON.stringify(parsedUser));
-          setUser(parsedUser);
+          // Clean the fragment from URL immediately
           window.history.replaceState({}, document.title, window.location.pathname);
-          setInitializing(false);
-          return;
+
+          if (authError) {
+            console.error('Erro no login Google:', authError);
+            setInitializing(false);
+            return;
+          }
+
+          if (authUser) {
+            // Token is in httpOnly cookie (set by backend during redirect)
+            // Only user display info lives in localStorage
+            const parsedUser = JSON.parse(authUser) as User;
+            localStorage.setItem('autoforce_user', JSON.stringify(parsedUser));
+            setUser(parsedUser);
+            setInitializing(false);
+            return;
+          }
         }
 
-        if (authError) {
-          console.error('Erro no login Google:', authError);
-          window.history.replaceState({}, document.title, window.location.pathname);
-        }
-
-        const savedToken = localStorage.getItem('autoforce_token');
-        if (!savedToken) {
-          localStorage.removeItem('autoforce_user');
-          setInitializing(false);
-          return;
-        }
-
-        if (import.meta.env.DEV && savedToken === 'dev-local-bypass') {
+        // Dev bypass — still uses localStorage token
+        const devToken = localStorage.getItem('autoforce_token');
+        if (import.meta.env.DEV && devToken === 'dev-local-bypass') {
           const savedUser = localStorage.getItem('autoforce_user');
           if (savedUser) {
             setUser(JSON.parse(savedUser) as User);
@@ -799,11 +801,13 @@ const AppContent: React.FC = () => {
           }
         }
 
+        // Verify session via cookie (credentials: 'include' sends the httpOnly cookie)
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
         const response = await fetch(`${apiUrl}/auth/me`, {
-          headers: {
-            Authorization: `Bearer ${savedToken}`,
-          },
+          credentials: 'include',
+          ...(devToken === 'dev-local-bypass'
+            ? { headers: { Authorization: `Bearer ${devToken}` } }
+            : {}),
         });
 
         if (!response.ok) {
@@ -819,12 +823,10 @@ const AppContent: React.FC = () => {
           localStorage.setItem('autoforce_user', JSON.stringify(data.user));
         } else {
           localStorage.removeItem('autoforce_user');
-          localStorage.removeItem('autoforce_token');
         }
       } catch (e) {
-        console.error('Erro ao restaurar sessÃ£o:', e);
+        console.error('Erro ao restaurar sessão:', e);
         localStorage.removeItem('autoforce_user');
-        localStorage.removeItem('autoforce_token');
       } finally {
         setInitializing(false);
       }
@@ -893,20 +895,31 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleLogin = (userData: User, token: string) => {
+  const handleLogin = (userData: User, token?: string) => {
     setUser(userData);
     localStorage.setItem('autoforce_user', JSON.stringify(userData));
-    localStorage.setItem('autoforce_token', token);
+    // FIX: token no longer stored in localStorage — lives in httpOnly cookie only
+    // Only store dev-bypass token for local development
+    if (token === 'dev-local-bypass') {
+      localStorage.setItem('autoforce_token', token);
+    } else {
+      localStorage.removeItem('autoforce_token');
+    }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      // Ask server to clear the httpOnly cookie
+      await fetch(`${apiUrl}/auth/logout`, { method: 'POST', credentials: 'include' });
+    } catch { /* non-fatal */ }
     setUser(null);
     localStorage.removeItem('autoforce_user');
     localStorage.removeItem('autoforce_token');
     setMetrics([]);
     setDailyLeads([]);
     setRevenueHistory([]);
-    navigate('/'); // Volta para home ao sair
+    navigate('/');
   };
 
   // ─── Sidebar nav structure ─────────────────────────────────────────────────
