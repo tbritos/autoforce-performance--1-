@@ -448,13 +448,15 @@ async function executeRDConversion(
   });
   if (!lead) return;
 
-  const conversionName = String(config.conversionName ?? '');
-  if (!conversionName) return;
+  // conversionIdentifier é o campo principal (ex: "interesse_decisor")
+  // conversionName é o nome de exibição opcional — fallback para compatibilidade
+  const identifier = String(config.conversionIdentifier ?? config.conversionName ?? '');
+  if (!identifier) return;
 
   await sendRdConversionEvent({
-    conversion_identifier: conversionName,
-    name:     lead.name ?? undefined,
-    email:    lead.email,
+    conversion_identifier: identifier,
+    name:         lead.name ?? undefined,
+    email:        lead.email,
     mobile_phone: lead.phone ?? undefined,
     company_name: lead.company ?? undefined,
   });
