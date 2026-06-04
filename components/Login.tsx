@@ -17,7 +17,7 @@ declare global {
 }
 
 interface LoginProps {
-  onLogin: (user: User, token: string) => void;
+  onLogin: (user: User, token?: string) => void;
 }
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
