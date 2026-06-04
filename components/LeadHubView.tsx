@@ -2368,6 +2368,11 @@ const LeadWebhooksPanel: React.FC = () => {
   ];
 
   if (mappingSource) {
+    const rawPayloadText = inspection?.lastPayload
+      ? JSON.stringify(inspection.lastPayload, null, 2)
+      : '';
+    const hasReceivedPayload = Boolean(rawPayloadText && rawPayloadText !== '{}');
+
     return (
       <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg-surface)', minHeight: '100%' }}>
         {/* Sticky header */}
@@ -2406,6 +2411,25 @@ const LeadWebhooksPanel: React.FC = () => {
               <div style={{ border: '1px dashed var(--border)', borderRadius: 12, padding: 40, textAlign: 'center' }}>
                 <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--fg-primary)', margin: 0 }}>Nenhum campo recebido ainda</h3>
                 <p style={{ fontSize: 13, color: 'var(--fg-muted)', margin: '8px 0 0' }}>Copie a URL do webhook, envie um teste pelo formulário e volte aqui para mapear os campos detectados automaticamente.</p>
+                {inspection && (
+                  <div style={{ marginTop: 18, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: 'var(--bg-surface)', textAlign: 'left' }}>
+                    <div style={{ padding: '10px 12px', background: 'var(--bg-muted)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--fg-secondary)' }}>Diagnostico do ultimo envio</span>
+                      <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>
+                        {inspection.sampleLogReceivedAt ? new Date(inspection.sampleLogReceivedAt).toLocaleString('pt-BR') : 'sem data'}
+                      </span>
+                    </div>
+                    <div style={{ padding: 12, display: 'grid', gap: 10 }}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 12, color: 'var(--fg-muted)' }}>
+                        <span>Status: <strong style={{ color: 'var(--fg-secondary)' }}>{inspection.lastLogStatus || '-'}</strong></span>
+                        {inspection.lastLogError && <span>Erro: <strong style={{ color: 'var(--danger)' }}>{inspection.lastLogError}</strong></span>}
+                      </div>
+                      <pre style={{ margin: 0, maxHeight: 280, overflow: 'auto', padding: 12, borderRadius: 8, background: 'var(--bg-muted)', color: 'var(--fg-secondary)', fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {hasReceivedPayload ? rawPayloadText : '{}'}
+                      </pre>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>

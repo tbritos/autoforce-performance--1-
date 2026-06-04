@@ -190,6 +190,9 @@ export interface LeadWebhookInspection {
   lastPayload: unknown;
   lastLogStatus: string | null;
   lastLogError: string | null;
+  sampleLogId?: string | null;
+  sampleLogReceivedAt?: string | null;
+  latestLogId?: string | null;
 }
 
 export interface LeadRuleCondition {
