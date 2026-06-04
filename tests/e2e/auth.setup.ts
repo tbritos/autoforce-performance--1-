@@ -14,15 +14,18 @@ const SESSION_FILE = path.join(__dirname, '.auth/session.json');
 setup('autenticar com Google', async ({ page, context }) => {
   await page.goto('/');
 
-  // Aguarda o botão de login aparecer
-  await page.waitForSelector('text=Entrar com Google', { timeout: 10_000 });
+  // Aguarda o botão de login aparecer (texto real da tela)
+  await page.waitForSelector(
+    'button:has-text("Continuar com Google"), button:has-text("Entrar sem Google")',
+    { timeout: 10_000 }
+  );
 
   console.log('\n\n=== AÇÃO NECESSÁRIA ===');
-  console.log('Faça login com Google no browser que abriu.');
+  console.log('Clique em "Continuar com Google" no browser que abriu.');
   console.log('Aguardando redirecionamento após login...\n');
 
-  // Aguarda até 90s para o usuário fazer login manualmente
-  await page.waitForURL(url => !url.pathname.startsWith('/login'), { timeout: 90_000 });
+  // Aguarda sair da tela de login (pathname muda para /dashboard ou similar)
+  await page.waitForURL(url => url.pathname !== '/' && !url.pathname.startsWith('/login'), { timeout: 90_000 });
 
   // Confirma que está logado (dashboard carregou)
   await expect(page.locator('text=Dashboard').or(page.locator('[data-testid="nav"]'))).toBeVisible({ timeout: 10_000 });
