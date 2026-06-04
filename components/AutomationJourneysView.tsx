@@ -42,6 +42,7 @@ import {
   AutomationJourneyStatus,
   AutomationNodeType,
   WhatsAppTemplate,
+  WhatsAppPhoneNumber,
   PipedriveStage,
 } from '../types';
 
@@ -501,11 +502,52 @@ function extractTemplateVars(components: WhatsAppTemplate['components']): string
   });
 }
 
+function WhatsAppPhoneSelector({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (id: string, num: WhatsAppPhoneNumber | undefined) => void;
+}) {
+  const [numbers, setNumbers] = useState<WhatsAppPhoneNumber[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState<string | null>(null);
+
+  useEffect(() => {
+    DataService.getWhatsAppPhoneNumbers()
+      .then(n => setNumbers(n))
+      .catch(e => setError(e instanceof Error ? e.message : 'Erro ao carregar números'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (error) return (
+    <div style={{ fontSize: 12, color: 'var(--red-600)', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '8px 12px' }}>{error}</div>
+  );
+
+  const options: SmartSelectOption[] = numbers.map(n => ({
+    value: n.id,
+    label: n.display_phone_number,
+    description: n.verified_name,
+  }));
+
+  return (
+    <SmartSelect
+      value={value}
+      options={options}
+      onChange={id => onChange(id, numbers.find(n => n.id === id))}
+      placeholder="Selecionar número de envio..."
+      loading={loading}
+    />
+  );
+}
+
 function WhatsAppTemplateSelector({
   value,
+  phoneNumberId,
   onSelect,
 }: {
   value: string;
+  phoneNumberId?: string;
   onSelect: (name: string, template: WhatsAppTemplate | undefined) => void;
 }) {
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
@@ -513,11 +555,13 @@ function WhatsAppTemplateSelector({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    DataService.getWhatsAppTemplates()
+    setLoading(true);
+    setError(null);
+    DataService.getWhatsAppTemplates(phoneNumberId || undefined)
       .then(t => setTemplates(t))
       .catch(e => setError(e instanceof Error ? e.message : 'Erro ao carregar templates'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [phoneNumberId]);
 
   if (error) {
     return (
@@ -2129,8 +2173,9 @@ const AutomationJourneysView: React.FC = () => {
 
                   {/* ── WHATSAPP ── */}
                   {panelNode.type === 'whatsapp_message' && (() => {
-                    const templateName = panelValues.config.templateName ?? '';
-                    const phoneField = panelValues.config.phoneField ?? 'phone';
+                    const templateName   = panelValues.config.templateName ?? '';
+                    const phoneNumberId  = panelValues.config.phoneNumberId ?? '';
+                    const phoneField     = panelValues.config.phoneField ?? 'phone';
 
                     const storedComponents: WhatsAppTemplate['components'] = (() => {
                       try { return JSON.parse(panelValues.config.templateComponents || '[]'); } catch { return []; }
@@ -2152,11 +2197,33 @@ const AutomationJourneysView: React.FC = () => {
                     return (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
 
+                        {/* Número de envio */}
+                        <div style={{ display: 'grid', gap: 7 }}>
+                          <span style={fieldLabelStyle}>Número de envio</span>
+                          <WhatsAppPhoneSelector
+                            value={phoneNumberId}
+                            onChange={(id) => {
+                              setPanelValues(prev => prev ? {
+                                ...prev,
+                                config: {
+                                  ...prev.config,
+                                  phoneNumberId: id,
+                                  // Reset template when number changes
+                                  templateName: '',
+                                  templateComponents: '[]',
+                                  varMappings: '{}',
+                                },
+                              } : prev);
+                            }}
+                          />
+                        </div>
+
                         {/* Template */}
                         <div style={{ display: 'grid', gap: 7 }}>
                           <span style={fieldLabelStyle}>Template</span>
                           <WhatsAppTemplateSelector
                             value={templateName}
+                            phoneNumberId={phoneNumberId || undefined}
                             onSelect={(name, tpl) => {
                               setPanelValues(prev => prev ? {
                                 ...prev,

@@ -881,8 +881,13 @@ export const DataService = {
     return apiClient.get('/emails/rdstation/fields');
   },
 
-  getWhatsAppTemplates: async (): Promise<WhatsAppTemplate[]> => {
-    return apiClient.get('/whatsapp/templates');
+  getWhatsAppPhoneNumbers: async (): Promise<import('../types').WhatsAppPhoneNumber[]> => {
+    return apiClient.get('/whatsapp/phone-numbers');
+  },
+
+  getWhatsAppTemplates: async (phoneNumberId?: string): Promise<WhatsAppTemplate[]> => {
+    const qs = phoneNumberId ? `?phoneNumberId=${encodeURIComponent(phoneNumberId)}` : '';
+    return apiClient.get(`/whatsapp/templates${qs}`);
   },
 
   getPipedriveStages: async (): Promise<PipedriveStage[]> => {

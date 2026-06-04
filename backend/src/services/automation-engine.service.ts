@@ -479,8 +479,9 @@ async function executeWhatsAppMessage(
   if (!templateName) throw new Error('Template não configurado no bloco WhatsApp');
 
   const { accessToken } = await getWhatsAppCredentials();
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  if (!phoneNumberId) throw new Error('WHATSAPP_PHONE_NUMBER_ID não configurado');
+  // Use number from block config, fallback to env var
+  const phoneNumberId = String(config.phoneNumberId ?? '') || process.env.WHATSAPP_PHONE_NUMBER_ID;
+  if (!phoneNumberId) throw new Error('Número WhatsApp não configurado no bloco nem em WHATSAPP_PHONE_NUMBER_ID');
 
   // Normalize phone: keep only digits, ensure country code
   const phone = lead.phone.replace(/\D/g, '');

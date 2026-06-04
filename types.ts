@@ -256,6 +256,13 @@ export interface PipedriveStage {
   pipeline_name: string;
 }
 
+export interface WhatsAppPhoneNumber {
+  id: string;
+  display_phone_number: string;
+  verified_name: string;
+  quality_rating: string;
+}
+
 export type AutomationNodeType =
   | 'trigger'
   | 'condition'
