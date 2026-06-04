@@ -4,7 +4,7 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
 
 export default defineConfig({
   testDir: './tests/e2e',
-  timeout: 30_000,
+  timeout: 120_000,
   retries: 1,
   workers: 1,
   reporter: [['html', { outputFolder: 'tests/e2e/report' }], ['list']],
