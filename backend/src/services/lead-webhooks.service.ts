@@ -147,9 +147,70 @@ const buildWebhookUrl = (publicId: string) => {
   return `${baseUrl}/api/lead-webhooks/${publicId}`;
 };
 
+const normalizeFormFieldArray = (items: unknown[]): AnyRecord => {
+  const output: AnyRecord = {};
+
+  for (const item of items) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const record = item as AnyRecord;
+    const key = cleanString(
+      record.name ||
+      record.key ||
+      record.field ||
+      record.fieldName ||
+      record.id ||
+      record.label ||
+      record.title
+    );
+    if (!key) continue;
+
+    const value =
+      record.value ??
+      record.answer ??
+      record.content ??
+      record.text ??
+      record.selected ??
+      record.defaultValue ??
+      '';
+    output[key] = value;
+  }
+
+  return output;
+};
+
+const normalizeIncomingPayload = (payload: unknown): AnyRecord => {
+  if (!payload || typeof payload !== 'object') {
+    return cleanString(payload) ? { raw: cleanString(payload) } : {};
+  }
+
+  if (Array.isArray(payload)) {
+    const fields = normalizeFormFieldArray(payload);
+    return Object.keys(fields).length > 0 ? fields : { items: payload };
+  }
+
+  const record = payload as AnyRecord;
+  const output: AnyRecord = { ...record };
+
+  for (const containerKey of ['fields', 'answers', 'questions', 'formData', 'data', 'body', 'payload']) {
+    const child = record[containerKey];
+    if (Array.isArray(child)) {
+      Object.assign(output, normalizeFormFieldArray(child));
+    } else if (child && typeof child === 'object' && !Array.isArray(child)) {
+      Object.assign(output, child as AnyRecord);
+    }
+  }
+
+  return output;
+};
+
 const flattenPayloadFields = (value: unknown, prefix = '', output: string[] = []): string[] => {
   if (!value || typeof value !== 'object') return output;
-  if (Array.isArray(value)) return output;
+  if (Array.isArray(value)) {
+    for (const field of Object.keys(normalizeFormFieldArray(value))) {
+      output.push(prefix ? `${prefix}.${field}` : field);
+    }
+    return output;
+  }
 
   for (const [key, child] of Object.entries(value as AnyRecord)) {
     const path = prefix ? `${prefix}.${key}` : key;
@@ -308,9 +369,10 @@ export class LeadWebhooksService {
       take: 25,
     });
     const lastLog = recentLogs[0] ?? null;
-    const sampleLog = recentLogs.find(log => flattenPayloadFields(log.payload).length > 0) ?? lastLog;
+    const sampleLog = recentLogs.find(log => flattenPayloadFields(normalizeIncomingPayload(log.payload)).length > 0) ?? lastLog;
+    const samplePayload = sampleLog ? normalizeIncomingPayload(sampleLog.payload) : null;
 
-    const detectedFields = sampleLog ? flattenPayloadFields(sampleLog.payload) : [];
+    const detectedFields = samplePayload ? flattenPayloadFields(samplePayload) : [];
     const currentMappings = normalizeMappings(source.fieldMappings);
     const suggestedMappings = Object.fromEntries(
       detectedFields
@@ -318,8 +380,8 @@ export class LeadWebhooksService {
         .filter(([, target]) => target)
     );
 
-    const normalizedPreview = sampleLog
-      ? buildNormalizedPayload(sampleLog.payload as AnyRecord, { ...suggestedMappings, ...currentMappings })
+    const normalizedPreview = samplePayload
+      ? buildNormalizedPayload(samplePayload, { ...suggestedMappings, ...currentMappings })
       : null;
 
     return {
@@ -328,7 +390,7 @@ export class LeadWebhooksService {
       currentMappings,
       suggestedMappings,
       normalizedPreview,
-      lastPayload: sampleLog?.payload ?? null,
+      lastPayload: samplePayload ?? sampleLog?.payload ?? null,
       lastLogStatus: lastLog?.status ?? null,
       lastLogError: lastLog?.error ?? null,
       sampleLogId: sampleLog?.id ?? null,
@@ -369,14 +431,15 @@ export class LeadWebhooksService {
     }
 
     const mappings = normalizeMappings(source.fieldMappings);
-    const normalized = buildNormalizedPayload(payload || {}, mappings);
+    const incomingPayload = normalizeIncomingPayload(payload || {});
+    const normalized = buildNormalizedPayload(incomingPayload, mappings);
     const email = cleanString(normalized.lead.email);
 
     const log = await prisma.webhookLog.create({
       data: {
         source: source.name,
         sourceId: source.id,
-        payload: (payload || {}) as Prisma.JsonObject,
+        payload: incomingPayload as Prisma.JsonObject,
         normalized: normalized as Prisma.JsonObject,
         status: 'processing',
         leadEmail: email ? normalizeEmail(email) : null,
@@ -449,7 +512,7 @@ export class LeadWebhooksService {
         utmContent: cleanString(normalized.conversion.utmContent),
         utmTerm: cleanString(normalized.conversion.utmTerm),
         rawData: {
-          payload,
+          payload: incomingPayload,
           normalized,
           sourceId: source.id,
           sourceName: source.name,

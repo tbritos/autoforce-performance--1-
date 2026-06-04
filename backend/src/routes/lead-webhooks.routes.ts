@@ -76,6 +76,14 @@ const normalizePublicPayload = (req: Request, _res: Response, next: NextFunction
     }
   }
 
+  if (
+    req.query &&
+    Object.keys(req.query).length > 0 &&
+    (!req.body || (typeof req.body === 'object' && !Array.isArray(req.body) && Object.keys(req.body).length === 0))
+  ) {
+    req.body = { ...req.query };
+  }
+
   next();
 };
 
