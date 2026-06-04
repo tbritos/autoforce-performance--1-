@@ -2153,6 +2153,7 @@ const LeadWebhooksPanel: React.FC = () => {
   const [mappingLoading, setMappingLoading] = useState(false);
   const [mappingSaving, setMappingSaving] = useState(false);
   const [mappingTesting, setMappingTesting] = useState(false);
+  const [mappingError, setMappingError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
@@ -2349,16 +2350,57 @@ const LeadWebhooksPanel: React.FC = () => {
   };
 
   const inspectWebhookForMapping = async (webhook: LeadWebhookSource): Promise<LeadWebhookInspection> => {
-    const data = webhook.publicId
-      ? await DataService.inspectLeadWebhookByPublicId(webhook.publicId)
-      : await DataService.inspectLeadWebhook(webhook.id);
-    return buildInspectionFromLogs(webhook.id, data);
+    const emptyInspection: LeadWebhookInspection = {
+      sourceId: webhook.id,
+      publicId: webhook.publicId,
+      detectedFields: [],
+      currentMappings: webhook.fieldMappings || {},
+      suggestedMappings: {},
+      normalizedPreview: null,
+      lastPayload: null,
+      lastLogStatus: null,
+      lastLogError: null,
+    };
+
+    let data = emptyInspection;
+    let inspectError: unknown = null;
+
+    try {
+      data = webhook.publicId
+        ? await DataService.inspectLeadWebhookByPublicId(webhook.publicId)
+        : await DataService.inspectLeadWebhook(webhook.id);
+    } catch (error) {
+      inspectError = error;
+      try {
+        data = await DataService.inspectLeadWebhook(webhook.id);
+        inspectError = null;
+      } catch (fallbackError) {
+        inspectError = fallbackError;
+      }
+    }
+
+    try {
+      const withLogs = await buildInspectionFromLogs(webhook.id, data);
+      if (withLogs.detectedFields.length > 0) {
+        setMappingError(null);
+        return withLogs;
+      }
+      if (inspectError) {
+        setMappingError(inspectError instanceof Error ? inspectError.message : String(inspectError));
+      }
+      return withLogs;
+    } catch (logsError) {
+      const message = logsError instanceof Error ? logsError.message : String(logsError);
+      setMappingError(inspectError instanceof Error ? `${inspectError.message} | Logs: ${message}` : message);
+      return data;
+    }
   };
 
   const openMapping = async (webhook: LeadWebhookSource) => {
     setMappingSource(webhook);
     setInspection(null);
     setVisualMappings({});
+    setMappingError(null);
     setMappingLoading(true);
     try {
       const data = await inspectWebhookForMapping(webhook);
@@ -2373,6 +2415,7 @@ const LeadWebhooksPanel: React.FC = () => {
     if (!mappingSource) return;
     setMappingTesting(true);
     setMappingLoading(true);
+    setMappingError(null);
     try {
       await DataService.testLeadWebhook(mappingSource.id);
       const data = await inspectWebhookForMapping(mappingSource);
@@ -2388,6 +2431,7 @@ const LeadWebhooksPanel: React.FC = () => {
   const saveVisualMappings = async () => {
     if (!mappingSource) return;
     setMappingSaving(true);
+    setMappingError(null);
     try {
       const clean = Object.fromEntries(
         Object.entries(visualMappings).filter(([, target]) => target)
@@ -2504,6 +2548,11 @@ const LeadWebhooksPanel: React.FC = () => {
               <div style={{ border: '1px dashed var(--border)', borderRadius: 12, padding: 40, textAlign: 'center' }}>
                 <h3 style={{ fontSize: 14, fontWeight: 800, color: 'var(--fg-primary)', margin: 0 }}>Nenhum campo recebido ainda</h3>
                 <p style={{ fontSize: 13, color: 'var(--fg-muted)', margin: '8px 0 0' }}>Copie a URL do webhook, envie um teste pelo formulário e volte aqui para mapear os campos detectados automaticamente.</p>
+                {mappingError && (
+                  <div style={{ marginTop: 14, border: '1px solid var(--danger)', borderRadius: 10, background: 'rgba(239,68,68,0.08)', color: 'var(--danger)', padding: 12, fontSize: 12, textAlign: 'left', wordBreak: 'break-word' }}>
+                    Falha ao carregar campos: {mappingError}
+                  </div>
+                )}
                 {inspection && (
                   <div style={{ marginTop: 18, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: 'var(--bg-surface)', textAlign: 'left' }}>
                     <div style={{ padding: '10px 12px', background: 'var(--bg-muted)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
