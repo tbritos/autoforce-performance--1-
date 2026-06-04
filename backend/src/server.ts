@@ -90,6 +90,10 @@ app.post('/api/auth/google/redirect', async (req, res) => {
   }
 });
 
+// CORS para webhooks públicos — aceita qualquer origem (formulários de sites externos)
+app.use('/api/lead-webhooks', cors({ origin: '*', methods: ['POST', 'OPTIONS'], allowedHeaders: ['Content-Type'] }));
+app.use('/api/pipedrive-webhook', cors({ origin: '*', methods: ['POST', 'OPTIONS'], allowedHeaders: ['Content-Type'] }));
+
 // CORS para todas as outras rotas /api
 const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .split(',')
