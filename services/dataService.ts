@@ -1224,6 +1224,16 @@ export const DataService = {
     return apiClient.get<LeadWebhookInspection>(`/lead-webhooks/${encodeURIComponent(id)}/inspect`);
   },
 
+  testLeadWebhook: async (id: string, payload: Record<string, unknown> = {}): Promise<{
+    ok: boolean;
+    leadId: string;
+    email: string;
+    conversionId: string;
+    logId: string;
+  }> => {
+    return apiClient.post(`/lead-webhooks/${encodeURIComponent(id)}/test`, payload);
+  },
+
   listLeadRules: async (): Promise<LeadClassificationRule[]> => {
     return apiClient.get<LeadClassificationRule[]>('/lead-rules');
   },

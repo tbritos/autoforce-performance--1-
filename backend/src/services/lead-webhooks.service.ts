@@ -331,6 +331,28 @@ export class LeadWebhooksService {
     };
   }
 
+  static async sendTestPayload(id: string, payload?: AnyRecord) {
+    const source = await prisma.leadWebhookSource.findUniqueOrThrow({ where: { id } });
+    const testPayload = payload && Object.keys(payload).length > 0
+      ? payload
+      : {
+          name: 'Lead Teste AutoForce',
+          email: `teste+${Date.now()}@autoforce.com`,
+          phone: '11999999999',
+          company: 'AutoForce',
+          cargo: 'Gerente de Marketing',
+          formName: source.name,
+          landingPage: 'https://site.autoforce.com/teste-webhook',
+          utm_source: source.defaultSource || 'site',
+          utm_medium: 'formulario',
+          utm_campaign: source.defaultCampaign || 'teste-webhook',
+          principal_desafio: 'Gerar mais leads qualificados',
+          segmento: 'Concessionaria',
+        };
+
+    return LeadWebhooksService.ingest(source.publicId, testPayload);
+  }
+
   static async ingest(publicId: string, payload: AnyRecord) {
     const source = await prisma.leadWebhookSource.findUnique({ where: { publicId } });
     if (!source) {

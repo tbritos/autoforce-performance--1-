@@ -23,6 +23,7 @@ import {
   Link2,
   Power,
   RotateCw,
+  Send,
 } from 'lucide-react';
 import { Lead, LeadListResult, LeadStatus, FunnelCounts, LeadCustomFieldDef, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction } from '../types';
 import { DataService } from '../services/dataService';
@@ -2151,6 +2152,7 @@ const LeadWebhooksPanel: React.FC = () => {
   const [visualMappings, setVisualMappings] = useState<Record<string, string>>({});
   const [mappingLoading, setMappingLoading] = useState(false);
   const [mappingSaving, setMappingSaving] = useState(false);
+  const [mappingTesting, setMappingTesting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
@@ -2274,6 +2276,22 @@ const LeadWebhooksPanel: React.FC = () => {
     }
   };
 
+  const sendMappingTest = async () => {
+    if (!mappingSource) return;
+    setMappingTesting(true);
+    setMappingLoading(true);
+    try {
+      await DataService.testLeadWebhook(mappingSource.id);
+      const data = await DataService.inspectLeadWebhook(mappingSource.id);
+      setInspection(data);
+      setVisualMappings({ ...data.suggestedMappings, ...data.currentMappings });
+      await loadWebhooks();
+    } finally {
+      setMappingTesting(false);
+      setMappingLoading(false);
+    }
+  };
+
   const saveVisualMappings = async () => {
     if (!mappingSource) return;
     setMappingSaving(true);
@@ -2364,6 +2382,10 @@ const LeadWebhooksPanel: React.FC = () => {
           </div>
           <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>Envie um teste sempre que o formulário mudar.</span>
           <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={sendMappingTest} disabled={mappingTesting}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--fg-secondary)', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: mappingTesting ? 0.6 : 1 }}>
+              {mappingTesting ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />} Enviar teste
+            </button>
             <button type="button" onClick={() => setMappingSource(null)}
               style={{ padding: '8px 14px', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-secondary)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
               Cancelar

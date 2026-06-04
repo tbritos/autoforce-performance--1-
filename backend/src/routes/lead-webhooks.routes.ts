@@ -19,4 +19,5 @@ protectedLeadWebhooksRouter.patch('/:id', LeadWebhooksController.updateSource);
 protectedLeadWebhooksRouter.delete('/:id', LeadWebhooksController.deleteSource);
 protectedLeadWebhooksRouter.post('/:id/regenerate-url', LeadWebhooksController.regenerateUrl);
 protectedLeadWebhooksRouter.get('/:id/inspect', LeadWebhooksController.inspectSource);
+protectedLeadWebhooksRouter.post('/:id/test', LeadWebhooksController.sendTestPayload);
 protectedLeadWebhooksRouter.get('/:id/logs', LeadWebhooksController.listLogs);
