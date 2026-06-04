@@ -93,7 +93,7 @@ app.post('/api/auth/google/redirect', async (req, res) => {
 // Preflight OPTIONS para rotas públicas de webhook — deve vir ANTES do CORS global
 // O CORS global bloquearia o preflight antes do handler da rota rodar
 const publicWebhookCors = cors({ origin: '*', methods: ['GET', 'POST', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'X-Requested-With'] });
-app.options('/api/lead-webhooks/:publicId', publicWebhookCors);
+app.options('/api/lead-webhooks/:publicId(wbh_[a-fA-F0-9]+)', publicWebhookCors);
 app.options('/api/pipedrive-webhook', publicWebhookCors);
 
 // CORS para todas as outras rotas /api
@@ -116,7 +116,7 @@ const globalCorsMiddleware = cors({
 });
 
 app.use((req, res, next) => {
-  if (req.path.startsWith('/api/lead-webhooks/')) {
+  if (/^\/api\/lead-webhooks\/wbh_[a-fA-F0-9]+$/.test(req.path)) {
     next();
     return;
   }
