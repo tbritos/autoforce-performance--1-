@@ -2262,13 +2262,99 @@ const LeadWebhooksPanel: React.FC = () => {
     }
   };
 
+  const normalizeLogPayload = (payload: unknown): Record<string, unknown> => {
+    if (!payload || typeof payload !== 'object') return {};
+    if (Array.isArray(payload)) {
+      return Object.fromEntries(
+        payload
+          .filter(item => item && typeof item === 'object' && !Array.isArray(item))
+          .map(item => {
+            const record = item as Record<string, unknown>;
+            const key = String(record.name || record.key || record.field || record.fieldName || record.id || '').trim();
+            return key ? [key, record.value ?? record.answer ?? record.content ?? record.text ?? ''] : null;
+          })
+          .filter((entry): entry is [string, unknown] => Boolean(entry))
+      );
+    }
+
+    const record = payload as Record<string, unknown>;
+    const output: Record<string, unknown> = { ...record };
+    for (const key of ['fields', 'answers', 'questions', 'formData', 'data', 'body', 'payload']) {
+      const child = record[key];
+      if (Array.isArray(child)) {
+        Object.assign(output, normalizeLogPayload(child));
+      } else if (child && typeof child === 'object' && !Array.isArray(child)) {
+        Object.assign(output, child as Record<string, unknown>);
+      }
+    }
+    return output;
+  };
+
+  const flattenLogPayloadFields = (payload: unknown, prefix = '', output: string[] = []): string[] => {
+    if (!payload || typeof payload !== 'object') return output;
+    if (Array.isArray(payload)) {
+      return flattenLogPayloadFields(normalizeLogPayload(payload), prefix, output);
+    }
+    Object.entries(payload as Record<string, unknown>).forEach(([key, value]) => {
+      const path = prefix ? `${prefix}.${key}` : key;
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        flattenLogPayloadFields(value, path, output);
+      } else {
+        output.push(path);
+      }
+    });
+    return output;
+  };
+
+  const inferMappingTarget = (field: string): string => {
+    const normalized = field.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (normalized.endsWith('email')) return 'lead.email';
+    if (normalized.endsWith('nome') || normalized.endsWith('name')) return 'lead.name';
+    if (normalized.includes('telefone') || normalized.includes('phone') || normalized.includes('whatsapp')) return 'lead.phone';
+    if (normalized.includes('empresa') || normalized.includes('company')) return 'lead.company';
+    if (normalized.includes('cargo') || normalized.includes('jobtitle')) return 'lead.jobTitle';
+    if (normalized.includes('segmento')) return 'answers.segmento';
+    if (normalized.includes('utmsource')) return 'conversion.utmSource';
+    if (normalized.includes('utmmedium')) return 'conversion.utmMedium';
+    if (normalized.includes('utmcampaign')) return 'conversion.utmCampaign';
+    if (normalized.includes('utmcontent')) return 'conversion.utmContent';
+    if (normalized.includes('utmterm')) return 'conversion.utmTerm';
+    return '';
+  };
+
+  const buildInspectionFromLogs = async (webhookId: string, base: LeadWebhookInspection): Promise<LeadWebhookInspection> => {
+    if (base.detectedFields.length > 0) return base;
+    const items = await DataService.listLeadWebhookLogs(webhookId, 25);
+    setLogs(prev => ({ ...prev, [webhookId]: items }));
+    const sample = items.find(log => flattenLogPayloadFields(normalizeLogPayload(log.payload)).length > 0);
+    if (!sample) return base;
+    const payload = normalizeLogPayload(sample.payload);
+    const detectedFields = flattenLogPayloadFields(payload);
+    const suggestedMappings = Object.fromEntries(
+      detectedFields
+        .map(field => [field, base.currentMappings[field] || inferMappingTarget(field)])
+        .filter(([, target]) => target)
+    );
+    return {
+      ...base,
+      detectedFields,
+      suggestedMappings,
+      normalizedPreview: base.normalizedPreview || payload,
+      lastPayload: payload,
+      sampleLogId: sample.id,
+      sampleLogReceivedAt: sample.receivedAt,
+      lastLogStatus: base.lastLogStatus || sample.status,
+      lastLogError: base.lastLogError || sample.error,
+    };
+  };
+
   const openMapping = async (webhook: LeadWebhookSource) => {
     setMappingSource(webhook);
     setInspection(null);
     setVisualMappings({});
     setMappingLoading(true);
     try {
-      const data = await DataService.inspectLeadWebhook(webhook.id);
+      const data = await buildInspectionFromLogs(webhook.id, await DataService.inspectLeadWebhook(webhook.id));
       setInspection(data);
       setVisualMappings({ ...data.suggestedMappings, ...data.currentMappings });
     } finally {
@@ -2282,7 +2368,7 @@ const LeadWebhooksPanel: React.FC = () => {
     setMappingLoading(true);
     try {
       await DataService.testLeadWebhook(mappingSource.id);
-      const data = await DataService.inspectLeadWebhook(mappingSource.id);
+      const data = await buildInspectionFromLogs(mappingSource.id, await DataService.inspectLeadWebhook(mappingSource.id));
       setInspection(data);
       setVisualMappings({ ...data.suggestedMappings, ...data.currentMappings });
       await loadWebhooks();
@@ -2301,7 +2387,7 @@ const LeadWebhooksPanel: React.FC = () => {
       );
       await DataService.updateLeadWebhook(mappingSource.id, { fieldMappings: clean });
       await loadWebhooks();
-      const data = await DataService.inspectLeadWebhook(mappingSource.id);
+      const data = await buildInspectionFromLogs(mappingSource.id, await DataService.inspectLeadWebhook(mappingSource.id));
       setInspection(data);
       setVisualMappings({ ...data.suggestedMappings, ...data.currentMappings });
     } finally {
