@@ -290,7 +290,7 @@ async function executeNode(
 
     case 'pipedrive_action':
       await executePipedriveAction(leadEmail, c);
-      await appendLog(executionId, node.id, 'pipedrive_action', 'ok', String(c.actionType ?? ''));
+      await appendLog(executionId, node.id, 'pipedrive_action', 'ok', String(c.action ?? c.actionType ?? ''));
       return 'ok';
 
     default:
@@ -524,7 +524,8 @@ async function executePipedriveAction(
     updatePipedriveDealStage: (dealId: string, stageId: number) => Promise<void>;
     markPipedriveDeal: (dealId: string, status: 'won' | 'lost', lostReason?: string) => Promise<void>;
   };
-  const actionType = String(config.actionType ?? '');
+  // Panel saves as 'action', keep 'actionType' as fallback for old blocks
+  const actionType = String(config.action ?? config.actionType ?? '');
 
   const lead = await prisma.lead.findUnique({
     where: { email: leadEmail },
@@ -532,11 +533,14 @@ async function executePipedriveAction(
   });
   if (!lead) return;
 
+  if (!actionType) throw new Error('Ação não configurada no bloco Pipedrive');
+
   switch (actionType) {
     case 'create_deal': {
       const titleField   = String(config.titleField ?? 'company');
       const pipeline     = String(config.pipeline ?? 'novo_cliente');
-      const noteTemplate = String(config.note ?? '');
+      // Panel saves as 'noteTemplate', keep 'note' as fallback
+      const noteTemplate = String(config.noteTemplate ?? config.note ?? '');
 
       const titleValue = titleField === 'company' ? (lead.company ?? lead.name ?? lead.id)
                        : titleField === 'name'    ? (lead.name ?? lead.id)
