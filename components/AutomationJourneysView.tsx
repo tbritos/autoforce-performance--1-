@@ -2124,8 +2124,13 @@ const AutomationJourneysView: React.FC = () => {
                     };
                     return (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                        {panelTextField('conversionIdentifier', 'Identificador da conversão', 'ex: interesse_decisor')}
-                        {panelTextField('conversionName', 'Nome da conversão', 'ex: Interesse - Decisor')}
+
+                        <div style={{ display: 'grid', gap: 6 }}>
+                          {panelTextField('conversionIdentifier', 'Identificador da conversão', 'ex: lead_qualificado')}
+                          <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)', lineHeight: 1.5 }}>
+                            O lead será criado ou atualizado no RD Station e essa conversão será registrada no histórico dele. Use qualquer identificador — o RD cria automaticamente se não existir.
+                          </p>
+                        </div>
 
                         <div style={{ display: 'grid', gap: 8 }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
