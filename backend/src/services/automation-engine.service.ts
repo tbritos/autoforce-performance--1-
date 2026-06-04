@@ -248,11 +248,12 @@ async function executeNode(
 
     case 'wait': {
       const amount = Number(c.amount) || 1;
-      const unit = String(c.unit || 'hour');
+      const unit = String(c.unit || 'hours');
       const ms =
-        unit === 'minute' ? amount * 60_000 :
-        unit === 'hour'   ? amount * 3_600_000 :
-        /* day */           amount * 86_400_000;
+        unit === 'minute'  || unit === 'minutes' ? amount * 60_000 :
+        unit === 'hour'    || unit === 'hours'   ? amount * 3_600_000 :
+        unit === 'week'    || unit === 'weeks'   ? amount * 7 * 86_400_000 :
+        /* day / days */                           amount * 86_400_000;
 
       await prisma.automationExecution.update({
         where: { id: executionId },
