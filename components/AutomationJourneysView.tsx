@@ -902,6 +902,7 @@ const AutomationJourneysView: React.FC = () => {
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
   const [dragNodeId, setDragNodeId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const panRef = useRef<{ startX: number; startY: number; scrollLeft: number; scrollTop: number } | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [panelValues, setPanelValues] = useState<{ label: string; config: Record<string, string> } | null>(null);
   const [modalNodeId, setModalNodeId] = useState<string | null>(null);
@@ -1155,13 +1156,39 @@ const AutomationJourneysView: React.FC = () => {
     setSelectedNodeId(node.id);
   };
 
+  const startPan = (event: React.MouseEvent<HTMLDivElement>) => {
+    // Only pan on left click on canvas background (nodes stopPropagation on mousedown)
+    if (event.button !== 0) return;
+    panRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: canvasRef.current?.scrollLeft ?? 0,
+      scrollTop: canvasRef.current?.scrollTop ?? 0,
+    };
+    setSelectedNodeId(null);
+  };
+
   const moveNode = (event: React.MouseEvent<HTMLDivElement>) => {
+    // Pan canvas
+    if (panRef.current && !dragNodeId && canvasRef.current) {
+      const dx = event.clientX - panRef.current.startX;
+      const dy = event.clientY - panRef.current.startY;
+      canvasRef.current.scrollLeft = panRef.current.scrollLeft - dx;
+      canvasRef.current.scrollTop  = panRef.current.scrollTop  - dy;
+      return;
+    }
+    // Move node
     if (!dragNodeId) return;
     const point = canvasPoint(event);
     updateNode(dragNodeId, {
       x: Math.max(12, point.x - dragOffset.x),
       y: Math.max(12, point.y - dragOffset.y),
     });
+  };
+
+  const stopDrag = () => {
+    panRef.current = null;
+    setDragNodeId(null);
   };
 
   // ── Panel field helpers ──────────────────────────────────────────────────────
@@ -1621,14 +1648,16 @@ const AutomationJourneysView: React.FC = () => {
           ref={canvasRef}
           onDrop={onDropBlock}
           onDragOver={event => event.preventDefault()}
+          onMouseDown={startPan}
           onMouseMove={moveNode}
-          onMouseUp={() => setDragNodeId(null)}
-          onMouseLeave={() => setDragNodeId(null)}
+          onMouseUp={stopDrag}
+          onMouseLeave={stopDrag}
           onClick={() => setSelectedNodeId(null)}
           style={{
             position: 'absolute',
             inset: 0,
             overflow: 'auto',
+            cursor: dragNodeId ? 'default' : 'grab',
             background:
               'linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)',
             backgroundSize: '28px 28px',
