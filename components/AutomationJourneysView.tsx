@@ -459,8 +459,17 @@ function WebhookSourceSelector({ value, onChange }: { value: string; onChange: (
 
 // ── RD Station Field Selector ─────────────────────────────────────────────────
 
+function resolveRdLabel(label: unknown): string {
+  if (typeof label === 'string') return label;
+  if (label && typeof label === 'object') {
+    const obj = label as Record<string, string>;
+    return obj['pt-BR'] || obj['default'] || obj['en-US'] || Object.values(obj).find(Boolean) || '';
+  }
+  return '';
+}
+
 function RDFieldSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [fields, setFields] = useState<Array<{ uuid: string; api_identifier: string; label: string }>>([]);
+  const [fields, setFields] = useState<Array<{ uuid: string; api_identifier: string; label: unknown }>>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -472,7 +481,7 @@ function RDFieldSelector({ value, onChange }: { value: string; onChange: (v: str
 
   const options: SmartSelectOption[] = fields.map(f => ({
     value: f.api_identifier,
-    label: f.label,
+    label: resolveRdLabel(f.label),
     description: f.api_identifier,
   }));
 
