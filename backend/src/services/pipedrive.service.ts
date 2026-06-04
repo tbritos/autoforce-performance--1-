@@ -938,7 +938,6 @@ export async function createPipedriveDeal(
     select: { utmMedium: true, utmCampaign: true },
   });
 
-  const mktId    = detalhamentoMktId(lastConversion?.utmMedium);
   const campaign = lastConversion?.utmCampaign ?? null;
 
   const fieldMappings: FieldMapping[] = [
@@ -946,7 +945,6 @@ export async function createPipedriveDeal(
     { fieldKey: FIELD_CANAL_ORIGEM, sourceType: 'fixed', fixedValue: String(OPT_CANAL_INBOUND) },
   ];
 
-  if (mktId)    fieldMappings.push({ fieldKey: FIELD_DETALHAMENTO_MKT,  sourceType: 'fixed', fixedValue: String(mktId) });
   if (campaign) fieldMappings.push({ fieldKey: FIELD_REFERENCIA_ORIGEM, sourceType: 'fixed', fixedValue: campaign });
 
   return createDealForLead(leadEmail, pipelineKey, fieldMappings, note);
