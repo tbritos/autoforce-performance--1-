@@ -138,8 +138,13 @@ const buildNormalizedPayload = (payload: AnyRecord, mappings: FieldMappings) => 
 };
 
 const buildWebhookUrl = (publicId: string) => {
-  const appUrl = process.env.APP_URL || `http://localhost:${process.env.PORT || 5000}`;
-  return `${appUrl.replace(/\/$/, '')}/api/lead-webhooks/${publicId}`;
+  const appUrl =
+    process.env.WEBHOOK_PUBLIC_URL ||
+    process.env.APP_URL ||
+    (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '') ||
+    `http://localhost:${process.env.PORT || 5000}`;
+  const baseUrl = appUrl.replace(/\/+$/, '').replace(/\/api$/, '');
+  return `${baseUrl}/api/lead-webhooks/${publicId}`;
 };
 
 const flattenPayloadFields = (value: unknown, prefix = '', output: string[] = []): string[] => {

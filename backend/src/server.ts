@@ -92,7 +92,7 @@ app.post('/api/auth/google/redirect', async (req, res) => {
 
 // Preflight OPTIONS para rotas públicas de webhook — deve vir ANTES do CORS global
 // O CORS global bloquearia o preflight antes do handler da rota rodar
-const publicWebhookCors = cors({ origin: '*', methods: ['POST', 'OPTIONS'], allowedHeaders: ['Content-Type'] });
+const publicWebhookCors = cors({ origin: '*', methods: ['POST', 'OPTIONS'], allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'X-Requested-With'] });
 app.options('/api/lead-webhooks/:publicId', publicWebhookCors);
 app.options('/api/pipedrive-webhook', publicWebhookCors);
 
@@ -102,7 +102,7 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .map(origin => origin.trim())
   .filter(Boolean);
 
-app.use(cors({
+const globalCorsMiddleware = cors({
   origin: (origin, callback) => {
     if (!origin || process.env.NODE_ENV === 'development' || allowedOrigins.includes(origin)) {
       callback(null, true);
@@ -113,7 +113,15 @@ app.use(cors({
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization'],
   optionsSuccessStatus: 204,
-}));
+});
+
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/lead-webhooks/')) {
+    next();
+    return;
+  }
+  globalCorsMiddleware(req, res, next);
+});
 
 // Rate limiting para endpoints de autenticação
 const authLimiter = rateLimit({

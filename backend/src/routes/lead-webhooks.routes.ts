@@ -5,7 +5,7 @@ import { LeadWebhooksController } from '../controllers/lead-webhooks.controller'
 const publicIngestCors = cors({
   origin: '*',
   methods: ['POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type'],
+  allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'X-Requested-With'],
 });
 
 export const publicLeadWebhooksRouter = Router();
