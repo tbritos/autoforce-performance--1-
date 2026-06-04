@@ -275,10 +275,12 @@ async function executeNode(
       await appendLog(executionId, node.id, 'internal_action', 'ok', String(c.action ?? ''));
       return 'ok';
 
-    case 'rd_conversion':
-      await executeRDConversion(leadEmail, c);
-      await appendLog(executionId, node.id, 'rd_conversion', 'ok', String(c.conversionName ?? ''));
+    case 'rd_conversion': {
+      const result = await executeRDConversion(leadEmail, c);
+      await appendLog(executionId, node.id, 'rd_conversion', 'ok',
+        `identifier=${String(c.conversionIdentifier ?? c.conversionName ?? '')} event_uuid=${result?.event_uuid ?? 'n/a'}`);
       return 'ok';
+    }
 
     case 'whatsapp_message':
       await executeWhatsAppMessage(leadEmail, c);
@@ -440,20 +442,18 @@ async function executeInternalAction(
 async function executeRDConversion(
   leadEmail: string,
   config: Record<string, string | number | boolean>
-): Promise<void> {
+): Promise<{ event_uuid?: string } | null> {
   const { sendRdConversionEvent } = await import('./rdstation.service');
   const lead = await prisma.lead.findUnique({
     where: { email: leadEmail },
     select: { email: true, name: true, phone: true, company: true },
   });
-  if (!lead) return;
+  if (!lead) return null;
 
-  // conversionIdentifier é o campo principal (ex: "interesse_decisor")
-  // conversionName é o nome de exibição opcional — fallback para compatibilidade
   const identifier = String(config.conversionIdentifier ?? config.conversionName ?? '');
-  if (!identifier) return;
+  if (!identifier) throw new Error('conversionIdentifier não configurado no bloco RD Station');
 
-  await sendRdConversionEvent({
+  return sendRdConversionEvent({
     conversion_identifier: identifier,
     name:         lead.name ?? undefined,
     email:        lead.email,
