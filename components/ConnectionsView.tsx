@@ -368,7 +368,7 @@ const ConnectionsView: React.FC = () => {
           <span className="ds-badge" style={{ padding: '4px 12px', height: 'auto', fontSize: 12 }}>
             {connectedCount}/{PLATFORMS.length} conectadas
           </span>
-          <button type="button" onClick={loadConnections} disabled={loading}
+          <button type="button" onClick={() => loadConnections()} disabled={loading}
             style={{ padding: 8, borderRadius: 'var(--r-md)', border: '1px solid var(--border)', color: 'var(--fg-muted)', background: 'transparent', cursor: 'pointer', opacity: loading ? 0.4 : 1 }}
             aria-label="Recarregar">
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
