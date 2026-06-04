@@ -693,6 +693,11 @@ async function pipedrivePost<T>(
     body: JSON.stringify(body),
   });
 
+  // FIX: check HTTP status before parsing JSON — 429/502/504 return plain text
+  if (!res.ok) {
+    const text = await res.text().catch(() => String(res.status));
+    throw new Error(`Pipedrive POST ${path} error ${res.status}: ${text.slice(0, 300)}`);
+  }
   const json = await res.json() as { success: boolean; data: T; error?: string };
   if (!json.success) throw new Error(`Pipedrive POST ${path} failed: ${json.error ?? res.status}`);
   return json.data;
@@ -917,6 +922,11 @@ async function pipedriveUpdate<T>(
     body: JSON.stringify(body),
   });
 
+  // FIX: check HTTP status before parsing JSON — 429/502/504 return plain text
+  if (!res.ok) {
+    const text = await res.text().catch(() => String(res.status));
+    throw new Error(`Pipedrive PUT ${path} error ${res.status}: ${text.slice(0, 300)}`);
+  }
   const json = await res.json() as { success: boolean; data: T; error?: string };
   if (!json.success) throw new Error(`Pipedrive PUT ${path} failed: ${json.error ?? res.status}`);
   return json.data;

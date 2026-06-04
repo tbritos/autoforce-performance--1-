@@ -77,10 +77,12 @@ export class AutomationJourneysService {
   }
 
   static async getExecutions(journeyId: string, limit = 50) {
+    // FIX: NaN from Number(undefined) or Number('') causes Prisma error or full scan
+    const safeLimit = Math.min(100, Math.max(1, Number.isFinite(limit) ? limit : 50));
     const executions = await prisma.automationExecution.findMany({
       where: { journeyId },
       orderBy: { startedAt: 'desc' },
-      take: Math.min(100, Math.max(1, limit)),
+      take: safeLimit,
     });
 
     // Enrich with lead name

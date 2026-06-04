@@ -42,8 +42,28 @@ interface LogEntry {
 
 type NodeResult = 'ok' | 'wait' | 'stop' | boolean;
 
-// Re-entrancy guard: prevent the same lead from running the same journey twice concurrently
+// Re-entrancy guard — process-local; keeps two concurrent events from double-executing
+// the same journey for the same lead within a single process lifetime.
+// NOTE: This is intentionally simple. In multi-process deployments, rely on
+// resumeWaitingExecutions' optimistic DB update to prevent double-resume.
 const executingLeads = new Set<string>();
+
+// ─── Startup recovery ────────────────────────────────────────────────────────
+// Mark any executions that were stuck in 'running' at process start as failed.
+// This handles orphaned rows left by a previous crash/restart.
+export async function recoverStuckExecutions(): Promise<void> {
+  try {
+    const stuck = await prisma.automationExecution.updateMany({
+      where: { status: 'running' },
+      data: { status: 'failed', error: 'Processo reiniciado — execução interrompida', completedAt: new Date() },
+    });
+    if (stuck.count > 0) {
+      console.log(`[automation] Recovered ${stuck.count} stuck execution(s) from previous process`);
+    }
+  } catch (err) {
+    console.error('[automation] recoverStuckExecutions error:', err);
+  }
+}
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -68,20 +88,31 @@ export async function fireTrigger(
       const guardKey = `${journey.id}:${leadEmail}`;
       if (executingLeads.has(guardKey)) continue;
 
-      const execution = await prisma.automationExecution.create({
-        data: {
-          journeyId: journey.id,
-          leadEmail,
-          status: 'running',
-          currentNodeId: triggerNode.id,
-          log: [],
-        },
-      });
+      // FIX: set guard IMMEDIATELY before any await to close the TOCTOU window
+      executingLeads.add(guardKey);
 
-      const edges = (journey.edges as unknown as AutomationEdge[]) ?? [];
-      runExecution(execution.id, nodes, edges, leadEmail, context).catch(err => {
-        console.error(`[automation] execution ${execution.id} crashed:`, err);
-      });
+      try {
+        const execution = await prisma.automationExecution.create({
+          data: {
+            journeyId: journey.id,
+            leadEmail,
+            status: 'running',
+            currentNodeId: triggerNode.id,
+            log: [],
+          },
+        });
+
+        const edges = (journey.edges as unknown as AutomationEdge[]) ?? [];
+        // Pass journeyId directly — avoids a DB round-trip inside runExecution
+        runExecution(execution.id, journey.id, nodes, edges, leadEmail, context, undefined, guardKey).catch(err => {
+          console.error(`[automation] execution ${execution.id} crashed:`, err);
+          executingLeads.delete(guardKey);
+        });
+      } catch (err) {
+        // If execution creation fails, always release the guard
+        executingLeads.delete(guardKey);
+        console.error(`[automation] fireTrigger create execution error:`, err);
+      }
     }
   } catch (err) {
     console.error('[automation] fireTrigger error:', err);
@@ -97,18 +128,31 @@ export async function testJourneyForLead(
   const edges = (journey.edges as unknown as AutomationEdge[]) ?? [];
   const triggerNode = nodes.find(n => n.type === 'trigger');
 
+  // FIX: fail fast — do not create a permanently-stuck 'running' execution
+  if (!triggerNode) {
+    throw new Error('Journey não tem nó de Entrada configurado. Adicione e configure o bloco de Entrada antes de testar.');
+  }
+
+  // Test runs use a separate guard namespace so they don't block real executions
+  const guardKey = `test:${journeyId}:${leadEmail}`;
+  if (executingLeads.has(guardKey)) {
+    throw new Error('Já existe um teste em execução para este lead+journey. Aguarde terminar.');
+  }
+  executingLeads.add(guardKey);
+
   const execution = await prisma.automationExecution.create({
     data: {
       journeyId,
       leadEmail,
       status: 'running',
-      currentNodeId: triggerNode?.id ?? null,
+      currentNodeId: triggerNode.id,
       log: [],
     },
   });
 
-  runExecution(execution.id, nodes, edges, leadEmail, { _test: true }).catch(err => {
+  runExecution(execution.id, journeyId, nodes, edges, leadEmail, { _test: true }, undefined, guardKey).catch(err => {
     console.error(`[automation] test execution ${execution.id} failed:`, err);
+    executingLeads.delete(guardKey);
   });
 
   return { executionId: execution.id };
@@ -117,6 +161,8 @@ export async function testJourneyForLead(
 export async function resumeWaitingExecutions(): Promise<void> {
   const now = new Date();
 
+  // Optimistic claim: update from 'waiting' → 'running' atomically.
+  // This prevents double-resume even across multiple process instances.
   const waiting = await prisma.automationExecution.findMany({
     where: { status: 'waiting', resumeAt: { lte: now } },
     include: { journey: true },
@@ -125,6 +171,13 @@ export async function resumeWaitingExecutions(): Promise<void> {
   for (const execution of waiting) {
     const guardKey = `${execution.journeyId}:${execution.leadEmail}`;
     if (executingLeads.has(guardKey)) continue;
+
+    // Optimistic DB claim — only succeeds if still 'waiting' (prevents multi-process dupe)
+    const claimed = await prisma.automationExecution.updateMany({
+      where: { id: execution.id, status: 'waiting' },
+      data: { status: 'running', resumeAt: null },
+    });
+    if (claimed.count === 0) continue; // another process already claimed it
 
     const nodes = (execution.journey.nodes as unknown as AutomationNode[]) ?? [];
     const edges = (execution.journey.edges as unknown as AutomationEdge[]) ?? [];
@@ -147,13 +200,12 @@ export async function resumeWaitingExecutions(): Promise<void> {
       continue;
     }
 
-    await prisma.automationExecution.update({
-      where: { id: execution.id },
-      data: { status: 'running', resumeAt: null },
-    });
+    // FIX: set guard before calling runExecution
+    executingLeads.add(guardKey);
 
-    runExecution(execution.id, nodes, edges, execution.leadEmail, {}, outEdges[0].target).catch(err => {
+    runExecution(execution.id, execution.journeyId, nodes, edges, execution.leadEmail, {}, outEdges[0].target, guardKey).catch(err => {
       console.error(`[automation] resume ${execution.id} crashed:`, err);
+      executingLeads.delete(guardKey);
     });
   }
 }
@@ -162,24 +214,29 @@ export async function resumeWaitingExecutions(): Promise<void> {
 
 async function runExecution(
   executionId: string,
+  journeyId: string,           // FIX: passed directly — no DB fetch needed
   nodes: AutomationNode[],
   edges: AutomationEdge[],
   leadEmail: string,
   context: TriggerContext,
-  startNodeId?: string
+  startNodeId?: string,
+  guardKey?: string             // FIX: passed from caller who already set the guard
 ): Promise<void> {
-  const journeyId = (await prisma.automationExecution.findUnique({
-    where: { id: executionId },
-    select: { journeyId: true },
-  }))?.journeyId;
-
-  const guardKey = `${journeyId}:${leadEmail}`;
-  executingLeads.add(guardKey);
+  // Derive guardKey if not passed (safety fallback)
+  const key = guardKey ?? `${journeyId}:${leadEmail}`;
+  let isWaiting = false;
 
   try {
     const triggerNode = nodes.find(n => n.type === 'trigger');
     let currentNodeId = startNodeId ?? triggerNode?.id;
-    if (!currentNodeId) return;
+    if (!currentNodeId) {
+      // FIX: mark as failed instead of silently returning with status='running'
+      await prisma.automationExecution.update({
+        where: { id: executionId },
+        data: { status: 'failed', error: 'Journey sem nó de Entrada — execução abortada', completedAt: new Date() },
+      }).catch(() => {});
+      return;
+    }
 
     const visited = new Set<string>();
 
@@ -200,6 +257,8 @@ async function runExecution(
         result = await executeNode(executionId, node, leadEmail, context);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        // FIX: log the failing node before marking as failed
+        await appendLog(executionId, node.id, node.type, 'error', message).catch(() => {});
         await prisma.automationExecution.update({
           where: { id: executionId },
           data: { status: 'failed', error: message, completedAt: new Date() },
@@ -207,14 +266,16 @@ async function runExecution(
         return;
       }
 
-      if (result === 'wait') return;
+      if (result === 'wait') {
+        isWaiting = true;  // FIX: guard kept while waiting so new triggers don't start duplicate
+        return;
+      }
       if (result === 'stop') break;
 
       const outEdges = edges.filter(e => e.source === currentNodeId);
       if (outEdges.length === 0) break;
 
       if (typeof result === 'boolean') {
-        // condition node: true → first edge, false → second edge (or stop)
         const nextEdge = result ? outEdges[0] : (outEdges[1] ?? null);
         if (!nextEdge) break;
         currentNodeId = nextEdge.target;
@@ -228,7 +289,11 @@ async function runExecution(
       data: { status: 'completed', completedAt: new Date() },
     }).catch(() => {});
   } finally {
-    executingLeads.delete(guardKey);
+    // FIX: keep guard active while execution is in 'waiting' state
+    // so new triggers don't create a second parallel execution
+    if (!isWaiting) {
+      executingLeads.delete(key);
+    }
   }
 }
 
@@ -289,8 +354,7 @@ async function executeNode(
       return 'ok';
 
     case 'pipedrive_action':
-      await executePipedriveAction(leadEmail, c);
-      await appendLog(executionId, node.id, 'pipedrive_action', 'ok', String(c.action ?? c.actionType ?? ''));
+      await executePipedriveAction(executionId, node.id, leadEmail, c);
       return 'ok';
 
     default:
@@ -390,6 +454,10 @@ async function appendLog(
 
 // ─── Block handlers ───────────────────────────────────────────────────────────
 
+const VALID_LEAD_STATUSES: ReadonlySet<string> = new Set([
+  'LEAD', 'MQL', 'SQL', 'SCHEDULED', 'DEMO', 'PROPOSAL', 'OPPORTUNITY', 'CLIENT', 'LOST', 'DISQUALIFIED',
+]);
+
 async function executeInternalAction(
   leadEmail: string,
   config: Record<string, string | number | boolean>
@@ -397,16 +465,18 @@ async function executeInternalAction(
   const { LeadHubService } = await import('./lead-hub.service');
   const action = String(config.action ?? '');
 
-  // All value-type fields: panel saves as config.value
+  // Panel saves all value fields as config.value
   const value = String(config.value ?? config.tagValue ?? config.scoreAmount ?? config.statusValue ?? '');
 
   switch (action) {
     case 'add_tag': {
-      if (value) await LeadHubService.addTag(leadEmail, value);
+      if (!value) throw new Error('Tag não configurada no bloco Ação Interna');
+      await LeadHubService.addTag(leadEmail, value);
       break;
     }
     case 'remove_tag': {
-      if (value) await LeadHubService.removeTag(leadEmail, value);
+      if (!value) throw new Error('Tag não configurada no bloco Ação Interna');
+      await LeadHubService.removeTag(leadEmail, value);
       break;
     }
     case 'add_score': {
@@ -427,11 +497,14 @@ async function executeInternalAction(
       await prisma.lead.update({ where: { email: leadEmail }, data: { score: Math.max(0, score) } });
       break;
     }
-    // Panel uses 'set_status'; old blocks may use 'change_status'
     case 'set_status':
     case 'change_status': {
-      const status = String(config.value ?? config.statusValue ?? '') as LeadStatus;
-      if (status) await LeadHubService.updateLeadStatus(leadEmail, status, 'automation');
+      const status = String(config.value ?? config.statusValue ?? '');
+      // FIX: validate against enum before calling DB to avoid P2003 Prisma error
+      if (!status || !VALID_LEAD_STATUSES.has(status)) {
+        throw new Error(`Status inválido no bloco Ação Interna: '${status}'. Use: ${[...VALID_LEAD_STATUSES].join(', ')}`);
+      }
+      await LeadHubService.updateLeadStatus(leadEmail, status as LeadStatus, 'automation');
       break;
     }
     case 'set_hot':
@@ -490,11 +563,9 @@ async function executeWhatsAppMessage(
   if (!templateName) throw new Error('Template não configurado no bloco WhatsApp');
 
   const { accessToken } = await getWhatsAppCredentials();
-  // Use number from block config, fallback to env var
   const phoneNumberId = String(config.phoneNumberId ?? '') || process.env.WHATSAPP_PHONE_NUMBER_ID;
   if (!phoneNumberId) throw new Error('Número WhatsApp não configurado no bloco nem em WHATSAPP_PHONE_NUMBER_ID');
 
-  // Normalize phone: keep only digits, ensure country code
   const phone = lead.phone.replace(/\D/g, '');
   const to = phone.startsWith('55') ? phone : `55${phone}`;
 
@@ -524,6 +595,8 @@ async function executeWhatsAppMessage(
 }
 
 async function executePipedriveAction(
+  executionId: string,
+  nodeId: string,
   leadEmail: string,
   config: Record<string, string | number | boolean>
 ): Promise<void> {
@@ -532,7 +605,6 @@ async function executePipedriveAction(
     updatePipedriveDealStage: (dealId: string, stageId: number) => Promise<void>;
     markPipedriveDeal: (dealId: string, status: 'won' | 'lost', lostReason?: string) => Promise<void>;
   };
-  // Panel saves as 'action', keep 'actionType' as fallback for old blocks
   const actionType = String(config.action ?? config.actionType ?? '');
 
   const lead = await prisma.lead.findUnique({
@@ -547,7 +619,6 @@ async function executePipedriveAction(
     case 'create_deal': {
       const titleField   = String(config.titleField ?? 'company');
       const pipeline     = String(config.pipeline ?? 'novo_cliente');
-      // Panel saves as 'noteTemplate', keep 'note' as fallback
       const noteTemplate = String(config.noteTemplate ?? config.note ?? '');
 
       const titleValue = titleField === 'company' ? (lead.company ?? lead.name ?? lead.id)
@@ -561,25 +632,42 @@ async function executePipedriveAction(
       const note = fullLead ? resolveTemplate(noteTemplate, { ...fullLead as unknown as Record<string, unknown> }) : undefined;
 
       await createPipedriveDeal(leadEmail, String(titleValue ?? lead.id), pipeline, note);
+      await appendLog(executionId, nodeId, 'pipedrive_action', 'ok', `create_deal pipeline=${pipeline}`);
       break;
     }
     case 'update_stage': {
       const stageId = Number(config.stageId);
-      if (!stageId || !lead.pipedriveDealId) break;
+      // FIX: log 'skipped' instead of 'ok' when pipedriveDealId is missing
+      if (!stageId || !lead.pipedriveDealId) {
+        await appendLog(executionId, nodeId, 'pipedrive_action', 'skipped',
+          !lead.pipedriveDealId ? 'Lead sem deal Pipedrive vinculado' : 'stageId não configurado');
+        break;
+      }
       await updatePipedriveDealStage(lead.pipedriveDealId, stageId);
+      await appendLog(executionId, nodeId, 'pipedrive_action', 'ok', `update_stage stageId=${stageId}`);
       break;
     }
     case 'mark_won': {
-      if (!lead.pipedriveDealId) break;
+      if (!lead.pipedriveDealId) {
+        await appendLog(executionId, nodeId, 'pipedrive_action', 'skipped', 'Lead sem deal Pipedrive vinculado');
+        break;
+      }
       await markPipedriveDeal(lead.pipedriveDealId, 'won');
+      await appendLog(executionId, nodeId, 'pipedrive_action', 'ok', 'mark_won');
       break;
     }
     case 'mark_lost': {
-      if (!lead.pipedriveDealId) break;
+      if (!lead.pipedriveDealId) {
+        await appendLog(executionId, nodeId, 'pipedrive_action', 'skipped', 'Lead sem deal Pipedrive vinculado');
+        break;
+      }
       const reason = String(config.lostReason ?? '');
       await markPipedriveDeal(lead.pipedriveDealId, 'lost', reason);
+      await appendLog(executionId, nodeId, 'pipedrive_action', 'ok', `mark_lost reason=${reason || '(none)'}`);
       break;
     }
+    default:
+      await appendLog(executionId, nodeId, 'pipedrive_action', 'skipped', `ação desconhecida: ${actionType}`);
   }
 }
 

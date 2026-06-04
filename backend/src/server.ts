@@ -18,6 +18,7 @@ import campaignsRoutes from './routes/campaigns.routes';
 import assetsRoutes from './routes/assets.routes';
 import emailRoutes from './routes/email.routes';
 import { startSyncScheduler } from './services/sync-scheduler.service';
+import { recoverStuckExecutions } from './services/automation-engine.service';
 import { startupConnectionCheck } from './controllers/connections.controller';
 import authRoutes from './routes/auth.routes';
 import webhookLeadsRoutes from './routes/webhook-leads.routes';
@@ -524,5 +525,6 @@ app.listen(PORT, () => {
 
 startSyncScheduler();
 startupConnectionCheck().catch(err => console.error('[connections] startup check failed:', err));
+recoverStuckExecutions().catch(err => console.error('[automation] startup recovery failed:', err));
 
 export default app;
