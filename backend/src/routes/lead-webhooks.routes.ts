@@ -9,19 +9,54 @@ const publicIngestCors = cors({
 });
 
 const parseMultipartFormData = (raw: string, contentType: string): Record<string, string> => {
-  const boundary = contentType.match(/boundary=([^;]+)/i)?.[1];
+  const boundary = contentType.match(/boundary=([^;]+)/i)?.[1]?.replace(/^"|"$/g, '');
   if (!boundary) return {};
   const fields: Record<string, string> = {};
 
   for (const part of raw.split(`--${boundary}`)) {
     const name = part.match(/name="([^"]+)"/)?.[1];
     if (!name || part.includes('filename=')) continue;
-    const value = part.split('\r\n\r\n')[1];
+    const value = part.split(/\r?\n\r?\n/)[1];
     if (value === undefined) continue;
-    fields[name] = value.replace(/\r\n--$/, '').replace(/\r\n$/, '').trim();
+    fields[name] = value.replace(/\r?\n--$/, '').replace(/\r?\n$/, '').trim();
   }
 
   return fields;
+};
+
+const parseTextPayload = (text: string): Record<string, unknown> => {
+  const trimmed = text.trim();
+  if (!trimmed) return {};
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch {
+    // Fall through to form-style parsing.
+  }
+
+  if (trimmed.includes('=') && trimmed.includes('&')) {
+    return Object.fromEntries(new URLSearchParams(trimmed));
+  }
+
+  const lineFields = trimmed
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => {
+      const separatorIndex = line.indexOf('=');
+      if (separatorIndex === -1) return null;
+      return [line.slice(0, separatorIndex).trim(), line.slice(separatorIndex + 1).trim()] as const;
+    })
+    .filter((entry): entry is readonly [string, string] => Boolean(entry?.[0]));
+
+  if (lineFields.length > 0) {
+    return Object.fromEntries(lineFields);
+  }
+
+  return { raw: text };
 };
 
 const normalizePublicPayload = (req: Request, _res: Response, next: NextFunction) => {
@@ -37,11 +72,7 @@ const normalizePublicPayload = (req: Request, _res: Response, next: NextFunction
     if (String(contentType).includes('multipart/form-data')) {
       req.body = parseMultipartFormData(text, String(contentType));
     } else {
-      try {
-        req.body = JSON.parse(text);
-      } catch {
-        req.body = { raw: text };
-      }
+      req.body = parseTextPayload(text);
     }
   }
 
@@ -54,6 +85,8 @@ publicLeadWebhooksRouter.get('/:publicId', publicIngestCors, normalizePublicPayl
 publicLeadWebhooksRouter.post(
   '/:publicId',
   publicIngestCors,
+  express.json({ type: ['application/json', 'application/*+json'], limit: '2mb' }),
+  express.urlencoded({ extended: true, type: 'application/x-www-form-urlencoded', limit: '2mb' }),
   express.raw({ type: ['text/plain', 'multipart/form-data', 'application/octet-stream'], limit: '2mb' }),
   normalizePublicPayload,
   LeadWebhooksController.ingest

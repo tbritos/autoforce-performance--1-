@@ -302,12 +302,15 @@ export class LeadWebhooksService {
 
   static async inspectSource(id: string) {
     const source = await prisma.leadWebhookSource.findUniqueOrThrow({ where: { id } });
-    const lastLog = await prisma.webhookLog.findFirst({
+    const recentLogs = await prisma.webhookLog.findMany({
       where: { sourceId: id },
       orderBy: { receivedAt: 'desc' },
+      take: 25,
     });
+    const lastLog = recentLogs[0] ?? null;
+    const sampleLog = recentLogs.find(log => flattenPayloadFields(log.payload).length > 0) ?? lastLog;
 
-    const detectedFields = lastLog ? flattenPayloadFields(lastLog.payload) : [];
+    const detectedFields = sampleLog ? flattenPayloadFields(sampleLog.payload) : [];
     const currentMappings = normalizeMappings(source.fieldMappings);
     const suggestedMappings = Object.fromEntries(
       detectedFields
@@ -315,8 +318,8 @@ export class LeadWebhooksService {
         .filter(([, target]) => target)
     );
 
-    const normalizedPreview = lastLog
-      ? buildNormalizedPayload(lastLog.payload as AnyRecord, { ...suggestedMappings, ...currentMappings })
+    const normalizedPreview = sampleLog
+      ? buildNormalizedPayload(sampleLog.payload as AnyRecord, { ...suggestedMappings, ...currentMappings })
       : null;
 
     return {
@@ -325,9 +328,12 @@ export class LeadWebhooksService {
       currentMappings,
       suggestedMappings,
       normalizedPreview,
-      lastPayload: lastLog?.payload ?? null,
+      lastPayload: sampleLog?.payload ?? null,
       lastLogStatus: lastLog?.status ?? null,
       lastLogError: lastLog?.error ?? null,
+      sampleLogId: sampleLog?.id ?? null,
+      sampleLogReceivedAt: sampleLog?.receivedAt ?? null,
+      latestLogId: lastLog?.id ?? null,
     };
   }
 
