@@ -88,10 +88,10 @@ const normalizePublicPayload = (req: Request, _res: Response, next: NextFunction
 };
 
 export const publicLeadWebhooksRouter = Router();
-publicLeadWebhooksRouter.options('/:publicId', publicIngestCors);
-publicLeadWebhooksRouter.get('/:publicId', publicIngestCors, normalizePublicPayload, LeadWebhooksController.ingest);
+publicLeadWebhooksRouter.options('/:publicId(wbh_[a-fA-F0-9]+)', publicIngestCors);
+publicLeadWebhooksRouter.get('/:publicId(wbh_[a-fA-F0-9]+)', publicIngestCors, normalizePublicPayload, LeadWebhooksController.ingest);
 publicLeadWebhooksRouter.post(
-  '/:publicId',
+  '/:publicId(wbh_[a-fA-F0-9]+)',
   publicIngestCors,
   express.json({ type: ['application/json', 'application/*+json'], limit: '2mb' }),
   express.urlencoded({ extended: true, type: 'application/x-www-form-urlencoded', limit: '2mb' }),
