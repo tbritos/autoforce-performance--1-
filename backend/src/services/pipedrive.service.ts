@@ -930,8 +930,11 @@ export async function createPipedriveDeal(
 ): Promise<{ dealId: string; personId: string }> {
   const pipelineKey = (pipeline === 'upsell' ? 'upsell' : 'novo_cliente') as 'novo_cliente' | 'upsell';
   return createDealForLead(leadEmail, pipelineKey, [
-    { fieldKey: 'title', sourceType: 'fixed', fixedValue: title },
-    { fieldKey: FIELD_CANAL_ORIGEM, sourceType: 'fixed', fixedValue: String(OPT_CANAL_INBOUND) },
+    { fieldKey: 'title',                  sourceType: 'fixed',      fixedValue: title },
+    { fieldKey: FIELD_CANAL_ORIGEM,       sourceType: 'fixed',      fixedValue: String(OPT_CANAL_INBOUND) },
+    // Auto-populate UTM fields from lead data
+    { fieldKey: FIELD_DETALHAMENTO_MKT,   sourceType: 'lead_field', leadField: 'firstMedium' },
+    { fieldKey: FIELD_REFERENCIA_ORIGEM,  sourceType: 'lead_field', leadField: 'firstCampaign' },
   ], note);
 }
 

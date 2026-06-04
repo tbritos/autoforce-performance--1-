@@ -2380,7 +2380,7 @@ const AutomationJourneysView: React.FC = () => {
                         </>}
 
                         {/* update_stage */}
-                        {action === 'update_stage' && (
+                        {action === 'update_stage' && (<>
                           <div style={{ display: 'grid', gap: 7 }}>
                             <span style={fieldLabelStyle}>Estágio de destino</span>
                             <PipedriveStageSelector
@@ -2388,15 +2388,23 @@ const AutomationJourneysView: React.FC = () => {
                               onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, stageId: v } } : prev)}
                             />
                           </div>
-                        )}
+                          <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)' }}>
+                            Usa o negócio vinculado ao lead (<code>pipedriveDealId</code>). Se o lead não tiver negócio vinculado, o bloco é ignorado.
+                          </p>
+                        </>)}
 
                         {/* mark_lost */}
-                        {action === 'mark_lost' && panelTextField('lostReason', 'Motivo da perda (opcional)', 'ex: Sem budget, Concorrente...')}
+                        {action === 'mark_lost' && (<>
+                          {panelTextField('lostReason', 'Motivo da perda (opcional)', 'ex: Sem budget, Concorrente...')}
+                          <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)' }}>
+                            Fecha o negócio vinculado ao lead como <strong>Perdido</strong>. Se o lead não tiver negócio vinculado, o bloco é ignorado.
+                          </p>
+                        </>)}
 
-                        {/* mark_won: no extra fields needed */}
+                        {/* mark_won */}
                         {action === 'mark_won' && (
                           <div style={{ fontSize: 12, color: 'var(--fg-muted)', background: 'var(--bg-subtle)', borderRadius: 8, padding: '10px 12px' }}>
-                            Fecha o negócio do lead como <strong style={{ color: 'var(--green-700)' }}>Ganho</strong> no Pipedrive. O lead precisa ter um negócio vinculado.
+                            Fecha o negócio <strong>vinculado ao lead</strong> como <strong style={{ color: 'var(--green-500)' }}>Ganho</strong>. Não busca outro negócio — usa apenas o <code>pipedriveDealId</code> do lead.
                           </div>
                         )}
                       </div>

@@ -397,19 +397,20 @@ async function executeInternalAction(
   const { LeadHubService } = await import('./lead-hub.service');
   const action = String(config.action ?? '');
 
+  // All value-type fields: panel saves as config.value
+  const value = String(config.value ?? config.tagValue ?? config.scoreAmount ?? config.statusValue ?? '');
+
   switch (action) {
     case 'add_tag': {
-      const tag = String(config.tagValue ?? '');
-      if (tag) await LeadHubService.addTag(leadEmail, tag);
+      if (value) await LeadHubService.addTag(leadEmail, value);
       break;
     }
     case 'remove_tag': {
-      const tag = String(config.tagValue ?? '');
-      if (tag) await LeadHubService.removeTag(leadEmail, tag);
+      if (value) await LeadHubService.removeTag(leadEmail, value);
       break;
     }
     case 'add_score': {
-      const amount = Number(config.scoreAmount ?? 0);
+      const amount = Number(value) || 0;
       if (amount !== 0) {
         const lead = await prisma.lead.findUnique({ where: { email: leadEmail }, select: { score: true } });
         if (lead) {
@@ -421,8 +422,15 @@ async function executeInternalAction(
       }
       break;
     }
+    case 'set_score': {
+      const score = Number(value) || 0;
+      await prisma.lead.update({ where: { email: leadEmail }, data: { score: Math.max(0, score) } });
+      break;
+    }
+    // Panel uses 'set_status'; old blocks may use 'change_status'
+    case 'set_status':
     case 'change_status': {
-      const status = String(config.statusValue ?? '') as LeadStatus;
+      const status = String(config.value ?? config.statusValue ?? '') as LeadStatus;
       if (status) await LeadHubService.updateLeadStatus(leadEmail, status, 'automation');
       break;
     }
@@ -433,7 +441,7 @@ async function executeInternalAction(
       await prisma.lead.update({ where: { email: leadEmail }, data: { isHot: false } });
       break;
     case 'assign_to': {
-      const assignedTo = String(config.assignedTo ?? '');
+      const assignedTo = String(config.value ?? config.assignedTo ?? '');
       if (assignedTo) await prisma.lead.update({ where: { email: leadEmail }, data: { assignedTo } });
       break;
     }
