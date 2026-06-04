@@ -963,6 +963,10 @@ const AutomationJourneysView: React.FC = () => {
   const [monitoringJourneyId, setMonitoringJourneyId] = useState<string | null>(null);
   const [testModalOpen, setTestModalOpen] = useState(false);
   const [testEmail, setTestEmail] = useState('');
+  const [testLeadName, setTestLeadName] = useState('');
+  const [testSearch, setTestSearch] = useState('');
+  const [testSuggestions, setTestSuggestions] = useState<Array<{ email: string; name: string | null }>>([]);
+  const [testSearching, setTestSearching] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const [testError, setTestError] = useState('');
 
@@ -1321,6 +1325,26 @@ const AutomationJourneysView: React.FC = () => {
     return stored || 0;
   };
 
+  const handleTestSearch = async (q: string) => {
+    setTestSearch(q);
+    setTestEmail('');
+    setTestLeadName('');
+    if (q.length < 2) { setTestSuggestions([]); return; }
+    setTestSearching(true);
+    try {
+      const res = await DataService.listLeads({ search: q, pageSize: 8 });
+      setTestSuggestions(res.leads.map(l => ({ email: l.email, name: l.name })));
+    } catch { setTestSuggestions([]); }
+    finally { setTestSearching(false); }
+  };
+
+  const handleTestSelectLead = (email: string, name: string | null) => {
+    setTestEmail(email);
+    setTestLeadName(name ?? email);
+    setTestSearch('');
+    setTestSuggestions([]);
+  };
+
   const handleTest = async () => {
     if (!selected.id || !testEmail.trim()) return;
     setTestStatus('loading');
@@ -1584,7 +1608,7 @@ const AutomationJourneysView: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => { setTestEmail(''); setTestStatus('idle'); setTestError(''); setTestModalOpen(true); }}
+            onClick={() => { setTestEmail(''); setTestLeadName(''); setTestSearch(''); setTestSuggestions([]); setTestStatus('idle'); setTestError(''); setTestModalOpen(true); }}
             disabled={!selected.id}
             title={!selected.id ? 'Salve a automação antes de testar' : 'Testar com um lead'}
             style={{
@@ -2448,23 +2472,65 @@ const AutomationJourneysView: React.FC = () => {
             <div>
               <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: 'var(--fg-primary)' }}>Testar automação</h2>
               <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--fg-muted)' }}>
-                Informe o email de um lead existente para rodar o fluxo agora.
+                Busque um lead da base para rodar o fluxo agora.
               </p>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-muted)' }}>Email do lead</label>
-              <input
-                autoFocus
-                className="ds-input"
-                type="email"
-                placeholder="lead@empresa.com"
-                value={testEmail}
-                onChange={e => setTestEmail(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleTest()}
-                style={{ height: 40 }}
-                disabled={testStatus === 'loading' || testStatus === 'ok'}
-              />
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-muted)' }}>Buscar lead</label>
+
+              {/* Lead selecionado */}
+              {testEmail ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--accent-soft)', border: '1.5px solid var(--accent)', borderRadius: 10 }}>
+                  <div>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--fg-primary)' }}>{testLeadName}</p>
+                    <p style={{ margin: '1px 0 0', fontSize: 11, color: 'var(--fg-muted)' }}>{testEmail}</p>
+                  </div>
+                  {testStatus === 'idle' && (
+                    <button type="button" onClick={() => { setTestEmail(''); setTestLeadName(''); }} style={{ border: 'none', background: 'transparent', color: 'var(--fg-muted)', cursor: 'pointer', padding: 4 }}>
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div style={{ position: 'relative' }}>
+                  <input
+                    autoFocus
+                    className="ds-input"
+                    placeholder="Nome ou email do lead..."
+                    value={testSearch}
+                    onChange={e => handleTestSearch(e.target.value)}
+                    style={{ height: 40, paddingLeft: 38 }}
+                    disabled={testStatus === 'loading' || testStatus === 'ok'}
+                  />
+                  <Search size={14} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-muted)', pointerEvents: 'none' }} />
+                  {testSearching && <Loader2 size={13} className="animate-spin" style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-muted)' }} />}
+
+                  {testSuggestions.length > 0 && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: 'var(--shadow-lg)', zIndex: 10, overflow: 'hidden' }}>
+                      {testSuggestions.map(s => (
+                        <button
+                          key={s.email}
+                          type="button"
+                          onClick={() => handleTestSelectLead(s.email, s.name)}
+                          style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'transparent', textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 2 }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-muted)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-primary)' }}>{s.name ?? s.email}</span>
+                          <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{s.email}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {testSearch.length >= 2 && !testSearching && testSuggestions.length === 0 && (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', fontSize: 13, color: 'var(--fg-muted)' }}>
+                      Nenhum lead encontrado.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {testStatus === 'error' && (
