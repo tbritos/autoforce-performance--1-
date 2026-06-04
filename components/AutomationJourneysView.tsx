@@ -978,8 +978,20 @@ const AutomationJourneysView: React.FC = () => {
     if (!modalNodeId || !panelValues) return;
     const node = selected.nodes.find(n => n.id === modalNodeId);
     const label = node ? blockMeta(node.type).label : panelValues.label;
-    updateNode(modalNodeId, { label, config: panelValues.config });
+    const updatedNodes = selected.nodes.map(n =>
+      n.id === modalNodeId ? { ...n, label, config: panelValues.config } : n
+    );
+    updateSelected({ nodes: updatedNodes });
     setModalNodeId(null);
+
+    // Auto-persist ao fechar o modal (evita perder config no F5)
+    if (selected.id) {
+      DataService.updateAutomationJourney(selected.id, {
+        nodes: updatedNodes,
+        edges: selected.edges,
+        triggerType: selected.triggerType,
+      }).catch(() => {});
+    }
   };
 
   const load = useCallback(async () => {
