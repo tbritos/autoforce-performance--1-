@@ -1516,32 +1516,6 @@ const AutomationJourneysView: React.FC = () => {
 
         {/* Right: action buttons */}
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-          <button
-            type="button"
-            title="Histórico de execuções"
-            style={{
-              width: 34, height: 34, padding: 0, display: 'grid', placeItems: 'center', flexShrink: 0,
-              border: '1px solid var(--border)', borderRadius: 999, background: 'var(--bg-surface)',
-              color: 'var(--fg-muted)', cursor: 'pointer',
-            }}
-          >
-            <Clock size={15} />
-          </button>
-          <button
-            type="button"
-            onClick={load}
-            disabled={loading}
-            title="Recarregar"
-            style={{
-              width: 34, height: 34, padding: 0, display: 'grid', placeItems: 'center', flexShrink: 0,
-              border: '1px solid var(--border)', borderRadius: 999, background: 'var(--bg-surface)',
-              color: 'var(--fg-muted)', cursor: 'pointer', opacity: loading ? 0.5 : 1,
-            }}
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
-
-          <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
 
           <button
             type="button"
