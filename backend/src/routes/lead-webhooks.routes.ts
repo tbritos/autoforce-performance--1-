@@ -1,8 +1,16 @@
 import { Router } from 'express';
+import cors from 'cors';
 import { LeadWebhooksController } from '../controllers/lead-webhooks.controller';
 
+const publicIngestCors = cors({
+  origin: '*',
+  methods: ['POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type'],
+});
+
 export const publicLeadWebhooksRouter = Router();
-publicLeadWebhooksRouter.post('/:publicId', LeadWebhooksController.ingest);
+publicLeadWebhooksRouter.options('/:publicId', publicIngestCors);
+publicLeadWebhooksRouter.post('/:publicId', publicIngestCors, LeadWebhooksController.ingest);
 
 export const protectedLeadWebhooksRouter = Router();
 protectedLeadWebhooksRouter.get('/', LeadWebhooksController.listSources);
