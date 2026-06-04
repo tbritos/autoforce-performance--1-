@@ -929,13 +929,27 @@ export async function createPipedriveDeal(
   note?: string
 ): Promise<{ dealId: string; personId: string }> {
   const pipelineKey = (pipeline === 'upsell' ? 'upsell' : 'novo_cliente') as 'novo_cliente' | 'upsell';
-  return createDealForLead(leadEmail, pipelineKey, [
-    { fieldKey: 'title',                  sourceType: 'fixed',      fixedValue: title },
-    { fieldKey: FIELD_CANAL_ORIGEM,       sourceType: 'fixed',      fixedValue: String(OPT_CANAL_INBOUND) },
-    // Auto-populate UTM fields from lead data
-    { fieldKey: FIELD_DETALHAMENTO_MKT,   sourceType: 'lead_field', leadField: 'firstMedium' },
-    { fieldKey: FIELD_REFERENCIA_ORIGEM,  sourceType: 'lead_field', leadField: 'firstCampaign' },
-  ], note);
+
+  // Use a conversão mais recente para Detalhamento MKT e Referência da Origem.
+  // Isso garante que o deal reflita a campanha atual, não o primeiro toque histórico.
+  const lastConversion = await prisma.leadConversion.findFirst({
+    where: { leadEmail: leadEmail.toLowerCase().trim() },
+    orderBy: { convertedAt: 'desc' },
+    select: { utmMedium: true, utmCampaign: true },
+  });
+
+  const mktId    = detalhamentoMktId(lastConversion?.utmMedium);
+  const campaign = lastConversion?.utmCampaign ?? null;
+
+  const fieldMappings: FieldMapping[] = [
+    { fieldKey: 'title',            sourceType: 'fixed', fixedValue: title },
+    { fieldKey: FIELD_CANAL_ORIGEM, sourceType: 'fixed', fixedValue: String(OPT_CANAL_INBOUND) },
+  ];
+
+  if (mktId)    fieldMappings.push({ fieldKey: FIELD_DETALHAMENTO_MKT,  sourceType: 'fixed', fixedValue: String(mktId) });
+  if (campaign) fieldMappings.push({ fieldKey: FIELD_REFERENCIA_ORIGEM, sourceType: 'fixed', fixedValue: campaign });
+
+  return createDealForLead(leadEmail, pipelineKey, fieldMappings, note);
 }
 
 export async function updatePipedriveDealStage(
