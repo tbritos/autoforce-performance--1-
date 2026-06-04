@@ -1,7 +1,7 @@
 # AutoForce Marketing Hub — API Reference
 
-> **Base URL:** `https://SEU_BACKEND/api`  
-> **Autenticação:** `Authorization: Bearer <JWT>` em todas as rotas (exceto auth e webhooks públicos)
+> **Base URL:** `https://autoforce-performance-1-production.up.railway.app/api`  
+> **Autenticação:** Cookie `af_session` (httpOnly) enviado automaticamente pelo browser, ou `Authorization: Bearer <JWT>` como fallback para clientes de API
 
 ---
 
@@ -21,6 +21,9 @@
 - [E-mails / RD Station](#e-mails--rd-station)
 - [UTM Links](#utm-links)
 - [Conexões (Integrações)](#conexões-integrações)
+- [**Automações** *(novo)*](#automações)
+- [**WhatsApp** *(novo)*](#whatsapp)
+- [**Pipedrive Events** *(novo)*](#pipedrive-events)
 - [Banco de Dados — Modelos](#banco-de-dados--modelos)
 
 ---
@@ -792,7 +795,277 @@ Ordem cronológica:
 5. `20260527000000_lead_webhook_sources` — webhooks configuráveis
 6. `20260527002000_lead_classification_rules` — motor de regras
 7. `20260528003000_lead_status_scheduled_demo_proposal` — novos status do funil
+8. `20260603000001_add_automation_execution` — tabela de execuções de automações
 
 ---
 
-*API Reference — AutoForce Marketing Hub v2.0 — 2026-05-28*
+## Autenticação — Cookie httpOnly
+
+> **A partir de Junho/2026**, o sistema migrou de `localStorage` para `httpOnly` cookie.
+
+O cookie `af_session` é definido automaticamente nos endpoints de login e enviado pelo browser em todas as requisições. Por ser `httpOnly`, **não pode ser lido via JavaScript** — proteção contra XSS.
+
+| Ambiente | SameSite | Secure |
+|---|---|---|
+| Produção (Railway) | `none` | `true` |
+| Desenvolvimento | `lax` | `false` |
+
+### POST /api/auth/logout
+
+Limpa o cookie de sessão no servidor.
+
+**Resposta:** `{ "ok": true }`
+
+---
+
+## Automações
+
+### GET /api/automation-journeys
+
+Lista todas as jornadas de automação.
+
+**Resposta:**
+```json
+[{
+  "id": "uuid",
+  "name": "Onboarding Novo Lead",
+  "status": "ACTIVE",
+  "triggerType": "lead_created",
+  "isActive": true,
+  "nodes": [...],
+  "edges": [...],
+  "createdAt": "2026-06-01T10:00:00Z",
+  "updatedAt": "2026-06-03T14:00:00Z"
+}]
+```
+
+### POST /api/automation-journeys
+
+Cria nova jornada.
+
+**Body:**
+```json
+{
+  "name": "Nome da jornada",
+  "description": "Descrição opcional",
+  "status": "DRAFT",
+  "nodes": [],
+  "edges": [],
+  "triggerType": "lead_created",
+  "isActive": false
+}
+```
+
+### PATCH /api/automation-journeys/:id
+
+Atualiza parcialmente uma jornada. Aceita qualquer subconjunto dos campos do POST.
+
+### DELETE /api/automation-journeys/:id
+
+Remove a jornada e todas as execuções associadas (CASCADE).
+
+**Resposta:** `204 No Content`
+
+### GET /api/automation-journeys/:id/executions?limit=50
+
+Lista execuções da jornada, enriquecidas com nome e ID do lead.
+
+**Query:** `limit` (default 50, max 100)
+
+**Resposta:**
+```json
+[{
+  "id": "uuid",
+  "journeyId": "uuid",
+  "leadEmail": "lead@empresa.com",
+  "leadName": "João Silva",
+  "leadId": "uuid",
+  "status": "completed",
+  "currentNodeId": null,
+  "resumeAt": null,
+  "log": [
+    { "nodeId": "n1", "nodeType": "trigger", "status": "ok", "ts": "2026-06-03T12:00:00Z" },
+    { "nodeId": "n2", "nodeType": "rd_conversion", "status": "ok", "message": "identifier=lead_qualificado event_uuid=abc123", "ts": "2026-06-03T12:00:01Z" }
+  ],
+  "error": null,
+  "startedAt": "2026-06-03T12:00:00Z",
+  "completedAt": "2026-06-03T12:00:02Z"
+}]
+```
+
+**Status possíveis:**
+| Status | Descrição |
+|---|---|
+| `running` | Execução em andamento |
+| `waiting` | Pausada num bloco Esperar — retoma automaticamente |
+| `completed` | Concluída com sucesso |
+| `failed` | Falhou — ver campo `error` e `log` |
+
+### GET /api/automation-journeys/:id/execution-stats
+
+Contagens por status para o painel de monitoramento.
+
+**Resposta:**
+```json
+{ "running": 2, "waiting": 5, "completed": 147, "failed": 3, "total": 157 }
+```
+
+### POST /api/automation-journeys/:id/test
+
+Executa o fluxo imediatamente para um lead existente (ignora `isActive`).
+
+**Body:** `{ "email": "lead@empresa.com" }`
+
+**Resposta:** `{ "executionId": "uuid" }`
+
+**Erros:**
+- `400` — email ausente
+- `404` — lead não encontrado na base
+
+---
+
+## WhatsApp
+
+### GET /api/whatsapp/phone-numbers
+
+Lista números vinculados ao Business Account Meta.
+
+**Requer:** `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_BUSINESS_ACCOUNT_ID`
+
+**Resposta:**
+```json
+[{
+  "id": "1234567890",
+  "display_phone_number": "+55 11 99999-0000",
+  "verified_name": "Autoforce",
+  "quality_rating": "GREEN"
+}]
+```
+
+### GET /api/whatsapp/templates?phoneNumberId=xxx
+
+Lista templates com status `APPROVED`. Se `phoneNumberId` for informado, resolve o WABA daquele número e retorna apenas os templates dele.
+
+**Query:** `phoneNumberId` (opcional) — deve ser numérico
+
+**Resposta:**
+```json
+[{
+  "id": "tpl_123",
+  "name": "boas_vindas_lead",
+  "status": "APPROVED",
+  "category": "MARKETING",
+  "language": "pt_BR",
+  "components": [
+    { "type": "HEADER", "format": "TEXT", "text": "Olá, {{1}}!" },
+    { "type": "BODY", "text": "Bem-vindo à Autoforce, {{2}}." }
+  ]
+}]
+```
+
+---
+
+## Pipedrive Events
+
+### GET /api/lead-hub/id/:id/pipedrive-events
+
+Histórico de eventos do deal Pipedrive vinculado ao lead.
+
+**Resposta:**
+```json
+{
+  "events": [{
+    "id": "cuid",
+    "dealId": "12345",
+    "leadEmail": "lead@empresa.com",
+    "eventType": "stage_changed",
+    "fromStageId": 6,
+    "fromStageName": "MQL",
+    "toStageId": 8,
+    "toStageName": "SQL",
+    "fromValue": null,
+    "toValue": null,
+    "dealTitle": "Empresa ABC",
+    "dealStatus": "open",
+    "occurredAt": "2026-06-01T09:30:00Z",
+    "source": "webhook"
+  }],
+  "dealUrl": "https://autoforce.pipedrive.com/deal/12345"
+}
+```
+
+**Tipos de evento:**
+| `eventType` | Descrição |
+|---|---|
+| `created` | Negócio criado |
+| `stage_changed` | Mudou de estágio |
+| `value_changed` | Valor alterado |
+| `won` | Ganho |
+| `lost` | Perdido |
+| `reopened` | Reaberto |
+
+**Fonte dos eventos (`source`):**
+| Valor | Descrição |
+|---|---|
+| `webhook` | Evento em tempo real via webhook Pipedrive |
+| `sync` | Detectado pelo sync agendado |
+| `backfill` | Histórico carregado na primeira vinculação |
+
+---
+
+## Tipos TypeScript — Novos
+
+```typescript
+type AutomationExecutionStatus = 'running' | 'waiting' | 'completed' | 'failed';
+
+interface AutomationExecutionLogEntry {
+  nodeId: string;
+  nodeType: string;
+  status: 'ok' | 'error' | 'skipped';
+  message?: string;
+  ts: string; // ISO
+}
+
+interface AutomationExecution {
+  id: string;
+  journeyId: string;
+  leadEmail: string;
+  leadName: string | null;
+  leadId: string | null;
+  status: AutomationExecutionStatus;
+  currentNodeId: string | null;
+  resumeAt: string | null;
+  log: AutomationExecutionLogEntry[];
+  error: string | null;
+  startedAt: string;
+  completedAt: string | null;
+}
+
+interface WhatsAppPhoneNumber {
+  id: string;
+  display_phone_number: string;
+  verified_name: string;
+  quality_rating: 'GREEN' | 'YELLOW' | 'RED' | 'UNKNOWN';
+}
+
+interface PipedriveDealEvent {
+  id: string;
+  dealId: string;
+  leadEmail: string;
+  eventType: 'created' | 'stage_changed' | 'value_changed' | 'won' | 'lost' | 'reopened';
+  fromStageId: number | null;
+  fromStageName: string | null;
+  toStageId: number | null;
+  toStageName: string | null;
+  fromValue: number | null;
+  toValue: number | null;
+  dealTitle: string | null;
+  dealStatus: string;
+  occurredAt: string;
+  source: 'webhook' | 'sync' | 'backfill';
+}
+```
+
+---
+
+*API Reference — AutoForce Marketing Hub v2.1 — 2026-06-04*

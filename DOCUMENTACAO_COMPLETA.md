@@ -31,6 +31,7 @@
 21. [API — Endpoints Completos](#21-api--endpoints-completos)
 22. [Fluxo de Dados — Jornada do Lead](#22-fluxo-de-dados--jornada-do-lead)
 23. [Segurança](#23-segurança)
+24. [Tela: Automações](#24-tela-automações)
 
 ---
 
@@ -1310,6 +1311,306 @@ CORS_ORIGIN           — domínio(s) do frontend autorizados
 
 ---
 
+## 24. Tela: Automações
+
+A tela de Automações permite criar, editar, monitorar e ativar **jornadas automatizadas de leads** — fluxos visuais compostos por blocos conectados que definem o que deve acontecer quando um determinado evento ocorre. É a camada de orquestração central do sistema: integra ações internas, RD Station, WhatsApp e Pipedrive em um único fluxo configurável.
+
+![screenshot](prints/20_automacoes_lista.png)
+
+---
+
+### 24.1 Lista de Jornadas
+
+A tela inicial de Automações exibe todos as jornadas cadastradas no sistema em formato de cards.
+
+![screenshot](prints/21_automacoes_cards.png)
+
+#### Campos exibidos por card
+
+| Campo | Descrição |
+|-------|-----------|
+| **Nome** | Nome da jornada definido na criação |
+| **Status badge** | Rascunho (cinza), Ativa (verde), Pausada (amarelo) |
+| **Toggle liga/desliga** | Ativa ou pausa a jornada diretamente no card, sem abrir o editor |
+| **Contador de execuções** | Número total de execuções da jornada; clicável — abre o painel de monitoramento |
+| **Botão lápis (editar)** | Abre o editor canvas da jornada |
+| **Ícone Activity (monitorar)** | Abre o painel de monitoramento (ExecutionsDrawer) diretamente |
+
+#### Busca e filtros
+
+- **Campo de busca:** filtra jornadas por nome (busca client-side, em tempo real)
+- **Filtro por status:** Todos / Rascunho / Ativa / Pausada
+
+#### Criar nova jornada
+
+O botão **"+ Automação"** no canto superior direito cria uma nova jornada em branco (status Rascunho) e abre o editor canvas imediatamente.
+
+---
+
+### 24.2 Editor Canvas
+
+Ao clicar no ícone de edição de uma jornada, o sistema abre o **editor canvas** — uma tela de edição visual de fluxo com grade infinita.
+
+![screenshot](prints/22_automacoes_editor.png)
+
+#### Grade e navegação
+
+| Interação | Comportamento |
+|-----------|---------------|
+| **Espaço vazio — clicar e arrastar** | Move o viewport (pan); cursor muda para `grab` / `grabbing` |
+| **Grade de pontos** | Referência visual infinita; escala com o viewport |
+| **Arrastar bloco da barra superior** | Solta o bloco na posição exata onde foi solto no canvas |
+| **Clicar em bloco** | Seleciona o bloco (destaque visual) |
+| **Duplo-clique em bloco** | Abre o modal de configuração do bloco |
+| **Tecla Delete / Backspace** | Remove o bloco selecionado e todas as suas conexões |
+
+#### Conexões entre blocos
+
+1. Cada bloco exibe um botão **"Conectar"** quando selecionado.
+2. Ao clicar em "Conectar", o modo de conexão é ativado — o cursor muda e o próximo bloco clicado torna-se o destino.
+3. A conexão é representada por uma **seta** entre os dois blocos.
+4. Para **remover uma conexão**, clicar no ícone **X** exibido no meio da seta.
+
+#### Barra de status (canto inferior esquerdo)
+
+Contador fixo com o formato **"X blocos · Y conexões"**, atualizado em tempo real conforme o fluxo é editado.
+
+#### Botões da barra superior
+
+| Botão | Ação |
+|-------|------|
+| **Testar** | Abre modal de seleção de lead para execução imediata do fluxo |
+| **Execuções** | Abre o painel de monitoramento (ExecutionsDrawer) |
+| **Salvar rascunho** | Persiste o estado atual do canvas no banco sem publicar |
+| **Publicar** | Salva e ativa a jornada (status → Ativa); triggers passam a ser disparados |
+
+---
+
+### 24.3 Tipos de Bloco
+
+O editor dispõe de **7 tipos de bloco**, cada um com cor distinta e configurações próprias.
+
+![screenshot](prints/23_automacoes_blocos.png)
+
+---
+
+#### 24.3.1 Entrada (Trigger)
+
+**Cor:** Azul `#456CEC`
+
+Define o evento que inicia a execução da jornada. Cada jornada deve ter exatamente um bloco de Entrada.
+
+| Gatilho | Descrição | Filtro opcional |
+|---------|-----------|-----------------|
+| `lead_created` | Lead criado no sistema | — |
+| `tag_added` | Tag adicionada ao lead | Tag específica |
+| `status_changed` | Status do lead alterado | Status destino |
+| `score_updated` | Score do lead atualizado | — |
+| `conversion_received` | Nova conversão recebida pelo lead | — |
+
+- Para `tag_added`: campo para informar a tag que deve disparar o trigger (deixar vazio = qualquer tag).
+- Para `status_changed`: campo para informar o status destino (deixar vazio = qualquer mudança de status).
+
+---
+
+#### 24.3.2 Condição
+
+**Cor:** Verde `#22C55E`
+
+Avalia uma regra sobre o lead no momento da execução e redireciona o fluxo com base no resultado.
+
+| Campo avaliável | Operadores disponíveis |
+|-----------------|------------------------|
+| `tag` | `has_tag` / `not_has_tag` |
+| `status` | `=` |
+| `score` | `>` / `<` / `>=` / `<=` / `=` |
+| `source` | `=` |
+| `company` | `=` |
+
+**Branching:** a **1ª aresta** de saída representa o caminho **Sim** (condição verdadeira); a **2ª aresta** representa o caminho **Não**.
+
+---
+
+#### 24.3.3 Esperar
+
+**Cor:** Amarelo `#F59E0B`
+
+Pausa a execução por um período configurável antes de seguir para o próximo bloco.
+
+| Configuração | Opções |
+|-------------|--------|
+| Valor | Número inteiro positivo |
+| Unidade | `minutes` / `hours` / `days` / `weeks` |
+
+**Comportamento técnico:**
+- A execução fica com status `waiting` no banco, com o campo `resumeAt` preenchido com a data/hora de retomada.
+- Um scheduler backend executa a cada **60 segundos** e retoma todas as execuções cujo `resumeAt` já passou.
+- O painel de monitoramento exibe "Retoma em: \[data/hora\]" para execuções em espera.
+
+---
+
+#### 24.3.4 Ação Interna
+
+**Cor:** Teal `#14B8A6`
+
+Executa uma ação diretamente no lead dentro do sistema, sem chamar APIs externas.
+
+| Ação | Descrição |
+|------|-----------|
+| `add_tag` | Adiciona uma tag ao lead |
+| `remove_tag` | Remove uma tag do lead |
+| `add_score` | Incrementa o score em N pontos |
+| `set_score` | Define o score para um valor absoluto |
+| `set_status` | Muda o status do lead |
+| `set_hot` | Marca o lead como "quente" |
+| `unset_hot` | Remove a marcação "quente" |
+| `assign_to` | Atribui o lead a um usuário do sistema |
+
+---
+
+#### 24.3.5 RD Station
+
+**Cor:** Roxo `#8B5CF6`
+
+Registra uma conversão no RD Station Marketing para o lead em questão.
+
+| Campo | Descrição |
+|-------|-----------|
+| **Identificador da conversão** | String livre (ex: `lead_qualificado`, `demo_agendada`). O RD cria o identificador automaticamente se ainda não existir. |
+
+**Comportamento:** cria ou atualiza o contato no RD Station e registra o evento de conversão com o identificador configurado.
+
+---
+
+#### 24.3.6 WhatsApp
+
+**Cor:** Verde `#10B981`
+
+Envia uma mensagem via WhatsApp Business usando um template aprovado pela Meta.
+
+| Campo | Descrição |
+|-------|-----------|
+| **Número de envio** | Seletor populado via API Meta (Business Account); exibe os números cadastrados |
+| **Template** | Lista de templates com status `APPROVED` para o WABA do número selecionado |
+
+**Comportamento:** ao trocar o número de envio, os templates são **recarregados automaticamente** (cada número pertence a um WABA, e os templates são por WABA). Apenas templates com status `APPROVED` aparecem na lista.
+
+---
+
+#### 24.3.7 Pipedrive
+
+**Cor:** Vermelho `#EF4444`
+
+Executa ações no Pipedrive relacionadas ao lead.
+
+| Ação | Campos configuráveis |
+|------|---------------------|
+| `create_deal` | Pipeline (Novo Cliente / Upsell), título do negócio (suporta variáveis), nota com variáveis, Referência da Origem (auto-preenchida com `utm_campaign` da última conversão) |
+| `update_stage` | Seletor de estágio com dados reais do Pipedrive |
+| `mark_won` | Usa o `pipedriveDealId` vinculado ao lead |
+| `mark_lost` | Usa o `pipedriveDealId` vinculado ao lead |
+
+---
+
+### 24.4 Modal de Configuração dos Blocos
+
+Acessado via **duplo-clique** em qualquer bloco no canvas.
+
+![screenshot](prints/24_automacoes_modal_config.png)
+
+- Exibe os campos específicos do tipo de bloco (conforme seção 24.3).
+- O botão **"Salvar alterações"** persiste a configuração do bloco **imediatamente no banco**, de forma independente do estado geral da jornada — não é necessário salvar ou publicar a jornada para que a configuração do bloco seja salva.
+
+---
+
+### 24.5 Botão Testar
+
+Permite executar o fluxo manualmente sobre um lead específico, sem aguardar o disparo natural do trigger.
+
+![screenshot](prints/25_automacoes_testar.png)
+
+**Fluxo de uso:**
+
+1. Clicar em **"Testar"** na barra do editor.
+2. Modal abre com campo de busca de leads (busca por nome ou e-mail).
+3. Selecionar o lead desejado.
+4. O fluxo é executado **imediatamente** para aquele lead.
+5. Ao concluir, o **painel de monitoramento** (ExecutionsDrawer) é aberto automaticamente com o resultado.
+
+---
+
+### 24.6 Painel de Monitoramento (ExecutionsDrawer)
+
+Painel lateral deslizante com overlay, acessível via botão "Execuções" no editor, pelo ícone Activity nos cards da lista, ou pelo contador de execuções.
+
+![screenshot](prints/26_automacoes_monitoring.png)
+
+#### Cards de estatísticas
+
+| Stat | Descrição |
+|------|-----------|
+| **Rodando** | Execuções com status `running` no momento |
+| **Aguardando** | Execuções com status `waiting` (em bloco Esperar) |
+| **Concluídos** | Execuções finalizadas com sucesso |
+| **Falhou** | Execuções que encontraram erro |
+
+#### Lista de execuções
+
+Cada item exibe:
+- Nome e e-mail do lead
+- Data/hora de início
+- Badge de status (`running` / `waiting` / `completed` / `failed`)
+- Duração total
+
+#### Log passo a passo
+
+Ao expandir uma execução, o log detalhado é exibido com:
+- Sequência de nós percorridos
+- Timestamp de cada passo
+- Erros em **vermelho** com a mensagem exata do erro
+- Para blocos Esperar: texto "**Retoma em:** \[data/hora\]"
+
+#### Atualização
+
+Botão de **atualizar** no topo do drawer recarrega a lista de execuções manualmente.
+
+---
+
+### 24.7 Motor de Execução (Backend)
+
+O motor de execução é responsável por disparar e processar as jornadas automaticamente em resposta a eventos do sistema.
+
+#### Triggers automáticos
+
+| Evento | Quando dispara |
+|--------|---------------|
+| `lead_created` | Um novo lead é inserido no banco |
+| `tag_added` | Uma tag é adicionada a um lead |
+| `status_changed` | O status de um lead é alterado |
+| `score_updated` | O score de um lead é modificado |
+| `conversion_received` | Uma nova conversão é registrada para o lead |
+
+Quando qualquer um desses eventos ocorre, o motor busca todas as jornadas **Ativas** com um bloco de Entrada correspondente ao evento (e, se aplicável, com o filtro de tag ou status satisfeito) e inicia uma execução para o lead em questão.
+
+#### Guard de re-entrância
+
+Para evitar execuções duplicadas da mesma jornada para o mesmo lead:
+
+- **Modo padrão (instância única):** controle via `Set` em memória, com chave `journey_id:lead_id`.
+- **Fallback multi-instância:** verificação no banco de dados para ambientes com múltiplas réplicas do backend (Railway scale-out).
+
+#### Startup recovery
+
+Ao iniciar o servidor, o backend verifica se há execuções com status `running` que ficaram presas (ex: crash de instância anterior). Essas execuções são marcadas automaticamente como `failed` durante o boot, garantindo que o estado do banco seja sempre consistente.
+
+#### Scheduler de retomada (bloco Esperar)
+
+- Executado a cada **60 segundos**.
+- Busca no banco todas as execuções com status `waiting` e `resumeAt <= now()`.
+- Retoma o processamento do fluxo a partir do nó seguinte ao bloco Esperar.
+
+---
+
 ## Apêndice — Prints do Sistema
 
 > **Instrução:** Capture os prints do sistema rodando em `http://localhost:5173` e substitua as referências abaixo pelos arquivos de imagem.
@@ -1335,6 +1636,13 @@ CORS_ORIGIN           — domínio(s) do frontend autorizados
 | E-mails | `prints/17_emails.png` |
 | Ganhos | `prints/18_ganhos.png` |
 | Conexões | `prints/19_conexoes.png` |
+| Automações — Lista de jornadas | `prints/20_automacoes_lista.png` |
+| Automações — Cards | `prints/21_automacoes_cards.png` |
+| Automações — Editor canvas | `prints/22_automacoes_editor.png` |
+| Automações — Tipos de bloco | `prints/23_automacoes_blocos.png` |
+| Automações — Modal de configuração | `prints/24_automacoes_modal_config.png` |
+| Automações — Testar fluxo | `prints/25_automacoes_testar.png` |
+| Automações — Monitoramento | `prints/26_automacoes_monitoring.png` |
 
 ---
 
