@@ -481,7 +481,7 @@ const LeadHubView: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, statusFilter, isHotFilter, tagFilter, customFilterField, customFilterValue, dateFrom, dateTo, page]);
+  }, [debouncedSearch, statusFilter, isHotFilter, tagFilter, customFilterField, customFilterValue, dateFrom, dateTo, conversionSource, sortBy, sortDir, page]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -670,7 +670,7 @@ const LeadHubView: React.FC = () => {
                 <th>
                   <button type="button" onClick={() => { if (sortBy === 'lastSeenAt') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('lastSeenAt'); setSortDir('desc'); } }}
                     style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: sortBy === 'lastSeenAt' ? 'var(--accent)' : 'inherit', fontWeight: 'inherit', fontSize: 'inherit', textTransform: 'inherit', letterSpacing: 'inherit', padding: 0 }}>
-                    Última conversão {sortBy === 'lastSeenAt' ? (sortDir === 'asc' ? '↑' : '↓') : '↓'}
+                    Conversão {sortBy === 'lastSeenAt' ? (sortDir === 'asc' ? '↑' : '↓') : '↓'}
                   </button>
                 </th>
                 <th style={{ width: 36 }} />
