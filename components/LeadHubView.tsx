@@ -639,48 +639,8 @@ const LeadHubView: React.FC = () => {
           <Flame size={13} /> Quentes
         </button>
 
-        {/* Custom field filter */}
-        {fieldDefs.length > 0 && (
-          <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--bg-surface)', padding: '2px 8px', minHeight: 36, display: 'flex', alignItems: 'center', minWidth: 180 }}>
-            <CustomSelect
-              value={customFilterField}
-              placeholder="Campo personalizado"
-              options={fieldDefs.map(def => ({ value: def.name, label: def.label }))}
-              onChange={v => { setCustomFilterField(v); setCustomFilterValue(''); }}
-            />
-          </div>
-        )}
-        {customFilterField && (
-          selectedCustomFilter?.fieldType === 'select' ? (
-            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--bg-surface)', padding: '2px 8px', minHeight: 36, display: 'flex', alignItems: 'center', minWidth: 160 }}>
-              <CustomSelect
-                value={customFilterValue}
-                placeholder="Valor"
-                options={selectedCustomFilter.options.map(o => ({ value: o, label: o }))}
-                onChange={setCustomFilterValue}
-              />
-            </div>
-          ) : selectedCustomFilter?.fieldType === 'boolean' ? (
-            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--bg-surface)', padding: '2px 8px', minHeight: 36, display: 'flex', alignItems: 'center', minWidth: 140 }}>
-              <CustomSelect
-                value={customFilterValue}
-                placeholder="Valor"
-                options={[{ value: 'true', label: 'Sim' }, { value: 'false', label: 'Não' }]}
-                onChange={setCustomFilterValue}
-              />
-            </div>
-          ) : (
-            <input
-              value={customFilterValue}
-              onChange={e => setCustomFilterValue(e.target.value)}
-              placeholder="Valor do campo"
-              style={{ minWidth: 160, padding: '8px 10px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', fontSize: 13, color: 'var(--fg-primary)', outline: 'none' }}
-            />
-          )
-        )}
-
-        {(statusFilter || tagFilter || isHotFilter || customFilterField || customFilterValue || conversionSource) && (
-          <button type="button" onClick={() => { setStatusFilter(undefined); setTagFilter(''); setIsHotFilter(false); setCustomFilterField(''); setCustomFilterValue(''); setConversionSource(''); }} style={btnStyle}>
+        {(statusFilter || tagFilter || isHotFilter || conversionSource) && (
+          <button type="button" onClick={() => { setStatusFilter(undefined); setTagFilter(''); setIsHotFilter(false); setConversionSource(''); }} style={btnStyle}>
             <X size={12} /> Limpar filtros
           </button>
         )}
