@@ -799,40 +799,21 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                         <span style={cardHeadTitle}><GitBranch size={13} /> Funil Pipedrive</span>
                         <span style={{ fontSize: 12, color: 'var(--fg-subtle)', fontFamily: 'monospace' }}>#{profile.pipedriveDealId}</span>
                       </div>
-                      <div style={{ padding: 16 }}>
-                        {pipedriveEvents === null ? (
-                          <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 0' }}>
-                            <RefreshCw size={16} className="animate-spin" style={{ color: 'var(--fg-muted)' }} />
-                          </div>
-                        ) : pipedriveEvents.length === 0 ? (
-                          <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-subtle)', padding: '4px 0 8px' }}>
-                            Sem movimentações registradas.{' '}
-                            <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>
-                              Os eventos aparecem aqui quando o webhook do Pipedrive estiver ativo.
-                            </span>
-                          </p>
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                            {pipedriveEvents.map(ev => {
-                              const cfg = PIPEDRIVE_EVENT_CONFIG[ev.eventType] ?? PIPEDRIVE_EVENT_CONFIG['created'];
-                              return (
-                                <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <span style={{ color: cfg.color, display: 'flex' }}>{cfg.icon}</span>
-                                  <div style={{ flex: 1 }}>
-                                    <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-primary)', fontWeight: 500 }}>{cfg.label(ev)}</p>
-                                    <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)' }}>{fmt(ev.occurredAt, { day: '2-digit', month: 'short' })}</p>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
+                      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-muted)' }}>
+                          {pipedriveEvents === null
+                            ? 'Carregando...'
+                            : `${pipedriveEvents.length} movimentação${pipedriveEvents.length !== 1 ? 'ões' : ''} registrada${pipedriveEvents.length !== 1 ? 's' : ''}.`}
+                        </p>
                         {pipedriveUrl && (
                           <a href={pipedriveUrl} target="_blank" rel="noopener noreferrer"
-                            style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)', fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>
+                            style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>
                             Abrir no Pipedrive <ExternalLink size={11} />
                           </a>
                         )}
+                        <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)' }}>
+                          Veja os detalhes na aba <strong>Atividade</strong>.
+                        </p>
                       </div>
                     </div>
                   )}
