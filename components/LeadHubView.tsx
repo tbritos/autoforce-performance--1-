@@ -2888,19 +2888,32 @@ const LeadWebhooksPanel: React.FC = () => {
                   <span style={{ fontSize: 11, color: 'var(--fg-subtle)', fontWeight: 800, textTransform: 'uppercase' }}>Campo recebido</span>
                   <span style={{ fontSize: 11, color: 'var(--fg-subtle)', fontWeight: 800, textTransform: 'uppercase' }}>Destino no sistema</span>
                 </div>
-                {inspection.detectedFields.map(field => (
-                  <div key={field} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
-                    <span style={{ fontSize: 13, color: 'var(--fg-secondary)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{field}</span>
-                    <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--bg-surface)', padding: '2px 8px', minHeight: 36, display: 'flex', alignItems: 'center' }}>
-                      <CustomSelect
-                        value={visualMappings[field] ?? ''}
-                        placeholder="Ignorar campo"
-                        options={destinationOptions}
-                        onChange={v => setVisualMappings(prev => ({ ...prev, [field]: v }))}
-                      />
+                {inspection.detectedFields.map(field => {
+                  const rawValue = (inspection.lastPayload as Record<string, unknown>)?.[field];
+                  const displayValue = rawValue !== undefined && rawValue !== null && rawValue !== ''
+                    ? String(rawValue).slice(0, 120)
+                    : null;
+                  return (
+                    <div key={field} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid var(--border)' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <span style={{ fontSize: 13, color: 'var(--fg-secondary)', fontFamily: 'monospace', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{field}</span>
+                        {displayValue && (
+                          <span style={{ fontSize: 11, color: 'var(--fg-muted)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }} title={String(rawValue)}>
+                            {displayValue}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-md)', background: 'var(--bg-surface)', padding: '2px 8px', minHeight: 36, display: 'flex', alignItems: 'center' }}>
+                        <CustomSelect
+                          value={visualMappings[field] ?? ''}
+                          placeholder="Ignorar campo"
+                          options={destinationOptions}
+                          onChange={v => setVisualMappings(prev => ({ ...prev, [field]: v }))}
+                        />
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
