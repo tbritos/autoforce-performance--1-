@@ -223,14 +223,14 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
     return () => { cancelled = true; };
   }, [email, leadId]);
 
-  // Load Pipedrive events when activity tab opens
+  // Load Pipedrive events as soon as profile is available (sidebar + atividade tab)
   useEffect(() => {
-    if (activeTab !== 'atividade' || !profile?.pipedriveDealId || pipedriveEvents !== null) return;
+    if (!profile?.pipedriveDealId || pipedriveEvents !== null) return;
     DataService.getPipedriveEvents(profile.id).then(({ events, dealUrl }) => {
       setPipedriveEvents(events);
       setPipedriveUrl(dealUrl);
     }).catch(() => setPipedriveEvents([]));
-  }, [activeTab, profile, pipedriveEvents]);
+  }, [profile?.pipedriveDealId, profile?.id, pipedriveEvents]);
 
   const handleStatusChanged = (next: LeadStatus) => {
     if (profile) setProfile({ ...profile, status: next });
@@ -805,7 +805,12 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                             <RefreshCw size={16} className="animate-spin" style={{ color: 'var(--fg-muted)' }} />
                           </div>
                         ) : pipedriveEvents.length === 0 ? (
-                          <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-subtle)', textAlign: 'center', padding: '8px 0' }}>Nenhuma movimentação registrada ainda.</p>
+                          <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-subtle)', padding: '4px 0 8px' }}>
+                            Sem movimentações registradas.{' '}
+                            <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>
+                              Os eventos aparecem aqui quando o webhook do Pipedrive estiver ativo.
+                            </span>
+                          </p>
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                             {pipedriveEvents.map(ev => {
