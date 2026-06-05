@@ -1014,6 +1014,7 @@ export const DataService = {
     endDate?: string;
     customField?: string;
     customValue?: string;
+    conversionSource?: string;
     page?: number;
     pageSize?: number;
   } = {}): Promise<LeadListResult> => {
@@ -1026,6 +1027,7 @@ export const DataService = {
     if (filters.endDate)   params.set('endDate', filters.endDate);
     if (filters.customField) params.set('customField', filters.customField);
     if (filters.customValue) params.set('customValue', filters.customValue);
+    if (filters.conversionSource) params.set('conversionSource', filters.conversionSource);
     if (filters.page)      params.set('page', String(filters.page));
     if (filters.pageSize)  params.set('pageSize', String(filters.pageSize));
     const qs = params.toString();
@@ -1072,6 +1074,10 @@ export const DataService = {
 
   getAllLeadTags: async (): Promise<string[]> => {
     return apiClient.get<string[]>('/lead-hub/tags');
+  },
+
+  getConversionSources: async (): Promise<string[]> => {
+    return apiClient.get<string[]>('/lead-hub/conversion-sources');
   },
 
   getLeadsBySource: async (): Promise<{ source: string; count: number }[]> => {

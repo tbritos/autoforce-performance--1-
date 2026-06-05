@@ -72,6 +72,7 @@ export interface LeadFilter {
   endDate?: string;
   customField?: string;
   customValue?: string;
+  conversionSource?: string;
   page?: number;
   pageSize?: number;
 }
@@ -300,6 +301,18 @@ export class LeadHubService {
         { phone: { contains: q, mode: 'insensitive' } },
         { company: { contains: q, mode: 'insensitive' } },
       ];
+    }
+
+    if (filters.conversionSource) {
+      const q = filters.conversionSource.trim();
+      where.conversions = {
+        some: {
+          OR: [
+            { source: { contains: q, mode: 'insensitive' } },
+            { formName: { contains: q, mode: 'insensitive' } },
+          ],
+        },
+      };
     }
 
     if (filters.customField && filters.customValue) {

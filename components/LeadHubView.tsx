@@ -427,13 +427,15 @@ const LeadHubView: React.FC = () => {
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [dateFrom, setDateFrom]     = useState('');
   const [dateTo, setDateTo]         = useState('');
+  const [conversionSource, setConversionSource] = useState('');
+  const [conversionSources, setConversionSources] = useState<string[]>([]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 350);
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => { setPage(1); }, [debouncedSearch, statusFilter, customFilterField, customFilterValue, tagFilter, isHotFilter, dateFrom, dateTo]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, statusFilter, customFilterField, customFilterValue, tagFilter, isHotFilter, dateFrom, dateTo, conversionSource]);
 
   useEffect(() => {
     DataService.listCustomFieldDefs()
@@ -443,6 +445,7 @@ const LeadHubView: React.FC = () => {
 
   useEffect(() => {
     DataService.getAllLeadTags().then(setAvailableTags).catch(() => {});
+    DataService.getConversionSources().then(setConversionSources).catch(() => {});
   }, []);
 
   const load = useCallback(async () => {
@@ -458,6 +461,7 @@ const LeadHubView: React.FC = () => {
           customValue: customFilterValue || undefined,
           startDate: dateFrom || undefined,
           endDate: dateTo || undefined,
+          conversionSource: conversionSource || undefined,
           page,
           pageSize: 25,
         }),
@@ -609,6 +613,18 @@ const LeadHubView: React.FC = () => {
           </div>
         )}
 
+        {/* Conversion source filter */}
+        {conversionSources.length > 0 && (
+          <div style={{ border: `1px solid ${conversionSource ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 'var(--r-md)', background: 'var(--bg-surface)', padding: '2px 8px', minHeight: 36, display: 'flex', alignItems: 'center', minWidth: 180 }}>
+            <CustomSelect
+              value={conversionSource}
+              placeholder="Conversão"
+              options={[{ value: '', label: 'Todas as conversões' }, ...conversionSources.map(s => ({ value: s, label: s }))]}
+              onChange={setConversionSource}
+            />
+          </div>
+        )}
+
         {/* isHot filter */}
         <button
           type="button"
@@ -659,8 +675,8 @@ const LeadHubView: React.FC = () => {
           )
         )}
 
-        {(statusFilter || tagFilter || isHotFilter || customFilterField || customFilterValue) && (
-          <button type="button" onClick={() => { setStatusFilter(undefined); setTagFilter(''); setIsHotFilter(false); setCustomFilterField(''); setCustomFilterValue(''); }} style={btnStyle}>
+        {(statusFilter || tagFilter || isHotFilter || customFilterField || customFilterValue || conversionSource) && (
+          <button type="button" onClick={() => { setStatusFilter(undefined); setTagFilter(''); setIsHotFilter(false); setCustomFilterField(''); setCustomFilterValue(''); setConversionSource(''); }} style={btnStyle}>
             <X size={12} /> Limpar filtros
           </button>
         )}

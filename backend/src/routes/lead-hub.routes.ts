@@ -28,6 +28,7 @@ router.post('/import', LeadHubController.importLeads);
 router.get('/funnel', LeadHubController.funnel);
 router.get('/tags', LeadHubController.getAllTags);
 router.get('/by-source', LeadHubController.bySource);
+router.get('/conversion-sources', LeadHubController.conversionSources);
 router.post('/migrate-webhook', LeadHubController.migrateWebhook);
 router.get('/', LeadHubController.list);
 

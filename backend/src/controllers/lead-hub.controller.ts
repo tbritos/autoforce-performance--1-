@@ -6,17 +6,18 @@ import { PlatformConnectionService } from '../services/platform-connection.servi
 
 function parseFilters(q: Request['query']): LeadFilter {
   return {
-    status:     q.status     as LeadStatus | undefined,
-    search:     q.search     as string | undefined,
-    isHot:      q.isHot === 'true' ? true : q.isHot === 'false' ? false : undefined,
-    tag:        q.tag        as string | undefined,
-    assignedTo: q.assignedTo as string | undefined,
-    startDate:  q.startDate  as string | undefined,
-    endDate:    q.endDate    as string | undefined,
-    customField: q.customField as string | undefined,
-    customValue: q.customValue as string | undefined,
-    page:       q.page     ? Number(q.page)     : 1,
-    pageSize:   q.pageSize ? Number(q.pageSize) : 25,
+    status:           q.status           as LeadStatus | undefined,
+    search:           q.search           as string | undefined,
+    isHot:            q.isHot === 'true' ? true : q.isHot === 'false' ? false : undefined,
+    tag:              q.tag              as string | undefined,
+    assignedTo:       q.assignedTo       as string | undefined,
+    startDate:        q.startDate        as string | undefined,
+    endDate:          q.endDate          as string | undefined,
+    customField:      q.customField      as string | undefined,
+    customValue:      q.customValue      as string | undefined,
+    conversionSource: q.conversionSource as string | undefined,
+    page:             q.page     ? Number(q.page)     : 1,
+    pageSize:         q.pageSize ? Number(q.pageSize) : 25,
   };
 }
 
@@ -175,6 +176,30 @@ export class LeadHubController {
     try {
       const data = await LeadHubService.getBySource();
       res.json(data);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  // GET /api/lead-hub/conversion-sources — distinct conversion sources for filter autocomplete
+  static async conversionSources(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const sources = await prisma.leadConversion.findMany({
+        distinct: ['source'],
+        select: { source: true },
+        orderBy: { source: 'asc' },
+      });
+      const formNames = await prisma.leadConversion.findMany({
+        where: { formName: { not: null } },
+        distinct: ['formName'],
+        select: { formName: true },
+        orderBy: { formName: 'asc' },
+      });
+      const all = Array.from(new Set([
+        ...sources.map(s => s.source),
+        ...formNames.map(f => f.formName!),
+      ])).sort();
+      res.json(all);
     } catch (err) {
       next(err);
     }
