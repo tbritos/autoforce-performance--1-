@@ -2807,9 +2807,6 @@ const LeadWebhooksPanel: React.FC = () => {
     { value: 'conversion.utmCampaign', label: 'UTM Campaign' },
     { value: 'conversion.utmContent', label: 'UTM Content' },
     { value: 'conversion.utmTerm', label: 'UTM Term' },
-    { value: 'answers.principal_desafio', label: 'Resposta: principal desafio' },
-    { value: 'answers.segmento', label: 'Resposta: segmento' },
-    { value: 'answers.volume_leads_mensal', label: 'Resposta: volume de leads' },
     ...fieldDefs.map(def => ({ value: `customFields.${def.name}`, label: `Campo personalizado: ${def.label}` })),
   ];
 
