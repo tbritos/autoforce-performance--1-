@@ -1015,6 +1015,8 @@ export const DataService = {
     customField?: string;
     customValue?: string;
     conversionSource?: string;
+    orderBy?: 'lastSeenAt' | 'firstSeenAt' | 'conversionsCount' | 'name';
+    orderDir?: 'asc' | 'desc';
     page?: number;
     pageSize?: number;
   } = {}): Promise<LeadListResult> => {
@@ -1028,6 +1030,8 @@ export const DataService = {
     if (filters.customField) params.set('customField', filters.customField);
     if (filters.customValue) params.set('customValue', filters.customValue);
     if (filters.conversionSource) params.set('conversionSource', filters.conversionSource);
+    if (filters.orderBy)   params.set('orderBy', filters.orderBy);
+    if (filters.orderDir)  params.set('orderDir', filters.orderDir);
     if (filters.page)      params.set('page', String(filters.page));
     if (filters.pageSize)  params.set('pageSize', String(filters.pageSize));
     const qs = params.toString();

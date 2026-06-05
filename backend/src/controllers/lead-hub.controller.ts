@@ -16,6 +16,8 @@ function parseFilters(q: Request['query']): LeadFilter {
     customField:      q.customField      as string | undefined,
     customValue:      q.customValue      as string | undefined,
     conversionSource: q.conversionSource as string | undefined,
+    orderBy:          q.orderBy  as LeadFilter['orderBy'] | undefined,
+    orderDir:         q.orderDir as LeadFilter['orderDir'] | undefined,
     page:             q.page     ? Number(q.page)     : 1,
     pageSize:         q.pageSize ? Number(q.pageSize) : 25,
   };

@@ -73,6 +73,8 @@ export interface LeadFilter {
   customField?: string;
   customValue?: string;
   conversionSource?: string;
+  orderBy?: 'lastSeenAt' | 'firstSeenAt' | 'conversionsCount' | 'name';
+  orderDir?: 'asc' | 'desc';
   page?: number;
   pageSize?: number;
 }
@@ -328,11 +330,18 @@ export class LeadHubService {
       where.customFields = jsonFilter;
     }
 
+    const dir = filters.orderDir ?? 'desc';
+    const orderBy: Prisma.LeadOrderByWithRelationInput =
+      filters.orderBy === 'firstSeenAt'      ? { firstSeenAt: dir } :
+      filters.orderBy === 'conversionsCount' ? { conversions: { _count: dir } } :
+      filters.orderBy === 'name'             ? { name: dir } :
+      { lastSeenAt: dir };
+
     const [total, leads] = await Promise.all([
       prisma.lead.count({ where }),
       prisma.lead.findMany({
         where,
-        orderBy: { lastSeenAt: 'desc' },
+        orderBy,
         skip,
         take: pageSize,
         select: {

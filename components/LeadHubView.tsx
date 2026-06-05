@@ -429,13 +429,15 @@ const LeadHubView: React.FC = () => {
   const [dateTo, setDateTo]         = useState('');
   const [conversionSource, setConversionSource] = useState('');
   const [conversionSources, setConversionSources] = useState<string[]>([]);
+  const [sortBy, setSortBy] = useState<'lastSeenAt' | 'firstSeenAt' | 'conversionsCount' | 'name'>('lastSeenAt');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 350);
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => { setPage(1); }, [debouncedSearch, statusFilter, customFilterField, customFilterValue, tagFilter, isHotFilter, dateFrom, dateTo, conversionSource]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, statusFilter, customFilterField, customFilterValue, tagFilter, isHotFilter, dateFrom, dateTo, conversionSource, sortBy, sortDir]);
 
   useEffect(() => {
     DataService.listCustomFieldDefs()
@@ -462,6 +464,8 @@ const LeadHubView: React.FC = () => {
           startDate: dateFrom || undefined,
           endDate: dateTo || undefined,
           conversionSource: conversionSource || undefined,
+          orderBy: sortBy,
+          orderDir: sortDir,
           page,
           pageSize: 25,
         }),
@@ -688,12 +692,27 @@ const LeadHubView: React.FC = () => {
           <table className="ds-table">
             <thead>
               <tr>
-                <th>Contato</th>
+                <th>
+                  <button type="button" onClick={() => { if (sortBy === 'name') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('name'); setSortDir('asc'); } }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: sortBy === 'name' ? 'var(--accent)' : 'inherit', fontWeight: 'inherit', fontSize: 'inherit', textTransform: 'inherit', letterSpacing: 'inherit', padding: 0 }}>
+                    Contato {sortBy === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                  </button>
+                </th>
                 <th>Empresa</th>
                 <th>Status</th>
                 <th>Origem</th>
-                <th className="num">Conversões</th>
-                <th>Último contato</th>
+                <th className="num">
+                  <button type="button" onClick={() => { if (sortBy === 'conversionsCount') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('conversionsCount'); setSortDir('desc'); } }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: sortBy === 'conversionsCount' ? 'var(--accent)' : 'inherit', fontWeight: 'inherit', fontSize: 'inherit', textTransform: 'inherit', letterSpacing: 'inherit', padding: 0, marginLeft: 'auto' }}>
+                    Conversões {sortBy === 'conversionsCount' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                  </button>
+                </th>
+                <th>
+                  <button type="button" onClick={() => { if (sortBy === 'lastSeenAt') setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortBy('lastSeenAt'); setSortDir('desc'); } }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: sortBy === 'lastSeenAt' ? 'var(--accent)' : 'inherit', fontWeight: 'inherit', fontSize: 'inherit', textTransform: 'inherit', letterSpacing: 'inherit', padding: 0 }}>
+                    Última conversão {sortBy === 'lastSeenAt' ? (sortDir === 'asc' ? '↑' : '↓') : '↓'}
+                  </button>
+                </th>
                 <th style={{ width: 36 }} />
               </tr>
             </thead>
