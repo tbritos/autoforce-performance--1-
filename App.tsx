@@ -762,47 +762,53 @@ const AppContent: React.FC = () => {
   // Initialize App (Check Login)
   useEffect(() => {
     const restoreSession = async () => {
-      try {
-        // Read auth result from URL fragment (#auth?auth_user=...&auth_error=...)
-        const hash = window.location.hash;
-        if (hash.startsWith('#auth?')) {
-          const params = new URLSearchParams(hash.slice(6));
-          const authUser  = params.get('auth_user');
-          const authError = params.get('auth_error');
+      // Lê resultado do login Google no fragment da URL (#auth?auth_user=...)
+      const hash = window.location.hash;
+      if (hash.startsWith('#auth?')) {
+        const params = new URLSearchParams(hash.slice(6));
+        const authUser  = params.get('auth_user');
+        const authError = params.get('auth_error');
+        window.history.replaceState({}, document.title, window.location.pathname);
 
-          // Clean the fragment from URL immediately
-          window.history.replaceState({}, document.title, window.location.pathname);
+        if (authError) {
+          console.error('Erro no login Google:', authError);
+          setInitializing(false);
+          return;
+        }
 
-          if (authError) {
-            console.error('Erro no login Google:', authError);
-            setInitializing(false);
-            return;
-          }
-
-          if (authUser) {
-            // Token is in httpOnly cookie (set by backend during redirect)
-            // Only user display info lives in localStorage
+        if (authUser) {
+          try {
             const parsedUser = JSON.parse(authUser) as User;
             localStorage.setItem('autoforce_user', JSON.stringify(parsedUser));
             setUser(parsedUser);
-            setInitializing(false);
-            return;
-          }
+          } catch { /* ignore */ }
+          setInitializing(false);
+          return;
         }
+      }
 
-        // Dev bypass — still uses localStorage token
-        const devToken = localStorage.getItem('autoforce_token');
-        if (import.meta.env.DEV && devToken === 'dev-local-bypass') {
-          const savedUser = localStorage.getItem('autoforce_user');
-          if (savedUser) {
-            setUser(JSON.parse(savedUser) as User);
-            setInitializing(false);
-            return;
-          }
+      // Dev bypass
+      const devToken = localStorage.getItem('autoforce_token');
+      if (import.meta.env.DEV && devToken === 'dev-local-bypass') {
+        const savedUser = localStorage.getItem('autoforce_user');
+        if (savedUser) {
+          try { setUser(JSON.parse(savedUser) as User); } catch { /* ignore */ }
+          setInitializing(false);
+          return;
         }
+      }
 
-        // Verify session via cookie (credentials: 'include' sends the httpOnly cookie)
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      // Carrega usuário do localStorage imediatamente (sem esperar API)
+      const savedUser = localStorage.getItem('autoforce_user');
+      if (savedUser) {
+        try { setUser(JSON.parse(savedUser) as User); } catch { /* ignore */ }
+      }
+
+      // Verifica sessão com o backend:
+      // - 401 → token inválido/expirado → desloga
+      // - Erro de rede / 5xx → mantém sessão local (backend pode estar iniciando)
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      try {
         const response = await fetch(`${apiUrl}/auth/me`, {
           credentials: 'include',
           ...(devToken === 'dev-local-bypass'
@@ -810,23 +816,19 @@ const AppContent: React.FC = () => {
             : {}),
         });
 
-        if (!response.ok) {
+        if (response.status === 401) {
           localStorage.removeItem('autoforce_user');
           localStorage.removeItem('autoforce_token');
-          setInitializing(false);
-          return;
-        }
-
-        const data = await response.json();
-        if (data?.user?.email) {
-          setUser(data.user);
-          localStorage.setItem('autoforce_user', JSON.stringify(data.user));
-        } else {
-          localStorage.removeItem('autoforce_user');
+          setUser(null);
+        } else if (response.ok) {
+          const data = await response.json();
+          if (data?.user?.email) {
+            setUser(data.user);
+            localStorage.setItem('autoforce_user', JSON.stringify(data.user));
+          }
         }
       } catch (e) {
-        console.error('Erro ao restaurar sessão:', e);
-        localStorage.removeItem('autoforce_user');
+        console.warn('Falha ao verificar sessão, mantendo sessão local:', e);
       } finally {
         setInitializing(false);
       }
