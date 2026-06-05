@@ -2469,6 +2469,7 @@ const LeadWebhooksPanel: React.FC = () => {
   const [tagValInput, setTagValInput] = useState('');
   const [defaultSource, setDefaultSource] = useState('');
   const [defaultCampaign, setDefaultCampaign] = useState('');
+  const [fieldDefs, setFieldDefs] = useState<LeadCustomFieldDef[]>([]);
 
   const loadWebhooks = useCallback(async () => {
     setLoading(true);
@@ -2480,6 +2481,11 @@ const LeadWebhooksPanel: React.FC = () => {
   }, []);
 
   useEffect(() => { loadWebhooks(); }, [loadWebhooks]);
+  useEffect(() => {
+    DataService.listCustomFieldDefs()
+      .then(defs => setFieldDefs(defs.filter(d => d.visible)))
+      .catch(() => {});
+  }, []);
 
   const resetForm = () => {
     setEditingWebhook(null);
