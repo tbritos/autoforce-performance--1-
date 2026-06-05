@@ -24,6 +24,7 @@ router.delete('/custom-fields/:id', CustomFieldsController.remove);
 // POST /api/lead-hub/migrate-webhook — one-time WebhookLead → Lead migration
 router.get('/stats', LeadHubController.getLeadStats);
 router.get('/export', LeadHubController.exportCsv);
+router.post('/import', LeadHubController.importLeads);
 router.get('/funnel', LeadHubController.funnel);
 router.get('/tags', LeadHubController.getAllTags);
 router.get('/by-source', LeadHubController.bySource);

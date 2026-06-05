@@ -3,7 +3,7 @@ import {
   X, ArrowLeft, Flame, User, Mail,
   Tag, Link2, Calendar, ArrowRight, DollarSign, LayoutList,
   RefreshCw, ChevronDown, Plus, Check, PenLine,
-  CheckCircle, XCircle, ExternalLink, GitBranch,
+  CheckCircle, XCircle, ExternalLink, GitBranch, Trash2,
 } from 'lucide-react';
 import { LeadProfile, LeadStatus, LeadCustomFieldDef, PipedriveDealEvent } from '../types';
 import { DataService } from '../services/dataService';
@@ -668,7 +668,24 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   const [fieldDefs, setFieldDefs]     = useState<LeadCustomFieldDef[]>([]);
   const [loading, setLoading]         = useState(true);
   const [loadingAllConversions, setLoadingAllConversions] = useState(false);
+  const [deleting, setDeleting]       = useState(false);
   const isPage = variant === 'page';
+
+  const handleDelete = async () => {
+    if (!profile) return;
+    const name = profile.name ?? profile.email;
+    if (!window.confirm(`Excluir o lead "${name}" permanentemente? Esta ação não pode ser desfeita.`)) return;
+    setDeleting(true);
+    try {
+      await DataService.deleteLeadById(profile.id);
+      onClose?.();
+    } catch (err) {
+      console.error('Erro ao excluir lead:', err);
+      alert('Não foi possível excluir o lead. Tente novamente.');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -743,6 +760,16 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                 </div>
                 <p style={{ fontSize: 12, color: 'var(--fg-muted)', margin: '3px 0 0' }}>{profile.email}</p>
               </div>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                title="Excluir lead"
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 'var(--r-md)', border: '1px solid var(--red-100)', background: 'transparent', color: 'var(--red-600)', fontSize: 13, fontWeight: 500, cursor: 'pointer', flexShrink: 0, opacity: deleting ? 0.5 : 1 }}
+              >
+                {deleting ? <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Trash2 size={14} />}
+                Excluir
+              </button>
             </>
           )}
         </div>

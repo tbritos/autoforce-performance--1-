@@ -1153,6 +1153,10 @@ export const DataService = {
     await apiClient.delete(`/lead-hub/id/${encodeURIComponent(id)}`);
   },
 
+  importLeads: async (rows: Record<string, string>[]): Promise<{ total: number; created: number; updated: number; errors: number; errorDetails: { row: number; email: string; error: string }[] }> => {
+    return apiClient.post('/lead-hub/import', { rows });
+  },
+
   exportLeadsCsv: (filters: {
     status?: string; search?: string; startDate?: string; endDate?: string; customField?: string; customValue?: string;
   } = {}): void => {

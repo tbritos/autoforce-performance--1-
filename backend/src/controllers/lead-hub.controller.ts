@@ -249,6 +249,75 @@ export class LeadHubController {
     }
   }
 
+  // POST /api/lead-hub/import  — body: { rows: { email, name?, phone?, company?, jobTitle?, city?, state?, tags?, source? }[] }
+  static async importLeads(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { rows } = req.body as { rows?: Record<string, string>[] };
+      if (!Array.isArray(rows) || rows.length === 0) {
+        res.status(400).json({ error: 'rows deve ser um array não vazio' });
+        return;
+      }
+      if (rows.length > 5000) {
+        res.status(400).json({ error: 'Máximo de 5000 leads por importação' });
+        return;
+      }
+
+      let created = 0, updated = 0, errors = 0;
+      const errorDetails: { row: number; email: string; error: string }[] = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const email = (row.email ?? '').trim().toLowerCase();
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          errors++;
+          errorDetails.push({ row: i + 1, email: row.email ?? '', error: 'Email inválido' });
+          continue;
+        }
+
+        try {
+          const existing = await LeadHubService.getLeadProfile(email).catch(() => null);
+
+          const tags = row.tags
+            ? row.tags.split(/[,;|]/).map((t: string) => t.trim()).filter(Boolean)
+            : [];
+
+          await LeadHubService.upsertLead(
+            {
+              email,
+              name: row.name?.trim() || undefined,
+              phone: row.phone?.trim() || undefined,
+              company: row.company?.trim() || undefined,
+              jobTitle: row.jobTitle?.trim() || row.cargo?.trim() || undefined,
+              city: row.city?.trim() || row.cidade?.trim() || undefined,
+              state: row.state?.trim() || row.estado?.trim() || undefined,
+            },
+            {
+              source: row.source?.trim() || 'importacao_csv',
+              medium: undefined,
+              campaign: undefined,
+              landingPage: undefined,
+            }
+          );
+
+          if (tags.length > 0) {
+            for (const tag of tags) {
+              await LeadHubService.addTag(email, tag).catch(() => {});
+            }
+          }
+
+          if (existing) updated++; else created++;
+        } catch (err) {
+          errors++;
+          errorDetails.push({ row: i + 1, email, error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+
+      res.json({ ok: true, total: rows.length, created, updated, errors, errorDetails: errorDetails.slice(0, 50) });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   static async deleteLead(req: Request, res: Response, next: NextFunction) {
     try {
       const { email } = req.params;

@@ -14,6 +14,7 @@ import {
   TrendingUp,
   ExternalLink,
   Download,
+  Upload,
   Settings2,
   Trash2,
   X,
@@ -24,6 +25,9 @@ import {
   Power,
   RotateCw,
   Send,
+  CheckCircle,
+  AlertCircle,
+  FileText,
 } from 'lucide-react';
 import { Lead, LeadListResult, LeadStatus, FunnelCounts, LeadCustomFieldDef, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction } from '../types';
 import { DataService } from '../services/dataService';
@@ -107,6 +111,300 @@ const FunnelBar: React.FC<{
   );
 };
 
+// ─── CSV Import Modal ─────────────────────────────────────────────────────────
+
+const IMPORT_COLUMNS = [
+  { key: 'email',    label: 'Email *',   required: true },
+  { key: 'name',     label: 'Nome',      required: false },
+  { key: 'phone',    label: 'Telefone',  required: false },
+  { key: 'company',  label: 'Empresa',   required: false },
+  { key: 'jobTitle', label: 'Cargo',     required: false },
+  { key: 'city',     label: 'Cidade',    required: false },
+  { key: 'state',    label: 'Estado',    required: false },
+  { key: 'tags',     label: 'Tags (separadas por vírgula)', required: false },
+  { key: 'source',   label: 'Origem',    required: false },
+];
+
+function parseCsvText(text: string): { headers: string[]; rows: Record<string, string>[] } {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return { headers: [], rows: [] };
+
+  const parseRow = (line: string): string[] => {
+    const result: string[] = [];
+    let cur = '';
+    let inQuote = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
+        else { inQuote = !inQuote; }
+      } else if ((ch === ',' || ch === ';') && !inQuote) {
+        result.push(cur.trim()); cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    result.push(cur.trim());
+    return result;
+  };
+
+  const headers = parseRow(lines[0]);
+  const rows = lines.slice(1).map(line => {
+    const vals = parseRow(line);
+    return Object.fromEntries(headers.map((h, i) => [h, vals[i] ?? '']));
+  });
+  return { headers, rows };
+}
+
+function autoMap(headers: string[]): Record<string, string> {
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '');
+  const aliases: Record<string, string> = {
+    email: 'email', mail: 'email',
+    nome: 'name', name: 'name',
+    telefone: 'phone', phone: 'phone', celular: 'phone', whatsapp: 'phone',
+    empresa: 'company', company: 'company', organization: 'company',
+    cargo: 'jobTitle', jobtitle: 'jobTitle', role: 'jobTitle',
+    cidade: 'city', city: 'city',
+    estado: 'state', state: 'state', uf: 'state',
+    tags: 'tags', tag: 'tags',
+    origem: 'source', source: 'source', canal: 'source',
+  };
+  const mapping: Record<string, string> = {};
+  for (const h of headers) {
+    const target = aliases[normalize(h)];
+    if (target) mapping[h] = target;
+  }
+  return mapping;
+}
+
+const CsvImportModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ onClose, onDone }) => {
+  const [step, setStep]           = useState<'upload' | 'map' | 'importing' | 'done'>('upload');
+  const [headers, setHeaders]     = useState<string[]>([]);
+  const [preview, setPreview]     = useState<Record<string, string>[]>([]);
+  const [allRows, setAllRows]     = useState<Record<string, string>[]>([]);
+  const [mapping, setMapping]     = useState<Record<string, string>>({});
+  const [result, setResult]       = useState<{ total: number; created: number; updated: number; errors: number; errorDetails: { row: number; email: string; error: string }[] } | null>(null);
+  const [dragOver, setDragOver]   = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const text = e.target?.result as string;
+      const { headers: h, rows } = parseCsvText(text);
+      if (h.length === 0) { alert('Arquivo inválido ou vazio.'); return; }
+      setHeaders(h);
+      setAllRows(rows);
+      setPreview(rows.slice(0, 5));
+      setMapping(autoMap(h));
+      setStep('map');
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  };
+
+  const handleImport = async () => {
+    setStep('importing');
+    const mappedRows = allRows.map(row => {
+      const out: Record<string, string> = {};
+      for (const [col, target] of Object.entries(mapping)) {
+        if (target && row[col] !== undefined) out[target] = row[col];
+      }
+      return out;
+    });
+    try {
+      const res = await DataService.importLeads(mappedRows);
+      setResult(res);
+      setStep('done');
+    } catch (err) {
+      alert('Erro na importação: ' + (err instanceof Error ? err.message : String(err)));
+      setStep('map');
+    }
+  };
+
+  const hasEmailMapping = Object.values(mapping).includes('email');
+
+  const overlayStyle: React.CSSProperties = {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+  };
+  const boxStyle: React.CSSProperties = {
+    background: 'var(--bg-surface)', borderRadius: 16, border: '1px solid var(--border)',
+    boxShadow: 'var(--shadow-md)', width: '100%', maxWidth: 680, maxHeight: '90vh',
+    overflow: 'auto', display: 'flex', flexDirection: 'column',
+  };
+  const headerStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: '18px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0,
+  };
+
+  return ReactDOM.createPortal(
+    <div style={overlayStyle} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={boxStyle}>
+        <div style={headerStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Upload size={17} style={{ color: 'var(--accent)' }} />
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--fg-primary)' }}>Importar Leads (CSV)</h2>
+          </div>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-subtle)', display: 'flex' }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+          {/* STEP: upload */}
+          {step === 'upload' && (
+            <div
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => fileRef.current?.click()}
+              style={{
+                border: `2px dashed ${dragOver ? 'var(--accent)' : 'var(--border)'}`,
+                borderRadius: 12, padding: '48px 24px', textAlign: 'center',
+                cursor: 'pointer', background: dragOver ? 'var(--accent-soft)' : 'var(--bg-subtle)',
+                transition: 'all .15s',
+              }}
+            >
+              <FileText size={36} style={{ color: 'var(--fg-muted)', marginBottom: 12 }} />
+              <p style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 600, color: 'var(--fg-primary)' }}>
+                Arraste um arquivo CSV aqui ou clique para selecionar
+              </p>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-muted)' }}>
+                Formatos aceitos: .csv com separador vírgula ou ponto-e-vírgula
+              </p>
+              <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+            </div>
+          )}
+
+          {/* STEP: map */}
+          {step === 'map' && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--fg-primary)' }}>
+                    {allRows.length} linhas detectadas
+                  </p>
+                  <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>
+                    Mapeie as colunas do CSV para os campos do sistema.
+                  </p>
+                </div>
+                <button type="button" onClick={() => setStep('upload')} style={{ fontSize: 12, color: 'var(--fg-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                  Trocar arquivo
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {headers.map(col => (
+                  <div key={col} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'center' }}>
+                    <div style={{ fontSize: 12, color: 'var(--fg-secondary)', background: 'var(--bg-subtle)', padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {col}
+                      {preview[0]?.[col] && <span style={{ color: 'var(--fg-subtle)', marginLeft: 6 }}>— {preview[0][col]}</span>}
+                    </div>
+                    <select
+                      value={mapping[col] ?? ''}
+                      onChange={e => setMapping(m => ({ ...m, [col]: e.target.value }))}
+                      style={{ fontSize: 12, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', outline: 'none', width: '100%' }}
+                    >
+                      <option value="">— Ignorar —</option>
+                      {IMPORT_COLUMNS.map(c => (
+                        <option key={c.key} value={c.key}>{c.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+
+              {!hasEmailMapping && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--red-50)', border: '1px solid var(--red-100)', borderRadius: 10 }}>
+                  <AlertCircle size={15} style={{ color: 'var(--red-500)', flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, color: 'var(--red-600)' }}>Mapeie ao menos uma coluna para o campo <strong>Email</strong>.</span>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 4 }}>
+                <button type="button" onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer' }}>
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleImport}
+                  disabled={!hasEmailMapping}
+                  style={{ padding: '9px 22px', borderRadius: 8, border: 'none', background: hasEmailMapping ? 'var(--accent)' : 'var(--bg-muted)', color: hasEmailMapping ? 'white' : 'var(--fg-subtle)', fontSize: 13, fontWeight: 700, cursor: hasEmailMapping ? 'pointer' : 'not-allowed' }}
+                >
+                  Importar {allRows.length} leads
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* STEP: importing */}
+          {step === 'importing' && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '32px 0' }}>
+              <RefreshCw size={32} style={{ color: 'var(--accent)', animation: 'spin 1s linear infinite' }} />
+              <p style={{ margin: 0, fontSize: 14, color: 'var(--fg-muted)' }}>Importando {allRows.length} leads...</p>
+            </div>
+          )}
+
+          {/* STEP: done */}
+          {step === 'done' && result && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <CheckCircle size={24} style={{ color: 'var(--green-500)' }} />
+                <div>
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--fg-primary)' }}>Importação concluída</p>
+                  <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>{result.total} linhas processadas</p>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                {[
+                  { label: 'Criados', value: result.created, color: 'var(--green-600)' },
+                  { label: 'Atualizados', value: result.updated, color: 'var(--accent)' },
+                  { label: 'Erros', value: result.errors, color: result.errors > 0 ? 'var(--red-600)' : 'var(--fg-subtle)' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} style={{ textAlign: 'center', padding: '14px 10px', background: 'var(--bg-subtle)', borderRadius: 10, border: '1px solid var(--border)' }}>
+                    <p style={{ margin: 0, fontSize: 22, fontWeight: 700, color }}>{value}</p>
+                    <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>{label}</p>
+                  </div>
+                ))}
+              </div>
+              {result.errorDetails.length > 0 && (
+                <div style={{ background: 'var(--red-50)', border: '1px solid var(--red-100)', borderRadius: 10, padding: 12 }}>
+                  <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 600, color: 'var(--red-700)' }}>Linhas com erro:</p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 140, overflow: 'auto' }}>
+                    {result.errorDetails.map(e => (
+                      <p key={e.row} style={{ margin: 0, fontSize: 11, color: 'var(--red-600)', fontFamily: 'monospace' }}>
+                        Linha {e.row}: {e.email} — {e.error}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => { onDone(); onClose(); }}
+                  style={{ padding: '9px 22px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Ver leads importados
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 // ─── Main view ────────────────────────────────────────────────────────────────
 
 const LeadHubView: React.FC = () => {
@@ -120,6 +418,7 @@ const LeadHubView: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<LeadStatus | undefined>();
   const [page, setPage]             = useState(1);
   const [showFieldManager, setShowFieldManager] = useState(false);
+  const [showImport, setShowImport]             = useState(false);
   const [fieldDefs, setFieldDefs] = useState<LeadCustomFieldDef[]>([]);
   const [customFilterField, setCustomFilterField] = useState('');
   const [customFilterValue, setCustomFilterValue] = useState('');
@@ -211,8 +510,11 @@ const LeadHubView: React.FC = () => {
           <button type="button" onClick={() => setShowFieldManager(true)} style={btnStyle} title="Gerenciar campos personalizados">
             <Settings2 size={13} /> Campos
           </button>
+          <button type="button" onClick={() => setShowImport(true)} style={btnStyle} title="Importar leads via CSV">
+            <Upload size={13} /> Importar
+          </button>
           <button type="button" onClick={() => DataService.exportLeadsCsv({ status: statusFilter, search: debouncedSearch, customField: customFilterField, customValue: customFilterValue, startDate: dateFrom || undefined, endDate: dateTo || undefined })} style={btnStyle} title="Exportar CSV">
-            <Download size={13} /> CSV
+            <Download size={13} /> Exportar
           </button>
           <button type="button" onClick={load} disabled={loading} style={{ ...btnStyle, padding: 8 }} aria-label="Recarregar">
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
@@ -434,6 +736,9 @@ const LeadHubView: React.FC = () => {
     {/* Profile panel — fora do div animado para position:fixed funcionar no viewport */}
     {showFieldManager && (
       <CustomFieldManager onClose={() => setShowFieldManager(false)} />
+    )}
+    {showImport && (
+      <CsvImportModal onClose={() => setShowImport(false)} onDone={load} />
     )}
 
     </>
