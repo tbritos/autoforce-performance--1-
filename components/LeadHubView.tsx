@@ -114,15 +114,16 @@ const FunnelBar: React.FC<{
 // ─── CSV Import Modal ─────────────────────────────────────────────────────────
 
 const IMPORT_COLUMNS = [
-  { key: 'email',    label: 'Email *',   required: true },
-  { key: 'name',     label: 'Nome',      required: false },
-  { key: 'phone',    label: 'Telefone',  required: false },
-  { key: 'company',  label: 'Empresa',   required: false },
-  { key: 'jobTitle', label: 'Cargo',     required: false },
-  { key: 'city',     label: 'Cidade',    required: false },
-  { key: 'state',    label: 'Estado',    required: false },
-  { key: 'tags',     label: 'Tags (separadas por vírgula)', required: false },
-  { key: 'source',   label: 'Origem',    required: false },
+  { key: 'email',          label: 'Email *',                          required: true },
+  { key: 'name',           label: 'Nome',                             required: false },
+  { key: 'phone',          label: 'Telefone',                         required: false },
+  { key: 'company',        label: 'Empresa',                          required: false },
+  { key: 'jobTitle',       label: 'Cargo',                            required: false },
+  { key: 'city',           label: 'Cidade',                           required: false },
+  { key: 'state',          label: 'Estado',                           required: false },
+  { key: 'tags',           label: 'Tags (separadas por vírgula)',      required: false },
+  { key: 'source',         label: 'Origem',                           required: false },
+  { key: 'first_seen_at',  label: 'Data de chegada (AAAA-MM-DD)',      required: false },
 ];
 
 function parseCsvText(text: string): { headers: string[]; rows: Record<string, string>[] } {

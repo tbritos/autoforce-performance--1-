@@ -308,6 +308,14 @@ export class LeadHubController {
             ? row.tags.split(/[,;|]/).map((t: string) => t.trim()).filter(Boolean)
             : [];
 
+          // Valida e parseia data histórica se fornecida
+          let firstSeenAt: Date | undefined;
+          const rawDate = row.first_seen_at?.trim() || row.data?.trim() || row.date?.trim();
+          if (rawDate) {
+            const parsed = new Date(rawDate);
+            if (!isNaN(parsed.getTime())) firstSeenAt = parsed;
+          }
+
           await LeadHubService.upsertLead(
             {
               email,
@@ -323,8 +331,17 @@ export class LeadHubController {
               medium: undefined,
               campaign: undefined,
               landingPage: undefined,
-            }
+            },
+            firstSeenAt
           );
+
+          // Se tem data histórica e é lead novo, atualiza firstSeenAt/lastSeenAt
+          if (firstSeenAt && !existing) {
+            await prisma.lead.update({
+              where: { email },
+              data: { firstSeenAt, lastSeenAt: firstSeenAt },
+            });
+          }
 
           if (tags.length > 0) {
             for (const tag of tags) {
