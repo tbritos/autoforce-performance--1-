@@ -42,6 +42,11 @@ export interface LeadConversion {
   utmMedium: string | null;
   utmCampaign: string | null;
   convertedAt: string;
+  rawData?: {
+    payload?: Record<string, unknown>;
+    normalized?: Record<string, unknown>;
+    sourceName?: string;
+  } | null;
 }
 
 export interface LeadStatusHistoryEntry {

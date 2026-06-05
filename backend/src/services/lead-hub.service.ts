@@ -135,15 +135,15 @@ export class LeadHubService {
       });
     }
 
-    // Only update blank fields — never overwrite existing data
-    const profileUpdate = buildFillBlankUpdate(existing, {
-      name: input.name,
-      phone: input.phone,
-      company: input.company,
-      jobTitle: input.jobTitle,
-      city: input.city,
-      state: input.state,
-    });
+    // Atualiza campos que chegarem preenchidos no webhook
+    // Campos vazios/nulos no input não sobrescrevem dados existentes
+    const profileUpdate: Record<string, any> = {};
+    const fields = { name: input.name, phone: input.phone, company: input.company, jobTitle: input.jobTitle, city: input.city, state: input.state };
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined && value !== null && value !== '') {
+        profileUpdate[key] = value;
+      }
+    }
 
     return prisma.lead.update({
       where: { email },

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import {
   X, ArrowLeft, User, Mail, Phone, Building2,
   Tag, Link2, Calendar, ArrowRight, DollarSign,
@@ -166,6 +167,99 @@ const PIPEDRIVE_EVENT_CONFIG: Record<string, { label: (ev: PipedriveDealEvent) =
   reopened:      { label: _ev => 'Negócio reaberto', color: '#f59e0b', icon: <RefreshCw size={13} /> },
 };
 
+// ─── Conversion Detail Modal ───────────────────────────────────────────────────
+
+const ConversionDetailModal: React.FC<{ conversion: LeadConversion; onClose: () => void }> = ({ conversion, onClose }) => {
+  const meta = getConversionMeta(conversion);
+  const payload   = conversion.rawData?.payload;
+  const normalized = conversion.rawData?.normalized;
+
+  return ReactDOM.createPortal(
+    <div
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: 'var(--shadow-md)', width: '100%', maxWidth: 640, maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: meta.bg, color: meta.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {meta.icon}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>{conversion.formName ?? conversion.source}</p>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: meta.color }}>{meta.label} · {fmt(conversion.convertedAt, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+          </div>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-subtle)', display: 'flex', padding: 4 }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Metadata */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {[
+              { label: 'Fonte', value: conversion.source },
+              { label: 'Campanha', value: conversion.campaignName },
+              { label: 'UTM Source', value: conversion.utmSource },
+              { label: 'UTM Medium', value: conversion.utmMedium },
+              { label: 'UTM Campaign', value: conversion.utmCampaign },
+              { label: 'Página', value: conversion.landingPage },
+            ].map(({ label, value }) => value ? (
+              <div key={label}>
+                <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)' }}>{label}</p>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-primary)', fontFamily: label === 'Página' ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>{value}</p>
+              </div>
+            ) : null)}
+          </div>
+
+          {/* Campos recebidos (payload normalizado) */}
+          {normalized && Object.keys(normalized).length > 0 && (
+            <div>
+              <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Dados recebidos</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                {Object.entries(normalized).map(([section, fields]) => {
+                  if (!fields || typeof fields !== 'object' || Object.keys(fields as object).length === 0) return null;
+                  return (
+                    <div key={section}>
+                      <div style={{ padding: '6px 12px', background: 'var(--bg-muted)', borderBottom: '1px solid var(--border)' }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{section}</span>
+                      </div>
+                      {Object.entries(fields as Record<string, unknown>).map(([key, val]) => val !== null && val !== undefined && val !== '' ? (
+                        <div key={key} style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--border-subtle)' }}>
+                          <span style={{ fontSize: 12, color: 'var(--fg-muted)', fontFamily: 'monospace' }}>{key}</span>
+                          <span style={{ fontSize: 12, color: 'var(--fg-primary)', wordBreak: 'break-all' }}>{String(val)}</span>
+                        </div>
+                      ) : null)}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Payload bruto */}
+          {payload && Object.keys(payload).length > 0 && (
+            <div>
+              <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Payload original</p>
+              <pre style={{ margin: 0, padding: 12, background: 'var(--bg-muted)', borderRadius: 10, fontSize: 11, color: 'var(--fg-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 240, overflowY: 'auto' }}>
+                {JSON.stringify(payload, null, 2)}
+              </pre>
+            </div>
+          )}
+
+          {!payload && !normalized && (
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-muted)', textAlign: 'center', padding: '16px 0' }}>
+              Dados detalhados não disponíveis para esta conversão.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -193,6 +287,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   const [loadingAllConversions, setLoadingAllConversions] = useState(false);
   const [pipedriveEvents, setPipedriveEvents] = useState<PipedriveDealEvent[] | null>(null);
   const [pipedriveUrl, setPipedriveUrl] = useState<string | null>(null);
+  const [selectedConversion, setSelectedConversion] = useState<LeadConversion | null>(null);
 
   // Edit form state
   const [form, setForm] = useState({
@@ -363,6 +458,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
     });
 
     return (
+    <>
       <div style={{ background: 'var(--bg-app)', minHeight: '100vh' }}>
 
         {/* ── Top bar ── */}
@@ -623,7 +719,9 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                             {profile.conversions.map((c, i) => {
                               const meta = getConversionMeta(c);
                               return (
-                                <tr key={c.id} style={{ borderBottom: i < profile.conversions.length - 1 ? '1px solid var(--border)' : 'none' }}
+                                <tr key={c.id}
+                                  onClick={() => setSelectedConversion(c)}
+                                  style={{ borderBottom: i < profile.conversions.length - 1 ? '1px solid var(--border)' : 'none', cursor: 'pointer' }}
                                   onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-subtle)')}
                                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                                   <td style={{ padding: '12px 16px' }}>
@@ -849,6 +947,10 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
           )}
         </div>
       </div>
+      {selectedConversion && (
+        <ConversionDetailModal conversion={selectedConversion} onClose={() => setSelectedConversion(null)} />
+      )}
+    </>
     );
   }
 
