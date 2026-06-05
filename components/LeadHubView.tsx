@@ -2804,9 +2804,7 @@ const LeadWebhooksPanel: React.FC = () => {
     { value: 'answers.principal_desafio', label: 'Resposta: principal desafio' },
     { value: 'answers.segmento', label: 'Resposta: segmento' },
     { value: 'answers.volume_leads_mensal', label: 'Resposta: volume de leads' },
-    { value: 'customFields.persona', label: 'Campo personalizado: persona' },
-    { value: 'customFields.dor_principal', label: 'Campo personalizado: dor principal' },
-    { value: 'customFields.maturidade', label: 'Campo personalizado: maturidade' },
+    ...fieldDefs.map(def => ({ value: `customFields.${def.name}`, label: `Campo personalizado: ${def.label}` })),
   ];
 
   if (mappingSource) {
