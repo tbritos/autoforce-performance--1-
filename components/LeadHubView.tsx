@@ -1262,7 +1262,8 @@ const CustomSelect: React.FC<{
   selectedColor?: string;
 }> = ({ value, placeholder, options, onChange, selectedColor = 'var(--accent)' }) => {
   const [open, setOpen] = useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
+  const [openUp, setOpenUp] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -1273,6 +1274,15 @@ const CustomSelect: React.FC<{
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  const handleOpen = () => {
+    if (ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      setOpenUp(spaceBelow < 340);
+    }
+    setOpen(v => !v);
+  };
+
   const selected = options.find(o => o.value === value);
 
   const grouped = options.reduce<Record<string, typeof options>>((acc, opt) => {
@@ -1282,11 +1292,15 @@ const CustomSelect: React.FC<{
     return acc;
   }, {});
 
+  const dropdownPos: React.CSSProperties = openUp
+    ? { bottom: 'calc(100% + 8px)', top: 'auto' }
+    : { top: 'calc(100% + 8px)', bottom: 'auto' };
+
   return (
     <div ref={ref} style={{ position: 'relative', flex: 1, zIndex: open ? 1000 : 'auto' }}>
       <button
         type="button"
-        onClick={() => setOpen(v => !v)}
+        onClick={handleOpen}
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, width: '100%', padding: '0 4px', border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}
       >
         <span style={{ fontSize: 13, fontWeight: selected ? 700 : 400, color: selected ? selectedColor : 'var(--fg-subtle)', flex: 1 }}>
@@ -1296,7 +1310,7 @@ const CustomSelect: React.FC<{
       </button>
 
       {open && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 8px)', left: -12, zIndex: 1001, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,.18)', minWidth: 260, maxHeight: 320, overflowY: 'auto' }}>
+        <div style={{ position: 'absolute', ...dropdownPos, left: -12, zIndex: 1001, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,.18)', minWidth: 260, maxHeight: 320, overflowY: 'auto' }}>
           {Object.entries(grouped).map(([group, opts]) => (
             <div key={group}>
               {group && (
