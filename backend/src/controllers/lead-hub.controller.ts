@@ -331,8 +331,7 @@ export class LeadHubController {
               medium: undefined,
               campaign: undefined,
               landingPage: undefined,
-            },
-            firstSeenAt
+            }
           );
 
           // Se tem data histórica e é lead novo, atualiza firstSeenAt/lastSeenAt
