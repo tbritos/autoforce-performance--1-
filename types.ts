@@ -272,6 +272,29 @@ export interface WhatsAppPhoneNumber {
   quality_rating: string;
 }
 
+export interface WhatsAppConversationMessage {
+  id: string;
+  leadId: string | null;
+  leadEmail: string | null;
+  phone: string;
+  direction: 'outbound' | 'inbound' | string;
+  type: string;
+  status: string;
+  messageId: string | null;
+  repliedToMessageId: string | null;
+  automationJourneyId: string | null;
+  automationExecutionId: string | null;
+  templateName: string | null;
+  text: string | null;
+  payload: unknown;
+  sentAt: string | null;
+  deliveredAt: string | null;
+  readAt: string | null;
+  receivedAt: string | null;
+  failedAt: string | null;
+  createdAt: string;
+}
+
 export type AutomationNodeType =
   | 'trigger'
   | 'condition'

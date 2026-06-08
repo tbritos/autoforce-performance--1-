@@ -890,6 +890,10 @@ export const DataService = {
     return apiClient.get(`/whatsapp/templates${qs}`);
   },
 
+  getWhatsAppConversation: async (leadId: string): Promise<import('../types').WhatsAppConversationMessage[]> => {
+    return apiClient.get(`/whatsapp/leads/${encodeURIComponent(leadId)}/conversation`);
+  },
+
   getPipedriveStages: async (): Promise<PipedriveStage[]> => {
     return apiClient.get('/pipedrive/stages');
   },

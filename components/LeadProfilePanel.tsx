@@ -6,9 +6,9 @@ import {
   RefreshCw, ChevronDown, Plus, Check, PenLine,
   Trash2, FileText, Download, Wrench, Activity,
   ExternalLink, GitBranch, Flame, LayoutList,
-  CheckCircle, XCircle,
+  CheckCircle, XCircle, MessageCircle,
 } from 'lucide-react';
-import { LeadProfile, LeadStatus, LeadCustomFieldDef, PipedriveDealEvent, LeadConversion } from '../types';
+import { LeadProfile, LeadStatus, LeadCustomFieldDef, PipedriveDealEvent, LeadConversion, WhatsAppConversationMessage } from '../types';
 import { DataService } from '../services/dataService';
 
 // ─── Status config ─────────────────────────────────────────────────────────────
@@ -277,7 +277,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   const [fieldDefs, setFieldDefs]   = useState<LeadCustomFieldDef[]>([]);
   const [loading, setLoading]       = useState(true);
   const [deleting, setDeleting]     = useState(false);
-  const [activeTab, setActiveTab]   = useState<'dados' | 'conversoes' | 'atividade'>('dados');
+  const [activeTab, setActiveTab]   = useState<'dados' | 'conversoes' | 'atividade' | 'whatsapp'>('dados');
   const [editMode, setEditMode]     = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savedProfile, setSavedProfile]   = useState(false);
@@ -288,6 +288,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   const [pipedriveEvents, setPipedriveEvents] = useState<PipedriveDealEvent[] | null>(null);
   const [pipedriveUrl, setPipedriveUrl] = useState<string | null>(null);
   const [selectedConversion, setSelectedConversion] = useState<LeadConversion | null>(null);
+  const [whatsAppMessages, setWhatsAppMessages] = useState<WhatsAppConversationMessage[] | null>(null);
 
   // Edit form state
   const [form, setForm] = useState({
@@ -306,6 +307,9 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
     ]).then(([p, defs]) => {
       if (cancelled) return;
       setProfile(p);
+      setWhatsAppMessages(null);
+      setPipedriveEvents(null);
+      setPipedriveUrl(null);
       setNotes(p.notes ?? '');
       setFieldDefs(defs.filter(d => d.visible));
       setForm({
@@ -326,6 +330,13 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
       setPipedriveUrl(dealUrl);
     }).catch(() => setPipedriveEvents([]));
   }, [profile?.pipedriveDealId, profile?.id, pipedriveEvents]);
+
+  useEffect(() => {
+    if (!profile?.id || whatsAppMessages !== null) return;
+    DataService.getWhatsAppConversation(profile.id)
+      .then(setWhatsAppMessages)
+      .catch(() => setWhatsAppMessages([]));
+  }, [profile?.id, whatsAppMessages]);
 
   const handleStatusChanged = (next: LeadStatus) => {
     if (profile) setProfile({ ...profile, status: next });
@@ -576,6 +587,14 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                     </button>
                     <button type="button" style={tabBtn(activeTab === 'atividade')} onClick={() => setActiveTab('atividade')}>
                       <Activity size={14} /> Atividade
+                    </button>
+                    <button type="button" style={tabBtn(activeTab === 'whatsapp')} onClick={() => setActiveTab('whatsapp')}>
+                      <MessageCircle size={14} /> WhatsApp
+                      {whatsAppMessages && whatsAppMessages.length > 0 && (
+                        <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 'var(--r-full)', background: activeTab === 'whatsapp' ? 'var(--accent-soft)' : 'var(--bg-muted)', color: activeTab === 'whatsapp' ? 'var(--accent)' : 'var(--fg-muted)', fontWeight: 700 }}>
+                          {whatsAppMessages.length}
+                        </span>
+                      )}
                     </button>
                   </div>
 
@@ -841,6 +860,72 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                         ))}
                         {buildTimeline().length === 0 && (
                           <p style={{ textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13, padding: '32px 0' }}>Nenhuma atividade registrada ainda.</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── WHATSAPP TAB ── */}
+                  {activeTab === 'whatsapp' && (
+                    <div style={cardStyle}>
+                      <div style={cardHead}>
+                        <span style={cardHeadTitle}><MessageCircle size={13} /> Conversa WhatsApp</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setWhatsAppMessages(null);
+                            DataService.getWhatsAppConversation(profile.id).then(setWhatsAppMessages).catch(() => setWhatsAppMessages([]));
+                          }}
+                          style={{ fontSize: 12, color: 'var(--fg-muted)', background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
+                        >
+                          <RefreshCw size={11} /> Atualizar
+                        </button>
+                      </div>
+                      <div style={{ padding: 18, background: 'var(--bg-app)', minHeight: 420 }}>
+                        {whatsAppMessages === null ? (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 260, color: 'var(--fg-muted)', fontSize: 13 }}>
+                            <RefreshCw size={14} className="animate-spin" /> Carregando conversa...
+                          </div>
+                        ) : whatsAppMessages.length === 0 ? (
+                          <div style={{ display: 'grid', placeItems: 'center', height: 260, color: 'var(--fg-muted)', fontSize: 13, textAlign: 'center' }}>
+                            Nenhuma mensagem registrada para este lead ainda.
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                            {whatsAppMessages.map(message => {
+                              const outbound = message.direction === 'outbound';
+                              const date = message.sentAt ?? message.receivedAt ?? message.createdAt;
+                              const content = message.text || (message.templateName ? `Template: ${message.templateName}` : message.type);
+                              const statusLabel =
+                                message.status === 'read' ? 'lida' :
+                                message.status === 'delivered' ? 'entregue' :
+                                message.status === 'failed' ? 'falhou' :
+                                message.status === 'sent' ? 'enviada' :
+                                message.status === 'received' ? 'recebida' : message.status;
+
+                              return (
+                                <div key={message.id} style={{ display: 'flex', justifyContent: outbound ? 'flex-end' : 'flex-start' }}>
+                                  <div
+                                    style={{
+                                      maxWidth: '72%',
+                                      padding: '10px 12px',
+                                      borderRadius: outbound ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+                                      background: outbound ? 'rgba(69,108,236,0.14)' : 'var(--bg-surface)',
+                                      border: `1px solid ${outbound ? 'rgba(69,108,236,0.24)' : 'var(--border)'}`,
+                                      color: 'var(--fg-primary)',
+                                      boxShadow: 'var(--shadow-sm)',
+                                    }}
+                                  >
+                                    <p style={{ margin: 0, fontSize: 13, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{content}</p>
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6, fontSize: 10, color: message.status === 'failed' ? 'var(--red-500)' : 'var(--fg-subtle)' }}>
+                                      <span>{fmtTime(date)}</span>
+                                      {outbound && <span>{statusLabel}</span>}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         )}
                       </div>
                     </div>

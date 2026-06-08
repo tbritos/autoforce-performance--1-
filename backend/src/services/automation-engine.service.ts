@@ -254,7 +254,7 @@ async function runExecution(
 
       let result: NodeResult;
       try {
-        result = await executeNode(executionId, node, leadEmail, context);
+        result = await executeNode(executionId, journeyId, node, leadEmail, context);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         // FIX: log the failing node before marking as failed
@@ -301,6 +301,7 @@ async function runExecution(
 
 async function executeNode(
   executionId: string,
+  journeyId: string,
   node: AutomationNode,
   leadEmail: string,
   context: TriggerContext
@@ -349,7 +350,7 @@ async function executeNode(
     }
 
     case 'whatsapp_message':
-      await executeWhatsAppMessage(leadEmail, c);
+      await executeWhatsAppMessage(leadEmail, c, executionId, journeyId);
       await appendLog(executionId, node.id, 'whatsapp_message', 'ok', String(c.templateName ?? ''));
       return 'ok';
 
@@ -568,9 +569,11 @@ async function executeRDConversion(
 
 async function executeWhatsAppMessage(
   leadEmail: string,
-  config: Record<string, string | number | boolean>
+  config: Record<string, string | number | boolean>,
+  executionId: string,
+  journeyId: string
 ): Promise<void> {
-  const { getWhatsAppCredentials } = await import('./whatsapp.service');
+  const { getWhatsAppCredentials, recordOutgoingWhatsAppMessage } = await import('./whatsapp.service');
 
   const lead = await prisma.lead.findUnique({
     where: { email: leadEmail },
@@ -614,6 +617,17 @@ async function executeWhatsAppMessage(
     const text = await res.text();
     throw new Error(`WhatsApp API error ${res.status}: ${text.slice(0, 300)}`);
   }
+
+  const data = await res.json() as { messages?: Array<{ id?: string }> };
+  await recordOutgoingWhatsAppMessage({
+    leadEmail,
+    phone: to,
+    messageId: data.messages?.[0]?.id ?? null,
+    templateName,
+    payload: body,
+    automationJourneyId: journeyId,
+    automationExecutionId: executionId,
+  });
 }
 
 async function executePipedriveAction(

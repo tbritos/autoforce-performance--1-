@@ -264,6 +264,42 @@ model AutomationExecution {
   @@index([startedAt])
 }
 
+model WhatsAppMessage {
+  id String @id @default(uuid())
+
+  leadId    String?
+  leadEmail String?
+  phone     String
+
+  direction String // outbound | inbound
+  type      String @default("text") // template | text | button | status
+  status    String @default("received") // sent | delivered | read | failed | received
+
+  messageId           String? @unique
+  repliedToMessageId  String?
+  automationJourneyId String?
+  automationExecutionId String?
+
+  templateName String?
+  text         String? @db.Text
+  payload      Json    @default("{}")
+
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
+  receivedAt  DateTime?
+  failedAt    DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([leadId])
+  @@index([leadEmail])
+  @@index([phone])
+  @@index([messageId])
+  @@index([automationJourneyId])
+  @@index([automationExecutionId])
+  @@index([createdAt])
+}
+
 // ============================================================
 // CONEXÕES DE PLATAFORMAS
 // ============================================================
