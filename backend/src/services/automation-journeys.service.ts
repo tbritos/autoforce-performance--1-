@@ -35,6 +35,9 @@ export class AutomationJourneysService {
   static async list() {
     return (prisma as any).automationJourney.findMany({
       orderBy: [{ updatedAt: 'desc' }],
+      include: {
+        _count: { select: { executions: true } },
+      },
     });
   }
 

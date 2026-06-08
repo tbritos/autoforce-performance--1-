@@ -307,6 +307,9 @@ export interface AutomationJourney {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  _count?: {
+    executions?: number;
+  };
 }
 
 export type AutomationExecutionStatus = 'running' | 'waiting' | 'completed' | 'failed';

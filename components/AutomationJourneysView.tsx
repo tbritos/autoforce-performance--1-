@@ -1350,6 +1350,7 @@ const AutomationJourneysView: React.FC = () => {
   const totalActive = journeys.filter(journey => journey.status === 'ACTIVE').length;
   const totalPaused = journeys.filter(journey => journey.status === 'PAUSED').length;
   const getExecutions = (journey: AutomationJourney) => {
+    if (typeof journey._count?.executions === 'number') return journey._count.executions;
     const stored = journey.nodes.reduce((sum, node) => {
       const value = node.config?.executions;
       return sum + (typeof value === 'number' ? value : 0);
