@@ -370,7 +370,8 @@ function matchesTrigger(
   config: Record<string, string>,
   context: TriggerContext
 ): boolean {
-  if (!configuredEvent || configuredEvent !== firedEvent) return false;
+  const normalizedConfiguredEvent = configuredEvent === 'conversion' ? 'conversion_received' : configuredEvent;
+  if (!normalizedConfiguredEvent || normalizedConfiguredEvent !== firedEvent) return false;
 
   switch (firedEvent) {
     case 'tag_added':
@@ -378,6 +379,13 @@ function matchesTrigger(
       break;
     case 'status_changed':
       if (config.eventValue && config.eventValue !== context.toStatus) return false;
+      break;
+    case 'conversion_received':
+      if (
+        config.eventValue &&
+        config.eventValue !== context.webhookSourceId &&
+        config.eventValue !== context.conversionName
+      ) return false;
       break;
   }
 

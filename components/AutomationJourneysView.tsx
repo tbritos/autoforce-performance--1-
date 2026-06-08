@@ -96,7 +96,7 @@ function nodeSubtitle(node: AutomationJourneyNode): { text: string; warn: boolea
       if (!c.event) return { text: '⚠ Configure o gatilho', warn: true };
       const labels: Record<string, string> = {
         lead_created:   'Lead entrou na base',
-        conversion:     c.eventValue ? `Conversão: ${c.eventValue}` : 'Conversão específica',
+        conversion_received: c.eventValue ? `Conversão: ${c.eventValue}` : 'Conversão específica',
         tag_added:      c.eventValue ? `Tag: ${c.eventValue}` : 'Tag aplicada',
         score_reached:  c.eventValue ? `Score ≥ ${c.eventValue}` : 'Score atingiu limite',
         status_changed: c.eventValue ? `Etapa → ${c.eventValue}` : 'Etapa mudou',
@@ -1981,7 +1981,7 @@ const AutomationJourneysView: React.FC = () => {
                   {panelNode.type === 'trigger' && (() => {
                     const triggerOptions = [
                       { value: 'lead_created',    icon: UserPlus,   label: 'Lead entrou na base',     description: 'Qualquer novo lead cadastrado na base',      subField: null },
-                      { value: 'conversion',      icon: Zap,        label: 'Conversão específica',    description: 'Lead chegou por um webhook específico',       subField: 'webhook' },
+                      { value: 'conversion_received',      icon: Zap,        label: 'Conversão específica',    description: 'Lead chegou por um webhook específico',       subField: 'webhook' },
                       { value: 'tag_added',       icon: Tags,       label: 'Tag aplicada',            description: 'Uma tag foi adicionada ao lead',             subField: 'tag' },
                       { value: 'score_reached',   icon: TrendingUp, label: 'Score atingiu limite',    description: 'Score chegou a um valor mínimo definido',    subField: 'score' },
                       { value: 'status_changed',  icon: ArrowRight, label: 'Etapa mudou',             description: 'Lead mudou para uma etapa específica',       subField: 'status' },

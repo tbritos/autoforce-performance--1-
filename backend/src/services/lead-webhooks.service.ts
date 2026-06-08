@@ -568,9 +568,16 @@ export class LeadWebhooksService {
           fireTrigger('lead_created', updatedLead.email, {
             conversionName,
             source: firstSource,
+            webhookSourceId: source.id,
+            webhookSourceName: source.name,
           });
         }
-        fireTrigger('conversion_received', updatedLead.email, { conversionName });
+        fireTrigger('conversion_received', updatedLead.email, {
+          conversionName,
+          webhookSourceId: source.id,
+          webhookSourceName: source.name,
+          source: firstSource,
+        });
       }).catch(() => {});
 
       return {
