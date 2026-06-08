@@ -256,12 +256,16 @@ function SmartSelect({
   onChange,
   placeholder = 'Selecionar...',
   loading = false,
+  allowCreate = false,
+  createLabel = 'Criar',
 }: {
   value: string;
   options: SmartSelectOption[];
   onChange: (value: string) => void;
   placeholder?: string;
   loading?: boolean;
+  allowCreate?: boolean;
+  createLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -303,6 +307,8 @@ function SmartSelect({
     ? options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()))
     : options;
   const selectedOpt = options.find(o => o.value === value);
+  const cleanSearch = search.trim();
+  const canCreate = allowCreate && cleanSearch.length > 0 && !options.some(o => o.value.toLowerCase() === cleanSearch.toLowerCase());
 
   const inputStyle: React.CSSProperties = {
     width: '100%', height: 42,
@@ -361,11 +367,12 @@ function SmartSelect({
             </div>
           )}
           <div style={{ flex: 1, overflowY: 'auto', padding: 5 }}>
-            {filtered.length === 0 ? (
+            {filtered.length === 0 && !canCreate ? (
               <div style={{ padding: '10px 8px', fontSize: 13, color: 'var(--fg-muted)', textAlign: 'center' }}>
                 Nenhum resultado
               </div>
-            ) : filtered.map(opt => {
+            ) : <>
+              {filtered.map(opt => {
               const isActive = opt.value === value;
               return (
                 <button
@@ -392,7 +399,25 @@ function SmartSelect({
                   {isActive && <Check size={14} style={{ flexShrink: 0 }} />}
                 </button>
               );
-            })}
+              })}
+              {canCreate && (
+                <button
+                  type="button"
+                  onClick={() => { onChange(cleanSearch); setOpen(false); setSearch(''); }}
+                  style={{
+                    width: '100%', minHeight: 38, display: 'flex', alignItems: 'center',
+                    justifyContent: 'space-between', gap: 8,
+                    border: '1px dashed var(--accent)', borderRadius: 7,
+                    background: 'var(--accent-soft)', color: 'var(--accent)',
+                    padding: '8px 10px', fontSize: 13, fontWeight: 800,
+                    textAlign: 'left', cursor: 'pointer', marginTop: filtered.length ? 4 : 0,
+                  }}
+                >
+                  <span>{createLabel} "{cleanSearch}"</span>
+                  <Plus size={14} style={{ flexShrink: 0 }} />
+                </button>
+              )}
+            </>}
           </div>
         </div>,
         document.body
@@ -414,7 +439,12 @@ function TagSelector({ value, onChange }: { value: string; onChange: (v: string)
       .finally(() => setLoading(false));
   }, []);
 
-  const options: SmartSelectOption[] = tags.map(tag => ({ value: tag, label: tag }));
+  const options: SmartSelectOption[] = [
+    ...tags.map(tag => ({ value: tag, label: tag })),
+    ...(value && !tags.some(tag => tag.toLowerCase() === value.toLowerCase())
+      ? [{ value, label: value, description: 'Nova tag' }]
+      : []),
+  ];
 
   return (
     <SmartSelect
@@ -423,6 +453,8 @@ function TagSelector({ value, onChange }: { value: string; onChange: (v: string)
       onChange={onChange}
       placeholder="Selecionar tag..."
       loading={loading}
+      allowCreate
+      createLabel="Criar tag"
     />
   );
 }
