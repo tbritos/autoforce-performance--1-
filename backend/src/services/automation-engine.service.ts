@@ -399,6 +399,7 @@ type LeadRecord = {
   isHot: boolean;
   firstSource: string | null;
   company: string | null;
+  jobTitle: string | null;
   phone: string | null;
   name: string | null;
   assignedTo: string | null;
@@ -424,6 +425,7 @@ function evaluateCondition(
     case 'score':      leadValue = lead.score; break;
     case 'source':     leadValue = lead.firstSource; break;
     case 'company':    leadValue = lead.company; break;
+    case 'jobTitle':   leadValue = lead.jobTitle; break;
     case 'phone':      leadValue = lead.phone ? '1' : null; break;
     case 'is_hot':     return lead.isHot === (value === 'true');
     case 'assigned_to': leadValue = lead.assignedTo; break;
@@ -439,8 +441,20 @@ function evaluateCondition(
     case '<':            return Number(leadValue) < Number(value);
     case '>=':           return Number(leadValue) >= Number(value);
     case '<=':           return Number(leadValue) <= Number(value);
-    case 'contains':     return String(leadValue).toLowerCase().includes(value.toLowerCase());
-    case 'not_contains': return !String(leadValue).toLowerCase().includes(value.toLowerCase());
+    case 'contains': {
+      const expectedValues = value.split(',').map(item => item.trim().toLowerCase()).filter(Boolean);
+      const normalizedLeadValue = String(leadValue).toLowerCase();
+      return expectedValues.length > 0
+        ? expectedValues.some(expected => normalizedLeadValue.includes(expected))
+        : normalizedLeadValue.includes(value.toLowerCase());
+    }
+    case 'not_contains': {
+      const expectedValues = value.split(',').map(item => item.trim().toLowerCase()).filter(Boolean);
+      const normalizedLeadValue = String(leadValue).toLowerCase();
+      return expectedValues.length > 0
+        ? expectedValues.every(expected => !normalizedLeadValue.includes(expected))
+        : !normalizedLeadValue.includes(value.toLowerCase());
+    }
     default:             return false;
   }
 }
