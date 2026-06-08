@@ -350,7 +350,7 @@ function SmartSelect({
             display: 'flex', flexDirection: 'column',
           }}
         >
-          {options.length > 5 && (
+          {(options.length > 5 || allowCreate) && (
             <div style={{ padding: '8px 8px 4px' }}>
               <input
                 autoFocus
