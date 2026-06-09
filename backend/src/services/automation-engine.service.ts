@@ -30,6 +30,8 @@ interface AutomationEdge {
   id: string;
   source: string;
   target: string;
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
 }
 
 interface LogEntry {
@@ -276,11 +278,14 @@ async function runExecution(
       if (outEdges.length === 0) break;
 
       if (typeof result === 'boolean') {
-        const nextEdge = result ? outEdges[0] : (outEdges[1] ?? null);
+        const desiredHandle = result ? 'true' : 'false';
+        const fallbackIndex = result ? 0 : 1;
+        const nextEdge = outEdges.find(edge => edge.sourceHandle === desiredHandle) ?? outEdges[fallbackIndex] ?? null;
         if (!nextEdge) break;
         currentNodeId = nextEdge.target;
       } else {
-        currentNodeId = outEdges[0].target;
+        const nextEdge = outEdges.find(edge => !edge.sourceHandle || edge.sourceHandle === 'default') ?? outEdges[0];
+        currentNodeId = nextEdge.target;
       }
     }
 

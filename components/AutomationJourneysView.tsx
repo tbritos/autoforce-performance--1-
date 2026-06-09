@@ -984,7 +984,7 @@ const AutomationJourneysView: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AutomationJourneyStatus>('all');
   const [sortOrder, setSortOrder] = useState<'recent' | 'name' | 'executions'>('recent');
-  const [connectFrom, setConnectFrom] = useState<string | null>(null);
+  const [connectFrom, setConnectFrom] = useState<{ nodeId: string; handle: 'default' | 'true' | 'false' } | null>(null);
   const [dragNodeId, setDragNodeId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const panRef = useRef<{ startX: number; startY: number; scrollLeft: number; scrollTop: number } | null>(null);
@@ -1209,22 +1209,37 @@ const AutomationJourneysView: React.FC = () => {
       edges: selected.edges.filter(edge => edge.source !== id && edge.target !== id),
     });
     if (selectedNodeId === id) setSelectedNodeId(null);
-    if (connectFrom === id) setConnectFrom(null);
+    if (connectFrom?.nodeId === id) setConnectFrom(null);
   };
 
-  const connectNode = (targetId: string) => {
+  const connectNode = (targetId: string, sourceHandle: 'default' | 'true' | 'false' = 'default') => {
     if (!connectFrom) {
-      setConnectFrom(targetId);
+      setConnectFrom({ nodeId: targetId, handle: sourceHandle });
       return;
     }
-    if (connectFrom === targetId) {
+    if (connectFrom.nodeId === targetId) {
       setConnectFrom(null);
       return;
     }
-    const exists = selected.edges.some(edge => edge.source === connectFrom && edge.target === targetId);
+    const exists = selected.edges.some(edge =>
+      edge.source === connectFrom.nodeId &&
+      edge.target === targetId &&
+      (edge.sourceHandle ?? 'default') === connectFrom.handle
+    );
     if (!exists) {
+      const withoutSameOutput = selected.edges.filter(edge =>
+        !(edge.source === connectFrom.nodeId && (edge.sourceHandle ?? 'default') === connectFrom.handle)
+      );
       updateSelected({
-        edges: [...selected.edges, { id: `edge-${Date.now()}`, source: connectFrom, target: targetId }],
+        edges: [
+          ...withoutSameOutput,
+          {
+            id: `edge-${Date.now()}`,
+            source: connectFrom.nodeId,
+            target: targetId,
+            sourceHandle: connectFrom.handle,
+          },
+        ],
       });
     }
     setConnectFrom(null);
@@ -1768,25 +1783,53 @@ const AutomationJourneysView: React.FC = () => {
               const target = selected.nodes.find(node => node.id === edge.target);
               if (!source || !target) return null;
               const x1 = source.x + NODE_W;
-              const y1 = source.y + NODE_H / 2;
+              const y1 = source.y + (
+                source.type === 'condition' && edge.sourceHandle === 'true' ? NODE_H - 30 :
+                source.type === 'condition' && edge.sourceHandle === 'false' ? NODE_H - 12 :
+                NODE_H / 2
+              );
               const x2 = target.x;
               const y2 = target.y + NODE_H / 2;
               const mid = Math.max(70, Math.abs(x2 - x1) / 2);
+              const edgeColor =
+                edge.sourceHandle === 'true' ? 'var(--green-500)' :
+                edge.sourceHandle === 'false' ? 'var(--red-500)' :
+                'var(--accent)';
+              const label =
+                edge.sourceHandle === 'true' ? 'Verdadeiro' :
+                edge.sourceHandle === 'false' ? 'Falso' :
+                '';
               return (
                 <g key={edge.id}>
                   <path
                     d={`M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`}
                     fill="none"
-                    stroke="var(--accent)"
+                    stroke={edgeColor}
                     strokeWidth="2"
-                    markerEnd="url(#arrow)"
+                    markerEnd={`url(#arrow-${edge.sourceHandle === 'true' ? 'true' : edge.sourceHandle === 'false' ? 'false' : 'default'})`}
                   />
+                  {label && (
+                    <text
+                      x={(x1 + x2) / 2}
+                      y={(y1 + y2) / 2 - 8}
+                      textAnchor="middle"
+                      style={{ fontSize: 10, fontWeight: 800, fill: edgeColor, paintOrder: 'stroke', stroke: 'var(--bg-app)', strokeWidth: 4 }}
+                    >
+                      {label}
+                    </text>
+                  )}
                 </g>
               );
             })}
             <defs>
-              <marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+              <marker id="arrow-default" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
                 <path d="M0,0 L0,6 L8,3 z" fill="var(--accent)" />
+              </marker>
+              <marker id="arrow-true" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L8,3 z" fill="var(--green-500)" />
+              </marker>
+              <marker id="arrow-false" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L8,3 z" fill="var(--red-500)" />
               </marker>
             </defs>
           </svg>
@@ -1795,6 +1838,11 @@ const AutomationJourneysView: React.FC = () => {
             const source = selected.nodes.find(node => node.id === edge.source);
             const target = selected.nodes.find(node => node.id === edge.target);
             if (!source || !target) return null;
+            const sourceY = source.y + (
+              source.type === 'condition' && edge.sourceHandle === 'true' ? NODE_H - 30 :
+              source.type === 'condition' && edge.sourceHandle === 'false' ? NODE_H - 12 :
+              NODE_H / 2
+            );
             return (
               <button
                 key={`btn-${edge.id}`}
@@ -1804,7 +1852,7 @@ const AutomationJourneysView: React.FC = () => {
                 style={{
                   position: 'absolute',
                   left: (source.x + target.x + NODE_W) / 2,
-                  top: (source.y + target.y + NODE_H) / 2 - 12,
+                  top: (sourceY + target.y + NODE_H / 2) / 2 - 12,
                   width: 22,
                   height: 22,
                   borderRadius: 999,
@@ -1826,7 +1874,8 @@ const AutomationJourneysView: React.FC = () => {
             const meta = blockMeta(node.type);
             const Icon = meta.icon;
             const active = selectedNodeId === node.id;
-            const connecting = connectFrom === node.id;
+            const connecting = connectFrom?.nodeId === node.id;
+            const conditionOutputs = node.type === 'condition';
             return (
               <div
                 key={node.id}
@@ -1869,25 +1918,57 @@ const AutomationJourneysView: React.FC = () => {
                     ); })()}
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 10 }}>
-                  <button
-                    type="button"
-                    onMouseDown={event => event.stopPropagation()}
-                    onClick={event => { event.stopPropagation(); connectNode(node.id); }}
-                    style={{
-                      border: '1px solid var(--border)',
-                      borderRadius: 'var(--r-sm)',
-                      padding: '5px 8px',
-                      background: connecting ? `${meta.color}22` : 'var(--bg-elevated)',
-                      color: connecting ? meta.color : 'var(--fg-muted)',
-                      fontSize: 11,
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {connectFrom && connectFrom !== node.id ? 'Ligar aqui' : 'Conectar'}
-                  </button>
-                  <MousePointer2 size={13} style={{ color: 'var(--fg-subtle)' }} />
+                <div style={{ display: 'flex', alignItems: conditionOutputs ? 'stretch' : 'center', justifyContent: 'space-between', gap: 8, marginTop: 10 }}>
+                  {conditionOutputs ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, width: '100%' }}>
+                      {([
+                        { handle: 'true' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Verdadeiro', color: 'var(--green-500)' },
+                        { handle: 'false' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Falso', color: 'var(--red-500)' },
+                      ]).map(output => {
+                        const activeHandle = connecting && connectFrom?.handle === output.handle;
+                        return (
+                          <button
+                            key={output.handle}
+                            type="button"
+                            onMouseDown={event => event.stopPropagation()}
+                            onClick={event => { event.stopPropagation(); connectNode(node.id, output.handle); }}
+                            style={{
+                              border: `1px solid ${activeHandle ? output.color : 'var(--border)'}`,
+                              borderRadius: 'var(--r-sm)',
+                              padding: '5px 7px',
+                              background: activeHandle ? `${output.color}22` : 'var(--bg-elevated)',
+                              color: activeHandle ? output.color : 'var(--fg-muted)',
+                              fontSize: 10,
+                              fontWeight: 800,
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {output.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onMouseDown={event => event.stopPropagation()}
+                      onClick={event => { event.stopPropagation(); connectNode(node.id); }}
+                      style={{
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--r-sm)',
+                        padding: '5px 8px',
+                        background: connecting ? `${meta.color}22` : 'var(--bg-elevated)',
+                        color: connecting ? meta.color : 'var(--fg-muted)',
+                        fontSize: 11,
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {connectFrom && !connecting ? 'Ligar aqui' : 'Conectar'}
+                    </button>
+                  )}
+                  {!conditionOutputs && <MousePointer2 size={13} style={{ color: 'var(--fg-subtle)' }} />}
                 </div>
               </div>
             );

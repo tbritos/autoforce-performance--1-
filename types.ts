@@ -317,6 +317,8 @@ export interface AutomationJourneyEdge {
   id: string;
   source: string;
   target: string;
+  sourceHandle?: 'true' | 'false' | 'default' | string | null;
+  targetHandle?: string | null;
 }
 
 export interface AutomationJourney {
