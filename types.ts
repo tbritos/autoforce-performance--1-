@@ -299,6 +299,7 @@ export type AutomationNodeType =
   | 'trigger'
   | 'condition'
   | 'wait'
+  | 'whatsapp_wait_reply'
   | 'internal_action'
   | 'rd_conversion'
   | 'whatsapp_message'
@@ -317,7 +318,7 @@ export interface AutomationJourneyEdge {
   id: string;
   source: string;
   target: string;
-  sourceHandle?: 'true' | 'false' | 'default' | string | null;
+  sourceHandle?: 'true' | 'false' | 'default' | 'replied' | 'no_reply' | 'failed' | string | null;
   targetHandle?: string | null;
 }
 

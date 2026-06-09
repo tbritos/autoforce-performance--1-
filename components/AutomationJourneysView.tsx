@@ -59,6 +59,7 @@ const BLOCKS: Array<{
   { type: 'trigger',          label: 'Entrada',      description: 'Lead entrou, tag aplicada ou webhook recebido',  color: '#456CEC', icon: Zap },
   { type: 'condition',        label: 'Condição',     description: 'Cargo, tag, score, dor, origem ou campo',        color: '#22C55E', icon: GitBranch },
   { type: 'wait',             label: 'Esperar',      description: 'Aguardar horas ou dias antes do próximo passo',  color: '#F59E0B', icon: Clock },
+  { type: 'whatsapp_wait_reply', label: 'Esperar resposta', description: 'Aguardar resposta do lead no WhatsApp',    color: '#10B981', icon: MessageCircle },
   { type: 'internal_action',  label: 'Ação interna', description: 'Adicionar tag, score, etapa ou campo',           color: '#14B8A6', icon: Tags },
   { type: 'rd_conversion',    label: 'RD Station',   description: 'Criar conversão para entrar em fluxo de e-mail', color: '#8B5CF6', icon: Mail },
   { type: 'whatsapp_message', label: 'WhatsApp',     description: 'Enviar template ou mensagem da cadência',        color: '#10B981', icon: MessageCircle },
@@ -106,6 +107,9 @@ function nodeSubtitle(node: AutomationJourneyNode): { text: string; warn: boolea
     case 'wait':
       if (c.amount && c.unit) return { text: `Aguardar ${c.amount} ${c.unit}`, warn: false };
       return { text: 'Definir tempo...', warn: false };
+    case 'whatsapp_wait_reply':
+      if (c.amount && c.unit) return { text: `Resposta por até ${c.amount} ${c.unit}`, warn: false };
+      return { text: 'Definir prazo de resposta...', warn: false };
     case 'condition':
       if (c.field && c.value) return { text: `${c.field} ${c.operator ?? ''} ${c.value}`.trim(), warn: false };
       return { text: 'Definir condição...', warn: false };
@@ -984,7 +988,8 @@ const AutomationJourneysView: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AutomationJourneyStatus>('all');
   const [sortOrder, setSortOrder] = useState<'recent' | 'name' | 'executions'>('recent');
-  const [connectFrom, setConnectFrom] = useState<{ nodeId: string; handle: 'default' | 'true' | 'false' } | null>(null);
+  type ConnectionHandle = 'default' | 'true' | 'false' | 'replied' | 'no_reply' | 'failed';
+  const [connectFrom, setConnectFrom] = useState<{ nodeId: string; handle: ConnectionHandle } | null>(null);
   const [dragNodeId, setDragNodeId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const panRef = useRef<{ startX: number; startY: number; scrollLeft: number; scrollTop: number } | null>(null);
@@ -1212,7 +1217,7 @@ const AutomationJourneysView: React.FC = () => {
     if (connectFrom?.nodeId === id) setConnectFrom(null);
   };
 
-  const connectNode = (targetId: string, sourceHandle: 'default' | 'true' | 'false' = 'default') => {
+  const connectNode = (targetId: string, sourceHandle: ConnectionHandle = 'default') => {
     if (!connectFrom) {
       setConnectFrom({ nodeId: targetId, handle: sourceHandle });
       return;
@@ -1786,6 +1791,9 @@ const AutomationJourneysView: React.FC = () => {
               const y1 = source.y + (
                 source.type === 'condition' && edge.sourceHandle === 'true' ? NODE_H - 30 :
                 source.type === 'condition' && edge.sourceHandle === 'false' ? NODE_H - 12 :
+                source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'replied' ? NODE_H - 42 :
+                source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'no_reply' ? NODE_H - 25 :
+                source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'failed' ? NODE_H - 8 :
                 NODE_H / 2
               );
               const x2 = target.x;
@@ -1794,10 +1802,16 @@ const AutomationJourneysView: React.FC = () => {
               const edgeColor =
                 edge.sourceHandle === 'true' ? 'var(--green-500)' :
                 edge.sourceHandle === 'false' ? 'var(--red-500)' :
+                edge.sourceHandle === 'replied' ? 'var(--green-500)' :
+                edge.sourceHandle === 'no_reply' ? '#F59E0B' :
+                edge.sourceHandle === 'failed' ? 'var(--red-500)' :
                 'var(--accent)';
               const label =
                 edge.sourceHandle === 'true' ? 'Verdadeiro' :
                 edge.sourceHandle === 'false' ? 'Falso' :
+                edge.sourceHandle === 'replied' ? 'Respondeu' :
+                edge.sourceHandle === 'no_reply' ? 'Não respondeu' :
+                edge.sourceHandle === 'failed' ? 'Falhou' :
                 '';
               return (
                 <g key={edge.id}>
@@ -1806,7 +1820,11 @@ const AutomationJourneysView: React.FC = () => {
                     fill="none"
                     stroke={edgeColor}
                     strokeWidth="2"
-                    markerEnd={`url(#arrow-${edge.sourceHandle === 'true' ? 'true' : edge.sourceHandle === 'false' ? 'false' : 'default'})`}
+                    markerEnd={`url(#arrow-${
+                      edge.sourceHandle === 'true' || edge.sourceHandle === 'replied' ? 'true' :
+                      edge.sourceHandle === 'false' || edge.sourceHandle === 'failed' ? 'false' :
+                      edge.sourceHandle === 'no_reply' ? 'warning' : 'default'
+                    })`}
                   />
                   {label && (
                     <text
@@ -1831,6 +1849,9 @@ const AutomationJourneysView: React.FC = () => {
               <marker id="arrow-false" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
                 <path d="M0,0 L0,6 L8,3 z" fill="var(--red-500)" />
               </marker>
+              <marker id="arrow-warning" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L8,3 z" fill="#F59E0B" />
+              </marker>
             </defs>
           </svg>
 
@@ -1841,6 +1862,9 @@ const AutomationJourneysView: React.FC = () => {
             const sourceY = source.y + (
               source.type === 'condition' && edge.sourceHandle === 'true' ? NODE_H - 30 :
               source.type === 'condition' && edge.sourceHandle === 'false' ? NODE_H - 12 :
+              source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'replied' ? NODE_H - 42 :
+              source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'no_reply' ? NODE_H - 25 :
+              source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'failed' ? NODE_H - 8 :
               NODE_H / 2
             );
             return (
@@ -1876,6 +1900,7 @@ const AutomationJourneysView: React.FC = () => {
             const active = selectedNodeId === node.id;
             const connecting = connectFrom?.nodeId === node.id;
             const conditionOutputs = node.type === 'condition';
+            const whatsAppReplyOutputs = node.type === 'whatsapp_wait_reply';
             return (
               <div
                 key={node.id}
@@ -1918,12 +1943,16 @@ const AutomationJourneysView: React.FC = () => {
                     ); })()}
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: conditionOutputs ? 'stretch' : 'center', justifyContent: 'space-between', gap: 8, marginTop: 10 }}>
-                  {conditionOutputs ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, width: '100%' }}>
-                      {([
+                <div style={{ display: 'flex', alignItems: (conditionOutputs || whatsAppReplyOutputs) ? 'stretch' : 'center', justifyContent: 'space-between', gap: 8, marginTop: 10 }}>
+                  {conditionOutputs || whatsAppReplyOutputs ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: conditionOutputs ? '1fr 1fr' : '1fr', gap: 6, width: '100%' }}>
+                      {(conditionOutputs ? [
                         { handle: 'true' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Verdadeiro', color: 'var(--green-500)' },
                         { handle: 'false' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Falso', color: 'var(--red-500)' },
+                      ] : [
+                        { handle: 'replied' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Respondeu', color: 'var(--green-500)' },
+                        { handle: 'no_reply' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Não respondeu', color: '#F59E0B' },
+                        { handle: 'failed' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Falhou', color: 'var(--red-500)' },
                       ]).map(output => {
                         const activeHandle = connecting && connectFrom?.handle === output.handle;
                         return (
@@ -1968,7 +1997,7 @@ const AutomationJourneysView: React.FC = () => {
                       {connectFrom && !connecting ? 'Ligar aqui' : 'Conectar'}
                     </button>
                   )}
-                  {!conditionOutputs && <MousePointer2 size={13} style={{ color: 'var(--fg-subtle)' }} />}
+                  {!conditionOutputs && !whatsAppReplyOutputs && <MousePointer2 size={13} style={{ color: 'var(--fg-subtle)' }} />}
                 </div>
               </div>
             );
@@ -2238,6 +2267,64 @@ const AutomationJourneysView: React.FC = () => {
                             Aguarda <strong style={{ color: 'var(--fg-primary)' }}>{amount} {unitLabel}</strong> antes de continuar.
                           </div>
                         )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── WHATSAPP WAIT REPLY ── */}
+                  {panelNode.type === 'whatsapp_wait_reply' && (() => {
+                    const unitOptions: SmartSelectOption[] = [
+                      { value: 'minutes', label: 'Minutos' },
+                      { value: 'hours',   label: 'Horas' },
+                      { value: 'days',    label: 'Dias' },
+                    ];
+                    const amount = panelValues.config.amount ?? '';
+                    const unit = panelValues.config.unit ?? '';
+                    const keywords = panelValues.config.keywords ?? '';
+                    const unitLabel = unitOptions.find(u => u.value === unit)?.label?.toLowerCase() ?? unit;
+
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          <label style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>Tempo máximo</span>
+                            <input
+                              type="number" min={1}
+                              value={amount}
+                              onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, amount: e.target.value } } : prev)}
+                              placeholder="ex: 2"
+                              style={fieldInputStyle}
+                              onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
+                              onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
+                            />
+                          </label>
+                          <div style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>Unidade</span>
+                            <SmartSelect
+                              value={unit}
+                              options={unitOptions}
+                              onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, unit: v } } : prev)}
+                              placeholder="Selecionar..."
+                            />
+                          </div>
+                        </div>
+                        <label style={{ display: 'grid', gap: 7 }}>
+                          <span style={fieldLabelStyle}>Palavras esperadas (opcional)</span>
+                          <input
+                            type="text"
+                            value={keywords}
+                            onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, keywords: e.target.value } } : prev)}
+                            placeholder="ex: sim, quero, agendar"
+                            style={fieldInputStyle}
+                            onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
+                            onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
+                          />
+                        </label>
+                        <div style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--bg-subtle)', fontSize: 13, color: 'var(--fg-muted)', lineHeight: 1.45 }}>
+                          {amount && unit
+                            ? <>A execução aguarda resposta por até <strong style={{ color: 'var(--fg-primary)' }}>{amount} {unitLabel}</strong>. Se chegar resposta, segue por <strong style={{ color: 'var(--green-500)' }}>Respondeu</strong>; se expirar, segue por <strong style={{ color: '#F59E0B' }}>Não respondeu</strong>.</>
+                            : <>Defina por quanto tempo o fluxo deve aguardar uma resposta do lead no WhatsApp.</>}
+                        </div>
                       </div>
                     );
                   })()}

@@ -43,6 +43,14 @@ interface LogEntry {
 }
 
 type NodeResult = 'ok' | 'wait' | 'stop' | boolean;
+type ResumeHandle = 'default' | 'true' | 'false' | 'replied' | 'no_reply' | 'failed';
+
+function pickNextEdge(outEdges: AutomationEdge[], handle: ResumeHandle, fallbackIndex = 0): AutomationEdge | null {
+  return outEdges.find(edge => edge.sourceHandle === handle)
+    ?? outEdges.find(edge => !edge.sourceHandle || edge.sourceHandle === 'default')
+    ?? outEdges[fallbackIndex]
+    ?? null;
+}
 
 // Re-entrancy guard — process-local; keeps two concurrent events from double-executing
 // the same journey for the same lead within a single process lifetime.
@@ -194,7 +202,11 @@ export async function resumeWaitingExecutions(): Promise<void> {
 
     // Resume from the node AFTER the wait node
     const outEdges = edges.filter(e => e.source === execution.currentNodeId);
-    if (outEdges.length === 0) {
+    const currentNode = nodes.find(n => n.id === execution.currentNodeId);
+    const resumeHandle: ResumeHandle = currentNode?.type === 'whatsapp_wait_reply' ? 'no_reply' : 'default';
+    const nextEdge = pickNextEdge(outEdges, resumeHandle);
+
+    if (!nextEdge) {
       await prisma.automationExecution.update({
         where: { id: execution.id },
         data: { status: 'completed', completedAt: now },
@@ -205,7 +217,11 @@ export async function resumeWaitingExecutions(): Promise<void> {
     // FIX: set guard before calling runExecution
     executingLeads.add(guardKey);
 
-    runExecution(execution.id, execution.journeyId, nodes, edges, execution.leadEmail, {}, outEdges[0].target, guardKey).catch(err => {
+    if (currentNode?.type === 'whatsapp_wait_reply') {
+      await appendLog(execution.id, currentNode.id, 'whatsapp_wait_reply', 'ok', 'Tempo esgotado sem resposta');
+    }
+
+    runExecution(execution.id, execution.journeyId, nodes, edges, execution.leadEmail, {}, nextEdge.target, guardKey).catch(err => {
       console.error(`[automation] resume ${execution.id} crashed:`, err);
       executingLeads.delete(guardKey);
     });
@@ -213,6 +229,66 @@ export async function resumeWaitingExecutions(): Promise<void> {
 }
 
 // ─── Execution loop ───────────────────────────────────────────────────────────
+
+export async function resumeWaitingWhatsAppReply(
+  leadEmail: string,
+  replyText = '',
+  handle: Extract<ResumeHandle, 'replied' | 'failed'> = 'replied'
+): Promise<number> {
+  const waiting = await prisma.automationExecution.findMany({
+    where: { status: 'waiting', leadEmail },
+    include: { journey: true },
+  });
+
+  let resumed = 0;
+
+  for (const execution of waiting) {
+    const guardKey = `${execution.journeyId}:${execution.leadEmail}`;
+    if (executingLeads.has(guardKey)) continue;
+
+    const nodes = (execution.journey.nodes as unknown as AutomationNode[]) ?? [];
+    const edges = (execution.journey.edges as unknown as AutomationEdge[]) ?? [];
+    const currentNode = nodes.find(n => n.id === execution.currentNodeId);
+    if (currentNode?.type !== 'whatsapp_wait_reply') continue;
+
+    if (handle === 'replied') {
+      const keywords = String(currentNode.config?.keywords ?? '').split(',').map(item => item.trim().toLowerCase()).filter(Boolean);
+      const normalizedReply = replyText.toLowerCase();
+      if (keywords.length > 0 && !keywords.some(keyword => normalizedReply.includes(keyword))) {
+        await appendLog(execution.id, currentNode.id, 'whatsapp_wait_reply', 'skipped', `Resposta fora das palavras esperadas: ${replyText.slice(0, 120)}`);
+        continue;
+      }
+    }
+
+    const outEdges = edges.filter(edge => edge.source === currentNode.id);
+    const nextEdge = pickNextEdge(outEdges, handle);
+    if (!nextEdge) continue;
+
+    const claimed = await prisma.automationExecution.updateMany({
+      where: { id: execution.id, status: 'waiting' },
+      data: { status: 'running', resumeAt: null },
+    });
+    if (claimed.count === 0) continue;
+
+    executingLeads.add(guardKey);
+    await appendLog(
+      execution.id,
+      currentNode.id,
+      'whatsapp_wait_reply',
+      'ok',
+      handle === 'failed' ? 'Envio WhatsApp falhou' : `Resposta recebida: ${replyText.slice(0, 160)}`
+    );
+
+    runExecution(execution.id, execution.journeyId, nodes, edges, execution.leadEmail, {}, nextEdge.target, guardKey).catch(err => {
+      console.error(`[automation] whatsapp resume ${execution.id} crashed:`, err);
+      executingLeads.delete(guardKey);
+    });
+
+    resumed += 1;
+  }
+
+  return resumed;
+}
 
 async function runExecution(
   executionId: string,
@@ -280,11 +356,12 @@ async function runExecution(
       if (typeof result === 'boolean') {
         const desiredHandle = result ? 'true' : 'false';
         const fallbackIndex = result ? 0 : 1;
-        const nextEdge = outEdges.find(edge => edge.sourceHandle === desiredHandle) ?? outEdges[fallbackIndex] ?? null;
+        const nextEdge = pickNextEdge(outEdges, desiredHandle, fallbackIndex);
         if (!nextEdge) break;
         currentNodeId = nextEdge.target;
       } else {
-        const nextEdge = outEdges.find(edge => !edge.sourceHandle || edge.sourceHandle === 'default') ?? outEdges[0];
+        const nextEdge = pickNextEdge(outEdges, 'default');
+        if (!nextEdge) break;
         currentNodeId = nextEdge.target;
       }
     }
@@ -331,6 +408,32 @@ async function executeNode(
         data: { status: 'waiting', resumeAt: new Date(Date.now() + ms) },
       });
       await appendLog(executionId, node.id, 'wait', 'ok', `Aguardando ${amount} ${unit}(s)`);
+      return 'wait';
+    }
+
+    case 'whatsapp_wait_reply': {
+      const amount = Number(c.amount) || 1;
+      const unit = String(c.unit || 'days');
+      const ms =
+        unit === 'minute'  || unit === 'minutes' ? amount * 60_000 :
+        unit === 'hour'    || unit === 'hours'   ? amount * 3_600_000 :
+        /* day / days */                           amount * 86_400_000;
+
+      await prisma.automationExecution.update({
+        where: { id: executionId },
+        data: { status: 'waiting', resumeAt: new Date(Date.now() + ms) },
+      });
+
+      const keywords = String(c.keywords ?? '').trim();
+      await appendLog(
+        executionId,
+        node.id,
+        'whatsapp_wait_reply',
+        'ok',
+        keywords
+          ? `Aguardando resposta WhatsApp por ${amount} ${unit}(s). Palavras: ${keywords}`
+          : `Aguardando qualquer resposta WhatsApp por ${amount} ${unit}(s)`
+      );
       return 'wait';
     }
 

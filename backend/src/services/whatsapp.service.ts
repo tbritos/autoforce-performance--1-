@@ -263,6 +263,11 @@ async function recordInboundMessage(message: any): Promise<void> {
       receivedAt,
     },
   });
+
+  if (lead?.email) {
+    const { resumeWaitingWhatsAppReply } = await import('./automation-engine.service');
+    await resumeWaitingWhatsAppReply(lead.email, text ?? '', 'replied');
+  }
 }
 
 async function recordStatus(status: any): Promise<void> {
@@ -297,6 +302,14 @@ async function recordStatus(status: any): Promise<void> {
         ...data,
       },
     });
+  }
+
+  if (state === 'failed') {
+    const lead = await findLeadByPhone(String(status.recipient_id ?? ''));
+    if (lead?.email) {
+      const { resumeWaitingWhatsAppReply } = await import('./automation-engine.service');
+      await resumeWaitingWhatsAppReply(lead.email, 'failed', 'failed');
+    }
   }
 }
 
