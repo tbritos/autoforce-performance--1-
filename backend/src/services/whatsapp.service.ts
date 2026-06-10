@@ -104,20 +104,15 @@ function metaTimestamp(seconds: string | number | undefined): Date {
 
 async function findLeadByPhone(phone: string) {
   const candidates = phoneSearchVariants(phone);
-  console.log(`[WPP] findLeadByPhone(${phone}) variants: ${candidates.join(', ')}`);
 
   for (const value of candidates) {
     const lead = await prisma.lead.findFirst({
       where: { phone: { contains: value } },
       select: { id: true, email: true, phone: true },
     });
-    if (lead) {
-      console.log(`[WPP] lead encontrado via "${value}": ${lead.email} (phone=${lead.phone})`);
-      return lead;
-    }
+    if (lead) return lead;
   }
 
-  console.log(`[WPP] nenhum lead encontrado para ${phone}`);
   return null;
 }
 
@@ -241,15 +236,12 @@ async function recordInboundMessage(message: any): Promise<void> {
   if (!lead) {
     const toE164 = from.startsWith('55') ? from : `55${from}`;
     const generatedEmail = `wpp_${toE164}@autoforce.internal`;
-    console.log(`[WPP] criando lead placeholder: ${generatedEmail}`);
     lead = await prisma.lead.upsert({
       where: { email: generatedEmail },
       create: { email: generatedEmail, phone: toE164, tags: ['whatsapp_inbound'] },
       update: {},
       select: { id: true, email: true, phone: true },
     });
-  } else {
-    console.log(`[WPP] mensagem linkada ao lead existente: ${lead.email}`);
   }
 
   const { type, text } = extractInboundText(message);
