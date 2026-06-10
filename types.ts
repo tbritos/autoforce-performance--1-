@@ -125,6 +125,7 @@ export interface LeadProfile {
   statusHistory: LeadStatusHistoryEntry[];
   statusHistoryTotal: number;
   revenueEntries: LeadRevenueEntry[];
+  aiHandoff: boolean;
 }
 
 export interface LeadCustomFieldDef {
@@ -457,6 +458,13 @@ export interface AIConversationMemory {
 
 // ─── Funnels ──────────────────────────────────────────────────────────────────
 
+export interface FunnelStage {
+  id:     string;
+  name:   string;
+  source: string;  // 'ga4_users' | 'crm_lead' | 'crm_mql' | 'crm_sql' | 'crm_scheduled' | 'crm_demo' | 'crm_proposal' | 'crm_client' | 'crm_lost'
+  color?: string;
+}
+
 export interface FunnelDef {
   id:               string;
   name:             string;
@@ -469,6 +477,7 @@ export interface FunnelDef {
   leadTags:         string[];
   impressionPages:  string[];
   campaignIds:      string[];
+  stagesConfig:     FunnelStage[] | null;
   sortOrder:        number;
   isActive:         boolean;
   createdAt:        string;

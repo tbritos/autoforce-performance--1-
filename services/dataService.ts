@@ -894,6 +894,14 @@ export const DataService = {
     return apiClient.get(`/whatsapp/leads/${encodeURIComponent(leadId)}/conversation`);
   },
 
+  sendWhatsAppMessage: async (leadId: string, text: string): Promise<void> => {
+    return apiClient.post(`/whatsapp/leads/${encodeURIComponent(leadId)}/send`, { text });
+  },
+
+  setLeadAiHandoff: async (leadId: string, handoff: boolean): Promise<void> => {
+    return apiClient.patch(`/whatsapp/leads/${encodeURIComponent(leadId)}/handoff`, { handoff });
+  },
+
   getPipedriveStages: async (): Promise<PipedriveStage[]> => {
     return apiClient.get('/pipedrive/stages');
   },

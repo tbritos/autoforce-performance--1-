@@ -6,7 +6,7 @@ import {
   RefreshCw, ChevronDown, Plus, Check, PenLine,
   Trash2, FileText, Download, Wrench, Activity,
   ExternalLink, GitBranch, Flame, LayoutList,
-  CheckCircle, XCircle, MessageCircle,
+  CheckCircle, XCircle, MessageCircle, Send, Bot, UserCheck,
 } from 'lucide-react';
 import { LeadProfile, LeadStatus, LeadCustomFieldDef, PipedriveDealEvent, LeadConversion, WhatsAppConversationMessage } from '../types';
 import { DataService } from '../services/dataService';
@@ -292,6 +292,11 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   const [pipedriveUrl, setPipedriveUrl] = useState<string | null>(null);
   const [selectedConversion, setSelectedConversion] = useState<LeadConversion | null>(null);
   const [whatsAppMessages, setWhatsAppMessages] = useState<WhatsAppConversationMessage[] | null>(null);
+  const [aiHandoff, setAiHandoff]               = useState<boolean>(false);
+  const [handoffSaving, setHandoffSaving]       = useState(false);
+  const [wppText, setWppText]                   = useState('');
+  const [wppSending, setWppSending]             = useState(false);
+  const wppBottomRef = useRef<HTMLDivElement>(null);
 
   // Edit form state
   const [form, setForm] = useState({
@@ -313,6 +318,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
       setWhatsAppMessages(null);
       setPipedriveEvents(null);
       setPipedriveUrl(null);
+      setAiHandoff(p.aiHandoff ?? false);
       setNotes(p.notes ?? '');
       setFieldDefs(defs.filter(d => d.visible));
       setForm({
@@ -340,6 +346,40 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
       .then(setWhatsAppMessages)
       .catch(() => setWhatsAppMessages([]));
   }, [profile?.id, whatsAppMessages]);
+
+  useEffect(() => {
+    if (whatsAppMessages && whatsAppMessages.length > 0) {
+      wppBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [whatsAppMessages]);
+
+  const handleHandoffToggle = async () => {
+    if (!profile || handoffSaving) return;
+    const next = !aiHandoff;
+    setHandoffSaving(true);
+    try {
+      await DataService.setLeadAiHandoff(profile.id, next);
+      setAiHandoff(next);
+    } catch { /* silencioso */ } finally {
+      setHandoffSaving(false);
+    }
+  };
+
+  const handleWppSend = async () => {
+    if (!profile || !wppText.trim() || wppSending) return;
+    const text = wppText.trim();
+    setWppSending(true);
+    try {
+      await DataService.sendWhatsAppMessage(profile.id, text);
+      setWppText('');
+      const msgs = await DataService.getWhatsAppConversation(profile.id);
+      setWhatsAppMessages(msgs);
+    } catch (err: any) {
+      alert(err?.message ?? 'Erro ao enviar mensagem');
+    } finally {
+      setWppSending(false);
+    }
+  };
 
   const handleStatusChanged = (next: LeadStatus) => {
     if (profile) setProfile({ ...profile, status: next });
@@ -876,6 +916,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                   {/* ── WHATSAPP TAB ── */}
                   {activeTab === 'whatsapp' && (
                     <div style={cardStyle}>
+                      {/* Header */}
                       <div style={cardHead}>
                         <span style={cardHeadTitle}><MessageCircle size={13} /> Conversa WhatsApp</span>
                         <button
@@ -889,7 +930,44 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                           <RefreshCw size={11} /> Atualizar
                         </button>
                       </div>
-                      <div style={{ padding: 18, background: 'var(--bg-app)', minHeight: 420 }}>
+
+                      {/* Handoff banner */}
+                      <div style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '10px 16px',
+                        background: aiHandoff ? '#fff7ed' : '#f0fdf4',
+                        borderBottom: `1px solid ${aiHandoff ? '#fed7aa' : '#bbf7d0'}`,
+                        gap: 12,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: aiHandoff ? '#c2410c' : '#15803d', fontWeight: 500 }}>
+                          {aiHandoff
+                            ? <><UserCheck size={14} /> Você está no controle — IA pausada</>
+                            : <><Bot size={14} /> IA respondendo automaticamente</>
+                          }
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleHandoffToggle}
+                          disabled={handoffSaving}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            padding: '5px 12px', borderRadius: 6, border: 'none', cursor: handoffSaving ? 'wait' : 'pointer',
+                            fontSize: 12, fontWeight: 600,
+                            background: aiHandoff ? '#15803d' : '#c2410c',
+                            color: 'white', opacity: handoffSaving ? 0.6 : 1,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {handoffSaving
+                            ? <RefreshCw size={11} style={{ animation: 'spin 1s linear infinite' }} />
+                            : aiHandoff ? <Bot size={11} /> : <UserCheck size={11} />
+                          }
+                          {aiHandoff ? 'Devolver para IA' : 'Assumir conversa'}
+                        </button>
+                      </div>
+
+                      {/* Messages */}
+                      <div style={{ padding: 18, background: 'var(--bg-app)', minHeight: 340, maxHeight: 480, overflowY: 'auto' }}>
                         {whatsAppMessages === null ? (
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 260, color: 'var(--fg-muted)', fontSize: 13 }}>
                             <RefreshCw size={14} className="animate-spin" /> Carregando conversa...
@@ -913,17 +991,13 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
 
                               return (
                                 <div key={message.id} style={{ display: 'flex', justifyContent: outbound ? 'flex-end' : 'flex-start' }}>
-                                  <div
-                                    style={{
-                                      maxWidth: '72%',
-                                      padding: '10px 12px',
-                                      borderRadius: outbound ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                                      background: outbound ? 'rgba(69,108,236,0.14)' : 'var(--bg-surface)',
-                                      border: `1px solid ${outbound ? 'rgba(69,108,236,0.24)' : 'var(--border)'}`,
-                                      color: 'var(--fg-primary)',
-                                      boxShadow: 'var(--shadow-sm)',
-                                    }}
-                                  >
+                                  <div style={{
+                                    maxWidth: '72%', padding: '10px 12px',
+                                    borderRadius: outbound ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
+                                    background: outbound ? 'rgba(69,108,236,0.14)' : 'var(--bg-surface)',
+                                    border: `1px solid ${outbound ? 'rgba(69,108,236,0.24)' : 'var(--border)'}`,
+                                    color: 'var(--fg-primary)', boxShadow: 'var(--shadow-sm)',
+                                  }}>
                                     <p style={{ margin: 0, fontSize: 13, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{content}</p>
                                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6, fontSize: 10, color: message.status === 'failed' ? 'var(--red-500)' : 'var(--fg-subtle)' }}>
                                       <span>{fmtTime(date)}</span>
@@ -933,8 +1007,46 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                 </div>
                               );
                             })}
+                            <div ref={wppBottomRef} />
                           </div>
                         )}
+                      </div>
+
+                      {/* Compose */}
+                      <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+                        <textarea
+                          value={wppText}
+                          onChange={e => setWppText(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleWppSend(); }
+                          }}
+                          placeholder="Digite uma mensagem... (Enter para enviar, Shift+Enter para nova linha)"
+                          rows={2}
+                          style={{
+                            flex: 1, resize: 'none', border: '1px solid var(--border)', borderRadius: 8,
+                            padding: '8px 12px', fontSize: 13, fontFamily: 'inherit',
+                            background: 'var(--bg-surface)', color: 'var(--fg-primary)',
+                            outline: 'none', lineHeight: 1.5,
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleWppSend}
+                          disabled={!wppText.trim() || wppSending || !profile.phone}
+                          title={!profile.phone ? 'Lead sem telefone cadastrado' : ''}
+                          style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            width: 40, height: 40, borderRadius: 8, border: 'none',
+                            background: 'var(--accent)', color: 'white', cursor: 'pointer',
+                            opacity: (!wppText.trim() || wppSending || !profile.phone) ? 0.45 : 1,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {wppSending
+                            ? <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                            : <Send size={16} />
+                          }
+                        </button>
                       </div>
                     </div>
                   )}

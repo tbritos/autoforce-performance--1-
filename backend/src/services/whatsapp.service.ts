@@ -348,4 +348,55 @@ export async function handleWhatsAppWebhook(payload: any): Promise<{ messages: n
   return { messages, statuses };
 }
 
+export async function sendWhatsAppTextFromUI(leadId: string, text: string): Promise<void> {
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { id: true, email: true, phone: true },
+  });
+  if (!lead) throw new Error('Lead não encontrado');
+  if (!lead.phone) throw new Error('Lead sem telefone cadastrado');
+
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
+  if (!phoneNumberId) throw new Error('WHATSAPP_PHONE_NUMBER_ID não configurado');
+
+  const { accessToken } = await getWhatsAppCredentials();
+  const phone = normalizePhone(lead.phone);
+
+  const body = {
+    messaging_product: 'whatsapp',
+    to: phone,
+    type: 'text',
+    text: { body: text.trim().slice(0, 4096) },
+  };
+
+  const res = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json() as { messages?: Array<{ id?: string }>; error?: { message: string } };
+  if (!res.ok || data.error) {
+    throw new Error(data.error?.message ?? `WhatsApp API error ${res.status}`);
+  }
+
+  const isGenerated = lead.email.startsWith('wpp_') && lead.email.endsWith('@autoforce.internal');
+  await recordOutgoingWhatsAppMessage({
+    leadEmail: isGenerated ? null : lead.email,
+    phone,
+    messageId: data.messages?.[0]?.id ?? null,
+    text,
+    payload: body,
+  });
+}
+
+export async function setLeadAiHandoff(leadId: string, handoff: boolean): Promise<void> {
+  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true } });
+  if (!lead) throw new Error('Lead não encontrado');
+  await prisma.lead.update({ where: { id: leadId }, data: { aiHandoff: handoff } });
+}
+
 export { getWhatsAppCredentials };

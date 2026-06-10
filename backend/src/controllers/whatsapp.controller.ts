@@ -4,6 +4,8 @@ import {
   fetchWhatsAppPhoneNumbers,
   handleWhatsAppWebhook,
   listWhatsAppConversationByLead,
+  sendWhatsAppTextFromUI,
+  setLeadAiHandoff,
 } from '../services/whatsapp.service';
 
 export class WhatsAppController {
@@ -27,6 +29,34 @@ export class WhatsAppController {
   static async getConversation(req: Request, res: Response, next: NextFunction) {
     try {
       res.json(await listWhatsAppConversationByLead(req.params.leadId));
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async sendMessage(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { text } = req.body as { text?: string };
+      if (!text?.trim()) {
+        res.status(400).json({ error: 'Mensagem não pode ser vazia' });
+        return;
+      }
+      await sendWhatsAppTextFromUI(req.params.leadId, text.trim());
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async updateHandoff(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { handoff } = req.body as { handoff?: boolean };
+      if (typeof handoff !== 'boolean') {
+        res.status(400).json({ error: 'Campo handoff (boolean) obrigatório' });
+        return;
+      }
+      await setLeadAiHandoff(req.params.leadId, handoff);
+      res.json({ ok: true, aiHandoff: handoff });
     } catch (err) {
       next(err);
     }
