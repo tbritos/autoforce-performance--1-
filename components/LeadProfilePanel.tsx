@@ -11,6 +11,9 @@ import {
 import { LeadProfile, LeadStatus, LeadCustomFieldDef, PipedriveDealEvent, LeadConversion, WhatsAppConversationMessage } from '../types';
 import { DataService } from '../services/dataService';
 
+const isWppEmail = (email: string) => email.startsWith('wpp_') && email.endsWith('@autoforce.internal');
+const displayEmail = (email: string) => isWppEmail(email) ? null : email;
+
 // ─── Status config ─────────────────────────────────────────────────────────────
 
 const STATUSES: { value: LeadStatus; label: string; color: string }[] = [
@@ -521,7 +524,10 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                       <StatusChanger current={profile.status} email={profile.email} leadId={profile.id} onChanged={handleStatusChanged} />
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, fontSize: 13, color: 'var(--fg-muted)' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Mail size={13} /> {profile.email}</span>
+                      {displayEmail(profile.email)
+                        ? <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Mail size={13} /> {profile.email}</span>
+                        : <span style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--fg-subtle)', fontStyle: 'italic' }}><Mail size={13} /> Sem email cadastrado</span>
+                      }
                       {profile.phone && <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}><Phone size={13} /> {profile.phone}</span>}
                       {(profile.company || profile.jobTitle) && (
                         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -628,7 +634,9 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                           {/* Email (always read-only) */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, padding: '8px 12px', background: 'var(--bg-subtle)', borderRadius: 8, border: '1px solid var(--border)' }}>
                             <Mail size={13} style={{ color: 'var(--fg-subtle)' }} />
-                            <span style={{ fontSize: 13, color: 'var(--fg-secondary)' }}>{profile.email}</span>
+                            <span style={{ fontSize: 13, color: 'var(--fg-secondary)' }}>
+                              {displayEmail(profile.email) ?? <em style={{ color: 'var(--fg-subtle)' }}>Sem email cadastrado</em>}
+                            </span>
                           </div>
 
                           {editMode ? (

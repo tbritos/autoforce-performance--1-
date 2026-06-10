@@ -236,15 +236,28 @@ async function recordInboundMessage(message: any): Promise<void> {
   const from = normalizePhone(message.from);
   if (!from) return;
 
-  const lead = await findLeadByPhone(from);
+  let lead = await findLeadByPhone(from);
+
+  // Auto-create a placeholder lead for unknown numbers
+  if (!lead) {
+    const toE164 = from.startsWith('55') ? from : `55${from}`;
+    const generatedEmail = `wpp_${toE164}@autoforce.internal`;
+    lead = await prisma.lead.upsert({
+      where: { email: generatedEmail },
+      create: { email: generatedEmail, phone: toE164, tags: ['whatsapp_inbound'] },
+      update: {},
+      select: { id: true, email: true, phone: true },
+    });
+  }
+
   const { type, text } = extractInboundText(message);
   const receivedAt = metaTimestamp(message.timestamp);
 
   await (prisma as any).whatsAppMessage.upsert({
     where: { messageId: String(message.id) },
     create: {
-      leadId: lead?.id ?? null,
-      leadEmail: lead?.email ?? null,
+      leadId: lead.id,
+      leadEmail: lead.email,
       phone: from,
       direction: 'inbound',
       type,
@@ -257,8 +270,8 @@ async function recordInboundMessage(message: any): Promise<void> {
       createdAt: receivedAt,
     },
     update: {
-      leadId: lead?.id ?? null,
-      leadEmail: lead?.email ?? null,
+      leadId: lead.id,
+      leadEmail: lead.email,
       phone: from,
       direction: 'inbound',
       type,
@@ -270,17 +283,8 @@ async function recordInboundMessage(message: any): Promise<void> {
     },
   });
 
-  if (lead) {
-    // Link any previously unlinked messages from this phone to the lead
-    const phoneSuffix = from.slice(-9);
-    await (prisma as any).whatsAppMessage.updateMany({
-      where: { phone: { endsWith: phoneSuffix }, leadId: null },
-      data: { leadId: lead.id, leadEmail: lead.email },
-    });
-
-    const { resumeWaitingWhatsAppReply } = await import('./automation-engine.service');
-    await resumeWaitingWhatsAppReply(lead.email, text ?? '', 'replied');
-  }
+  const { resumeWaitingWhatsAppReply } = await import('./automation-engine.service');
+  await resumeWaitingWhatsAppReply(lead.email, text ?? '', 'replied');
 
   const { scheduleAIReply } = await import('./ai-whatsapp-reply.service');
   scheduleAIReply(from);
