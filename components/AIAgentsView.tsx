@@ -1,9 +1,16 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Bot, BrainCircuit, Check, Database, FileText, Plus, RefreshCw, Save, Search, Trash2 } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Bot, BrainCircuit, Check, ChevronDown, ChevronRight,
+  Database, FileText, HelpCircle, Plus, RefreshCw, RotateCcw,
+  Search, Send, Shield, Trash2, User,
+} from 'lucide-react';
 import { DataService } from '../services/dataService';
 import { AIAgent, AIInteractionLog, AIKnowledgeItem } from '../types';
 
-type Tab = 'agents' | 'knowledge' | 'logs';
+type Tab        = 'agents' | 'knowledge' | 'logs';
+type SectionKey = 'identity' | 'model' | 'behavior' | 'context' | 'discovery';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const emptyAgent: Partial<AIAgent> = {
   name: '',
@@ -27,69 +34,133 @@ const emptyKnowledge: Partial<AIKnowledgeItem> = {
   agentId: null,
 };
 
-const geminiModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
-const openAIModels = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'];
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+const OPENAI_MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'];
 
-const asLines = (value: unknown): string => Array.isArray(value) ? value.join('\n') : '';
-const fromLines = (value: string): string[] => value.split('\n').map(item => item.trim()).filter(Boolean);
-const asTags = (value: unknown): string => Array.isArray(value) ? value.join(', ') : '';
-const fromTags = (value: string): string[] => value.split(',').map(item => item.trim()).filter(Boolean);
+// ─── Accordion section metadata ───────────────────────────────────────────────
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+interface SectionMeta { title: string; subtitle: string; iconBg: string; icon: React.ElementType }
+
+const SECTION_META: Record<SectionKey, SectionMeta> = {
+  identity:  { title: 'Identidade',             subtitle: 'Nome, descrição e objetivo do agente',          iconBg: '#f97316', icon: User },
+  model:     { title: 'Modelo de IA',            subtitle: 'Provider e versão do modelo',                  iconBg: '#8b5cf6', icon: BrainCircuit },
+  behavior:  { title: 'Comportamento',           subtitle: 'Tom de voz e regras de segurança',             iconBg: '#10b981', icon: Shield },
+  context:   { title: 'Contexto & conhecimento', subtitle: 'O que o agente sabe sobre a empresa e vendas', iconBg: '#f59e0b', icon: Database },
+  discovery: { title: 'Perguntas de descoberta', subtitle: 'Perguntas que o agente faz para qualificar',   iconBg: '#eab308', icon: HelpCircle },
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const asLines  = (v: unknown): string => Array.isArray(v) ? v.join('\n') : '';
+const fromLines = (v: string): string[] => v.split('\n').map(s => s.trim()).filter(Boolean);
+const asTags   = (v: unknown): string => Array.isArray(v) ? v.join(', ') : '';
+const fromTags = (v: string): string[] => v.split(',').map(s => s.trim()).filter(Boolean);
+const nowTime  = () => new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface ChatMsg { role: 'assistant' | 'user'; text: string; time: string }
+
+// ─── Shared input style ───────────────────────────────────────────────────────
+
+const iStyle: React.CSSProperties = {
+  width: '100%', padding: '8px 12px', fontSize: 13, boxSizing: 'border-box',
+  background: 'var(--bg-subtle)', border: '1px solid var(--border)',
+  borderRadius: 8, color: 'var(--fg-primary)', outline: 'none', fontFamily: 'inherit',
+};
+
+// ─── Field wrapper ────────────────────────────────────────────────────────────
+
+function Field({ label, note, children }: { label: string; note?: string; children: React.ReactNode }) {
   return (
-    <label className="block">
-      <span className="block text-xs font-black uppercase tracking-wider mb-2" style={{ color: 'var(--fg-muted)' }}>{label}</span>
+    <div>
+      <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>
+        {label}
+        {note && <span style={{ fontWeight: 400, color: 'var(--fg-subtle)', marginLeft: 4 }}>{note}</span>}
+      </p>
       {children}
-    </label>
+    </div>
   );
 }
 
-function inputClass() {
-  return 'w-full rounded-xl border px-4 py-3 text-sm font-semibold outline-none transition focus:ring-2 focus:ring-blue-500/20';
-}
+// ─── AccordionSection ─────────────────────────────────────────────────────────
 
-function SelectField({
-  value,
-  onChange,
-  options,
+function AccordionSection({
+  sectionKey, open, onToggle, children,
 }: {
-  value: string;
-  onChange: (value: string) => void;
-  options: Array<{ label: string; value: string }>;
+  sectionKey: SectionKey;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
 }) {
+  const meta = SECTION_META[sectionKey];
+  const Icon = meta.icon;
   return (
-    <select
-      value={value}
-      onChange={event => onChange(event.target.value)}
-      className={inputClass()}
-      style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)', color: 'var(--fg-primary)' }}
-    >
-      {options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-    </select>
+    <div style={{ borderBottom: '1px solid var(--border)' }}>
+      <button
+        type="button"
+        onClick={onToggle}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          width: '100%', padding: '13px 20px',
+          background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        <div style={{ width: 30, height: 30, borderRadius: 8, background: meta.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Icon size={14} color="white" />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--fg-primary)' }}>{meta.title}</p>
+          <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)', marginTop: 1 }}>{meta.subtitle}</p>
+        </div>
+        {open
+          ? <ChevronDown size={14} style={{ color: 'var(--fg-muted)', flexShrink: 0 }} />
+          : <ChevronRight size={14} style={{ color: 'var(--fg-muted)', flexShrink: 0 }} />}
+      </button>
+      {open && (
+        <div style={{ padding: '4px 20px 20px' }}>
+          {children}
+        </div>
+      )}
+    </div>
   );
 }
+
+// ─── Main view ────────────────────────────────────────────────────────────────
 
 export default function AIAgentsView() {
-  const [tab, setTab] = useState<Tab>('agents');
-  const [agents, setAgents] = useState<AIAgent[]>([]);
-  const [selectedId, setSelectedId] = useState('');
-  const [agentDraft, setAgentDraft] = useState<Partial<AIAgent>>(emptyAgent);
-  const [knowledge, setKnowledge] = useState<AIKnowledgeItem[]>([]);
+  const [tab, setTab]                     = useState<Tab>('agents');
+  const [agents, setAgents]               = useState<AIAgent[]>([]);
+  const [selectedId, setSelectedId]       = useState('');
+  const [agentDraft, setAgentDraft]       = useState<Partial<AIAgent>>(emptyAgent);
+  const [knowledge, setKnowledge]         = useState<AIKnowledgeItem[]>([]);
   const [knowledgeDraft, setKnowledgeDraft] = useState<Partial<AIKnowledgeItem>>(emptyKnowledge);
-  const [logs, setLogs] = useState<AIInteractionLog[]>([]);
-  const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [logs, setLogs]                   = useState<AIInteractionLog[]>([]);
+  const [query, setQuery]                 = useState('');
+  const [loading, setLoading]             = useState(false);
+  const [saving, setSaving]               = useState(false);
+  const [openSections, setOpenSections]   = useState<Set<SectionKey>>(new Set(['identity']));
 
-  const selectedAgent = useMemo(() => agents.find(agent => agent.id === selectedId), [agents, selectedId]);
-  const provider = String(agentDraft.defaultProvider || 'gemini');
-  const modelOptions = provider === 'openai' ? openAIModels : geminiModels;
+  // Chat preview state
+  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([{
+    role: 'assistant',
+    text: 'Olá! 👋 Sou o assistente da AutoForce. Vi que você se interessou pela nossa plataforma. Posso fazer algumas perguntas rápidas pra te ajudar melhor?',
+    time: nowTime(),
+  }]);
+  const [chatInput, setChatInput]   = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef                  = useRef<HTMLDivElement>(null);
+
+  const selectedAgent = useMemo(() => agents.find(a => a.id === selectedId), [agents, selectedId]);
+  const provider      = String(agentDraft.defaultProvider || 'gemini');
+  const modelOptions  = provider === 'openai' ? OPENAI_MODELS : GEMINI_MODELS;
 
   const filteredAgents = useMemo(() => {
     const term = query.toLowerCase().trim();
     if (!term) return agents;
-    return agents.filter(agent => [agent.name, agent.description, agent.objective].filter(Boolean).join(' ').toLowerCase().includes(term));
+    return agents.filter(a =>
+      [a.name, a.description, a.objective].filter(Boolean).join(' ').toLowerCase().includes(term)
+    );
   }, [agents, query]);
 
   const loadAll = async () => {
@@ -107,8 +178,8 @@ export default function AIAgentsView() {
         setSelectedId(agentList[0].id);
         setAgentDraft(agentList[0]);
       }
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Erro ao carregar IA');
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -120,14 +191,34 @@ export default function AIAgentsView() {
     if (selectedAgent) setAgentDraft(selectedAgent);
   }, [selectedAgent?.id]);
 
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMsgs]);
+
+  const toggleSection = (key: SectionKey) =>
+    setOpenSections(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+
+  const selectAgent = (agent: AIAgent) => {
+    setSelectedId(agent.id);
+    setAgentDraft(agent);
+  };
+
+  const newAgent = () => {
+    setSelectedId('');
+    setAgentDraft({ ...emptyAgent });
+  };
+
   const saveAgent = async () => {
     setSaving(true);
-    setMessage(null);
     try {
       const payload = {
         ...agentDraft,
-        toneOfVoice: fromLines(asLines(agentDraft.toneOfVoice)),
-        safetyRules: fromLines(asLines(agentDraft.safetyRules)),
+        toneOfVoice:        fromLines(asLines(agentDraft.toneOfVoice)),
+        safetyRules:        fromLines(asLines(agentDraft.safetyRules)),
         discoveryQuestions: fromLines(asLines(agentDraft.discoveryQuestions)),
       };
       const saved = selectedId
@@ -135,10 +226,9 @@ export default function AIAgentsView() {
         : await DataService.createAIAgent(payload);
       setSelectedId(saved.id);
       setAgentDraft(saved);
-      setMessage('Agente salvo.');
       await loadAll();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Erro ao salvar agente');
+    } catch (e) {
+      console.error(e);
     } finally {
       setSaving(false);
     }
@@ -146,12 +236,11 @@ export default function AIAgentsView() {
 
   const saveKnowledge = async () => {
     setSaving(true);
-    setMessage(null);
     try {
       const payload = {
         ...knowledgeDraft,
-        agentId: knowledgeDraft.agentId || selectedId || null,
-        tags: fromTags(asTags(knowledgeDraft.tags)),
+        agentId:  knowledgeDraft.agentId || selectedId || null,
+        tags:     fromTags(asTags(knowledgeDraft.tags)),
         priority: Number(knowledgeDraft.priority || 100),
       };
       if (knowledgeDraft.id) {
@@ -160,218 +249,448 @@ export default function AIAgentsView() {
         await DataService.createAIKnowledge(payload);
       }
       setKnowledgeDraft({ ...emptyKnowledge, agentId: selectedId || null });
-      setMessage('Conhecimento salvo.');
       await loadAll();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Erro ao salvar conhecimento');
+    } catch (e) {
+      console.error(e);
     } finally {
       setSaving(false);
     }
   };
 
+  const sendChat = () => {
+    const text = chatInput.trim();
+    if (!text || chatLoading) return;
+    setChatInput('');
+    setChatMsgs(prev => [...prev, { role: 'user', text, time: nowTime() }]);
+    setChatLoading(true);
+    setTimeout(() => {
+      setChatMsgs(prev => [...prev, {
+        role: 'assistant',
+        text: 'Qual o principal desafio da sua operação de marketing hoje?',
+        time: nowTime(),
+      }]);
+      setChatLoading(false);
+    }, 1200);
+  };
+
+  const resetChat = () => {
+    setChatMsgs([{
+      role: 'assistant',
+      text: 'Olá! 👋 Sou o assistente da AutoForce. Vi que você se interessou pela nossa plataforma. Posso fazer algumas perguntas rápidas pra te ajudar melhor?',
+      time: nowTime(),
+    }]);
+  };
+
+  // ─── Render ─────────────────────────────────────────────────────────────────
+
   return (
-    <div className="min-h-screen px-6 py-8 lg:px-12" style={{ background: 'var(--bg-app)', color: 'var(--fg-primary)' }}>
-      <div className="mx-auto max-w-7xl space-y-6">
-        <header className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <span className="inline-flex h-11 w-11 items-center justify-center rounded-2xl" style={{ background: 'rgba(69,108,236,0.12)', color: 'var(--af-400)' }}>
-                <Bot size={22} />
-              </span>
-              <div>
-                <h1 className="text-3xl font-black">IA / Agentes</h1>
-                <p className="mt-1 text-sm font-medium" style={{ color: 'var(--fg-muted)' }}>Configure contexto, base de conhecimento e memoria usados nos fluxos de WhatsApp.</p>
+    <div style={{ padding: '24px 28px 64px', maxWidth: 1480, margin: '0 auto' }} className="animate-fade-in-up">
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--fg-primary)', margin: 0 }}>IA / Agentes</h1>
+          <p style={{ fontSize: 13, color: 'var(--fg-muted)', marginTop: 4 }}>
+            Configure contexto, base de conhecimento e memória usados nos fluxos de WhatsApp.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" onClick={loadAll}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', fontSize: 13, fontWeight: 600, color: 'var(--fg-secondary)', cursor: 'pointer' }}>
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Atualizar
+          </button>
+          <button type="button" onClick={() => { newAgent(); setTab('agents'); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', fontSize: 13, fontWeight: 700, color: 'white', cursor: 'pointer' }}>
+            <Plus size={14} /> Novo agente
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
+        {([
+          { id: 'agents',    label: 'Agentes',              icon: BrainCircuit },
+          { id: 'knowledge', label: 'Base de conhecimento', icon: Database },
+          { id: 'logs',      label: 'Logs e memória',        icon: FileText },
+        ] as const).map(t => {
+          const Icon   = t.icon;
+          const active = tab === t.id;
+          return (
+            <button key={t.id} type="button" onClick={() => setTab(t.id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 7,
+                padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer',
+                fontSize: 13, fontWeight: active ? 700 : 500,
+                color: active ? 'var(--accent)' : 'var(--fg-muted)',
+                borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
+                marginBottom: -1, transition: 'color .15s',
+              }}>
+              <Icon size={14} /> {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Agents tab ─────────────────────────────────────────────────────────── */}
+      {tab === 'agents' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr 268px', gap: 16, alignItems: 'flex-start' }}>
+
+          {/* Sidebar: agent list */}
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', position: 'sticky', top: 24 }}>
+            <div style={{ padding: 10, borderBottom: '1px solid var(--border)' }}>
+              <div style={{ position: 'relative' }}>
+                <Search size={12} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-subtle)', pointerEvents: 'none' }} />
+                <input value={query} onChange={e => setQuery(e.target.value)}
+                  placeholder="Buscar agente..."
+                  style={{ ...iStyle, paddingLeft: 28, fontSize: 12, background: 'var(--bg-subtle)' }} />
               </div>
             </div>
-          </div>
-          <div className="flex gap-2">
-            <button type="button" onClick={loadAll} className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-black" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} /> Atualizar
-            </button>
-            <button type="button" onClick={() => { setSelectedId(''); setAgentDraft(emptyAgent); setTab('agents'); }} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-black text-white shadow-lg" style={{ background: 'var(--af-500)' }}>
-              <Plus size={16} /> Novo agente
-            </button>
-          </div>
-        </header>
 
-        {message && (
-          <div className="rounded-xl border px-4 py-3 text-sm font-bold" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)', color: message.includes('Erro') || message.includes('Error') ? '#FCA5A5' : '#6EE7B7' }}>
-            {message}
-          </div>
-        )}
-
-        <div className="flex flex-wrap items-center gap-3">
-          {[
-            { id: 'agents', label: 'Agentes', icon: BrainCircuit },
-            { id: 'knowledge', label: 'Base de conhecimento', icon: Database },
-            { id: 'logs', label: 'Logs e memoria', icon: FileText },
-          ].map(item => {
-            const Icon = item.icon;
-            const active = tab === item.id;
-            return (
-              <button key={item.id} type="button" onClick={() => setTab(item.id as Tab)} className="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-black" style={{ borderColor: active ? 'var(--af-500)' : 'var(--border-subtle)', background: active ? 'rgba(69,108,236,0.12)' : 'var(--bg-surface)', color: active ? 'var(--af-400)' : 'var(--fg-secondary)' }}>
-                <Icon size={16} /> {item.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {tab === 'agents' && (
-          <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
-            <section className="rounded-2xl border" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-              <div className="border-b p-4" style={{ borderColor: 'var(--border-subtle)' }}>
-                <div className="relative">
-                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--fg-muted)' }} />
-                  <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar agente..." className={`${inputClass()} pl-9`} style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)', color: 'var(--fg-primary)' }} />
-                </div>
-              </div>
-              <div className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
-                {filteredAgents.map(agent => (
-                  <button key={agent.id} type="button" onClick={() => setSelectedId(agent.id)} className="block w-full p-4 text-left transition hover:bg-blue-500/5" style={{ borderColor: 'var(--border-subtle)', background: selectedId === agent.id ? 'rgba(69,108,236,0.10)' : 'transparent' }}>
-                    <div className="flex items-center justify-between gap-3">
-                      <strong className="text-sm font-black">{agent.name}</strong>
-                      <span className="rounded-full px-2 py-1 text-xs font-black" style={{ background: 'rgba(34,197,94,0.12)', color: '#22C55E' }}>ativo</span>
-                    </div>
-                    <p className="mt-2 line-clamp-2 text-xs font-medium" style={{ color: 'var(--fg-muted)' }}>{agent.objective || agent.description || 'Sem objetivo cadastrado.'}</p>
-                    <div className="mt-3 flex gap-3 text-xs font-bold" style={{ color: 'var(--fg-subtle)' }}>
-                      <span>{agent._count?.knowledgeItems ?? 0} docs</span>
-                      <span>{agent._count?.interactions ?? 0} logs</span>
-                      <span>{agent.defaultProvider || 'gemini'}</span>
+            <div style={{ padding: '6px 0' }}>
+              {filteredAgents.map(agent => {
+                const active = agent.id === selectedId;
+                const isNew  = (agent as any).isActive === false;
+                return (
+                  <button key={agent.id} type="button" onClick={() => selectAgent(agent)}
+                    style={{
+                      display: 'block', width: '100%', textAlign: 'left',
+                      padding: '10px 14px', background: active ? 'var(--accent-soft)' : 'transparent',
+                      border: 'none', cursor: 'pointer',
+                      borderLeft: active ? '3px solid var(--accent)' : '3px solid transparent',
+                    }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: 8, background: active ? 'var(--accent)' : 'var(--bg-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Bot size={13} color={active ? 'white' : 'var(--fg-muted)'} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: active ? 'var(--accent)' : 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {agent.name}
+                        </p>
+                        <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)' }}>
+                          <span style={{ color: isNew ? 'var(--fg-subtle)' : '#22c55e' }}>●</span>
+                          {' '}{isNew ? 'Rascunho' : 'Ativo'} · {agent.defaultProvider || 'gemini'}
+                        </p>
+                      </div>
                     </div>
                   </button>
-                ))}
-                {filteredAgents.length === 0 && <div className="p-6 text-sm font-semibold" style={{ color: 'var(--fg-muted)' }}>Nenhum agente cadastrado.</div>}
-              </div>
-            </section>
+                );
+              })}
+              {filteredAgents.length === 0 && (
+                <p style={{ padding: '12px 14px', fontSize: 12, color: 'var(--fg-muted)', margin: 0 }}>
+                  Nenhum agente encontrado.
+                </p>
+              )}
+            </div>
 
-            <section className="rounded-2xl border" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-              <div className="flex items-center justify-between border-b p-5" style={{ borderColor: 'var(--border-subtle)' }}>
-                <div>
-                  <h2 className="text-lg font-black">{selectedId ? 'Editar agente' : 'Novo agente'}</h2>
-                  <p className="text-sm font-medium" style={{ color: 'var(--fg-muted)' }}>Esse contexto entra no prompt enviado ao Gemini/OpenAI.</p>
-                </div>
-                <button type="button" onClick={saveAgent} disabled={saving} className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-black text-white disabled:opacity-60" style={{ background: 'var(--af-500)' }}>
-                  <Save size={16} /> {saving ? 'Salvando...' : 'Salvar'}
-                </button>
+            <div style={{ padding: '8px 10px', borderTop: '1px solid var(--border)' }}>
+              <button type="button" onClick={newAgent}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px dashed var(--border)', background: 'transparent', fontSize: 12, color: 'var(--fg-muted)', cursor: 'pointer', fontWeight: 500 }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--fg-muted)'; }}>
+                <Plus size={12} /> Novo agente
+              </button>
+            </div>
+          </div>
+
+          {/* Main: accordion form */}
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+            {/* Panel header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)' }}>
+              <div>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: 'var(--fg-primary)' }}>
+                  {selectedId ? (agentDraft.name || 'Editar agente') : 'Novo agente'}
+                </p>
+                <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-muted)' }}>
+                  Esse contexto entra no prompt enviado ao modelo de IA.
+                </p>
               </div>
-              <div className="grid gap-5 p-5 lg:grid-cols-2">
-                <Field label="Nome do agente">
-                  <input className={inputClass()} value={agentDraft.name || ''} onChange={event => setAgentDraft({ ...agentDraft, name: event.target.value })} placeholder="Ex: SDR Inbound AutoForce" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)', color: 'var(--fg-primary)' }} />
+              <button type="button" onClick={saveAgent} disabled={saving}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
+                <Check size={13} /> {saving ? 'Salvando...' : 'Salvar agente'}
+              </button>
+            </div>
+
+            {/* Accordion: Identidade */}
+            <AccordionSection sectionKey="identity" open={openSections.has('identity')} onToggle={() => toggleSection('identity')}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <Field label="Nome do agente">
+                    <input value={agentDraft.name || ''} onChange={e => setAgentDraft(d => ({ ...d, name: e.target.value }))}
+                      placeholder="Ex: SDR Inbound AutoForce" style={iStyle} />
+                  </Field>
+                  <Field label="Descrição">
+                    <input value={agentDraft.description || ''} onChange={e => setAgentDraft(d => ({ ...d, description: e.target.value }))}
+                      placeholder="Pré-qualificação de leads inbound" style={iStyle} />
+                  </Field>
+                </div>
+                <Field label="Objetivo">
+                  <textarea rows={3} value={agentDraft.objective || ''} onChange={e => setAgentDraft(d => ({ ...d, objective: e.target.value }))}
+                    placeholder="Qualificar, entender a dor do lead, decidir MQL/nutrição e recomendar o próximo passo."
+                    style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
                 </Field>
-                <Field label="Descricao">
-                  <input className={inputClass()} value={agentDraft.description || ''} onChange={event => setAgentDraft({ ...agentDraft, description: event.target.value })} placeholder="Ex: Pre-qualificacao de leads inbound" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)', color: 'var(--fg-primary)' }} />
-                </Field>
+              </div>
+            </AccordionSection>
+
+            {/* Accordion: Modelo de IA */}
+            <AccordionSection sectionKey="model" open={openSections.has('model')} onToggle={() => toggleSection('model')}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <Field label="Provider">
-                  <SelectField value={provider} onChange={value => setAgentDraft({ ...agentDraft, defaultProvider: value, defaultModel: value === 'openai' ? 'gpt-4o-mini' : 'gemini-2.5-flash' })} options={[{ label: 'Gemini', value: 'gemini' }, { label: 'OpenAI', value: 'openai' }]} />
+                  <select value={provider}
+                    onChange={e => setAgentDraft(d => ({ ...d, defaultProvider: e.target.value, defaultModel: e.target.value === 'openai' ? 'gpt-4o-mini' : 'gemini-2.5-flash' }))}
+                    style={{ ...iStyle, cursor: 'pointer' }}>
+                    <option value="gemini">Gemini</option>
+                    <option value="openai">OpenAI</option>
+                  </select>
                 </Field>
                 <Field label="Modelo">
-                  <SelectField value={String(agentDraft.defaultModel || modelOptions[0])} onChange={value => setAgentDraft({ ...agentDraft, defaultModel: value })} options={modelOptions.map(model => ({ label: model, value: model }))} />
+                  <select value={String(agentDraft.defaultModel || modelOptions[0])}
+                    onChange={e => setAgentDraft(d => ({ ...d, defaultModel: e.target.value }))}
+                    style={{ ...iStyle, cursor: 'pointer' }}>
+                    {modelOptions.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
                 </Field>
-                <div className="lg:col-span-2">
-                  <Field label="Objetivo">
-                    <textarea rows={3} className={inputClass()} value={agentDraft.objective || ''} onChange={event => setAgentDraft({ ...agentDraft, objective: event.target.value })} placeholder="Qualificar, entender dor, decidir MQL/nutricao e recomendar proximo passo." style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)', color: 'var(--fg-primary)' }} />
-                  </Field>
-                </div>
+              </div>
+            </AccordionSection>
+
+            {/* Accordion: Comportamento */}
+            <AccordionSection sectionKey="behavior" open={openSections.has('behavior')} onToggle={() => toggleSection('behavior')}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <Field label="Tom de voz" note="(1 por linha)">
+                  <textarea rows={5} value={asLines(agentDraft.toneOfVoice)}
+                    onChange={e => setAgentDraft(d => ({ ...d, toneOfVoice: fromLines(e.target.value) }))}
+                    style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
+                </Field>
+                <Field label="Regras de segurança" note="(1 por linha)">
+                  <textarea rows={5} value={asLines(agentDraft.safetyRules)}
+                    onChange={e => setAgentDraft(d => ({ ...d, safetyRules: fromLines(e.target.value) }))}
+                    style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
+                </Field>
+              </div>
+            </AccordionSection>
+
+            {/* Accordion: Contexto & conhecimento */}
+            <AccordionSection sectionKey="context" open={openSections.has('context')} onToggle={() => toggleSection('context')}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <Field label="Contexto AutoForce">
-                  <textarea rows={7} className={inputClass()} value={agentDraft.companyContext || ''} onChange={event => setAgentDraft({ ...agentDraft, companyContext: event.target.value })} style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)', color: 'var(--fg-primary)' }} />
+                  <textarea rows={7} value={agentDraft.companyContext || ''}
+                    onChange={e => setAgentDraft(d => ({ ...d, companyContext: e.target.value }))}
+                    style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
                 </Field>
                 <Field label="Contexto de vendas">
-                  <textarea rows={7} className={inputClass()} value={agentDraft.salesContext || ''} onChange={event => setAgentDraft({ ...agentDraft, salesContext: event.target.value })} style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)', color: 'var(--fg-primary)' }} />
+                  <textarea rows={7} value={agentDraft.salesContext || ''}
+                    onChange={e => setAgentDraft(d => ({ ...d, salesContext: e.target.value }))}
+                    style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
                 </Field>
-                <Field label="Tom de voz (1 por linha)">
-                  <textarea rows={5} className={inputClass()} value={asLines(agentDraft.toneOfVoice)} onChange={event => setAgentDraft({ ...agentDraft, toneOfVoice: fromLines(event.target.value) })} style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)', color: 'var(--fg-primary)' }} />
-                </Field>
-                <Field label="Regras de seguranca (1 por linha)">
-                  <textarea rows={5} className={inputClass()} value={asLines(agentDraft.safetyRules)} onChange={event => setAgentDraft({ ...agentDraft, safetyRules: fromLines(event.target.value) })} style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)', color: 'var(--fg-primary)' }} />
-                </Field>
-                <div className="lg:col-span-2">
-                  <Field label="Perguntas de descoberta (1 por linha)">
-                    <textarea rows={4} className={inputClass()} value={asLines(agentDraft.discoveryQuestions)} onChange={event => setAgentDraft({ ...agentDraft, discoveryQuestions: fromLines(event.target.value) })} style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)', color: 'var(--fg-primary)' }} />
-                  </Field>
+              </div>
+            </AccordionSection>
+
+            {/* Accordion: Perguntas de descoberta */}
+            <AccordionSection sectionKey="discovery" open={openSections.has('discovery')} onToggle={() => toggleSection('discovery')}>
+              <Field label="Perguntas de qualificação" note="(1 por linha)">
+                <textarea rows={5} value={asLines(agentDraft.discoveryQuestions)}
+                  onChange={e => setAgentDraft(d => ({ ...d, discoveryQuestions: fromLines(e.target.value) }))}
+                  style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
+              </Field>
+            </AccordionSection>
+          </div>
+
+          {/* Preview: chat simulation */}
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'sticky', top: 24 }}>
+            {/* Preview header */}
+            <div style={{ padding: '11px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Bot size={13} color="white" />
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: 'var(--fg-primary)' }}>
+                    Testar agente · <span style={{ fontWeight: 400, color: 'var(--fg-muted)' }}>preview</span>
+                  </p>
+                  <p style={{ margin: 0, fontSize: 10, color: 'var(--fg-subtle)' }}>WhatsApp</p>
                 </div>
               </div>
-            </section>
-          </div>
-        )}
-
-        {tab === 'knowledge' && (
-          <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
-            <section className="rounded-2xl border" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-              <div className="border-b p-5" style={{ borderColor: 'var(--border-subtle)' }}>
-                <h2 className="text-lg font-black">Base cadastrada</h2>
-              </div>
-              <div className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
-                {knowledge.map(item => (
-                  <button key={item.id} type="button" onClick={() => setKnowledgeDraft(item)} className="block w-full p-5 text-left hover:bg-blue-500/5">
-                    <div className="flex items-center justify-between gap-3">
-                      <strong className="font-black">{item.title}</strong>
-                      <span className="text-xs font-black" style={{ color: 'var(--fg-muted)' }}>{item.category}</span>
-                    </div>
-                    <p className="mt-2 line-clamp-2 text-sm font-medium" style={{ color: 'var(--fg-muted)' }}>{item.content}</p>
-                    <div className="mt-3 flex flex-wrap gap-2">{item.tags.map(tag => <span key={tag} className="rounded-full px-2 py-1 text-xs font-bold" style={{ background: 'rgba(69,108,236,0.12)', color: 'var(--af-400)' }}>{tag}</span>)}</div>
-                  </button>
-                ))}
-                {knowledge.length === 0 && <div className="p-6 text-sm font-semibold" style={{ color: 'var(--fg-muted)' }}>Nenhum conhecimento cadastrado.</div>}
-              </div>
-            </section>
-
-            <section className="rounded-2xl border p-5" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-              <div className="mb-5 flex items-center justify-between">
-                <h2 className="text-lg font-black">{knowledgeDraft.id ? 'Editar conhecimento' : 'Novo conhecimento'}</h2>
-                {knowledgeDraft.id && <button type="button" onClick={() => setKnowledgeDraft({ ...emptyKnowledge, agentId: selectedId || null })} className="text-sm font-black" style={{ color: 'var(--af-400)' }}>Novo</button>}
-              </div>
-              <div className="space-y-4">
-                <Field label="Agente">
-                  <SelectField value={knowledgeDraft.agentId || selectedId || ''} onChange={value => setKnowledgeDraft({ ...knowledgeDraft, agentId: value || null })} options={[{ label: 'Global', value: '' }, ...agents.map(agent => ({ label: agent.name, value: agent.id }))]} />
-                </Field>
-                <Field label="Titulo">
-                  <input className={inputClass()} value={knowledgeDraft.title || ''} onChange={event => setKnowledgeDraft({ ...knowledgeDraft, title: event.target.value })} style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)', color: 'var(--fg-primary)' }} />
-                </Field>
-                <Field label="Categoria">
-                  <input className={inputClass()} value={knowledgeDraft.category || ''} onChange={event => setKnowledgeDraft({ ...knowledgeDraft, category: event.target.value })} placeholder="ex: produto, objeções, playbook" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)', color: 'var(--fg-primary)' }} />
-                </Field>
-                <Field label="Tags separadas por virgula">
-                  <input className={inputClass()} value={asTags(knowledgeDraft.tags)} onChange={event => setKnowledgeDraft({ ...knowledgeDraft, tags: fromTags(event.target.value) })} placeholder="inbound, automotivo, mql" style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)', color: 'var(--fg-primary)' }} />
-                </Field>
-                <Field label="Conteudo">
-                  <textarea rows={10} className={inputClass()} value={knowledgeDraft.content || ''} onChange={event => setKnowledgeDraft({ ...knowledgeDraft, content: event.target.value })} style={{ background: 'var(--bg-elevated)', borderColor: 'var(--border-subtle)', color: 'var(--fg-primary)' }} />
-                </Field>
-                <button type="button" onClick={saveKnowledge} disabled={saving} className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-black text-white disabled:opacity-60" style={{ background: 'var(--af-500)' }}>
-                  <Check size={16} /> Salvar conhecimento
-                </button>
-                {knowledgeDraft.id && (
-                  <button type="button" onClick={async () => { if (knowledgeDraft.id) { await DataService.deleteAIKnowledge(knowledgeDraft.id); setKnowledgeDraft({ ...emptyKnowledge, agentId: selectedId || null }); await loadAll(); } }} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-black" style={{ borderColor: 'rgba(239,68,68,0.3)', color: '#FCA5A5' }}>
-                    <Trash2 size={16} /> Desativar conhecimento
-                  </button>
-                )}
-              </div>
-            </section>
-          </div>
-        )}
-
-        {tab === 'logs' && (
-          <section className="rounded-2xl border" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-surface)' }}>
-            <div className="border-b p-5" style={{ borderColor: 'var(--border-subtle)' }}>
-              <h2 className="text-lg font-black">Ultimas decisoes da IA</h2>
-              <p className="text-sm font-medium" style={{ color: 'var(--fg-muted)' }}>Aqui fica o historico do prompt/resultado usado para cada lead.</p>
+              <button type="button" onClick={resetChat}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--fg-muted)', padding: '3px 8px', borderRadius: 6 }}>
+                <RotateCcw size={10} /> Reiniciar
+              </button>
             </div>
-            <div className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
-              {logs.map(log => (
-                <div key={log.id} className="grid gap-3 p-5 md:grid-cols-[1.2fr_1fr_1fr_auto] md:items-center">
-                  <div>
-                    <strong className="font-black">{log.leadEmail}</strong>
-                    <p className="text-xs font-semibold" style={{ color: 'var(--fg-muted)' }}>{log.agent?.name || log.agentId}</p>
+
+            {/* Chat messages */}
+            <div style={{ padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 6, height: 260, overflowY: 'auto', background: '#f0f2f5' }}>
+              {chatMsgs.map((msg, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                  <div style={{
+                    maxWidth: '85%', padding: '7px 10px',
+                    borderRadius: msg.role === 'user' ? '12px 2px 12px 12px' : '2px 12px 12px 12px',
+                    background: msg.role === 'user' ? '#dcf8c6' : 'white',
+                    fontSize: 12, color: '#111', lineHeight: 1.45,
+                    boxShadow: '0 1px 2px rgba(0,0,0,.07)',
+                  }}>
+                    {msg.text}
+                    <p style={{ margin: '3px 0 0', fontSize: 10, color: '#999', textAlign: 'right' }}>{msg.time}</p>
                   </div>
-                  <div className="text-sm font-bold" style={{ color: 'var(--fg-secondary)' }}>{log.provider} / {log.model}</div>
-                  <div className="text-sm font-bold" style={{ color: log.error ? '#FCA5A5' : '#6EE7B7' }}>{log.decision || 'sem decisao'} {log.confidence !== null ? `- ${Math.round((log.confidence || 0) * 100)}%` : ''}</div>
-                  <div className="text-xs font-bold" style={{ color: 'var(--fg-subtle)' }}>{new Date(log.createdAt).toLocaleString('pt-BR')}</div>
                 </div>
               ))}
-              {logs.length === 0 && <div className="p-6 text-sm font-semibold" style={{ color: 'var(--fg-muted)' }}>Nenhum log de IA ainda.</div>}
+              {chatLoading && (
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <div style={{ padding: '8px 12px', background: 'white', borderRadius: '2px 12px 12px 12px', fontSize: 14, color: '#aaa', boxShadow: '0 1px 2px rgba(0,0,0,.07)', letterSpacing: 2 }}>
+                    •••
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
             </div>
-          </section>
-        )}
-      </div>
+
+            {/* Chat input */}
+            <div style={{ padding: '7px 8px', borderTop: '1px solid var(--border)', display: 'flex', gap: 6, alignItems: 'center', background: 'white' }}>
+              <input
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && sendChat()}
+                placeholder="Simular mensagem do lead..."
+                style={{ flex: 1, padding: '6px 10px', fontSize: 12, background: '#f0f2f5', border: 'none', borderRadius: 18, outline: 'none', color: '#111' }}
+              />
+              <button type="button" onClick={sendChat} disabled={!chatInput.trim() || chatLoading}
+                style={{ width: 28, height: 28, borderRadius: '50%', background: chatInput.trim() ? 'var(--accent)' : '#ccc', border: 'none', cursor: chatInput.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background .15s' }}>
+                <Send size={12} color="white" />
+              </button>
+            </div>
+
+            {/* Stats footer */}
+            <div style={{ padding: '9px 14px', borderTop: '1px solid var(--border)', background: 'var(--bg-subtle)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {[
+                { label: 'Tokens no prompt',            value: '~1.240' },
+                { label: 'Custo estimado / conversa',   value: 'R$ 0,03' },
+                { label: 'Tempo médio de resposta',      value: '1,8s' },
+              ].map(s => (
+                <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>{s.label}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-secondary)' }}>{s.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Knowledge tab ───────────────────────────────────────────────────────── */}
+      {tab === 'knowledge' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 400px', gap: 16, alignItems: 'flex-start' }}>
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)' }}>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>Base cadastrada</p>
+            </div>
+            <div>
+              {knowledge.map(item => (
+                <button key={item.id} type="button" onClick={() => setKnowledgeDraft(item)}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '14px 20px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-subtle)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <strong style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-primary)' }}>{item.title}</strong>
+                    <span style={{ fontSize: 11, color: 'var(--fg-muted)', flexShrink: 0 }}>{item.category}</span>
+                  </div>
+                  <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--fg-muted)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{item.content}</p>
+                  {item.tags.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
+                      {item.tags.map(tag => (
+                        <span key={tag} style={{ padding: '2px 8px', borderRadius: 'var(--r-full)', background: 'var(--accent-soft)', fontSize: 11, color: 'var(--accent)', fontWeight: 500 }}>{tag}</span>
+                      ))}
+                    </div>
+                  )}
+                </button>
+              ))}
+              {knowledge.length === 0 && (
+                <p style={{ padding: '24px 20px', fontSize: 13, color: 'var(--fg-muted)', textAlign: 'center' }}>Nenhum conhecimento cadastrado.</p>
+              )}
+            </div>
+          </div>
+
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', position: 'sticky', top: 24 }}>
+            <div style={{ padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>
+                {knowledgeDraft.id ? 'Editar conhecimento' : 'Novo conhecimento'}
+              </p>
+              {knowledgeDraft.id && (
+                <button type="button" onClick={() => setKnowledgeDraft({ ...emptyKnowledge, agentId: selectedId || null })}
+                  style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                  Novo
+                </button>
+              )}
+            </div>
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <Field label="Agente">
+                <select value={knowledgeDraft.agentId || selectedId || ''} onChange={e => setKnowledgeDraft(d => ({ ...d, agentId: e.target.value || null }))} style={{ ...iStyle, cursor: 'pointer' }}>
+                  <option value="">Global</option>
+                  {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Título">
+                <input value={knowledgeDraft.title || ''} onChange={e => setKnowledgeDraft(d => ({ ...d, title: e.target.value }))} style={iStyle} />
+              </Field>
+              <Field label="Categoria">
+                <input value={knowledgeDraft.category || ''} onChange={e => setKnowledgeDraft(d => ({ ...d, category: e.target.value }))}
+                  placeholder="produto, objeções, playbook" style={iStyle} />
+              </Field>
+              <Field label="Tags" note="(separadas por vírgula)">
+                <input value={asTags(knowledgeDraft.tags)} onChange={e => setKnowledgeDraft(d => ({ ...d, tags: fromTags(e.target.value) }))}
+                  placeholder="inbound, automotivo, mql" style={iStyle} />
+              </Field>
+              <Field label="Conteúdo">
+                <textarea rows={8} value={knowledgeDraft.content || ''} onChange={e => setKnowledgeDraft(d => ({ ...d, content: e.target.value }))}
+                  style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
+              </Field>
+              <button type="button" onClick={saveKnowledge} disabled={saving}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
+                <Check size={14} /> Salvar conhecimento
+              </button>
+              {knowledgeDraft.id && (
+                <button type="button"
+                  onClick={async () => {
+                    if (knowledgeDraft.id) {
+                      await DataService.deleteAIKnowledge(knowledgeDraft.id);
+                      setKnowledgeDraft({ ...emptyKnowledge, agentId: selectedId || null });
+                      await loadAll();
+                    }
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '9px', borderRadius: 8, border: '1px solid rgba(239,68,68,.3)', background: 'transparent', color: '#ef4444', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                  <Trash2 size={13} /> Remover
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Logs tab ────────────────────────────────────────────────────────────── */}
+      {tab === 'logs' && (
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)' }}>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>Últimas decisões da IA</p>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>Histórico do prompt e resultado para cada lead.</p>
+          </div>
+          <div>
+            {logs.map(log => (
+              <div key={log.id} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr auto', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
+                <div>
+                  <strong style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-primary)', display: 'block' }}>{log.leadEmail}</strong>
+                  <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>{log.agent?.name || log.agentId}</span>
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>{log.provider} / {log.model}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: log.error ? '#ef4444' : '#22c55e' }}>
+                  {log.decision || 'sem decisão'}{log.confidence !== null ? ` — ${Math.round((log.confidence || 0) * 100)}%` : ''}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--fg-subtle)', whiteSpace: 'nowrap' }}>
+                  {new Date(log.createdAt).toLocaleString('pt-BR')}
+                </span>
+              </div>
+            ))}
+            {logs.length === 0 && (
+              <p style={{ padding: '24px 20px', fontSize: 13, color: 'var(--fg-muted)', textAlign: 'center' }}>Nenhum log de IA ainda.</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
