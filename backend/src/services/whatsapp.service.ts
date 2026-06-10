@@ -160,9 +160,16 @@ export async function listWhatsAppConversationByLead(leadId: string): Promise<Wh
   if (!lead) throw new Error('Lead não encontrado');
 
   const phone = normalizePhone(lead.phone);
-  const phoneSuffix = phone.slice(-9);
+  // Build multiple phone variants to maximize match coverage regardless of format
+  const variants = Array.from(new Set([
+    phone.slice(-9),
+    phone.slice(-10),
+    phone.slice(-11),
+    phone.replace(/^55/, '').slice(-9),
+  ])).filter(v => v.length >= 8);
+
   const where: Record<string, unknown>[] = [{ leadId: lead.id }, { leadEmail: lead.email }];
-  if (phoneSuffix.length >= 8) where.push({ phone: { endsWith: phoneSuffix } });
+  variants.forEach(v => where.push({ phone: { endsWith: v } }));
 
   return (prisma as any).whatsAppMessage.findMany({
     where: { OR: where },
@@ -172,7 +179,7 @@ export async function listWhatsAppConversationByLead(leadId: string): Promise<Wh
 }
 
 export async function recordOutgoingWhatsAppMessage(input: {
-  leadEmail: string;
+  leadEmail: string | null;
   phone: string;
   messageId?: string | null;
   templateName?: string | null;
@@ -181,14 +188,13 @@ export async function recordOutgoingWhatsAppMessage(input: {
   automationJourneyId?: string | null;
   automationExecutionId?: string | null;
 }): Promise<void> {
-  const lead = await prisma.lead.findUnique({
-    where: { email: input.leadEmail },
-    select: { id: true, email: true },
-  });
+  const lead = input.leadEmail
+    ? await prisma.lead.findUnique({ where: { email: input.leadEmail }, select: { id: true, email: true } })
+    : null;
 
   const data = {
     leadId: lead?.id ?? null,
-    leadEmail: lead?.email ?? input.leadEmail,
+    leadEmail: lead?.email ?? input.leadEmail ?? null,
     phone: normalizePhone(input.phone),
     direction: 'outbound',
     type: input.templateName ? 'template' : 'text',
@@ -264,7 +270,14 @@ async function recordInboundMessage(message: any): Promise<void> {
     },
   });
 
-  if (lead?.email) {
+  if (lead) {
+    // Link any previously unlinked messages from this phone to the lead
+    const phoneSuffix = from.slice(-9);
+    await (prisma as any).whatsAppMessage.updateMany({
+      where: { phone: { endsWith: phoneSuffix }, leadId: null },
+      data: { leadId: lead.id, leadEmail: lead.email },
+    });
+
     const { resumeWaitingWhatsAppReply } = await import('./automation-engine.service');
     await resumeWaitingWhatsAppReply(lead.email, text ?? '', 'replied');
   }

@@ -268,7 +268,7 @@ type SendTextParams = {
   leadEmail: string | null;
   getCredentials: () => Promise<{ accessToken: string; businessAccountId: string }>;
   recordOutgoing: (input: {
-    leadEmail: string;
+    leadEmail: string | null;
     phone: string;
     messageId?: string | null;
     text?: string | null;
@@ -317,15 +317,13 @@ async function sendWhatsAppText(params: SendTextParams): Promise<void> {
     console.error('[AI-WPP] fetch error sending reply:', err);
   }
 
-  if (params.leadEmail) {
-    await params.recordOutgoing({
-      leadEmail: params.leadEmail,
-      phone: toE164,
-      messageId,
-      text: params.text,
-      payload: body,
-    });
-  }
+  await params.recordOutgoing({
+    leadEmail: params.leadEmail,
+    phone: toE164,
+    messageId,
+    text: params.text,
+    payload: body,
+  });
 }
 
 // ─── Action applier ───────────────────────────────────────────────────────────
