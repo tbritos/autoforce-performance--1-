@@ -104,15 +104,20 @@ function metaTimestamp(seconds: string | number | undefined): Date {
 
 async function findLeadByPhone(phone: string) {
   const candidates = phoneSearchVariants(phone);
+  console.log(`[WPP] findLeadByPhone(${phone}) variants: ${candidates.join(', ')}`);
 
   for (const value of candidates) {
     const lead = await prisma.lead.findFirst({
       where: { phone: { contains: value } },
       select: { id: true, email: true, phone: true },
     });
-    if (lead) return lead;
+    if (lead) {
+      console.log(`[WPP] lead encontrado via "${value}": ${lead.email} (phone=${lead.phone})`);
+      return lead;
+    }
   }
 
+  console.log(`[WPP] nenhum lead encontrado para ${phone}`);
   return null;
 }
 
@@ -158,17 +163,12 @@ export async function listWhatsAppConversationByLead(leadId: string): Promise<Wh
   });
   if (!lead) throw new Error('Lead não encontrado');
 
-  const phone = normalizePhone(lead.phone);
-  // Build multiple phone variants to maximize match coverage regardless of format
-  const variants = Array.from(new Set([
-    phone.slice(-9),
-    phone.slice(-10),
-    phone.slice(-11),
-    phone.replace(/^55/, '').slice(-9),
-  ])).filter(v => v.length >= 8);
-
   const where: Record<string, unknown>[] = [{ leadId: lead.id }, { leadEmail: lead.email }];
-  variants.forEach(v => where.push({ phone: { endsWith: v } }));
+
+  if (lead.phone) {
+    const variants = phoneSearchVariants(lead.phone);
+    variants.forEach(v => where.push({ phone: { endsWith: v } }));
+  }
 
   return (prisma as any).whatsAppMessage.findMany({
     where: { OR: where },
@@ -241,12 +241,15 @@ async function recordInboundMessage(message: any): Promise<void> {
   if (!lead) {
     const toE164 = from.startsWith('55') ? from : `55${from}`;
     const generatedEmail = `wpp_${toE164}@autoforce.internal`;
+    console.log(`[WPP] criando lead placeholder: ${generatedEmail}`);
     lead = await prisma.lead.upsert({
       where: { email: generatedEmail },
       create: { email: generatedEmail, phone: toE164, tags: ['whatsapp_inbound'] },
       update: {},
       select: { id: true, email: true, phone: true },
     });
+  } else {
+    console.log(`[WPP] mensagem linkada ao lead existente: ${lead.email}`);
   }
 
   const { type, text } = extractInboundText(message);
