@@ -2,7 +2,7 @@ import { prisma } from '../config/database';
 import { loadAIAgentContext, persistAIAgentDecision } from './ai-agent-context.service';
 import { runAIPrequalification } from './ai-provider.service';
 import type { WhatsAppConversationMessage } from './whatsapp.service';
-import { normalizePhoneE164 } from '../utils/phone';
+import { normalizePhoneE164, phoneSearchVariants } from '../utils/phone';
 
 const DEBOUNCE_MS = 5_000;
 const LOCK_TTL_MS = 120_000;
@@ -180,31 +180,27 @@ async function upgradeLeadEmail(generatedEmail: string, realEmail: string, name:
 // ─── Phone lookup ─────────────────────────────────────────────────────────────
 
 async function findLeadByPhone(phone: string) {
-  const normalized = phone.replace(/\D/g, '');
-  const candidates = [normalized, normalized.replace(/^55/, ''), normalized.slice(-11), normalized.slice(-9)]
-    .filter((v, i, arr) => v.length >= 8 && arr.indexOf(v) === i);
+  const candidates = phoneSearchVariants(phone);
+  const selectFields = {
+    id: true, email: true, name: true, company: true, jobTitle: true,
+    status: true, score: true, tags: true, phone: true,
+    aiHandoff: true, aiProcessing: true, aiProcessingAt: true,
+  };
 
   for (const value of candidates) {
     const lead = await prisma.lead.findFirst({
       where: { phone: { contains: value } },
-      select: {
-        id: true, email: true, name: true, company: true, jobTitle: true,
-        status: true, score: true, tags: true, phone: true,
-        aiHandoff: true, aiProcessing: true, aiProcessingAt: true,
-      },
+      select: selectFields,
     });
     if (lead) return lead;
   }
 
   // Fallback: lookup by generated email
-  const toE164 = normalized.startsWith('55') ? normalized : `55${normalized}`;
+  const digits = phone.replace(/\D/g, '');
+  const toE164 = digits.startsWith('55') ? digits : `55${digits}`;
   return prisma.lead.findUnique({
     where: { email: `wpp_${toE164}@autoforce.internal` },
-    select: {
-      id: true, email: true, name: true, company: true, jobTitle: true,
-      status: true, score: true, tags: true, phone: true,
-      aiHandoff: true, aiProcessing: true, aiProcessingAt: true,
-    },
+    select: selectFields,
   });
 }
 

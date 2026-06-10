@@ -1,7 +1,7 @@
 import { PlatformConnectionService } from './platform-connection.service';
 import { Platform } from '@prisma/client';
 import { prisma } from '../config/database';
-import { normalizePhoneE164 } from '../utils/phone';
+import { normalizePhoneE164, phoneSearchVariants } from '../utils/phone';
 
 export interface WhatsAppTemplateComponent {
   type: 'HEADER' | 'BODY' | 'FOOTER' | 'BUTTONS';
@@ -103,9 +103,7 @@ function metaTimestamp(seconds: string | number | undefined): Date {
 }
 
 async function findLeadByPhone(phone: string) {
-  const normalized = normalizePhone(phone);
-  const candidates = [normalized, normalized.replace(/^55/, ''), normalized.slice(-11), normalized.slice(-9)]
-    .filter((value, index, arr) => value.length >= 8 && arr.indexOf(value) === index);
+  const candidates = phoneSearchVariants(phone);
 
   for (const value of candidates) {
     const lead = await prisma.lead.findFirst({
