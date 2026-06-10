@@ -2,6 +2,7 @@ import { prisma } from '../config/database';
 import { loadAIAgentContext, persistAIAgentDecision } from './ai-agent-context.service';
 import { runAIPrequalification } from './ai-provider.service';
 import type { WhatsAppConversationMessage } from './whatsapp.service';
+import { normalizePhoneE164 } from '../utils/phone';
 
 const DEBOUNCE_MS = 5_000;
 const LOCK_TTL_MS = 120_000;
@@ -33,8 +34,7 @@ export function scheduleAIReply(phone: string): void {
 }
 
 function normalizePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  return digits.startsWith('55') ? digits : `55${digits}`;
+  return normalizePhoneE164(phone) ?? phone.replace(/\D/g, '');
 }
 
 async function processAIReply(phone: string): Promise<void> {

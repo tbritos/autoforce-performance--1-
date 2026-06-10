@@ -1,5 +1,6 @@
 import { prisma } from '../config/database';
 import { LeadStatus, Prisma } from '@prisma/client';
+import { normalizePhoneE164 } from '../utils/phone';
 
 // ============================================================
 // Helpers
@@ -123,7 +124,7 @@ export class LeadHubService {
         data: {
           email,
           name: input.name || null,
-          phone: input.phone || null,
+          phone: normalizePhoneE164(input.phone),
           company: input.company || null,
           jobTitle: input.jobTitle || null,
           city: input.city || null,
@@ -433,7 +434,7 @@ export class LeadHubService {
 
     const data: Prisma.LeadUpdateInput = {
       ...(input.name !== undefined ? { name: cleanString(input.name) } : {}),
-      ...(input.phone !== undefined ? { phone: cleanString(input.phone) } : {}),
+      ...(input.phone !== undefined ? { phone: normalizePhoneE164(input.phone) } : {}),
       ...(input.company !== undefined ? { company: cleanString(input.company) } : {}),
       ...(input.jobTitle !== undefined ? { jobTitle: cleanString(input.jobTitle) } : {}),
       ...(input.city !== undefined ? { city: cleanString(input.city) } : {}),

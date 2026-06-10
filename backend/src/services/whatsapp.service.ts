@@ -1,6 +1,7 @@
 import { PlatformConnectionService } from './platform-connection.service';
 import { Platform } from '@prisma/client';
 import { prisma } from '../config/database';
+import { normalizePhoneE164 } from '../utils/phone';
 
 export interface WhatsAppTemplateComponent {
   type: 'HEADER' | 'BODY' | 'FOOTER' | 'BUTTONS';
@@ -93,7 +94,7 @@ export interface WhatsAppConversationMessage {
 }
 
 function normalizePhone(phone: string | null | undefined): string {
-  return String(phone ?? '').replace(/\D/g, '');
+  return normalizePhoneE164(String(phone ?? '')) ?? String(phone ?? '').replace(/\D/g, '');
 }
 
 function metaTimestamp(seconds: string | number | undefined): Date {
