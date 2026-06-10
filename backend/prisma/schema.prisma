@@ -71,6 +71,11 @@ model Lead {
   notes      String?  @db.Text
   assignedTo String?
 
+  // AI agent state
+  aiProcessing   Boolean   @default(false)
+  aiProcessingAt DateTime?
+  aiHandoff      Boolean   @default(false)
+
   // Pipedrive integration
   pipedrivePersonId String?
   pipedriveDealId   String?
@@ -104,6 +109,8 @@ model Lead {
   @@index([createdAt])
   @@index([deletedAt])
   @@index([pipedrivePersonId])
+  @@index([aiProcessing])
+  @@index([aiHandoff])
 }
 
 model LeadConversion {
@@ -920,6 +927,9 @@ model Funnel {
 
   // Linked ad campaigns for spend attribution
   campaignIds     String[] @default([])
+
+  // Stage configuration — array of { id, name, source, color }
+  stagesConfig    Json?
 
   sortOrder Int     @default(0)
   isActive  Boolean @default(true)

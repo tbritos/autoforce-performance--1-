@@ -25,6 +25,7 @@ export type AIPrequalificationResult = {
   conversationState: string;
   leadUpdates: Record<string, unknown>;
   openQuestions: string[];
+  replyMessage?: string;
   promptSnapshot?: unknown;
 };
 
@@ -255,6 +256,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
         campo: 'valor extraido ou atualizado',
       },
       open_questions: ['perguntas importantes ainda sem resposta'],
+      reply_message: 'Mensagem de texto a enviar ao lead pelo WhatsApp em resposta à conversa. Português, tom consultivo, máximo 400 caracteres. Null ou vazio se nenhuma resposta for necessária.',
     },
   };
 }
@@ -374,6 +376,7 @@ function fallbackAIPrequalification(
     conversationState: 'needs_human_review',
     leadUpdates: {},
     openQuestions: [],
+    replyMessage: undefined,
   };
 }
 
@@ -424,6 +427,7 @@ function normalizeAIPrequalificationResult(
     conversationState: String(data.conversation_state ?? data.conversationState ?? fit),
     leadUpdates: isRecord(data.lead_updates) ? data.lead_updates : {},
     openQuestions,
+    replyMessage: data.reply_message ? String(data.reply_message).trim().slice(0, 1024) : undefined,
     promptSnapshot,
   };
 }

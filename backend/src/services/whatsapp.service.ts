@@ -267,6 +267,9 @@ async function recordInboundMessage(message: any): Promise<void> {
   if (lead?.email) {
     const { resumeWaitingWhatsAppReply } = await import('./automation-engine.service');
     await resumeWaitingWhatsAppReply(lead.email, text ?? '', 'replied');
+
+    const { scheduleAIReply } = await import('./ai-whatsapp-reply.service');
+    scheduleAIReply(lead.email, from);
   }
 }
 
