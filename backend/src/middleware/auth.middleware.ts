@@ -8,7 +8,7 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
       req.method === 'GET' &&
       /^\/connections\/[^/]+\/callback$/.test(req.path);
 
-    if (req.path === '/health' || req.path.startsWith('/auth') || isOAuthCallback) {
+    if (req.path === '/health' || req.path.startsWith('/auth') || isOAuthCallback || req.path === '/whatsapp/webhook') {
       next();
       return;
     }
