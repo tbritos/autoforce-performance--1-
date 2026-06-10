@@ -3,8 +3,9 @@ import {
   Plus, Pencil, Trash2, RefreshCw, Download, Calendar,
   TrendingUp, DollarSign, Users, CheckCircle, Eye,
   MousePointerClick, Filter, ArrowDown, X, ChevronRight,
-  Layers,
+  Layers, ChevronUp, GripVertical, ArrowLeft, Info, Link2,
 } from 'lucide-react';
+import { FunnelStage } from '../types';
 import { DataService } from '../services/dataService';
 import {
   FunnelDef, FunnelStats, MetaCampaign, GoogleAdsCampaign,
@@ -19,6 +20,9 @@ interface FunnelFormState {
   leadTags:        string[];
   impressionPages: string[];
   campaignIds:     string[];
+  stagesConfig:    FunnelStage[];
+  filterCampaign:  string;
+  filterLandingPage: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -30,9 +34,63 @@ const PALETTE = [
   '#10b981', '#06b6d4', '#f97316', '#6366f1',
 ];
 
+const STAGE_SOURCES: { value: string; label: string; color: string; icon: React.ElementType }[] = [
+  { value: 'ga4_users',     label: 'GA4 - Usuários',          color: '#94a3b8', icon: Eye },
+  { value: 'crm_LEAD',      label: 'Tag - Lead',              color: '#3b82f6', icon: Users },
+  { value: 'crm_MQL',       label: 'CRM - MQL',               color: '#6366f1', icon: TrendingUp },
+  { value: 'crm_SQL',       label: 'CRM - SQL',               color: '#818cf8', icon: Filter },
+  { value: 'crm_SCHEDULED', label: 'CRM - Agendado',          color: '#f59e0b', icon: Calendar },
+  { value: 'crm_DEMO',      label: 'CRM - Demo',              color: '#f97316', icon: MousePointerClick },
+  { value: 'crm_PROPOSAL',  label: 'CRM - Proposta',          color: '#a855f7', icon: CheckCircle },
+  { value: 'crm_CLIENT',    label: 'CRM - Cliente / Venda',   color: '#22c55e', icon: DollarSign },
+  { value: 'crm_LOST',      label: 'CRM - Perdido',           color: '#ef4444', icon: X },
+];
+
+const STAGE_TEMPLATES: Record<string, FunnelStage[]> = {
+  full: [
+    { id: 'ts1', name: 'Usuários',     source: 'ga4_users',     color: '#94a3b8' },
+    { id: 'ts2', name: 'Leads',        source: 'crm_LEAD',      color: '#3b82f6' },
+    { id: 'ts3', name: 'MQLs',         source: 'crm_MQL',       color: '#6366f1' },
+    { id: 'ts4', name: 'SQLs',         source: 'crm_SQL',       color: '#818cf8' },
+    { id: 'ts5', name: 'Agendamentos', source: 'crm_SCHEDULED', color: '#f59e0b' },
+    { id: 'ts6', name: 'Vendas',       source: 'crm_CLIENT',    color: '#22c55e' },
+  ],
+  commercial: [
+    { id: 'ts3', name: 'SQLs',         source: 'crm_SQL',       color: '#818cf8' },
+    { id: 'ts4', name: 'Agendamentos', source: 'crm_SCHEDULED', color: '#f59e0b' },
+    { id: 'ts5', name: 'Demos',        source: 'crm_DEMO',      color: '#f97316' },
+    { id: 'ts6', name: 'Propostas',    source: 'crm_PROPOSAL',  color: '#a855f7' },
+    { id: 'ts7', name: 'Vendas',       source: 'crm_CLIENT',    color: '#22c55e' },
+  ],
+  simple: [
+    { id: 'ts2', name: 'Leads',        source: 'crm_LEAD',      color: '#3b82f6' },
+    { id: 'ts5', name: 'Agendamentos', source: 'crm_SCHEDULED', color: '#f59e0b' },
+    { id: 'ts7', name: 'Vendas',       source: 'crm_CLIENT',    color: '#22c55e' },
+  ],
+  crm_only: [
+    { id: 'ts2', name: 'Leads',        source: 'crm_LEAD',      color: '#3b82f6' },
+    { id: 'ts3', name: 'MQLs',         source: 'crm_MQL',       color: '#6366f1' },
+    { id: 'ts4', name: 'SQLs',         source: 'crm_SQL',       color: '#818cf8' },
+    { id: 'ts5', name: 'Agendamentos', source: 'crm_SCHEDULED', color: '#f59e0b' },
+    { id: 'ts6', name: 'Vendas',       source: 'crm_CLIENT',    color: '#22c55e' },
+  ],
+  ga4_only: [
+    { id: 'ts1', name: 'Usuários',     source: 'ga4_users',     color: '#94a3b8' },
+  ],
+};
+
+const getStageCount = (source: string, stats: FunnelStats | null): number => {
+  if (!stats) return 0;
+  if (source === 'ga4_users') return stats.gaUsers ?? 0;
+  const status = source.replace('crm_', '') as keyof typeof stats.funnelCounts;
+  return (stats.funnelCounts?.[status] as number) ?? 0;
+};
+
 const emptyForm = (): FunnelFormState => ({
   name: '', description: '', color: '#3b82f6',
   leadTags: [], impressionPages: [], campaignIds: [],
+  stagesConfig: [...STAGE_TEMPLATES.full.map(s => ({ ...s, id: `${Date.now()}_${s.id}` }))],
+  filterCampaign: '', filterLandingPage: '',
 });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -299,189 +357,348 @@ const SelectPicker: React.FC<{
   );
 };
 
-// ─── Funnel form panel ────────────────────────────────────────────────────────
+// ─── Funnel Create Page (full-screen) ─────────────────────────────────────────
 
-const FunnelFormPanel: React.FC<{
-  initial:    FunnelFormState;
-  editId:     string | null;
-  onSave:     (form: FunnelFormState) => Promise<void>;
-  onClose:    () => void;
-  saving:     boolean;
+type DataMode = 'ga4_crm' | 'crm_only' | 'ga4_only';
+
+const DATA_MODE_OPTIONS: { key: DataMode; title: string; desc: string; iconBg: string; iconText: string }[] = [
+  { key: 'ga4_crm',   title: 'GA4 + CRM',   desc: 'Tráfego do GA4 + estágios do CRM (unificado)', iconBg: 'linear-gradient(135deg,#f97316,#3b82f6)', iconText: 'GA' },
+  { key: 'crm_only',  title: 'Só CRM',      desc: 'Apenas estágios e status do Pipedrive',        iconBg: '#1e40af',                                 iconText: 'AF' },
+  { key: 'ga4_only',  title: 'Só tráfego',  desc: 'Eventos e páginas do GA4',                    iconBg: '#16a34a',                                 iconText: 'G4' },
+];
+
+const DATA_MODE_TEMPLATE: Record<DataMode, keyof typeof STAGE_TEMPLATES> = {
+  ga4_crm:  'full',
+  crm_only: 'crm_only',
+  ga4_only: 'ga4_only',
+};
+
+const FunnelCreatePage: React.FC<{
+  initial: FunnelFormState;
+  editId:  string | null;
+  onSave:  (form: FunnelFormState) => Promise<void>;
+  onClose: () => void;
+  saving:  boolean;
 }> = ({ initial, editId, onSave, onClose, saving }) => {
-  const [form, setForm] = useState<FunnelFormState>(initial);
-  const setText = (k: 'name' | 'description') => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm(prev => ({ ...prev, [k]: e.target.value }));
+  const [form, setForm]           = useState<FunnelFormState>({ ...initial });
+  const [dataMode, setDataMode]   = useState<DataMode>('ga4_crm');
+  const [previewStats, setPreviewStats] = useState<FunnelStats | null>(null);
+  const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([]);
+  const [pages, setPages]         = useState<string[]>([]);
 
-  const [allTags,      setAllTags]      = useState<string[]>([]);
-  const [allPages,     setAllPages]     = useState<string[]>([]);
-  const [campaigns,       setCampaigns]       = useState<{ id: string; name: string; platform: string }[]>([]);
-  const [campaignsLoading, setCampaignsLoading] = useState(false);
-  const [campaignSearch,   setCampaignSearch]   = useState('');
-
-  useEffect(() => { setForm(initial); }, [initial]);
+  useEffect(() => { setForm({ ...initial }); }, [initial]);
 
   useEffect(() => {
-    DataService.getAllLeadTags().then(setAllTags).catch(() => {});
-    DataService.getLandingPagesGA()
-      .then(pages => setAllPages(pages.map(p => p.path)))
-      .catch(() => {});
-
-    // Load campaigns from Meta + Google APIs (last 365 days to include paused ones)
-    setCampaignsLoading(true);
     const end   = new Date().toISOString().split('T')[0];
-    const start = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const start = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    DataService.getFunnelStats(null, start, end).then(setPreviewStats).catch(() => {});
+    DataService.getLandingPagesGA().then(ps => setPages(ps.map(p => p.path))).catch(() => {});
     Promise.all([
       DataService.getMetaCampaigns(start, end).catch(() => []),
       DataService.getGoogleAdsCampaigns(start, end).catch(() => []),
     ]).then(([meta, google]) => {
-      const metaList   = (Array.isArray(meta)   ? meta   : []).map(c => ({ id: c.id, name: c.name, platform: 'Meta' }));
-      const googleList = (Array.isArray(google) ? google : []).map(c => ({ id: c.id, name: c.name, platform: 'Google' }));
-      setCampaigns([...metaList, ...googleList]);
-    }).finally(() => setCampaignsLoading(false));
+      setCampaigns([
+        ...(Array.isArray(meta) ? meta : []).map((c: any) => ({ id: c.id, name: c.name })),
+        ...(Array.isArray(google) ? google : []).map((c: any) => ({ id: c.id, name: c.name })),
+      ]);
+    });
   }, []);
 
-  const iStyle: React.CSSProperties = {
-    width: '100%', padding: '7px 10px', fontSize: 12, boxSizing: 'border-box',
-    background: 'var(--bg-subtle)', border: '1px solid var(--border)',
-    borderRadius: 'var(--r-md)', color: 'var(--fg-primary)', outline: 'none',
+  const selectDataMode = (mode: DataMode) => {
+    setDataMode(mode);
+    const tKey = DATA_MODE_TEMPLATE[mode];
+    const t = STAGE_TEMPLATES[tKey].map(s => ({ ...s, id: `s_${Date.now()}_${s.id}` }));
+    setForm(f => ({ ...f, stagesConfig: t }));
   };
-  const sectionTitle: React.CSSProperties = {
-    fontSize: 10, fontWeight: 700, color: 'var(--fg-subtle)',
-    textTransform: 'uppercase', letterSpacing: '.06em', margin: '0 0 10px',
+
+  const addStage = () => {
+    const next: FunnelStage = { id: `s_${Date.now()}`, name: 'Nova etapa', source: 'crm_LEAD', color: '#3b82f6' };
+    setForm(f => ({ ...f, stagesConfig: [...f.stagesConfig, next] }));
+  };
+
+  const updateStage = (id: string, patch: Partial<FunnelStage>) => {
+    setForm(f => ({
+      ...f,
+      stagesConfig: f.stagesConfig.map(s =>
+        s.id === id
+          ? { ...s, ...patch, color: patch.source ? (STAGE_SOURCES.find(o => o.value === patch.source)?.color ?? s.color) : (patch.color ?? s.color) }
+          : s
+      ),
+    }));
+  };
+
+  const removeStage = (id: string) =>
+    setForm(f => ({ ...f, stagesConfig: f.stagesConfig.filter(s => s.id !== id) }));
+
+  const applyTemplate = (key: keyof typeof STAGE_TEMPLATES) => {
+    const t = STAGE_TEMPLATES[key].map(s => ({ ...s, id: `s_${Date.now()}_${s.id}` }));
+    setForm(f => ({ ...f, stagesConfig: t }));
+  };
+
+  const iStyle: React.CSSProperties = {
+    padding: '8px 12px', fontSize: 13, boxSizing: 'border-box',
+    background: 'var(--bg-surface)', border: '1px solid var(--border)',
+    borderRadius: 8, color: 'var(--fg-primary)', outline: 'none', width: '100%',
+  };
+
+  const sectionCard: React.CSSProperties = {
+    background: 'var(--bg-surface)', border: '1px solid var(--border)',
+    borderRadius: 12, overflow: 'hidden', marginBottom: 16,
+  };
+  const sectionHead: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 10,
+    padding: '14px 20px', borderBottom: '1px solid var(--border)',
+    background: 'var(--bg-muted)',
+  };
+  const sectionNum: React.CSSProperties = {
+    width: 22, height: 22, borderRadius: '50%', background: 'var(--accent)',
+    color: 'white', fontSize: 12, fontWeight: 700,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   };
 
   return (
-    <div style={{
-      width: 320, flexShrink: 0,
-      background: 'var(--bg-surface)', border: '1px solid var(--border)',
-      borderRadius: 'var(--r-lg)',
-      display: 'flex', flexDirection: 'column',
-      alignSelf: 'flex-start', position: 'sticky', top: 24,
-      maxHeight: 'calc(100vh - 80px)',
-    }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)', margin: 0 }}>
-          {editId ? 'Editar funil' : 'Novo funil'}
-        </p>
-        <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-muted)' }}>
-          <X size={15} />
+    <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'var(--bg-app)', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+
+      {/* Top bar */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: 'var(--bg-surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 16, padding: '12px 28px', flexShrink: 0 }}>
+        <button type="button" onClick={onClose} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-muted)', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+          <ArrowLeft size={14} /> Funil
         </button>
+        <div style={{ flex: 1 }}>
+          <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--fg-primary)' }}>{editId ? 'Editar funil' : 'Novo funil'}</span>
+          <span style={{ fontSize: 13, color: 'var(--fg-muted)', marginLeft: 10 }}>Configure as etapas e veja o preview ao lado.</span>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" onClick={onClose}
+            style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer' }}>
+            Cancelar
+          </button>
+          <button type="button" onClick={() => onSave(form)} disabled={saving || !form.name.trim()}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 20px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: saving || !form.name.trim() ? 0.5 : 1 }}>
+            <CheckCircle size={14} /> {saving ? 'Salvando...' : editId ? 'Salvar funil' : 'Criar funil'}
+          </button>
+        </div>
       </div>
 
-      {/* Scrollable body */}
-      <div style={{ overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
+      {/* Body */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 24, padding: '28px 28px 64px', maxWidth: 1060, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
 
-        {/* Nome + Descrição */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div>
-            <p style={{ fontSize: 11, color: 'var(--fg-muted)', fontWeight: 500, margin: '0 0 4px' }}>Nome *</p>
-            <input style={iStyle} value={form.name} onChange={setText('name')} placeholder="Ex: Ebook Máquina de Vendas" />
-          </div>
-          <div>
-            <p style={{ fontSize: 11, color: 'var(--fg-muted)', fontWeight: 500, margin: '0 0 4px' }}>Descrição</p>
-            <input style={iStyle} value={form.description} onChange={setText('description')} placeholder="Opcional" />
-          </div>
-        </div>
-
-        {/* Cor */}
+        {/* Left: form */}
         <div>
-          <p style={{ fontSize: 11, color: 'var(--fg-muted)', fontWeight: 500, margin: '0 0 6px' }}>Cor</p>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {PALETTE.map(c => (
-              <button key={c} type="button" onClick={() => setForm(prev => ({ ...prev, color: c }))}
-                style={{ width: 22, height: 22, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer', outline: form.color === c ? `2px solid ${c}` : 'none', outlineOffset: 2 }} />
-            ))}
+
+          {/* Section 1 — Informações */}
+          <div style={sectionCard}>
+            <div style={sectionHead}>
+              <span style={sectionNum}>1</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>Informações do funil</span>
+            </div>
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+              {/* Nome */}
+              <div>
+                <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>Nome do funil</p>
+                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="Funil de aquisição — Site" style={iStyle} />
+              </div>
+
+              {/* Fonte de dados */}
+              <div>
+                <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>Fonte de dados principal</p>
+                <p style={{ margin: '0 0 10px', fontSize: 11, color: 'var(--fg-subtle)' }}>De onde o funil puxa os números de cada etapa.</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                  {DATA_MODE_OPTIONS.map(opt => {
+                    const selected = dataMode === opt.key;
+                    return (
+                      <button key={opt.key} type="button" onClick={() => selectDataMode(opt.key)}
+                        style={{
+                          position: 'relative', padding: '14px 14px 12px',
+                          borderRadius: 12, textAlign: 'left', cursor: 'pointer',
+                          border: selected ? '2px solid var(--accent)' : '1px solid var(--border)',
+                          background: selected ? 'var(--accent-soft)' : 'var(--bg-surface)',
+                          display: 'flex', flexDirection: 'column', gap: 8,
+                          transition: 'all .15s',
+                        }}>
+                        {selected && (
+                          <div style={{ position: 'absolute', top: 10, right: 10, width: 18, height: 18, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <CheckCircle size={10} color="white" strokeWidth={3} />
+                          </div>
+                        )}
+                        <div style={{ width: 36, height: 36, borderRadius: 10, background: opt.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <span style={{ fontSize: 11, fontWeight: 800, color: 'white', letterSpacing: '-.02em' }}>{opt.iconText}</span>
+                        </div>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-primary)', lineHeight: 1.2 }}>{opt.title}</span>
+                        <span style={{ fontSize: 11, color: 'var(--fg-muted)', lineHeight: 1.4 }}>{opt.desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Filtrar por */}
+              <div>
+                <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>Filtrar por</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <select value={form.filterCampaign} onChange={e => setForm(f => ({ ...f, filterCampaign: e.target.value }))}
+                    style={{ ...iStyle, cursor: 'pointer' }}>
+                    <option value="">Todas as campanhas</option>
+                    {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                  <select value={form.filterLandingPage} onChange={e => setForm(f => ({ ...f, filterLandingPage: e.target.value }))}
+                    style={{ ...iStyle, cursor: 'pointer' }}>
+                    <option value="">Todas as páginas</option>
+                    {pages.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2 — Etapas */}
+          <div style={sectionCard}>
+            <div style={sectionHead}>
+              <span style={sectionNum}>2</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>Etapas do funil</span>
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--fg-muted)' }}>{form.stagesConfig.length} etapas</span>
+            </div>
+            <div style={{ padding: 20 }}>
+
+              {/* Templates */}
+              <div style={{ marginBottom: 16 }}>
+                <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--fg-muted)' }}>Começar de um modelo</p>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {[
+                    { key: 'full',       label: '🎯 Aquisição completa' },
+                    { key: 'commercial', label: '💼 Comercial (SQL→Venda)' },
+                    { key: 'simple',     label: '⚡ Simples (3 etapas)' },
+                  ].map(t => (
+                    <button key={t.key} type="button" onClick={() => applyTemplate(t.key as keyof typeof STAGE_TEMPLATES)}
+                      style={{ padding: '5px 14px', borderRadius: 20, border: '1px solid var(--border)', background: 'var(--bg-subtle)', fontSize: 12, color: 'var(--fg-secondary)', cursor: 'pointer', fontWeight: 500 }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.borderColor = 'var(--accent)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg-subtle)'; e.currentTarget.style.borderColor = 'var(--border)'; }}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Stage list */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+                {form.stagesConfig.map((stage) => {
+                  const src = STAGE_SOURCES.find(s => s.value === stage.source);
+                  const StageIcon = src?.icon ?? Users;
+                  const stageColor = src?.color ?? '#3b82f6';
+                  return (
+                    <div key={stage.id} style={{
+                      display: 'grid', gridTemplateColumns: '24px 34px 1fr auto 34px',
+                      gap: 8, alignItems: 'center',
+                      padding: '8px 10px',
+                      background: 'var(--bg-subtle)', borderRadius: 10, border: '1px solid var(--border)',
+                    }}>
+                      {/* Grip handle */}
+                      <div style={{ display: 'flex', justifyContent: 'center', cursor: 'grab' }}>
+                        <GripVertical size={14} style={{ color: 'var(--fg-subtle)' }} />
+                      </div>
+
+                      {/* Stage icon */}
+                      <div style={{ width: 28, height: 28, borderRadius: 8, background: stageColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <StageIcon size={13} color="white" />
+                      </div>
+
+                      {/* Stage name */}
+                      <input value={stage.name} onChange={e => updateStage(stage.id, { name: e.target.value })}
+                        placeholder="Nome da etapa"
+                        style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 13, fontWeight: 600, color: 'var(--fg-primary)', width: '100%', padding: '2px 0' }} />
+
+                      {/* Source select */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                        <Link2 size={11} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
+                        <select value={stage.source} onChange={e => updateStage(stage.id, { source: e.target.value })}
+                          style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', fontSize: 12, color: 'var(--fg-secondary)', outline: 'none', cursor: 'pointer', minWidth: 160 }}>
+                          {STAGE_SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                        </select>
+                      </div>
+
+                      {/* Delete */}
+                      <button type="button" onClick={() => removeStage(stage.id)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, borderRadius: 6 }}
+                        onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = '#ef444418'; }}
+                        onMouseLeave={e => { e.currentTarget.style.color = 'var(--fg-subtle)'; e.currentTarget.style.background = 'none'; }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Add stage */}
+              <button type="button" onClick={addStage}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px dashed var(--border)', background: 'transparent', color: 'var(--fg-muted)', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--fg-muted)'; }}>
+                <Plus size={13} /> Adicionar etapa
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Segmentação */}
-        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <p style={sectionTitle}>Segmentação</p>
-
-          <SelectPicker
-            label="Tags de identificação"
-            placeholder="Buscar ou criar tag..."
-            options={allTags}
-            values={form.leadTags}
-            onChange={v => setForm(prev => ({ ...prev, leadTags: v }))}
-            chipColor="var(--accent)"
-          />
-
-          <SelectPicker
-            label="Páginas GA4 (impressões)"
-            placeholder="Buscar página..."
-            options={allPages}
-            values={form.impressionPages}
-            onChange={v => setForm(prev => ({ ...prev, impressionPages: v }))}
-            allowNew={false}
-            chipColor="#06b6d4"
-          />
-        </div>
-
-        {/* Campanhas */}
-        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <p style={sectionTitle}>Campanhas (investimento)</p>
-          <input
-            value={campaignSearch}
-            onChange={e => setCampaignSearch(e.target.value)}
-            placeholder="Filtrar campanhas..."
-            style={iStyle}
-          />
-          <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {campaigns
-              .filter(c => c.name.toLowerCase().includes(campaignSearch.toLowerCase()))
-              .map(c => {
-                const checked = form.campaignIds.includes(c.id);
+        {/* Right: live preview */}
+        <div style={{ position: 'sticky', top: 73, alignSelf: 'flex-start' }}>
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Eye size={13} style={{ color: 'var(--accent)' }} />
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-primary)' }}>Preview ao vivo</span>
+              </div>
+              <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>dados reais · 30d</span>
+            </div>
+            <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {form.stagesConfig.map((stage, i) => {
+                const count    = getStageCount(stage.source, previewStats);
+                const prevCount = i > 0 ? getStageCount(form.stagesConfig[i - 1].source, previewStats) : 0;
+                const rate     = i > 0 && prevCount > 0 ? ((count / prevCount) * 100).toFixed(0) + '%' : null;
+                const maxCount = Math.max(...form.stagesConfig.map(s => getStageCount(s.source, previewStats)), 1);
+                const pct      = Math.max((count / maxCount) * 100, 2);
+                const color    = STAGE_SOURCES.find(s => s.value === stage.source)?.color ?? '#3b82f6';
                 return (
-                  <label key={c.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px',
-                    borderRadius: 'var(--r-md)', cursor: 'pointer',
-                    background: checked ? 'var(--accent-soft)' : 'transparent',
-                  }}>
-                    <input type="checkbox" checked={checked}
-                      onChange={() => setForm(prev => ({
-                        ...prev,
-                        campaignIds: checked
-                          ? prev.campaignIds.filter(id => id !== c.id)
-                          : [...prev.campaignIds, c.id],
-                      }))}
-                      style={{ accentColor: 'var(--accent)', flexShrink: 0 }}
-                    />
-                    <span style={{ fontSize: 11, color: checked ? 'var(--accent)' : 'var(--fg-secondary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {c.name}
-                    </span>
-                    <span style={{ fontSize: 10, color: 'var(--fg-subtle)', flexShrink: 0, background: 'var(--bg-muted)', padding: '1px 5px', borderRadius: 4 }}>
-                      {c.platform}
-                    </span>
-                  </label>
+                  <div key={stage.id}>
+                    {rate && (
+                      <p style={{ fontSize: 10, color: 'var(--fg-subtle)', margin: '2px 0 2px 4px' }}>
+                        | {rate} convertem
+                      </p>
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 12, color: 'var(--fg-secondary)', width: 80, flexShrink: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {stage.name}
+                      </span>
+                      <div style={{ flex: 1, height: 22, background: 'var(--bg-muted)', borderRadius: 5, overflow: 'hidden', position: 'relative' }}>
+                        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 5, display: 'flex', alignItems: 'center', paddingLeft: 7, boxSizing: 'border-box', transition: 'width .5s ease', minWidth: pct > 5 ? 'auto' : 0 }}>
+                          {pct > 20 && <span style={{ fontSize: 11, fontWeight: 700, color: 'white', whiteSpace: 'nowrap' }}>{fmtNum(count)}</span>}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--fg-primary)', width: 36, textAlign: 'right', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                        {fmtNum(count)}
+                      </span>
+                    </div>
+                  </div>
                 );
               })}
-            {campaignsLoading && (
-              <p style={{ fontSize: 11, color: 'var(--fg-subtle)', padding: '6px 8px' }}>Carregando campanhas...</p>
-            )}
-            {!campaignsLoading && campaigns.length === 0 && (
-              <p style={{ fontSize: 11, color: 'var(--fg-subtle)', padding: '6px 8px' }}>Nenhuma campanha encontrada.</p>
-            )}
+              {form.stagesConfig.length === 0 && (
+                <p style={{ fontSize: 12, color: 'var(--fg-muted)', textAlign: 'center', padding: '20px 0' }}>Adicione etapas para ver o preview.</p>
+              )}
+              {previewStats === null && form.stagesConfig.length > 0 && (
+                <p style={{ fontSize: 11, color: 'var(--fg-subtle)', textAlign: 'center', marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                  <RefreshCw size={10} className="animate-spin" /> Carregando...
+                </p>
+              )}
+            </div>
+            <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', background: 'var(--bg-subtle)' }}>
+              <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-muted)', display: 'flex', alignItems: 'flex-start', gap: 5, lineHeight: 1.4 }}>
+                <Info size={11} style={{ marginTop: 1, flexShrink: 0, color: 'var(--accent)' }} />
+                O preview usa os dados reais dos últimos 30 dias. Reordene ou edite as etapas para ver o impacto na hora.
+              </p>
+            </div>
           </div>
-          {form.campaignIds.length > 0 && (
-            <p style={{ fontSize: 10, color: 'var(--accent)', margin: 0 }}>
-              ✓ {form.campaignIds.length} campanha{form.campaignIds.length > 1 ? 's' : ''} selecionada{form.campaignIds.length > 1 ? 's' : ''}
-            </p>
-          )}
         </div>
-      </div>
-
-      {/* Footer fixo */}
-      <div style={{ display: 'flex', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-        <button type="button" onClick={onClose}
-          style={{ flex: 1, padding: '8px 0', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', background: 'transparent', fontSize: 12, color: 'var(--fg-muted)', cursor: 'pointer' }}>
-          Cancelar
-        </button>
-        <button type="button" disabled={saving || !form.name.trim()} onClick={() => onSave(form)}
-          style={{ flex: 1, padding: '8px 0', borderRadius: 'var(--r-md)', border: 'none', background: 'var(--accent)', fontSize: 12, fontWeight: 600, color: 'white', cursor: 'pointer', opacity: saving || !form.name.trim() ? 0.5 : 1 }}>
-          {saving ? 'Salvando...' : 'Salvar'}
-        </button>
       </div>
     </div>
   );
@@ -569,12 +786,15 @@ const FunnelView: React.FC = () => {
     setFormSaving(true);
     try {
       const payload = {
-        name:            form.name.trim(),
-        description:     form.description.trim() || undefined,
-        color:           form.color,
-        leadTags:        form.leadTags,
-        impressionPages: form.impressionPages,
-        campaignIds:     form.campaignIds,
+        name:              form.name.trim(),
+        description:       form.description.trim() || undefined,
+        color:             form.color,
+        leadTags:          form.leadTags,
+        impressionPages:   form.impressionPages,
+        campaignIds:       form.campaignIds,
+        stagesConfig:      form.stagesConfig,
+        filterCampaign:    form.filterCampaign || undefined,
+        filterLandingPage: form.filterLandingPage || undefined,
       };
       if (editFunnel) {
         const updated = await DataService.updateFunnel(editFunnel.id, payload);
@@ -666,15 +886,29 @@ const FunnelView: React.FC = () => {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   const formInitial: FunnelFormState = editFunnel ? {
-    name:            editFunnel.name,
-    description:     editFunnel.description || '',
-    color:           editFunnel.color,
-    leadTags:        editFunnel.leadTags        ?? [],
-    impressionPages: editFunnel.impressionPages ?? [],
-    campaignIds:     editFunnel.campaignIds     ?? [],
+    name:              editFunnel.name,
+    description:       editFunnel.description || '',
+    color:             editFunnel.color,
+    leadTags:          editFunnel.leadTags        ?? [],
+    impressionPages:   editFunnel.impressionPages ?? [],
+    campaignIds:       editFunnel.campaignIds     ?? [],
+    stagesConfig:      (editFunnel.stagesConfig as FunnelStage[] | null) ?? [...STAGE_TEMPLATES.full],
+    filterCampaign:    editFunnel.filterCampaign    ?? '',
+    filterLandingPage: editFunnel.filterLandingPage ?? '',
   } : emptyForm();
 
   return (
+    <>
+      {showForm && (
+        <FunnelCreatePage
+          initial={formInitial}
+          editId={editFunnel?.id ?? null}
+          onSave={handleSave}
+          onClose={() => setShowForm(false)}
+          saving={formSaving}
+        />
+      )}
+
     <div style={{ padding: '24px 28px 64px', maxWidth: 1480, margin: '0 auto' }} className="animate-fade-in-up">
 
       {/* Header */}
@@ -941,18 +1175,10 @@ const FunnelView: React.FC = () => {
           })()}
         </div>
 
-        {/* Form panel */}
-        {showForm && (
-          <FunnelFormPanel
-            initial={formInitial}
-            editId={editFunnel?.id ?? null}
-            onSave={handleSave}
-            onClose={() => setShowForm(false)}
-            saving={formSaving}
-          />
-        )}
       </div>
+
     </div>
+    </>
   );
 };
 
