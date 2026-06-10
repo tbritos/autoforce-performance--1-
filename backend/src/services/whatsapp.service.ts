@@ -230,32 +230,15 @@ async function recordInboundMessage(message: any): Promise<void> {
   const from = normalizePhone(message.from);
   if (!from) return;
 
-  let lead = await findLeadByPhone(from);
-
-  // Auto-create lead for unknown numbers so the AI can respond to anyone
-  if (!lead) {
-    const toE164 = from.startsWith('55') ? from : `55${from}`;
-    const email = `wpp_${toE164}@whatsapp.autoforce`;
-    lead = await prisma.lead.upsert({
-      where: { email },
-      create: {
-        email,
-        phone: toE164,
-        tags: ['whatsapp_inbound'],
-      },
-      update: {},
-      select: { id: true, email: true, phone: true },
-    });
-  }
-
+  const lead = await findLeadByPhone(from);
   const { type, text } = extractInboundText(message);
   const receivedAt = metaTimestamp(message.timestamp);
 
   await (prisma as any).whatsAppMessage.upsert({
     where: { messageId: String(message.id) },
     create: {
-      leadId: lead.id,
-      leadEmail: lead.email,
+      leadId: lead?.id ?? null,
+      leadEmail: lead?.email ?? null,
       phone: from,
       direction: 'inbound',
       type,
@@ -268,8 +251,8 @@ async function recordInboundMessage(message: any): Promise<void> {
       createdAt: receivedAt,
     },
     update: {
-      leadId: lead.id,
-      leadEmail: lead.email,
+      leadId: lead?.id ?? null,
+      leadEmail: lead?.email ?? null,
       phone: from,
       direction: 'inbound',
       type,
@@ -281,11 +264,13 @@ async function recordInboundMessage(message: any): Promise<void> {
     },
   });
 
-  const { resumeWaitingWhatsAppReply } = await import('./automation-engine.service');
-  await resumeWaitingWhatsAppReply(lead.email, text ?? '', 'replied');
+  if (lead?.email) {
+    const { resumeWaitingWhatsAppReply } = await import('./automation-engine.service');
+    await resumeWaitingWhatsAppReply(lead.email, text ?? '', 'replied');
+  }
 
   const { scheduleAIReply } = await import('./ai-whatsapp-reply.service');
-  scheduleAIReply(lead.email, from);
+  scheduleAIReply(from);
 }
 
 async function recordStatus(status: any): Promise<void> {

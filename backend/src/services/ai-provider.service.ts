@@ -231,6 +231,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
         'handoff_to_human',
         'stop_sequence',
         'ask_discovery_question',
+        'register_lead',
       ],
     },
     formato_obrigatorio_de_saida: {

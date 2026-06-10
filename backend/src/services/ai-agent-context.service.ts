@@ -43,10 +43,11 @@ export type AIAgentRuntimeContext = {
 
 type LoadContextInput = {
   agentId?: string;
-  leadEmail: string;
+  leadEmail?: string;
   channel?: string;
   knowledgeCategories?: string[];
   knowledgeTags?: string[];
+  skipMemory?: boolean;
 };
 
 type PersistContextInput = {
@@ -118,9 +119,11 @@ export async function loadAIAgentContext(input: LoadContextInput): Promise<AIAge
   const channel = input.channel || 'whatsapp';
   const agent = await resolveAgent(input.agentId);
   const [memory, knowledge] = await Promise.all([
-    (prisma as any).aIConversationMemory.findUnique({
-      where: { agentId_leadEmail_channel: { agentId: agent.id, leadEmail: input.leadEmail, channel } },
-    }),
+    (input.skipMemory || !input.leadEmail)
+      ? Promise.resolve(null)
+      : (prisma as any).aIConversationMemory.findUnique({
+          where: { agentId_leadEmail_channel: { agentId: agent.id, leadEmail: input.leadEmail, channel } },
+        }),
     listKnowledge(agent.id, input.knowledgeCategories, input.knowledgeTags),
   ]);
 

@@ -4,146 +4,240 @@ import { runAIPrequalification } from './ai-provider.service';
 import type { WhatsAppConversationMessage } from './whatsapp.service';
 
 const DEBOUNCE_MS = 5_000;
-const LOCK_TTL_MS = 120_000; // treat lock as stale after 2 minutes
+const LOCK_TTL_MS = 120_000;
 const MAX_TRANSCRIPT_MSGS = 40;
 
-// In-memory debounce timers — process-local, works for single-process deployments
+// Debounce timers keyed by phone number
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+// In-memory lock for anonymous phones (no lead record yet)
+const anonymousLocks = new Set<string>();
 
 /**
- * Called on every inbound WhatsApp message for a known lead.
- * Resets the 5-second debounce window so rapid messages are batched.
+ * Called for every inbound WhatsApp message, known lead or not.
+ * Resets the 5-second debounce window per phone number.
  */
-export function scheduleAIReply(leadEmail: string, phone: string): void {
-  const existing = pendingTimers.get(leadEmail);
+export function scheduleAIReply(phone: string): void {
+  const key = normalizePhoneKey(phone);
+  const existing = pendingTimers.get(key);
   if (existing) clearTimeout(existing);
 
   const timer = setTimeout(() => {
-    pendingTimers.delete(leadEmail);
-    void processAIReply(leadEmail, phone).catch(err => {
-      console.error(`[AI-WPP] processAIReply error for ${leadEmail}:`, err);
+    pendingTimers.delete(key);
+    void processAIReply(key).catch(err => {
+      console.error(`[AI-WPP] processAIReply error for ${key}:`, err);
     });
   }, DEBOUNCE_MS);
 
-  pendingTimers.set(leadEmail, timer);
+  pendingTimers.set(key, timer);
 }
 
-async function processAIReply(leadEmail: string, phone: string): Promise<void> {
-  const lead = await prisma.lead.findUnique({
-    where: { email: leadEmail },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      company: true,
-      jobTitle: true,
-      status: true,
-      score: true,
-      tags: true,
-      phone: true,
-      aiHandoff: true,
-      aiProcessing: true,
-      aiProcessingAt: true,
-    },
-  });
+function normalizePhoneKey(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  return digits.startsWith('55') ? digits : `55${digits}`;
+}
 
-  if (!lead) return;
+async function processAIReply(phone: string): Promise<void> {
+  const lead = await findLeadByPhone(phone);
 
-  // Human handoff active — AI stays silent
+  if (lead) {
+    await processKnownLeadReply(lead, phone);
+  } else {
+    await processAnonymousReply(phone);
+  }
+}
+
+// ─── Known lead flow ──────────────────────────────────────────────────────────
+
+async function processKnownLeadReply(
+  lead: {
+    id: string; email: string; name: string | null; company: string | null;
+    jobTitle: string | null; status: string; score: number; tags: string[];
+    phone: string | null; aiHandoff: boolean; aiProcessing: boolean; aiProcessingAt: Date | null;
+  },
+  phone: string
+): Promise<void> {
   if (lead.aiHandoff) return;
 
-  // Acquire lock: skip if a fresh lock is already held
   const now = new Date();
   if (lead.aiProcessing && lead.aiProcessingAt) {
-    const ageMs = now.getTime() - lead.aiProcessingAt.getTime();
-    if (ageMs < LOCK_TTL_MS) return;
+    if (now.getTime() - lead.aiProcessingAt.getTime() < LOCK_TTL_MS) return;
   }
 
   await prisma.lead.update({
-    where: { email: leadEmail },
+    where: { email: lead.email },
     data: { aiProcessing: true, aiProcessingAt: now },
   });
 
   try {
-    await executeAIAndReply(lead, phone);
+    await executeAIAndReply({ lead, phone, isAnonymous: false });
   } finally {
     await prisma.lead
-      .update({ where: { email: leadEmail }, data: { aiProcessing: false, aiProcessingAt: null } })
-      .catch(() => {/* lock release must not throw */});
+      .update({ where: { email: lead.email }, data: { aiProcessing: false, aiProcessingAt: null } })
+      .catch(() => {});
   }
 }
 
-async function executeAIAndReply(
+// ─── Anonymous flow (unknown phone) ──────────────────────────────────────────
+
+async function processAnonymousReply(phone: string): Promise<void> {
+  if (anonymousLocks.has(phone)) return;
+  anonymousLocks.add(phone);
+
+  try {
+    await executeAIAndReply({ lead: null, phone, isAnonymous: true });
+  } finally {
+    anonymousLocks.delete(phone);
+  }
+}
+
+// ─── Core AI execution ────────────────────────────────────────────────────────
+
+type ExecuteParams = {
   lead: {
-    id: string;
-    email: string;
-    name: string | null;
-    company: string | null;
-    jobTitle: string | null;
-    status: string;
-    score: number;
-    tags: string[];
+    id: string; email: string; name: string | null; company: string | null;
+    jobTitle: string | null; status: string; score: number; tags: string[];
     phone: string | null;
-  },
-  phone: string
-): Promise<void> {
+  } | null;
+  phone: string;
+  isAnonymous: boolean;
+};
+
+async function executeAIAndReply({ lead, phone, isAnonymous }: ExecuteParams): Promise<void> {
   const {
-    listWhatsAppConversationByLead,
     recordOutgoingWhatsAppMessage,
     getWhatsAppCredentials,
   } = await import('./whatsapp.service');
 
-  // Load conversation history and build transcript
-  const messages = await listWhatsAppConversationByLead(lead.id);
+  // Load conversation history by phone
+  const messages = await loadMessagesByPhone(phone);
   const transcript = buildTranscript(messages);
 
-  // Load AI agent config + persistent memory + knowledge base
-  const agentContext = await loadAIAgentContext({ leadEmail: lead.email, channel: 'whatsapp' });
+  // Load agent config (memory only loaded for known leads)
+  const agentContext = await loadAIAgentContext({
+    leadEmail: lead?.email,
+    channel: 'whatsapp',
+    skipMemory: isAnonymous,
+  });
 
-  // Run AI prequalification
+  const goal = isAnonymous
+    ? `${agentContext.agent.objective}\n\nIMPORTANTE: Este contato ainda não está cadastrado. Durante a conversa, de forma natural, tente descobrir o nome e o e-mail da pessoa para poder cadastrá-la. Quando obtiver o e-mail, inclua a ação register_lead no recommended_actions.`
+    : agentContext.agent.objective;
+
   const result = await runAIPrequalification({
-    lead: {
-      email: lead.email,
-      name: lead.name,
-      company: lead.company,
-      jobTitle: lead.jobTitle,
-      status: lead.status as any,
-      score: lead.score,
-      tags: lead.tags,
-    },
+    lead: lead
+      ? { email: lead.email, name: lead.name, company: lead.company, jobTitle: lead.jobTitle, status: lead.status as any, score: lead.score, tags: lead.tags }
+      : { email: '', name: null, company: null, jobTitle: null, status: 'LEAD' as any, score: 0, tags: [] },
     transcript,
-    goal: agentContext.agent.objective || 'Responder receptivamente ao lead, entender sua dor e qualificá-lo.',
+    goal,
     criteria: '',
     provider: agentContext.agent.defaultProvider ?? undefined,
     model: agentContext.agent.defaultModel ?? undefined,
     agentContext,
   });
 
-  // Send text reply if the AI produced one
+  // Send text reply
   const replyText = result.replyMessage?.trim();
   if (replyText) {
     await sendWhatsAppText({
       to: phone,
       text: replyText,
-      leadEmail: lead.email,
+      leadEmail: lead?.email ?? null,
       getCredentials: getWhatsAppCredentials,
       recordOutgoing: recordOutgoingWhatsAppMessage,
     });
   }
 
-  // Apply AI-recommended actions (tags, handoff)
-  await applyRecommendedActions(lead.email, result.recommendedActions ?? [], result.tags ?? []);
+  // If anonymous, check for register_lead action
+  if (isAnonymous) {
+    const registerAction = result.recommendedActions?.find(a => a.type === 'register_lead');
+    if (registerAction?.payload?.email) {
+      const email = String(registerAction.payload.email).trim().toLowerCase();
+      const name = registerAction.payload.name ? String(registerAction.payload.name).trim() : null;
+      await registerNewLead({ email, name, phone });
+      return;
+    }
+    return; // No persistent memory for anonymous contacts
+  }
 
-  // Persist AI decision to memory + interaction log
-  await persistAIAgentDecision({
-    agentId: agentContext.agent.id,
-    leadEmail: lead.email,
-    channel: 'whatsapp',
-    provider: result.source,
-    model: result.model,
-    promptSnapshot: result.promptSnapshot ?? {},
-    result,
-    lastMessageAt: new Date(),
+  // Known lead: apply actions and persist memory
+  if (lead) {
+    await applyRecommendedActions(lead.email, result.recommendedActions ?? [], result.tags ?? []);
+    await persistAIAgentDecision({
+      agentId: agentContext.agent.id,
+      leadEmail: lead.email,
+      channel: 'whatsapp',
+      provider: result.source,
+      model: result.model,
+      promptSnapshot: result.promptSnapshot ?? {},
+      result,
+      lastMessageAt: new Date(),
+    });
+  }
+}
+
+// ─── Register new lead from anonymous conversation ────────────────────────────
+
+async function registerNewLead(params: { email: string; name: string | null; phone: string }): Promise<void> {
+  try {
+    const lead = await prisma.lead.upsert({
+      where: { email: params.email },
+      create: {
+        email: params.email,
+        name: params.name,
+        phone: params.phone,
+        tags: ['whatsapp_inbound'],
+      },
+      update: {
+        phone: params.phone,
+        ...(params.name ? { name: params.name } : {}),
+      },
+    });
+
+    // Link all messages from this phone to the new lead
+    const phoneSuffix = params.phone.slice(-9);
+    await (prisma as any).whatsAppMessage.updateMany({
+      where: {
+        phone: { endsWith: phoneSuffix },
+        leadId: null,
+      },
+      data: { leadId: lead.id, leadEmail: lead.email },
+    });
+
+    console.log(`[AI-WPP] Novo lead registrado via WhatsApp: ${params.email}`);
+  } catch (err) {
+    console.error('[AI-WPP] Erro ao registrar novo lead:', err);
+  }
+}
+
+// ─── Phone lookup ─────────────────────────────────────────────────────────────
+
+async function findLeadByPhone(phone: string) {
+  const normalized = phone.replace(/\D/g, '');
+  const candidates = [normalized, normalized.replace(/^55/, ''), normalized.slice(-11), normalized.slice(-9)]
+    .filter((v, i, arr) => v.length >= 8 && arr.indexOf(v) === i);
+
+  for (const value of candidates) {
+    const lead = await prisma.lead.findFirst({
+      where: { phone: { contains: value } },
+      select: {
+        id: true, email: true, name: true, company: true, jobTitle: true,
+        status: true, score: true, tags: true, phone: true,
+        aiHandoff: true, aiProcessing: true, aiProcessingAt: true,
+      },
+    });
+    if (lead) return lead;
+  }
+  return null;
+}
+
+// ─── Load messages by phone ───────────────────────────────────────────────────
+
+async function loadMessagesByPhone(phone: string): Promise<WhatsAppConversationMessage[]> {
+  const suffix = phone.replace(/\D/g, '').slice(-9);
+  return (prisma as any).whatsAppMessage.findMany({
+    where: { phone: { endsWith: suffix } },
+    orderBy: { createdAt: 'asc' },
+    take: MAX_TRANSCRIPT_MSGS,
   });
 }
 
@@ -152,10 +246,7 @@ async function executeAIAndReply(
 function buildTranscript(messages: WhatsAppConversationMessage[]): string {
   if (messages.length === 0) return '(sem histórico de conversa)';
 
-  // Keep only the most recent N messages to avoid huge prompts
-  const recent = messages.slice(-MAX_TRANSCRIPT_MSGS);
-
-  return recent
+  return messages
     .map(msg => {
       const ts = (msg.receivedAt ?? msg.sentAt ?? msg.createdAt).toLocaleString('pt-BR');
       if (msg.direction === 'inbound') {
@@ -174,7 +265,7 @@ function buildTranscript(messages: WhatsAppConversationMessage[]): string {
 type SendTextParams = {
   to: string;
   text: string;
-  leadEmail: string;
+  leadEmail: string | null;
   getCredentials: () => Promise<{ accessToken: string; businessAccountId: string }>;
   recordOutgoing: (input: {
     leadEmail: string;
@@ -188,7 +279,7 @@ type SendTextParams = {
 async function sendWhatsAppText(params: SendTextParams): Promise<void> {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
   if (!phoneNumberId) {
-    console.warn('[AI-WPP] WHATSAPP_PHONE_NUMBER_ID não configurado — resposta da IA não enviada');
+    console.warn('[AI-WPP] WHATSAPP_PHONE_NUMBER_ID não configurado — resposta não enviada');
     return;
   }
 
@@ -226,14 +317,15 @@ async function sendWhatsAppText(params: SendTextParams): Promise<void> {
     console.error('[AI-WPP] fetch error sending reply:', err);
   }
 
-  // Always record the outgoing message, even if API call failed
-  await params.recordOutgoing({
-    leadEmail: params.leadEmail,
-    phone: toE164,
-    messageId,
-    text: params.text,
-    payload: body,
-  });
+  if (params.leadEmail) {
+    await params.recordOutgoing({
+      leadEmail: params.leadEmail,
+      phone: toE164,
+      messageId,
+      text: params.text,
+      payload: body,
+    });
+  }
 }
 
 // ─── Action applier ───────────────────────────────────────────────────────────
@@ -243,7 +335,6 @@ async function applyRecommendedActions(
   actions: Array<{ type: string; reason: string; payload?: Record<string, unknown> }>,
   aiTags: string[]
 ): Promise<void> {
-  // Merge AI-generated tags onto the lead
   if (aiTags.length > 0) {
     const lead = await prisma.lead.findUnique({ where: { email: leadEmail }, select: { tags: true } });
     if (lead) {
@@ -259,7 +350,6 @@ async function applyRecommendedActions(
       case 'handoff_to_human':
         await prisma.lead.update({ where: { email: leadEmail }, data: { aiHandoff: true } });
         break;
-
       case 'apply_tag': {
         const tag = String(action.payload?.tag ?? '').trim();
         if (tag) {
@@ -270,9 +360,6 @@ async function applyRecommendedActions(
         }
         break;
       }
-
-      default:
-        break;
     }
   }
 }
