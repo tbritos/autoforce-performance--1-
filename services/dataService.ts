@@ -1,4 +1,4 @@
-import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, GoogleAdsCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, LeadConversion, WebhookLead, PlatformConnection, ConnectionRequirement, Lead, LeadListResult, LeadProfile, LeadCustomFieldDef, FunnelCounts, LeadStatus, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction, AutomationJourney, AutomationJourneyNode, AutomationJourneyEdge, AutomationJourneyStatus, UTMLink, UTMLinkListResult, UTMTemplate, UTMCampaignPicker, UTMDestination, FunnelDef, FunnelStats, WhatsAppTemplate, PipedriveStage } from '../types';
+import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, GoogleAdsCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, LeadConversion, WebhookLead, PlatformConnection, ConnectionRequirement, Lead, LeadListResult, LeadProfile, LeadCustomFieldDef, FunnelCounts, LeadStatus, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction, AutomationJourney, AutomationJourneyNode, AutomationJourneyEdge, AutomationJourneyStatus, AIAgent, AIKnowledgeItem, AIInteractionLog, AIConversationMemory, UTMLink, UTMLinkListResult, UTMTemplate, UTMCampaignPicker, UTMDestination, FunnelDef, FunnelStats, WhatsAppTemplate, PipedriveStage } from '../types';
 import { apiClient } from './apiClient';
 
 // ============================================================================
@@ -1338,6 +1338,61 @@ export const DataService = {
 
   testAutomationJourney: async (journeyId: string, email: string): Promise<{ executionId: string }> => {
     return apiClient.post(`/automation-journeys/${encodeURIComponent(journeyId)}/test`, { email });
+  },
+
+  listAIAgents: async (): Promise<AIAgent[]> => {
+    return apiClient.get<AIAgent[]>('/ai-agents');
+  },
+
+  createAIAgent: async (payload: Partial<AIAgent>): Promise<AIAgent> => {
+    return apiClient.post<AIAgent>('/ai-agents', payload);
+  },
+
+  updateAIAgent: async (id: string, payload: Partial<AIAgent>): Promise<AIAgent> => {
+    return apiClient.patch<AIAgent>(`/ai-agents/${encodeURIComponent(id)}`, payload);
+  },
+
+  deleteAIAgent: async (id: string): Promise<void> => {
+    await apiClient.delete(`/ai-agents/${encodeURIComponent(id)}`);
+  },
+
+  listAIKnowledge: async (filters?: { agentId?: string; category?: string; tag?: string }): Promise<AIKnowledgeItem[]> => {
+    const params = new URLSearchParams();
+    if (filters?.agentId) params.set('agentId', filters.agentId);
+    if (filters?.category) params.set('category', filters.category);
+    if (filters?.tag) params.set('tag', filters.tag);
+    const query = params.toString();
+    return apiClient.get<AIKnowledgeItem[]>(`/ai-agents/knowledge${query ? `?${query}` : ''}`);
+  },
+
+  createAIKnowledge: async (payload: Partial<AIKnowledgeItem>): Promise<AIKnowledgeItem> => {
+    return apiClient.post<AIKnowledgeItem>('/ai-agents/knowledge', payload);
+  },
+
+  updateAIKnowledge: async (id: string, payload: Partial<AIKnowledgeItem>): Promise<AIKnowledgeItem> => {
+    return apiClient.patch<AIKnowledgeItem>(`/ai-agents/knowledge/${encodeURIComponent(id)}`, payload);
+  },
+
+  deleteAIKnowledge: async (id: string): Promise<void> => {
+    await apiClient.delete(`/ai-agents/knowledge/${encodeURIComponent(id)}`);
+  },
+
+  listAIInteractionLogs: async (filters?: { agentId?: string; leadEmail?: string; limit?: number }): Promise<AIInteractionLog[]> => {
+    const params = new URLSearchParams();
+    if (filters?.agentId) params.set('agentId', filters.agentId);
+    if (filters?.leadEmail) params.set('leadEmail', filters.leadEmail);
+    if (filters?.limit) params.set('limit', String(filters.limit));
+    const query = params.toString();
+    return apiClient.get<AIInteractionLog[]>(`/ai-agents/logs${query ? `?${query}` : ''}`);
+  },
+
+  listAIConversationMemories: async (filters?: { agentId?: string; leadEmail?: string; limit?: number }): Promise<AIConversationMemory[]> => {
+    const params = new URLSearchParams();
+    if (filters?.agentId) params.set('agentId', filters.agentId);
+    if (filters?.leadEmail) params.set('leadEmail', filters.leadEmail);
+    if (filters?.limit) params.set('limit', String(filters.limit));
+    const query = params.toString();
+    return apiClient.get<AIConversationMemory[]>(`/ai-agents/memories${query ? `?${query}` : ''}`);
   },
 
   // --- Funnels ---

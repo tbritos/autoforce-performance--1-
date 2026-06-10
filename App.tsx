@@ -15,6 +15,7 @@ import LeadProfilePanel from './components/LeadProfilePanel';
 import UTMTrackerView from './components/UTMTrackerView';
 import FunnelView from './components/FunnelView';
 import AutomationJourneysView from './components/AutomationJourneysView';
+import AIAgentsView from './components/AIAgentsView';
 import { DataService } from './services/dataService';
 import { User, Metric, LandingPage, DailyLeadEntry, RevenueEntry, FunnelCounts, LeadStatus } from './types';
 import {
@@ -44,6 +45,7 @@ import {
   ChevronRight,
   Info,
   Workflow,
+  Bot,
 } from 'lucide-react';
 import { FunnelChart, FunnelStep } from './components/Charts';
 
@@ -938,6 +940,7 @@ const AppContent: React.FC = () => {
       label: 'AUTOMACAO',
       items: [
         { label: 'Automacao', path: '/automation', icon: Workflow },
+        { label: 'IA / Agentes', path: '/ai-agents', icon: Bot },
       ],
     },
     {
@@ -1194,6 +1197,7 @@ const AppContent: React.FC = () => {
             <Route path="/utm" element={<UTMTrackerView />} />
             <Route path="/automation" element={<AutomationJourneysView />} />
             <Route path="/automation/:id" element={<AutomationJourneysView />} />
+            <Route path="/ai-agents" element={<AIAgentsView />} />
 
             {/* Performance */}
             <Route path="/funnel" element={<FunnelView />} />

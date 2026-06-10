@@ -300,6 +300,7 @@ export type AutomationNodeType =
   | 'condition'
   | 'wait'
   | 'whatsapp_wait_reply'
+  | 'ai_prequalify'
   | 'internal_action'
   | 'rd_conversion'
   | 'whatsapp_message'
@@ -369,6 +370,89 @@ export interface AutomationExecutionStats {
   completed: number;
   failed: number;
   total: number;
+}
+
+export type AIProvider = 'gemini' | 'openai';
+
+export interface AIAgent {
+  id: string;
+  name: string;
+  description: string | null;
+  objective: string;
+  companyContext: string;
+  salesContext: string;
+  icp: unknown;
+  qualificationCriteria: unknown;
+  disqualificationCriteria: unknown;
+  toneOfVoice: string[];
+  safetyRules: string[];
+  discoveryQuestions: string[];
+  handoffRules: unknown;
+  outputSchema: unknown;
+  defaultProvider: AIProvider | string | null;
+  defaultModel: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    knowledgeItems?: number;
+    interactions?: number;
+    memories?: number;
+  };
+}
+
+export interface AIKnowledgeItem {
+  id: string;
+  agentId: string | null;
+  title: string;
+  category: string;
+  content: string;
+  tags: string[];
+  priority: number;
+  metadata: unknown;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AIInteractionLog {
+  id: string;
+  agentId: string;
+  leadEmail: string;
+  journeyId: string | null;
+  executionId: string | null;
+  nodeId: string | null;
+  channel: string;
+  provider: string;
+  model: string;
+  promptSnapshot: unknown;
+  response: unknown;
+  decision: string | null;
+  confidence: number | null;
+  recommendedActions: unknown;
+  error: string | null;
+  createdAt: string;
+  agent?: { id: string; name: string };
+}
+
+export interface AIConversationMemory {
+  id: string;
+  agentId: string;
+  leadEmail: string;
+  channel: string;
+  summary: string | null;
+  knownFacts: unknown;
+  pains: string[];
+  objections: string[];
+  interests: string[];
+  lastIntent: string | null;
+  lastConversationState: string | null;
+  nextBestAction: string | null;
+  openQuestions: string[];
+  lastMessageAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  agent?: { id: string; name: string };
 }
 
 // ─── Funnels ──────────────────────────────────────────────────────────────────

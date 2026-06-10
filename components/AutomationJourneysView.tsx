@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Activity,
+  Bot,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -41,6 +42,7 @@ import {
   AutomationJourneyNode,
   AutomationJourneyStatus,
   AutomationNodeType,
+  AIAgent,
   WhatsAppTemplate,
   WhatsAppPhoneNumber,
   PipedriveStage,
@@ -60,6 +62,7 @@ const BLOCKS: Array<{
   { type: 'condition',        label: 'Condição',     description: 'Cargo, tag, score, dor, origem ou campo',        color: '#22C55E', icon: GitBranch },
   { type: 'wait',             label: 'Esperar',      description: 'Aguardar horas ou dias antes do próximo passo',  color: '#F59E0B', icon: Clock },
   { type: 'whatsapp_wait_reply', label: 'Esperar resposta', description: 'Aguardar resposta do lead no WhatsApp',    color: '#10B981', icon: MessageCircle },
+  { type: 'ai_prequalify',     label: 'IA',           description: 'Pre-qualificar conversa e atualizar o lead',      color: '#6366F1', icon: Bot },
   { type: 'internal_action',  label: 'Ação interna', description: 'Adicionar tag, score, etapa ou campo',           color: '#14B8A6', icon: Tags },
   { type: 'rd_conversion',    label: 'RD Station',   description: 'Criar conversão para entrar em fluxo de e-mail', color: '#8B5CF6', icon: Mail },
   { type: 'whatsapp_message', label: 'WhatsApp',     description: 'Enviar template ou mensagem da cadência',        color: '#10B981', icon: MessageCircle },
@@ -110,6 +113,8 @@ function nodeSubtitle(node: AutomationJourneyNode): { text: string; warn: boolea
     case 'whatsapp_wait_reply':
       if (c.amount && c.unit) return { text: `Resposta por até ${c.amount} ${c.unit}`, warn: false };
       return { text: 'Definir prazo de resposta...', warn: false };
+    case 'ai_prequalify':
+      return { text: c.goal || 'Analisar conversa e qualificar lead', warn: false };
     case 'condition':
       if (c.field && c.value) return { text: `${c.field} ${c.operator ?? ''} ${c.value}`.trim(), warn: false };
       return { text: 'Definir condição...', warn: false };
@@ -1006,6 +1011,7 @@ const AutomationJourneysView: React.FC = () => {
   const [testSearching, setTestSearching] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const [testError, setTestError] = useState('');
+  const [aiAgents, setAiAgents] = useState<AIAgent[]>([]);
 
   useEffect(() => {
     if (!modalNodeId) { setPanelValues(null); return; }
@@ -1038,8 +1044,12 @@ const AutomationJourneysView: React.FC = () => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await DataService.listAutomationJourneys();
+      const [data, agentData] = await Promise.all([
+        DataService.listAutomationJourneys(),
+        DataService.listAIAgents().catch(() => []),
+      ]);
       setJourneys(data);
+      setAiAgents(agentData);
     } catch (error) {
       console.error('Erro ao carregar jornadas', error);
     } finally {
@@ -2330,6 +2340,110 @@ const AutomationJourneysView: React.FC = () => {
                   })()}
 
                   {/* ── INTERNAL ACTION ── */}
+                  {panelNode.type === 'ai_prequalify' && (() => {
+                    const agentOptions: SmartSelectOption[] = aiAgents.map(agent => ({
+                      value: agent.id,
+                      label: agent.name,
+                      description: agent.objective || agent.description || 'Agente de IA',
+                    }));
+                    const providerOptions: SmartSelectOption[] = [
+                      { value: 'gemini', label: 'Gemini', description: 'Usa a chave GEMINI_API_KEY do backend' },
+                      { value: 'openai', label: 'OpenAI', description: 'Usa a chave OPENAI_API_KEY do backend' },
+                    ];
+                    const provider = panelValues.config.provider || 'gemini';
+                    const modelOptions: SmartSelectOption[] = provider === 'openai'
+                      ? [
+                          { value: 'gpt-4o-mini', label: 'gpt-4o-mini', description: 'Rapido e economico' },
+                          { value: 'gpt-4o', label: 'gpt-4o', description: 'Mais forte para analise' },
+                          { value: 'gpt-4.1-mini', label: 'gpt-4.1-mini', description: 'Rapido para classificacao' },
+                          { value: 'gpt-4.1', label: 'gpt-4.1', description: 'Mais robusto' },
+                        ]
+                      : [
+                          { value: 'gemini-2.5-flash', label: 'gemini-2.5-flash', description: 'Padrao recomendado' },
+                          { value: 'gemini-2.5-pro', label: 'gemini-2.5-pro', description: 'Mais forte para raciocinio' },
+                          { value: 'gemini-2.0-flash', label: 'gemini-2.0-flash', description: 'Rapido e estavel' },
+                          { value: 'gemini-1.5-flash', label: 'gemini-1.5-flash', description: 'Alternativa economica' },
+                          { value: 'gemini-1.5-pro', label: 'gemini-1.5-pro', description: 'Alternativa mais robusta' },
+                        ];
+                    const statusOptions: SmartSelectOption[] = [
+                      { value: 'yes', label: 'Sim, mover qualificados para MQL' },
+                      { value: 'no', label: 'Nao alterar etapa automaticamente' },
+                    ];
+
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        <div style={{ display: 'grid', gap: 7 }}>
+                          <span style={fieldLabelStyle}>Agente</span>
+                          <SmartSelect
+                            value={String(panelValues.config.agentId || '')}
+                            options={agentOptions}
+                            onChange={v => {
+                              const agent = aiAgents.find(item => item.id === v);
+                              setPanelValues(prev => prev ? {
+                                ...prev,
+                                config: {
+                                  ...prev.config,
+                                  agentId: v,
+                                  provider: String(agent?.defaultProvider || prev.config.provider || 'gemini'),
+                                  model: String(agent?.defaultModel || prev.config.model || 'gemini-2.5-flash'),
+                                },
+                              } : prev);
+                            }}
+                            placeholder={agentOptions.length ? 'Selecionar agente...' : 'Cadastre um agente em IA / Agentes'}
+                          />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          <div style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>Provedor</span>
+                            <SmartSelect
+                              value={provider}
+                              options={providerOptions}
+                              onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, provider: v, model: v === 'openai' ? 'gpt-4o-mini' : 'gemini-2.5-flash' } } : prev)}
+                              placeholder="Selecionar provedor..."
+                            />
+                          </div>
+                          <div style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>Modelo</span>
+                            <SmartSelect
+                              value={String(panelValues.config.model || (provider === 'openai' ? 'gpt-4o-mini' : 'gemini-2.5-flash'))}
+                              options={modelOptions}
+                              onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, model: v } } : prev)}
+                              placeholder="Selecionar modelo..."
+                            />
+                          </div>
+                        </div>
+                        {panelTextField('goal', 'Objetivo da IA', 'ex: identificar dor, fit e urgencia para SDR')}
+                        <label style={{ display: 'grid', gap: 7 }}>
+                          <span style={fieldLabelStyle}>Criterios da qualificacao</span>
+                          <textarea
+                            value={String(panelValues.config.criteria ?? '')}
+                            onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, criteria: e.target.value } } : prev)}
+                            placeholder="ex: cargo decisor, dor clara, interesse em agendar, tamanho da operacao..."
+                            rows={4}
+                            style={{ ...fieldInputStyle, minHeight: 98, resize: 'vertical', lineHeight: 1.5 }}
+                            onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
+                            onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
+                          />
+                        </label>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          {panelTextField('qualifiedTag', 'Tag se qualificado', 'ex: ia_qualificado')}
+                          {panelTextField('disqualifiedTag', 'Tag se desqualificado', 'ex: ia_desqualificado')}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          {panelTextField('mqlScore', 'Score minimo MQL', 'ex: 70', 'number')}
+                          {panelSelectField('setMqlStatus', 'Atualizar etapa', statusOptions, 'Selecionar...')}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          {panelTextField('knowledgeCategories', 'Categorias da base', 'ex: produto, objeções')}
+                          {panelTextField('knowledgeTags', 'Tags da base', 'ex: inbound, mql')}
+                        </div>
+                        <div style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--bg-subtle)', fontSize: 13, color: 'var(--fg-muted)', lineHeight: 1.45 }}>
+                          A IA usa o agente selecionado, base de conhecimento, memoria do lead e historico de WhatsApp para decidir fit, score, motivo e proximas acoes recomendadas. As chaves ficam protegidas no backend.
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {panelNode.type === 'internal_action' && (() => {
                     const actionOptions: SmartSelectOption[] = [
                       { value: 'add_tag',    label: 'Adicionar tag',   description: 'Aplica uma tag ao lead' },

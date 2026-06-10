@@ -1,5 +1,7 @@
 import { prisma } from '../config/database';
 import { LeadStatus, Prisma } from '@prisma/client';
+import { AIPrequalificationResult, runAIPrequalification } from './ai-provider.service';
+import { loadAIAgentContext, persistAIAgentDecision } from './ai-agent-context.service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -462,6 +464,18 @@ async function executeNode(
       await appendLog(executionId, node.id, 'whatsapp_message', 'ok', String(c.templateName ?? ''));
       return 'ok';
 
+    case 'ai_prequalify': {
+      const result = await executeAIPrequalification(executionId, journeyId, node.id, leadEmail, c);
+      await appendLog(
+        executionId,
+        node.id,
+        'ai_prequalify',
+        'ok',
+        `fit=${result.fit} score=${result.score} source=${result.source} model=${result.model}`
+      );
+      return 'ok';
+    }
+
     case 'pipedrive_action':
       await executePipedriveAction(executionId, node.id, leadEmail, c);
       return 'ok';
@@ -736,6 +750,162 @@ async function executeWhatsAppMessage(
     automationJourneyId: journeyId,
     automationExecutionId: executionId,
   });
+}
+
+async function executeAIPrequalification(
+  executionId: string,
+  journeyId: string,
+  nodeId: string,
+  leadEmail: string,
+  config: Record<string, string | number | boolean>
+): Promise<AIPrequalificationResult> {
+  const lead = await prisma.lead.findUnique({
+    where: { email: leadEmail },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      phone: true,
+      company: true,
+      jobTitle: true,
+      status: true,
+      score: true,
+      tags: true,
+      notes: true,
+      customFields: true,
+    },
+  });
+  if (!lead) throw new Error(`Lead ${leadEmail} nao encontrado para pre-qualificacao por IA`);
+
+  const messages = await (prisma as any).whatsAppMessage.findMany({
+    where: {
+      OR: [
+        { leadId: lead.id },
+        { leadEmail: lead.email },
+        ...(lead.phone ? [{ phone: lead.phone.replace(/\D/g, '') }, { phone: lead.phone }] : []),
+      ],
+    },
+    orderBy: { createdAt: 'asc' },
+    take: 80,
+  }) as Array<{
+    direction: string;
+    type: string;
+    text: string | null;
+    templateName: string | null;
+    createdAt: Date;
+  }>;
+
+  const transcript = messages
+    .filter(message => message.text || message.templateName)
+    .map(message => {
+      const who = message.direction === 'inbound' ? 'Lead' : 'AutoForce';
+      const text = message.text || `[template:${message.templateName}]`;
+      return `${who}: ${text}`;
+    })
+    .join('\n')
+    .slice(-12_000);
+
+  const lastMessageAt = messages.length > 0 ? messages[messages.length - 1]?.createdAt ?? null : null;
+  const agentContext = await loadAIAgentContext({
+    agentId: String(config.agentId ?? ''),
+    leadEmail: lead.email,
+    channel: 'whatsapp',
+    knowledgeCategories: splitConfigList(config.knowledgeCategories),
+    knowledgeTags: splitConfigList(config.knowledgeTags),
+  });
+
+  const result = await runAIPrequalification({
+    lead,
+    transcript,
+    goal: String(config.goal ?? 'Identificar fit, dor, urgencia e proximo passo comercial.'),
+    criteria: String(config.criteria ?? ''),
+    provider: String(config.provider ?? agentContext.agent.defaultProvider ?? ''),
+    model: String(config.model ?? agentContext.agent.defaultModel ?? ''),
+    agentContext,
+  });
+
+  const qualifiedTag = String(config.qualifiedTag ?? 'ia_qualificado').trim();
+  const disqualifiedTag = String(config.disqualifiedTag ?? 'ia_desqualificado').trim();
+  const mqlScore = Number(config.mqlScore ?? 70) || 70;
+  const setMqlStatus = String(config.setMqlStatus ?? 'yes') !== 'no';
+
+  const tagsToAdd = new Set(result.tags.map(tag => tag.trim()).filter(Boolean));
+  if (result.fit === 'qualified' && qualifiedTag) tagsToAdd.add(qualifiedTag);
+  if (result.fit === 'disqualified' && disqualifiedTag) tagsToAdd.add(disqualifiedTag);
+
+  const currentCustomFields = isRecord(lead.customFields) ? lead.customFields : {};
+  const nextCustomFields: Prisma.JsonObject = {
+    ...currentCustomFields,
+    ia_prequalificacao_fit: result.fit,
+    ia_prequalificacao_score: result.score,
+    ia_prequalificacao_confianca: result.confidence,
+    ia_prequalificacao_dor: result.pain,
+    ia_prequalificacao_persona: result.persona,
+    ia_prequalificacao_urgencia: result.urgency,
+    ia_prequalificacao_resumo: result.summary,
+    ia_prequalificacao_motivo: result.decisionReason,
+    ia_prequalificacao_proximo_passo: result.recommendedNextStep,
+    ia_prequalificacao_acoes_recomendadas: result.recommendedActions as Prisma.JsonArray,
+    ia_prequalificacao_estado_conversa: result.conversationState,
+    ia_prequalificacao_perguntas_abertas: result.openQuestions as unknown as Prisma.JsonArray,
+    ia_prequalificacao_atualizacoes_lead: result.leadUpdates as Prisma.JsonObject,
+    ia_prequalificacao_agent_id: agentContext.agent.id,
+    ia_prequalificacao_agent_name: agentContext.agent.name,
+    ia_prequalificacao_origem: result.source,
+    ia_prequalificacao_modelo: result.model,
+    ia_prequalificacao_erro: result.reason ?? '',
+    ia_prequalificacao_at: new Date().toISOString(),
+  };
+
+  const noteBlock = [
+    `[IA Pre-qualificacao - ${new Date().toLocaleString('pt-BR')}]`,
+    `Fit: ${result.fit}`,
+    `Score: ${result.score}`,
+    `Confianca: ${result.confidence}`,
+    `Modelo: ${result.source}/${result.model}`,
+    result.decisionReason ? `Motivo: ${result.decisionReason}` : null,
+    result.summary ? `Resumo: ${result.summary}` : null,
+    result.recommendedNextStep ? `Proximo passo: ${result.recommendedNextStep}` : null,
+  ].filter(Boolean).join('\n');
+
+  const data: Prisma.LeadUpdateInput = {
+    customFields: nextCustomFields,
+    tags: Array.from(new Set([...lead.tags, ...tagsToAdd])),
+    score: Math.max(lead.score, result.score),
+    notes: lead.notes ? `${lead.notes}\n\n${noteBlock}` : noteBlock,
+  };
+
+  await prisma.lead.update({ where: { email: lead.email }, data });
+
+  await persistAIAgentDecision({
+    agentId: agentContext.agent.id,
+    leadEmail: lead.email,
+    channel: 'whatsapp',
+    journeyId,
+    executionId,
+    nodeId,
+    provider: result.source,
+    model: result.model,
+    promptSnapshot: result.promptSnapshot ?? {},
+    result,
+    lastMessageAt,
+  });
+
+  if (setMqlStatus && result.fit === 'qualified' && result.score >= mqlScore && lead.status !== LeadStatus.MQL) {
+    const { LeadHubService } = await import('./lead-hub.service');
+    await LeadHubService.updateLeadStatus(lead.email, LeadStatus.MQL, 'automation', 'IA pre-qualificacao');
+  }
+
+  return result;
+}
+
+function isRecord(value: unknown): value is Record<string, Prisma.JsonValue> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function splitConfigList(value: string | number | boolean | undefined): string[] {
+  if (typeof value !== 'string') return [];
+  return value.split(',').map(item => item.trim()).filter(Boolean);
 }
 
 async function executePipedriveAction(

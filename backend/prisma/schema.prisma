@@ -91,6 +91,8 @@ model Lead {
   statusHistory    LeadStatusHistory[]
   revenueEntries   RevenueEntry[]
   pipedriveEvents  PipedriveDealEvent[]
+  aiMemories       AIConversationMemory[]
+  aiInteractions   AIInteractionLog[]
 
   @@index([status])
   @@index([firstSource])
@@ -235,6 +237,7 @@ model AutomationJourney {
   updatedAt DateTime @updatedAt
 
   executions AutomationExecution[]
+  aiInteractions AIInteractionLog[]
 
   @@index([status])
   @@index([isActive])
@@ -262,6 +265,134 @@ model AutomationExecution {
   @@index([leadEmail])
   @@index([resumeAt])
   @@index([startedAt])
+}
+
+// ============================================================
+// AGENTES IA
+// Configuracao persistente do agente, base de conhecimento,
+// memoria por lead e log auditavel de cada decisao.
+// ============================================================
+
+model AIAgent {
+  id          String  @id @default(uuid())
+  name        String
+  description String? @db.Text
+  isActive    Boolean @default(true)
+
+  objective               String  @db.Text
+  companyContext          String  @db.Text
+  salesContext            String  @db.Text
+  icp                     Json    @default("{}")
+  qualificationCriteria   Json    @default("{}")
+  disqualificationCriteria Json   @default("{}")
+  toneOfVoice             String[] @default([])
+  safetyRules             String[] @default([])
+  discoveryQuestions      String[] @default([])
+  handoffRules            Json     @default("{}")
+  outputSchema            Json     @default("{}")
+
+  defaultProvider String?
+  defaultModel    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  knowledgeItems AIKnowledgeItem[]
+  memories       AIConversationMemory[]
+  interactions   AIInteractionLog[]
+
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+model AIKnowledgeItem {
+  id      String  @id @default(uuid())
+  agentId String?
+  agent   AIAgent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  title    String
+  category String
+  content  String @db.Text
+  tags     String[] @default([])
+  priority Int      @default(100)
+  isActive Boolean  @default(true)
+
+  sourceUrl String?
+  metadata  Json?   @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([agentId])
+  @@index([category])
+  @@index([isActive])
+  @@index([priority])
+  @@index([createdAt])
+}
+
+model AIConversationMemory {
+  id        String @id @default(uuid())
+  agentId   String
+  agent     AIAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  leadEmail String
+  lead      Lead    @relation(fields: [leadEmail], references: [email], onDelete: Cascade)
+
+  channel String @default("whatsapp")
+
+  summary             String? @db.Text
+  knownFacts          Json    @default("{}")
+  pains               String[] @default([])
+  objections          String[] @default([])
+  interests           String[] @default([])
+  lastIntent          String?
+  lastConversationState String?
+  nextBestAction      String? @db.Text
+  openQuestions       String[] @default([])
+
+  lastMessageAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([agentId, leadEmail, channel])
+  @@index([leadEmail])
+  @@index([agentId])
+  @@index([channel])
+  @@index([updatedAt])
+}
+
+model AIInteractionLog {
+  id      String @id @default(uuid())
+  agentId String?
+  agent   AIAgent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  leadEmail String
+  lead      Lead @relation(fields: [leadEmail], references: [email], onDelete: Cascade)
+
+  journeyId String?
+  journey   AutomationJourney? @relation(fields: [journeyId], references: [id], onDelete: SetNull)
+
+  executionId String?
+  nodeId      String?
+  channel     String @default("whatsapp")
+
+  provider String
+  model    String
+
+  promptSnapshot Json
+  response        Json
+  decision        String?
+  confidence      Float?
+  recommendedActions Json @default("[]")
+  error           String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([agentId])
+  @@index([leadEmail])
+  @@index([journeyId])
+  @@index([executionId])
+  @@index([decision])
+  @@index([createdAt])
 }
 
 model WhatsAppMessage {

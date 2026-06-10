@@ -32,6 +32,7 @@ import funnelRoutes from './routes/funnel.routes';
 import { protectedLeadWebhooksRouter, publicLeadWebhooksRouter } from './routes/lead-webhooks.routes';
 import leadClassificationRulesRoutes from './routes/lead-classification-rules.routes';
 import automationJourneysRoutes from './routes/automation-journeys.routes';
+import aiAgentsRoutes from './routes/ai-agents.routes';
 import whatsappRoutes from './routes/whatsapp.routes';
 import pipedriveRoutes from './routes/pipedrive.routes';
 
@@ -534,6 +535,7 @@ app.use('/api/lead-hub', leadHubRoutes);
 app.use('/api/lead-webhooks', protectedLeadWebhooksRouter);
 app.use('/api/lead-rules', leadClassificationRulesRoutes);
 app.use('/api/automation-journeys', automationJourneysRoutes);
+app.use('/api/ai-agents', aiAgentsRoutes);
 app.use('/api/connections', connectionsRoutes);
 app.use('/api/utm-links', utmLinksRoutes);
 app.use('/api/utm-destinations', utmDestinationsRoutes);
