@@ -1004,11 +1004,28 @@ async function executeSendEmail(
   });
   if (!lead) throw new Error(`Lead ${leadEmail} não encontrado para envio de email`);
 
-  const subjectRaw = String(config.subject ?? '').trim();
-  const bodyRaw    = String(config.body    ?? '').trim();
+  const templateId = config.templateId ? String(config.templateId) : null;
 
-  if (!subjectRaw) throw new Error('Bloco Email: campo "Assunto" é obrigatório');
-  if (!bodyRaw)    throw new Error('Bloco Email: campo "Corpo" é obrigatório');
+  let subjectRaw: string;
+  let bodyRaw: string;
+  let fromName: string | undefined;
+  let fromEmail: string | undefined;
+
+  if (templateId) {
+    const tpl = await prisma.emailTemplate.findUnique({ where: { id: templateId } });
+    if (!tpl) throw new Error(`Template de email ${templateId} não encontrado`);
+    subjectRaw = config.subject ? String(config.subject).trim() || tpl.subject : tpl.subject;
+    bodyRaw    = tpl.body;
+    fromName   = tpl.fromName  ?? undefined;
+    fromEmail  = tpl.fromEmail ?? undefined;
+  } else {
+    subjectRaw = String(config.subject ?? '').trim();
+    bodyRaw    = String(config.body    ?? '').trim();
+    fromName   = config.fromName  ? String(config.fromName)  : undefined;
+    fromEmail  = config.fromEmail ? String(config.fromEmail) : undefined;
+    if (!subjectRaw) throw new Error('Bloco Email: campo "Assunto" é obrigatório');
+    if (!bodyRaw)    throw new Error('Bloco Email: campo "Corpo" é obrigatório');
+  }
 
   const subject = renderTemplate(subjectRaw, lead);
   const html    = renderTemplate(bodyRaw,    lead);
@@ -1018,8 +1035,9 @@ async function executeSendEmail(
     toEmail:               lead.email,
     subject,
     html,
-    fromName:              config.fromName  ? String(config.fromName)  : undefined,
-    fromEmail:             config.fromEmail ? String(config.fromEmail) : undefined,
+    fromName,
+    fromEmail,
+    templateId:            templateId ?? undefined,
     automationExecutionId: executionId,
     automationNodeId:      nodeId,
   });

@@ -305,7 +305,8 @@ export type AutomationNodeType =
   | 'internal_action'
   | 'rd_conversion'
   | 'whatsapp_message'
-  | 'pipedrive_action';
+  | 'pipedrive_action'
+  | 'send_email';
 
 export interface AutomationJourneyNode {
   id: string;
