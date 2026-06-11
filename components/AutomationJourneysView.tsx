@@ -51,6 +51,96 @@ import {
 const NODE_W = 230;
 const NODE_H = 88;
 
+// ─── Send Email Panel (component to avoid hooks-in-conditional error) ─────────
+
+type EmailTplOption = { id: string; name: string; subject: string; fromName: string | null; fromEmail: string | null };
+
+const SendEmailPanel: React.FC<{
+  config: Record<string, string>;
+  onChange: (patch: Record<string, string>) => void;
+  fieldLabelStyle: React.CSSProperties;
+}> = ({ config, onChange, fieldLabelStyle }) => {
+  const [templates, setTemplates] = useState<EmailTplOption[]>([]);
+  const [loading, setLoading]     = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    const apiUrl = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api';
+    fetch(`${apiUrl}/email-templates`, { credentials: 'include' })
+      .then(r => r.json())
+      .then((data: EmailTplOption[]) => setTemplates(Array.isArray(data) ? data : []))
+      .catch(() => setTemplates([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const selectedTplId = config.templateId ?? '';
+  const selectedTpl   = templates.find(t => t.id === selectedTplId);
+
+  const onSelectTemplate = (id: string) => {
+    const tpl = templates.find(t => t.id === id);
+    onChange({
+      templateId:   id,
+      templateName: tpl?.name    ?? '',
+      subject:      tpl?.subject ?? config.subject ?? '',
+      fromName:     tpl?.fromName  ?? config.fromName  ?? '',
+      fromEmail:    tpl?.fromEmail ?? config.fromEmail ?? '',
+    });
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div style={{ display: 'grid', gap: 7 }}>
+        <span style={fieldLabelStyle}>Template de email</span>
+        {loading ? (
+          <div style={{ fontSize: 12, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }}/> Carregando templates...
+          </div>
+        ) : templates.length === 0 ? (
+          <div style={{ fontSize: 12, color: '#f59e0b', padding: '10px 12px', background: '#fef3c7', borderRadius: 8 }}>
+            Nenhum template criado. Vá em <strong>Templates Email</strong> para criar.
+          </div>
+        ) : (
+          <select
+            value={selectedTplId}
+            onChange={e => onSelectTemplate(e.target.value)}
+            style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}
+          >
+            <option value="">— Selecione um template —</option>
+            {templates.map(t => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        )}
+        {selectedTpl && (
+          <div style={{ fontSize: 12, color: 'var(--fg-muted)', padding: '8px 10px', background: 'var(--bg-muted)', borderRadius: 6, lineHeight: 1.6 }}>
+            <strong>Assunto:</strong> {selectedTpl.subject}<br/>
+            {(selectedTpl.fromName || selectedTpl.fromEmail) && (
+              <><strong>De:</strong> {selectedTpl.fromName || 'AutoForce'} &lt;{selectedTpl.fromEmail || 'padrão'}&gt;</>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'grid', gap: 7 }}>
+        <span style={fieldLabelStyle}>Assunto (opcional — sobrescreve o template)</span>
+        <input
+          value={config.subject ?? ''}
+          onChange={e => onChange({ subject: e.target.value })}
+          placeholder={selectedTpl ? selectedTpl.subject : 'Ex: {{name}}, temos algo para você'}
+          style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}
+        />
+      </div>
+
+      <div style={{ fontSize: 12, color: 'var(--fg-muted)', padding: '10px 12px', background: 'var(--bg-muted)', borderRadius: 8, lineHeight: 1.6 }}>
+        O corpo do email vem do template selecionado.<br/>
+        Merge tags: <code style={{ background: 'var(--bg-card)', padding: '1px 4px', borderRadius: 3 }}>{'{{name}}'}</code>{' '}
+        <code style={{ background: 'var(--bg-card)', padding: '1px 4px', borderRadius: 3 }}>{'{{email}}'}</code>{' '}
+        <code style={{ background: 'var(--bg-card)', padding: '1px 4px', borderRadius: 3 }}>{'{{company}}'}</code>
+      </div>
+    </div>
+  );
+};
+
 const BLOCKS: Array<{
   type: AutomationNodeType;
   label: string;
@@ -2655,95 +2745,13 @@ const AutomationJourneysView: React.FC = () => {
                   })()}
 
                   {/* ── ENVIAR EMAIL ── */}
-                  {panelNode.type === 'send_email' && (() => {
-                    const [emailTemplates, setEmailTemplates] = React.useState<Array<{ id: string; name: string; subject: string; fromName: string | null; fromEmail: string | null }>>([]);
-                    const [loadingTpls, setLoadingTpls] = React.useState(false);
-
-                    React.useEffect(() => {
-                      setLoadingTpls(true);
-                      fetch(`${(window as any).__API_URL__ || (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000/api'}/email-templates`, {
-                        credentials: 'include',
-                      })
-                        .then(r => r.json())
-                        .then((data: Array<{ id: string; name: string; subject: string; fromName: string | null; fromEmail: string | null }>) => setEmailTemplates(Array.isArray(data) ? data : []))
-                        .catch(() => setEmailTemplates([]))
-                        .finally(() => setLoadingTpls(false));
-                    }, []);
-
-                    const selectedTplId = String(panelValues.config.templateId ?? '');
-                    const selectedTpl   = emailTemplates.find(t => t.id === selectedTplId);
-
-                    const onSelectTemplate = (id: string) => {
-                      const tpl = emailTemplates.find(t => t.id === id);
-                      setPanelValues(prev => prev ? {
-                        ...prev,
-                        config: {
-                          ...prev.config,
-                          templateId:   id,
-                          templateName: tpl?.name ?? '',
-                          subject:      tpl?.subject ?? prev.config.subject ?? '',
-                          fromName:     tpl?.fromName ?? prev.config.fromName ?? '',
-                          fromEmail:    tpl?.fromEmail ?? prev.config.fromEmail ?? '',
-                        },
-                      } : prev);
-                    };
-
-                    return (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-
-                        {/* Template selector */}
-                        <div style={{ display: 'grid', gap: 7 }}>
-                          <span style={fieldLabelStyle}>Template de email</span>
-                          {loadingTpls ? (
-                            <div style={{ fontSize: 12, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }}/> Carregando templates...
-                            </div>
-                          ) : emailTemplates.length === 0 ? (
-                            <div style={{ fontSize: 12, color: '#f59e0b', padding: '10px 12px', background: '#fef3c7', borderRadius: 8 }}>
-                              Nenhum template criado. Vá em <strong>Templates Email</strong> para criar.
-                            </div>
-                          ) : (
-                            <select
-                              value={selectedTplId}
-                              onChange={e => onSelectTemplate(e.target.value)}
-                              style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}
-                            >
-                              <option value="">— Selecione um template —</option>
-                              {emailTemplates.map(t => (
-                                <option key={t.id} value={t.id}>{t.name}</option>
-                              ))}
-                            </select>
-                          )}
-                          {selectedTpl && (
-                            <div style={{ fontSize: 12, color: 'var(--fg-muted)', padding: '8px 10px', background: 'var(--bg-muted)', borderRadius: 6 }}>
-                              <strong>Assunto:</strong> {selectedTpl.subject}<br/>
-                              {(selectedTpl.fromName || selectedTpl.fromEmail) && (
-                                <><strong>De:</strong> {selectedTpl.fromName || 'AutoForce'} &lt;{selectedTpl.fromEmail || 'padrão'}&gt;</>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Override subject */}
-                        <div style={{ display: 'grid', gap: 7 }}>
-                          <span style={fieldLabelStyle}>Assunto (opcional — sobrescreve o template)</span>
-                          <input
-                            value={String(panelValues.config.subject ?? '')}
-                            onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, subject: e.target.value } } : prev)}
-                            placeholder={selectedTpl ? selectedTpl.subject : 'Ex: {{name}}, temos algo para você'}
-                            style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}
-                          />
-                        </div>
-
-                        {/* Info box */}
-                        <div style={{ fontSize: 12, color: 'var(--fg-muted)', padding: '10px 12px', background: 'var(--bg-muted)', borderRadius: 8, lineHeight: 1.6 }}>
-                          O corpo do email vem do template selecionado.<br/>
-                          Merge tags disponíveis: <code style={{ background: 'var(--bg-card)', padding: '1px 4px', borderRadius: 3 }}>{'{{name}}'}</code> <code style={{ background: 'var(--bg-card)', padding: '1px 4px', borderRadius: 3 }}>{'{{email}}'}</code> <code style={{ background: 'var(--bg-card)', padding: '1px 4px', borderRadius: 3 }}>{'{{company}}'}</code>
-                        </div>
-
-                      </div>
-                    );
-                  })()}
+                  {panelNode.type === 'send_email' && (
+                    <SendEmailPanel
+                      config={panelValues.config}
+                      onChange={patch => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, ...patch } } : prev)}
+                      fieldLabelStyle={fieldLabelStyle}
+                    />
+                  )}
 
                   {/* ── PIPEDRIVE ── */}
                   {panelNode.type === 'pipedrive_action' && (() => {
