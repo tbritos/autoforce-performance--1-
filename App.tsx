@@ -973,6 +973,10 @@ const AppContent: React.FC = () => {
       : location.pathname.startsWith(path);
   const sidebarWidth = isSidebarCollapsed ? 72 : 248;
 
+  useEffect(() => {
+    document.documentElement.style.setProperty('--global-sidebar-width', `${sidebarWidth}px`);
+  }, [sidebarWidth]);
+
   // ─── Loading / Auth guards ──────────────────────────────────────────────────
 
   if (initializing) {
