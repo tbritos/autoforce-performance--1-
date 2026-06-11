@@ -338,12 +338,14 @@ const EmailTemplatesView: React.FC = () => {
     );
   }
 
+  const EDITOR_HEADER_H = 50;
+
   // ── Editor (Unlayer) ──
   if (editorOpen) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
         {/* Editor header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', flexShrink: 0, gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', height: EDITOR_HEADER_H, borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', flexShrink: 0, gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <button onClick={() => setEditorOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer' }}>
               <ArrowLeft size={14}/> Voltar
@@ -379,11 +381,17 @@ const EmailTemplatesView: React.FC = () => {
         </div>
 
         {/* Unlayer Editor */}
-        <div style={{ flex: 1, overflow: 'hidden' }}>
+        <div style={{ position: 'relative', height: `calc(100vh - ${EDITOR_HEADER_H}px)` }}>
+          {!editorReady && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: 'var(--bg-base)', zIndex: 10 }}>
+              <RefreshCw size={22} style={{ animation: 'spin 1s linear infinite', color: 'var(--accent)' }}/>
+              <span style={{ fontSize: 13, color: 'var(--fg-muted)' }}>Carregando editor...</span>
+            </div>
+          )}
           <EmailEditor
             ref={editorRef}
             onReady={handleEditorReady}
-            style={{ height: '100%', minHeight: 600 }}
+            style={{ height: `calc(100vh - ${EDITOR_HEADER_H}px)` }}
             options={{
               locale: 'pt-BR',
               appearance: { theme: 'modern_light' },
