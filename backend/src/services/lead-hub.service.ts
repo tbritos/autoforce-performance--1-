@@ -609,10 +609,14 @@ export class LeadHubService {
   static async addTagById(id: string, tag: string) {
     const lead = await prisma.lead.findUniqueOrThrow({ where: { id } });
     if (lead.tags.includes(tag)) return lead;
-    return prisma.lead.update({
+    const updated = await prisma.lead.update({
       where: { id },
       data: { tags: { push: tag } },
     });
+    import('./automation-engine.service').then(({ fireTrigger }) => {
+      fireTrigger('tag_added', lead.email, { tag });
+    }).catch(() => {});
+    return updated;
   }
 
   static async removeTag(emailRaw: string, tag: string) {

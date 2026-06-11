@@ -291,6 +291,9 @@ export class LeadClassificationRulesService {
               if (!currentTags.includes(tag)) {
                 await prisma.lead.update({ where: { email: leadEmail }, data: { tags: [...currentTags, tag] } });
                 actionsApplied.push({ type: action.type, tag });
+                import('./automation-engine.service').then(({ fireTrigger }) => {
+                  fireTrigger('tag_added', leadEmail, { tag });
+                }).catch(() => {});
               }
             }
           }
@@ -337,7 +340,8 @@ export class LeadClassificationRulesService {
             if (value) {
               const field = fieldMap[action.type];
               const tag = `${tagMap[action.type]}:${value}`;
-              const nextTags = currentTags.includes(tag) ? currentTags : [...currentTags, tag];
+              const isNewTag = !currentTags.includes(tag);
+              const nextTags = isNewTag ? [...currentTags, tag] : currentTags;
               await prisma.lead.update({
                 where: { email: leadEmail },
                 data: {
@@ -346,6 +350,11 @@ export class LeadClassificationRulesService {
                 },
               });
               actionsApplied.push({ type: action.type, field, value, tag });
+              if (isNewTag) {
+                import('./automation-engine.service').then(({ fireTrigger }) => {
+                  fireTrigger('tag_added', leadEmail, { tag });
+                }).catch(() => {});
+              }
             }
           }
 

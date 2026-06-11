@@ -487,6 +487,7 @@ export class LeadWebhooksService {
         source.defaultPersona ? `persona:${source.defaultPersona}` : '',
         source.defaultPain ? `dor:${source.defaultPain}` : '',
       ]);
+      const newTags = tags.filter(t => !lead.tags.includes(t));
 
       const currentCustomFields =
         lead.customFields && typeof lead.customFields === 'object' && !Array.isArray(lead.customFields)
@@ -578,6 +579,9 @@ export class LeadWebhooksService {
           webhookSourceName: source.name,
           source: firstSource,
         });
+        for (const tag of newTags) {
+          fireTrigger('tag_added', updatedLead.email, { tag });
+        }
       }).catch(() => {});
 
       return {

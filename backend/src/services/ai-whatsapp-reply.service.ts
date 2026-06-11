@@ -311,8 +311,14 @@ async function applyRecommendedActions(
     const lead = await prisma.lead.findUnique({ where: { email: leadEmail }, select: { tags: true } });
     if (lead) {
       const merged = Array.from(new Set([...lead.tags, ...aiTags]));
-      if (merged.length > lead.tags.length) {
+      const addedTags = aiTags.filter(t => !lead.tags.includes(t));
+      if (addedTags.length > 0) {
         await prisma.lead.update({ where: { email: leadEmail }, data: { tags: merged } });
+        for (const tag of addedTags) {
+          import('./automation-engine.service').then(({ fireTrigger }) => {
+            fireTrigger('tag_added', leadEmail, { tag });
+          }).catch(() => {});
+        }
       }
     }
   }
@@ -328,6 +334,9 @@ async function applyRecommendedActions(
           const lead = await prisma.lead.findUnique({ where: { email: leadEmail }, select: { tags: true } });
           if (lead && !lead.tags.includes(tag)) {
             await prisma.lead.update({ where: { email: leadEmail }, data: { tags: { push: tag } } });
+            import('./automation-engine.service').then(({ fireTrigger }) => {
+              fireTrigger('tag_added', leadEmail, { tag });
+            }).catch(() => {});
           }
         }
         break;
