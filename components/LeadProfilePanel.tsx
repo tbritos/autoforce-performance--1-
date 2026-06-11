@@ -914,142 +914,167 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                   )}
 
                   {/* ── WHATSAPP TAB ── */}
-                  {activeTab === 'whatsapp' && (
-                    <div style={cardStyle}>
-                      {/* Header */}
-                      <div style={cardHead}>
-                        <span style={cardHeadTitle}><MessageCircle size={13} /> Conversa WhatsApp</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setWhatsAppMessages(null);
-                            DataService.getWhatsAppConversation(profile.id).then(setWhatsAppMessages).catch(() => setWhatsAppMessages([]));
-                          }}
-                          style={{ fontSize: 12, color: 'var(--fg-muted)', background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
-                        >
-                          <RefreshCw size={11} /> Atualizar
-                        </button>
-                      </div>
+                  {activeTab === 'whatsapp' && (() => {
+                    const senderName = profile.assignedTo || 'Você';
+                    const fmtPhoneDisplay = (p: string | null) => {
+                      if (!p) return '';
+                      const d = p.replace(/\D/g, '');
+                      if (d.startsWith('55') && d.length === 13) return `+${d.slice(0,2)} ${d.slice(2,4)} ${d.slice(4,9)}-${d.slice(9)}`;
+                      if (d.startsWith('55') && d.length === 12) return `+${d.slice(0,2)} ${d.slice(2,4)} ${d.slice(4,8)}-${d.slice(8)}`;
+                      return p;
+                    };
+                    const wppGroups = (() => {
+                      if (!whatsAppMessages) return [];
+                      const today = new Date(); const yest = new Date(); yest.setDate(yest.getDate()-1);
+                      const groups: {label:string; key:string; msgs: WhatsAppConversationMessage[]}[] = [];
+                      for (const m of whatsAppMessages) {
+                        const d = new Date(m.sentAt ?? m.receivedAt ?? m.createdAt);
+                        const k = d.toDateString();
+                        const label = k === today.toDateString() ? 'Hoje' : k === yest.toDateString() ? 'Ontem'
+                          : d.toLocaleDateString('pt-BR', { day:'2-digit', month:'long' });
+                        const last = groups[groups.length-1];
+                        if (last && last.key === k) last.msgs.push(m); else groups.push({label, key:k, msgs:[m]});
+                      }
+                      return groups;
+                    })();
 
-                      {/* Handoff banner */}
-                      <div style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '10px 16px',
-                        background: aiHandoff ? '#fff7ed' : '#f0fdf4',
-                        borderBottom: `1px solid ${aiHandoff ? '#fed7aa' : '#bbf7d0'}`,
-                        gap: 12,
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: aiHandoff ? '#c2410c' : '#15803d', fontWeight: 500 }}>
-                          {aiHandoff
-                            ? <><UserCheck size={14} /> Você está no controle — IA pausada</>
-                            : <><Bot size={14} /> IA respondendo automaticamente</>
-                          }
+                    return (
+                      <div style={{ ...cardStyle, overflow: 'hidden' }}>
+                        {/* ── Chat header ── */}
+                        <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', borderBottom:'1px solid var(--border)', background:'var(--bg-surface)' }}>
+                          {/* Avatar */}
+                          <div style={{ width:40, height:40, borderRadius:'50%', background:'#25d366', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                            <MessageCircle size={20} color="white" />
+                          </div>
+                          {/* Name + status */}
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <p style={{ margin:0, fontSize:14, fontWeight:700, color:'var(--fg-primary)' }}>{profile.name ?? 'Sem nome'}</p>
+                            <p style={{ margin:0, fontSize:12, color:'var(--fg-muted)', display:'flex', alignItems:'center', gap:5 }}>
+                              <span style={{ width:7, height:7, borderRadius:'50%', background:'#25d366', display:'inline-block', flexShrink:0 }} />
+                              online agora{profile.phone ? ` · ${fmtPhoneDisplay(profile.phone)}` : ''}
+                            </p>
+                          </div>
+                          {/* Mode toggle */}
+                          <div style={{ display:'flex', background:'var(--bg-muted)', borderRadius:8, padding:3, gap:2 }}>
+                            <button type="button" onClick={() => { if (aiHandoff) handleHandoffToggle(); }}
+                              disabled={handoffSaving}
+                              style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 11px', borderRadius:6, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, background: !aiHandoff ? 'var(--accent)' : 'transparent', color: !aiHandoff ? 'white' : 'var(--fg-muted)', transition:'all .15s' }}>
+                              <Bot size={12} /> IA
+                            </button>
+                            <button type="button" onClick={() => { if (!aiHandoff) handleHandoffToggle(); }}
+                              disabled={handoffSaving}
+                              style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 11px', borderRadius:6, border:'none', cursor:'pointer', fontSize:12, fontWeight:600, background: aiHandoff ? 'var(--bg-surface)' : 'transparent', color: aiHandoff ? 'var(--fg-primary)' : 'var(--fg-muted)', boxShadow: aiHandoff ? 'var(--shadow-sm)' : 'none', transition:'all .15s' }}>
+                              <UserCheck size={12} /> Eu respondo
+                            </button>
+                          </div>
+                          {/* Refresh */}
+                          <button type="button" title="Atualizar"
+                            onClick={() => { setWhatsAppMessages(null); DataService.getWhatsAppConversation(profile.id).then(setWhatsAppMessages).catch(() => setWhatsAppMessages([])); }}
+                            style={{ width:32, height:32, borderRadius:6, border:'1px solid var(--border)', background:'transparent', color:'var(--fg-muted)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                            <RefreshCw size={13} />
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={handleHandoffToggle}
-                          disabled={handoffSaving}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            padding: '5px 12px', borderRadius: 6, border: 'none', cursor: handoffSaving ? 'wait' : 'pointer',
-                            fontSize: 12, fontWeight: 600,
-                            background: aiHandoff ? '#15803d' : '#c2410c',
-                            color: 'white', opacity: handoffSaving ? 0.6 : 1,
-                            flexShrink: 0,
-                          }}
-                        >
-                          {handoffSaving
-                            ? <RefreshCw size={11} style={{ animation: 'spin 1s linear infinite' }} />
-                            : aiHandoff ? <Bot size={11} /> : <UserCheck size={11} />
-                          }
-                          {aiHandoff ? 'Devolver para IA' : 'Assumir conversa'}
-                        </button>
-                      </div>
 
-                      {/* Messages */}
-                      <div style={{ padding: 18, background: 'var(--bg-app)', minHeight: 340, maxHeight: 480, overflowY: 'auto' }}>
-                        {whatsAppMessages === null ? (
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 260, color: 'var(--fg-muted)', fontSize: 13 }}>
-                            <RefreshCw size={14} className="animate-spin" /> Carregando conversa...
-                          </div>
-                        ) : whatsAppMessages.length === 0 ? (
-                          <div style={{ display: 'grid', placeItems: 'center', height: 260, color: 'var(--fg-muted)', fontSize: 13, textAlign: 'center' }}>
-                            Nenhuma mensagem registrada para este lead ainda.
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                            {whatsAppMessages.map(message => {
-                              const outbound = message.direction === 'outbound';
-                              const date = message.sentAt ?? message.receivedAt ?? message.createdAt;
-                              const content = message.text || (message.templateName ? `Template: ${message.templateName}` : message.type);
-                              const statusLabel =
-                                message.status === 'read' ? 'lida' :
-                                message.status === 'delivered' ? 'entregue' :
-                                message.status === 'failed' ? 'falhou' :
-                                message.status === 'sent' ? 'enviada' :
-                                message.status === 'received' ? 'recebida' : message.status;
+                        {/* ── Status bar ── */}
+                        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'7px 16px', background: aiHandoff ? '#fff7ed' : '#f0fdf4', borderBottom:`1px solid ${aiHandoff?'#fed7aa':'#bbf7d0'}`, fontSize:12 }}>
+                          <span style={{ display:'flex', alignItems:'center', gap:6, color: aiHandoff ? '#92400e' : '#166534', fontWeight:500 }}>
+                            <span style={{ width:6, height:6, borderRadius:'50%', background: aiHandoff?'#f97316':'#22c55e', flexShrink:0 }} />
+                            {aiHandoff ? `Você está no controle — IA pausada` : `IA no controle — respondendo automaticamente`}
+                          </span>
+                          {!aiHandoff && (
+                            <button type="button" onClick={handleHandoffToggle} disabled={handoffSaving}
+                              style={{ fontSize:11, color:'var(--accent)', background:'none', border:'none', cursor:'pointer', fontWeight:600, padding:0 }}>
+                              Clique em "Eu respondo" para assumir
+                            </button>
+                          )}
+                        </div>
 
-                              return (
-                                <div key={message.id} style={{ display: 'flex', justifyContent: outbound ? 'flex-end' : 'flex-start' }}>
-                                  <div style={{
-                                    maxWidth: '72%', padding: '10px 12px',
-                                    borderRadius: outbound ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                                    background: outbound ? 'rgba(69,108,236,0.14)' : 'var(--bg-surface)',
-                                    border: `1px solid ${outbound ? 'rgba(69,108,236,0.24)' : 'var(--border)'}`,
-                                    color: 'var(--fg-primary)', boxShadow: 'var(--shadow-sm)',
-                                  }}>
-                                    <p style={{ margin: 0, fontSize: 13, lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{content}</p>
-                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6, fontSize: 10, color: message.status === 'failed' ? 'var(--red-500)' : 'var(--fg-subtle)' }}>
-                                      <span>{fmtTime(date)}</span>
-                                      {outbound && <span>{statusLabel}</span>}
-                                    </div>
+                        {/* ── Messages ── */}
+                        <div style={{ padding:'16px 12px', background:'#ece5dd', minHeight:320, maxHeight:460, overflowY:'auto', display:'flex', flexDirection:'column', gap:0 }}>
+                          {whatsAppMessages === null ? (
+                            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, height:260, color:'#666', fontSize:13 }}>
+                              <RefreshCw size={14} className="animate-spin" /> Carregando conversa...
+                            </div>
+                          ) : whatsAppMessages.length === 0 ? (
+                            <div style={{ display:'grid', placeItems:'center', height:260, color:'#888', fontSize:13, textAlign:'center' }}>
+                              Nenhuma mensagem ainda. Envie a primeira!
+                            </div>
+                          ) : (
+                            <>
+                              {wppGroups.map(group => (
+                                <div key={group.key}>
+                                  {/* Date separator */}
+                                  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', margin:'12px 0 10px' }}>
+                                    <span style={{ background:'rgba(255,255,255,.75)', color:'#555', fontSize:11, fontWeight:600, padding:'3px 12px', borderRadius:8, boxShadow:'0 1px 2px rgba(0,0,0,.1)' }}>
+                                      {group.label}
+                                    </span>
+                                  </div>
+                                  {/* Messages in this day */}
+                                  <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                                    {group.msgs.map(msg => {
+                                      const out = msg.direction === 'outbound';
+                                      const ts = fmtTime(msg.sentAt ?? msg.receivedAt ?? msg.createdAt);
+                                      const body = msg.text || (msg.templateName ? `📋 ${msg.templateName}` : `(${msg.type})`);
+                                      const isTemplate = !!msg.templateName;
+                                      const attribution = out
+                                        ? (isTemplate ? `Automação · ${msg.templateName}` : `Você · ${senderName}`)
+                                        : null;
+                                      const bubbleBg = out ? (isTemplate ? '#cfe9ba' : '#d9fdd3') : '#ffffff';
+                                      const statusIcon = msg.status==='read' ? '✓✓' : msg.status==='delivered' ? '✓✓' : msg.status==='sent' ? '✓' : msg.status==='failed' ? '✗' : '';
+                                      const statusColor = msg.status==='read' ? '#53bdeb' : msg.status==='failed' ? '#ef4444' : '#aaa';
+                                      return (
+                                        <div key={msg.id} style={{ display:'flex', justifyContent: out?'flex-end':'flex-start', padding:'0 8px', marginBottom:2 }}>
+                                          <div style={{ maxWidth:'72%' }}>
+                                            {attribution && (
+                                              <p style={{ margin:'0 4px 2px', fontSize:10, color:'#666', textAlign:'right', display:'flex', alignItems:'center', justifyContent:'flex-end', gap:4 }}>
+                                                {isTemplate ? <Bot size={9}/> : <UserCheck size={9}/>} {attribution}
+                                              </p>
+                                            )}
+                                            <div style={{ background:bubbleBg, borderRadius: out?'12px 2px 12px 12px':'2px 12px 12px 12px', padding:'8px 10px', boxShadow:'0 1px 2px rgba(0,0,0,.12)', position:'relative' }}>
+                                              <p style={{ margin:0, fontSize:13, lineHeight:1.45, whiteSpace:'pre-wrap', wordBreak:'break-word', color:'#111' }}>{body}</p>
+                                              <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:4, marginTop:4 }}>
+                                                <span style={{ fontSize:10, color:'#666' }}>{ts}</span>
+                                                {out && <span style={{ fontSize:10, color: statusColor, fontWeight:600 }}>{statusIcon}</span>}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 </div>
-                              );
-                            })}
-                            <div ref={wppBottomRef} />
-                          </div>
-                        )}
-                      </div>
+                              ))}
+                              <div ref={wppBottomRef} />
+                            </>
+                          )}
+                        </div>
 
-                      {/* Compose */}
-                      <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'flex-end' }}>
-                        <textarea
-                          value={wppText}
-                          onChange={e => setWppText(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleWppSend(); }
-                          }}
-                          placeholder="Digite uma mensagem... (Enter para enviar, Shift+Enter para nova linha)"
-                          rows={2}
-                          style={{
-                            flex: 1, resize: 'none', border: '1px solid var(--border)', borderRadius: 8,
-                            padding: '8px 12px', fontSize: 13, fontFamily: 'inherit',
-                            background: 'var(--bg-surface)', color: 'var(--fg-primary)',
-                            outline: 'none', lineHeight: 1.5,
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={handleWppSend}
-                          disabled={!wppText.trim() || wppSending || !profile.phone}
-                          title={!profile.phone ? 'Lead sem telefone cadastrado' : ''}
-                          style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            width: 40, height: 40, borderRadius: 8, border: 'none',
-                            background: 'var(--accent)', color: 'white', cursor: 'pointer',
-                            opacity: (!wppText.trim() || wppSending || !profile.phone) ? 0.45 : 1,
-                            flexShrink: 0,
-                          }}
-                        >
-                          {wppSending
-                            ? <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                            : <Send size={16} />
-                          }
-                        </button>
+                        {/* ── Compose ── */}
+                        <div style={{ borderTop:'1px solid var(--border)', background:'var(--bg-surface)' }}>
+                          <div style={{ display:'flex', alignItems:'flex-end', gap:10, padding:'10px 14px' }}>
+                            <textarea
+                              value={wppText}
+                              onChange={e => setWppText(e.target.value)}
+                              onKeyDown={e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); void handleWppSend(); } }}
+                              placeholder="Digite uma mensagem..."
+                              rows={1}
+                              style={{ flex:1, resize:'none', border:'1px solid var(--border)', borderRadius:22, padding:'9px 16px', fontSize:13, fontFamily:'inherit', background:'var(--bg-app)', color:'var(--fg-primary)', outline:'none', lineHeight:1.5, maxHeight:100, overflowY:'auto' }}
+                            />
+                            <button type="button" onClick={handleWppSend}
+                              disabled={!wppText.trim() || wppSending || !profile.phone}
+                              title={!profile.phone ? 'Lead sem telefone cadastrado' : 'Enviar mensagem'}
+                              style={{ width:40, height:40, borderRadius:'50%', border:'none', background:'var(--accent)', color:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, opacity:(!wppText.trim()||wppSending||!profile.phone)?0.4:1, transition:'opacity .15s' }}>
+                              {wppSending ? <RefreshCw size={16} style={{animation:'spin 1s linear infinite'}}/> : <Send size={16}/>}
+                            </button>
+                          </div>
+                          <div style={{ display:'flex', justifyContent:'space-between', padding:'0 16px 10px', fontSize:11, color:'var(--fg-subtle)' }}>
+                            <span>Enter envia · Shift+Enter quebra linha</span>
+                            <span style={{ display:'flex', alignItems:'center', gap:4 }}><UserCheck size={10}/> Enviando como <strong>{senderName}</strong></span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
 
                 {/* ── Right sidebar ── */}
