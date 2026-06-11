@@ -7,7 +7,6 @@ import LeadTracker from './components/LeadTracker';
 import WebhookLeadsView from './components/WebhookLeadsView';
 import RevenueTracker from './components/RevenueTracker';
 import CampaignsView from './components/CampaignsView';
-import EmailsView from './components/EmailsView';
 import ConnectionsView from './components/ConnectionsView';
 import DocsView from './components/DocsView';
 import LeadHubView from './components/LeadHubView';
@@ -47,7 +46,6 @@ import {
   Info,
   Workflow,
   Bot,
-  FileText,
 } from 'lucide-react';
 import { FunnelChart, FunnelStep } from './components/Charts';
 
@@ -951,8 +949,7 @@ const AppContent: React.FC = () => {
         { label: 'Funil Unificado', path: '/funnel',      icon: Layers },
         { label: 'Campanhas',       path: '/campaigns',   icon: Megaphone },
         { label: 'Analytics (GA4)', path: '/analytics',   icon: BarChart3 },
-        { label: 'E-mails',          path: '/emails',           icon: Mail },
-        { label: 'Templates Email',  path: '/email-templates',  icon: FileText },
+        { label: 'E-mails',          path: '/emails',      icon: Mail },
       ],
     },
     {
@@ -1206,8 +1203,8 @@ const AppContent: React.FC = () => {
             <Route path="/funnel" element={<FunnelView />} />
             <Route path="/campaigns" element={<CampaignsView />} />
             <Route path="/analytics" element={<LPView />} />
-            <Route path="/emails" element={<EmailsView />} />
-            <Route path="/email-templates" element={<EmailTemplatesView />} />
+            <Route path="/emails" element={<EmailTemplatesView />} />
+            <Route path="/email-templates" element={<Navigate to="/emails" replace />} />
 
             {/* Receita & Metas */}
             <Route path="/revenue" element={<RevenueTracker />} />

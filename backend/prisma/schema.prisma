@@ -789,18 +789,27 @@ model AssetVersion {
 // ============================================================
 
 model EmailTemplate {
-  id        String   @id @default(cuid())
-  name      String
-  subject   String
-  body      String   @db.Text
-  fromName  String?
-  fromEmail String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String    @id @default(cuid())
+  name         String
+  subject      String
+  body         String    @db.Text
+  design       Json?
+  fromName     String?
+  fromEmail    String?
+  // status: draft | scheduled | sent | automatic
+  status       String    @default("draft")
+  scheduledAt  DateTime?
+  // audience
+  audienceType  String?   // tag | segment | trigger | sequence | all
+  audienceValue String?   // tag name, trigger event, etc.
+  audienceCount Int?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   sends EmailSent[]
 
+  @@index([status])
   @@index([isActive])
   @@index([createdAt])
 }

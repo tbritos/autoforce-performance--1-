@@ -80,20 +80,22 @@ router.get('/:id', async (req: Request, res: Response) => {
 // Create template
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { name, subject, body, fromName, fromEmail } = req.body as {
-      name: string; subject: string; body: string; fromName?: string; fromEmail?: string;
-    };
-    if (!name?.trim())    { res.status(400).json({ error: 'Nome é obrigatório' }); return; }
-    if (!subject?.trim()) { res.status(400).json({ error: 'Assunto é obrigatório' }); return; }
-    if (!body?.trim())    { res.status(400).json({ error: 'Corpo é obrigatório' }); return; }
+    const { name, subject, body, design, fromName, fromEmail, status, scheduledAt, audienceType, audienceValue, audienceCount } = req.body as Record<string, unknown>;
+    if (!String(name ?? '').trim())    { res.status(400).json({ error: 'Nome é obrigatório' }); return; }
 
     const template = await prisma.emailTemplate.create({
       data: {
-        name: name.trim(),
-        subject: subject.trim(),
-        body: body.trim(),
-        fromName:  fromName?.trim()  || null,
-        fromEmail: fromEmail?.trim() || null,
+        name:          String(name).trim(),
+        subject:       String(subject ?? '').trim(),
+        body:          String(body ?? '').trim(),
+        design:        design ?? undefined,
+        fromName:      fromName  ? String(fromName).trim()  : null,
+        fromEmail:     fromEmail ? String(fromEmail).trim() : null,
+        status:        String(status ?? 'draft'),
+        scheduledAt:   scheduledAt ? new Date(String(scheduledAt)) : null,
+        audienceType:  audienceType  ? String(audienceType)  : null,
+        audienceValue: audienceValue ? String(audienceValue) : null,
+        audienceCount: audienceCount ? Number(audienceCount) : null,
       },
     });
     res.status(201).json(template);
@@ -105,22 +107,22 @@ router.post('/', async (req: Request, res: Response) => {
 // Update template
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const { name, subject, body, fromName, fromEmail, isActive } = req.body as {
-      name?: string; subject?: string; body?: string;
-      fromName?: string; fromEmail?: string; isActive?: boolean;
-    };
+    const body = req.body as Record<string, unknown>;
+    const data: Record<string, unknown> = {};
+    if (body.name         !== undefined) data['name']          = String(body.name).trim();
+    if (body.subject      !== undefined) data['subject']       = String(body.subject).trim();
+    if (body.body         !== undefined) data['body']          = String(body.body).trim();
+    if (body.design       !== undefined) data['design']        = body.design;
+    if (body.fromName     !== undefined) data['fromName']      = body.fromName  ? String(body.fromName).trim()  : null;
+    if (body.fromEmail    !== undefined) data['fromEmail']     = body.fromEmail ? String(body.fromEmail).trim() : null;
+    if (body.isActive     !== undefined) data['isActive']      = Boolean(body.isActive);
+    if (body.status       !== undefined) data['status']        = String(body.status);
+    if (body.scheduledAt  !== undefined) data['scheduledAt']   = body.scheduledAt ? new Date(String(body.scheduledAt)) : null;
+    if (body.audienceType !== undefined) data['audienceType']  = body.audienceType  ? String(body.audienceType)  : null;
+    if (body.audienceValue!== undefined) data['audienceValue'] = body.audienceValue ? String(body.audienceValue) : null;
+    if (body.audienceCount!== undefined) data['audienceCount'] = body.audienceCount ? Number(body.audienceCount) : null;
 
-    const template = await prisma.emailTemplate.update({
-      where: { id: req.params.id },
-      data: {
-        ...(name      !== undefined && { name:      name.trim()      }),
-        ...(subject   !== undefined && { subject:   subject.trim()   }),
-        ...(body      !== undefined && { body:      body.trim()      }),
-        ...(fromName  !== undefined && { fromName:  fromName?.trim()  || null }),
-        ...(fromEmail !== undefined && { fromEmail: fromEmail?.trim() || null }),
-        ...(isActive  !== undefined && { isActive }),
-      },
-    });
+    const template = await prisma.emailTemplate.update({ where: { id: req.params.id }, data });
     res.json(template);
   } catch {
     res.status(500).json({ error: 'Erro ao atualizar template' });

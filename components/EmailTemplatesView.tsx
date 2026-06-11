@@ -1,19 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import TiptapUnderline from '@tiptap/extension-underline';
-import TiptapLink from '@tiptap/extension-link';
-import TextAlign from '@tiptap/extension-text-align';
-import Placeholder from '@tiptap/extension-placeholder';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import EmailEditor, { EditorRef } from 'react-email-editor';
 import {
   Plus, Search, Mail, Trash2, Edit3, Send, RefreshCw,
-  CheckCircle, XCircle, AlertCircle, BarChart2, Eye,
-  Bold, Italic, Underline as UnderlineIcon, AlignLeft, AlignCenter, AlignRight,
-  List, ListOrdered, Link2, Minus, Undo, Redo, X,
+  CheckCircle, AlertCircle, X, LayoutGrid, List,
+  Clock, Zap, MoreVertical, Copy, ChevronRight,
+  ArrowLeft, Eye,
 } from 'lucide-react';
 import { apiClient } from '../services/apiClient';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
+
+type EmailStatus = 'draft' | 'sent' | 'scheduled' | 'automatic';
 
 interface TemplateStats {
   sent: number;
@@ -23,7 +20,6 @@ interface TemplateStats {
   bounced: number;
   openRate: number;
   clickRate: number;
-  bounceRate: number;
 }
 
 interface EmailTemplate {
@@ -31,242 +27,188 @@ interface EmailTemplate {
   name: string;
   subject: string;
   body: string;
+  design: unknown | null;
   fromName: string | null;
   fromEmail: string | null;
+  status: EmailStatus;
+  scheduledAt: string | null;
+  audienceType: string | null;
+  audienceValue: string | null;
+  audienceCount: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
   stats: TemplateStats;
 }
 
-interface TemplateSend {
-  id: string;
-  leadEmail: string;
-  toEmail: string;
-  status: string;
-  openedAt: string | null;
-  clickedAt: string | null;
-  bouncedAt: string | null;
-  sentAt: string;
-}
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-interface TemplateDetail extends EmailTemplate {
-  sends: TemplateSend[];
-}
-
-// ─── API helpers ─────────────────────────────────────────────────────────────
-
-const api = {
-  list:   ()                          => apiClient.get<EmailTemplate[]>('/email-templates'),
-  get:    (id: string)                => apiClient.get<TemplateDetail>(`/email-templates/${id}`),
-  create: (data: Partial<EmailTemplate>) => apiClient.post<EmailTemplate>('/email-templates', data),
-  update: (id: string, data: Partial<EmailTemplate>) => apiClient.put<EmailTemplate>(`/email-templates/${id}`, data),
-  delete: (id: string)                => apiClient.delete(`/email-templates/${id}`),
-  test:   (id: string, toEmail: string) => apiClient.post(`/email-templates/${id}/test`, { toEmail }),
+const STATUS_CFG: Record<EmailStatus, { label: string; color: string; dot: string }> = {
+  sent:      { label: 'Enviado',   color: '#059669', dot: '#10b981' },
+  scheduled: { label: 'Agendado',  color: '#d97706', dot: '#f59e0b' },
+  automatic: { label: 'Automático',color: '#2563eb', dot: '#3b82f6' },
+  draft:     { label: 'Rascunho',  color: '#6b7280', dot: '#9ca3af' },
 };
 
-// ─── Status badge ─────────────────────────────────────────────────────────────
-
-const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = {
-  sent:       { label: 'Enviado',  color: '#6366f1', bg: '#eef2ff' },
-  delivered:  { label: 'Entregue', color: '#10b981', bg: '#d1fae5' },
-  opened:     { label: 'Aberto',   color: '#10b981', bg: '#d1fae5' },
-  clicked:    { label: 'Clicado',  color: '#f59e0b', bg: '#fef3c7' },
-  bounced:    { label: 'Bounced',  color: '#ef4444', bg: '#fee2e2' },
-  complained: { label: 'Spam',     color: '#dc2626', bg: '#fee2e2' },
-  failed:     { label: 'Falhou',   color: '#9ca3af', bg: '#f3f4f6' },
+const audienceLabel = (t: EmailTemplate): string => {
+  if (t.audienceType === 'trigger') return 'Gatilho';
+  if (t.audienceType === 'sequence') return 'Sequência';
+  if (t.audienceCount) return `${t.audienceCount.toLocaleString('pt-BR')} leads`;
+  return '—';
 };
 
-const StatusBadge = ({ status }: { status: string }) => {
-  const c = STATUS_CFG[status] ?? STATUS_CFG['sent'];
-  return (
-    <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 20, color: c.color, background: c.bg }}>
-      {c.label}
-    </span>
-  );
+const audienceSub = (t: EmailTemplate): string => {
+  if (t.audienceValue) return t.audienceValue;
+  if (t.audienceType === 'all') return 'Toda a base';
+  return '';
 };
 
-// ─── TipTap Toolbar ──────────────────────────────────────────────────────────
-
-const Toolbar = ({ editor }: { editor: ReturnType<typeof useEditor> }) => {
-  if (!editor) return null;
-
-  const btn = (active: boolean): React.CSSProperties => ({
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    width: 28, height: 28, borderRadius: 5, border: 'none', cursor: 'pointer',
-    background: active ? 'var(--accent)' : 'transparent',
-    color: active ? '#fff' : 'var(--fg-secondary)',
-    flexShrink: 0,
-  });
-
-  const sep: React.CSSProperties = { width: 1, height: 20, background: 'var(--border)', flexShrink: 0 };
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '6px 10px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
-      <button style={btn(false)} onClick={() => editor.chain().focus().undo().run()} title="Desfazer"><Undo size={13}/></button>
-      <button style={btn(false)} onClick={() => editor.chain().focus().redo().run()} title="Refazer"><Redo size={13}/></button>
-      <div style={sep}/>
-      <button style={btn(editor.isActive('bold'))}      onClick={() => editor.chain().focus().toggleBold().run()}><Bold size={13}/></button>
-      <button style={btn(editor.isActive('italic'))}    onClick={() => editor.chain().focus().toggleItalic().run()}><Italic size={13}/></button>
-      <button style={btn(editor.isActive('underline'))} onClick={() => editor.chain().focus().toggleUnderline().run()}><UnderlineIcon size={13}/></button>
-      <div style={sep}/>
-      {(['h1','h2','h3'] as const).map(level => (
-        <button key={level} style={{ ...btn(editor.isActive('heading', { level: Number(level[1]) })), fontSize: 11, fontWeight: 700, width: 'auto', padding: '0 6px' }}
-          onClick={() => editor.chain().focus().toggleHeading({ level: Number(level[1]) as 1|2|3 }).run()}>
-          {level.toUpperCase()}
-        </button>
-      ))}
-      <div style={sep}/>
-      <button style={btn(editor.isActive({ textAlign: 'left' }))}   onClick={() => editor.chain().focus().setTextAlign('left').run()}><AlignLeft size={13}/></button>
-      <button style={btn(editor.isActive({ textAlign: 'center' }))} onClick={() => editor.chain().focus().setTextAlign('center').run()}><AlignCenter size={13}/></button>
-      <button style={btn(editor.isActive({ textAlign: 'right' }))}  onClick={() => editor.chain().focus().setTextAlign('right').run()}><AlignRight size={13}/></button>
-      <div style={sep}/>
-      <button style={btn(editor.isActive('bulletList'))}  onClick={() => editor.chain().focus().toggleBulletList().run()}><List size={13}/></button>
-      <button style={btn(editor.isActive('orderedList'))} onClick={() => editor.chain().focus().toggleOrderedList().run()}><ListOrdered size={13}/></button>
-      <div style={sep}/>
-      <button style={btn(editor.isActive('link'))} onClick={() => {
-        const url = window.prompt('URL do link:');
-        if (url) editor.chain().focus().setLink({ href: url }).run();
-        else editor.chain().focus().unsetLink().run();
-      }}><Link2 size={13}/></button>
-      <button style={btn(false)} onClick={() => editor.chain().focus().setHorizontalRule().run()}><Minus size={13}/></button>
+const ProgressBar = ({ value, color }: { value: number; color: string }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+    <div style={{ flex: 1, height: 5, background: '#e5e7eb', borderRadius: 3, overflow: 'hidden', minWidth: 60 }}>
+      <div style={{ height: '100%', width: `${Math.min(value, 100)}%`, background: color, borderRadius: 3, transition: 'width 0.5s ease' }}/>
     </div>
-  );
-};
-
-// ─── Metric card ─────────────────────────────────────────────────────────────
-
-const MetricCard = ({ label, value, sub, color }: { label: string; value: number | string; sub?: string; color: string }) => (
-  <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
-    <div style={{ fontSize: 24, fontWeight: 800, color }}>{value}</div>
-    <div style={{ fontSize: 12, color: 'var(--fg-secondary)', marginTop: 2 }}>{label}</div>
-    {sub && <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 1 }}>{sub}</div>}
+    <span style={{ fontSize: 12, fontWeight: 700, color, minWidth: 34, textAlign: 'right' }}>{value}%</span>
   </div>
 );
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── Main ─────────────────────────────────────────────────────────────────────
 
 const EmailTemplatesView: React.FC = () => {
-  const [templates, setTemplates]       = useState<EmailTemplate[]>([]);
-  const [selected, setSelected]         = useState<TemplateDetail | null>(null);
-  const [loadingList, setLoadingList]   = useState(true);
-  const [loadingDetail, setLoadingDetail] = useState(false);
-  const [mode, setMode]                 = useState<'view' | 'create' | 'edit'>('view');
-  const [search, setSearch]             = useState('');
-  const [saving, setSaving]             = useState(false);
-  const [deleting, setDeleting]         = useState(false);
-  const [testEmail, setTestEmail]       = useState('');
-  const [testSending, setTestSending]   = useState(false);
-  const [testDone, setTestDone]         = useState(false);
-  const [showPreview, setShowPreview]   = useState(false);
-  const [error, setError]               = useState<string | null>(null);
+  const [emails, setEmails]               = useState<EmailTemplate[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [search, setSearch]               = useState('');
+  const [filterStatus, setFilterStatus]   = useState<string>('all');
+  const [viewMode, setViewMode]           = useState<'list' | 'grid'>('list');
+  const [selected, setSelected]           = useState<EmailTemplate | null>(null);
+  const [editorOpen, setEditorOpen]       = useState(false);
+  const [editingId, setEditingId]         = useState<string | null>(null);
+  const [error, setError]                 = useState<string | null>(null);
 
-  // Form state
+  // Form
   const [form, setForm] = useState({
     name: '', subject: '', fromName: '', fromEmail: '',
+    audienceType: '', audienceValue: '', audienceCount: '',
   });
 
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      TiptapUnderline,
-      TiptapLink.configure({ openOnClick: false }),
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Placeholder.configure({ placeholder: 'Escreva o corpo do email aqui...' }),
-    ],
-    content: '',
-    editorProps: {
-      attributes: {
-        style: 'min-height: 300px; outline: none; padding: 16px; font-family: inherit; font-size: 14px; line-height: 1.7;',
-      },
-    },
-  });
+  const editorRef = useRef<EditorRef>(null);
+  const [editorReady, setEditorReady] = useState(false);
+  const [saving, setSaving]           = useState(false);
+  const [testEmail, setTestEmail]     = useState('');
+  const [testSending, setTestSending] = useState(false);
+  const [testDone, setTestDone]       = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
-  const loadList = useCallback(async () => {
-    setLoadingList(true);
+  const loadEmails = useCallback(async () => {
+    setLoading(true);
     try {
-      const data = await api.list();
-      setTemplates(data);
+      const data = await apiClient.get<EmailTemplate[]>('/email-templates');
+      setEmails(data);
     } catch {
-      setError('Erro ao carregar templates');
+      setError('Erro ao carregar e-mails');
     } finally {
-      setLoadingList(false);
+      setLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadList(); }, [loadList]);
+  useEffect(() => { loadEmails(); }, [loadEmails]);
 
-  const loadDetail = async (id: string) => {
-    setLoadingDetail(true);
-    try {
-      const data = await api.get(id);
-      setSelected(data);
-      setMode('view');
-    } catch {
-      setError('Erro ao carregar template');
-    } finally {
-      setLoadingDetail(false);
+  const openCreate = () => {
+    setEditingId(null);
+    setForm({ name: '', subject: '', fromName: '', fromEmail: '', audienceType: '', audienceValue: '', audienceCount: '' });
+    setEditorReady(false);
+    setEditorOpen(true);
+    setSelected(null);
+    setError(null);
+  };
+
+  const openEdit = (t: EmailTemplate) => {
+    setEditingId(t.id);
+    setForm({
+      name: t.name, subject: t.subject,
+      fromName: t.fromName ?? '', fromEmail: t.fromEmail ?? '',
+      audienceType: t.audienceType ?? '', audienceValue: t.audienceValue ?? '',
+      audienceCount: t.audienceCount ? String(t.audienceCount) : '',
+    });
+    setEditorReady(false);
+    setEditorOpen(true);
+    setError(null);
+  };
+
+  const handleEditorReady = () => {
+    setEditorReady(true);
+    if (editingId) {
+      const tpl = emails.find(e => e.id === editingId);
+      if (tpl?.design) {
+        try { editorRef.current?.editor?.loadDesign(tpl.design as any); } catch {}
+      }
     }
   };
 
-  const startCreate = () => {
-    setSelected(null);
-    setForm({ name: '', subject: '', fromName: '', fromEmail: '' });
-    editor?.commands.setContent('');
-    setMode('create');
-    setError(null);
-  };
-
-  const startEdit = (t: TemplateDetail) => {
-    setForm({ name: t.name, subject: t.subject, fromName: t.fromName ?? '', fromEmail: t.fromEmail ?? '' });
-    editor?.commands.setContent(t.body);
-    setMode('edit');
-    setError(null);
-  };
-
-  const handleSave = async () => {
-    const body = editor?.getHTML() ?? '';
-    if (!form.name.trim())    { setError('Nome é obrigatório'); return; }
-    if (!form.subject.trim()) { setError('Assunto é obrigatório'); return; }
-    if (!body.trim() || body === '<p></p>') { setError('Corpo é obrigatório'); return; }
-
+  const handleSave = async (asDraft = true) => {
+    if (!form.name.trim()) { setError('Nome é obrigatório'); return; }
     setSaving(true);
     setError(null);
-    try {
-      const payload = {
-        name: form.name.trim(),
-        subject: form.subject.trim(),
-        body,
-        fromName:  form.fromName.trim()  || null,
-        fromEmail: form.fromEmail.trim() || null,
-      };
-      if (mode === 'create') {
-        await api.create(payload);
-      } else if (selected) {
-        await api.update(selected.id, payload);
+
+    editorRef.current?.editor?.exportHtml(async ({ html, design }) => {
+      try {
+        const payload = {
+          name:          form.name.trim(),
+          subject:       form.subject.trim(),
+          body:          html,
+          design,
+          fromName:      form.fromName.trim()  || null,
+          fromEmail:     form.fromEmail.trim() || null,
+          status:        asDraft ? 'draft' : 'sent',
+          audienceType:  form.audienceType  || null,
+          audienceValue: form.audienceValue || null,
+          audienceCount: form.audienceCount ? Number(form.audienceCount) : null,
+        };
+
+        if (editingId) {
+          await apiClient.put(`/email-templates/${editingId}`, payload);
+        } else {
+          await apiClient.post('/email-templates', payload);
+        }
+
+        await loadEmails();
+        setEditorOpen(false);
+      } catch {
+        setError('Erro ao salvar e-mail');
+      } finally {
+        setSaving(false);
       }
-      await loadList();
-      setMode('view');
-      setSelected(null);
+    });
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!window.confirm(`Excluir "${name}"?`)) return;
+    try {
+      await apiClient.delete(`/email-templates/${id}`);
+      if (selected?.id === id) setSelected(null);
+      await loadEmails();
     } catch {
-      setError('Erro ao salvar template');
-    } finally {
-      setSaving(false);
+      setError('Erro ao excluir');
     }
   };
 
-  const handleDelete = async () => {
-    if (!selected || !window.confirm(`Excluir template "${selected.name}"? Esta ação não pode ser desfeita.`)) return;
-    setDeleting(true);
+  const handleDuplicate = async (t: EmailTemplate) => {
     try {
-      await api.delete(selected.id);
-      setSelected(null);
-      setMode('view');
-      await loadList();
+      await apiClient.post('/email-templates', {
+        name:          `${t.name} (cópia)`,
+        subject:       t.subject,
+        body:          t.body,
+        design:        t.design,
+        fromName:      t.fromName,
+        fromEmail:     t.fromEmail,
+        status:        'draft',
+        audienceType:  t.audienceType,
+        audienceValue: t.audienceValue,
+        audienceCount: t.audienceCount,
+      });
+      await loadEmails();
     } catch {
-      setError('Erro ao excluir template');
-    } finally {
-      setDeleting(false);
+      setError('Erro ao duplicar');
     }
   };
 
@@ -275,300 +217,383 @@ const EmailTemplatesView: React.FC = () => {
     setTestSending(true);
     setTestDone(false);
     try {
-      await api.test(selected.id, testEmail.trim());
+      await apiClient.post(`/email-templates/${selected.id}/test`, { toEmail: testEmail.trim() });
       setTestDone(true);
       setTimeout(() => setTestDone(false), 4000);
     } catch {
-      setError('Erro ao enviar email de teste');
+      setError('Erro ao enviar teste');
     } finally {
       setTestSending(false);
     }
   };
 
-  const filtered = templates.filter(t =>
-    t.name.toLowerCase().includes(search.toLowerCase()) ||
-    t.subject.toLowerCase().includes(search.toLowerCase())
-  );
+  // ── Filters ──
+  const counts = {
+    all:       emails.length,
+    sent:      emails.filter(e => e.status === 'sent').length,
+    scheduled: emails.filter(e => e.status === 'scheduled').length,
+    automatic: emails.filter(e => e.status === 'automatic').length,
+    draft:     emails.filter(e => e.status === 'draft').length,
+  };
 
-  const isEditing = mode === 'create' || mode === 'edit';
+  const filtered = emails.filter(e => {
+    if (filterStatus !== 'all' && e.status !== filterStatus) return false;
+    if (search && !e.name.toLowerCase().includes(search.toLowerCase()) && !e.subject.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
 
-  return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden', background: 'var(--bg-base)' }}>
+  // ── Detail view ──
+  if (selected && !editorOpen) {
+    const s = STATUS_CFG[selected.status];
+    return (
+      <div style={{ padding: '28px 32px', maxWidth: 900, margin: '0 auto' }}>
+        <button onClick={() => setSelected(null)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer', marginBottom: 20 }}>
+          <ArrowLeft size={14}/> Voltar para E-mails
+        </button>
 
-      {/* ── Left panel: list ── */}
-      <div style={{ width: 320, flexShrink: 0, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Header */}
-        <div style={{ padding: '20px 16px 12px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>Templates de Email</h2>
-              <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 2 }}>{templates.length} templates</div>
-            </div>
-            <button onClick={startCreate}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-              <Plus size={13}/> Novo
-            </button>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, gap: 16 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>{selected.name}</h2>
+            <div style={{ fontSize: 13, color: 'var(--fg-muted)', marginTop: 4 }}>{selected.subject}</div>
           </div>
-          <div style={{ position: 'relative' }}>
-            <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-muted)' }}/>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar template..."
-              style={{ width: '100%', boxSizing: 'border-box', padding: '7px 10px 7px 30px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}/>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button onClick={() => openEdit(selected)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-secondary)', fontSize: 13, cursor: 'pointer' }}>
+              <Edit3 size={13}/> Editar
+            </button>
+            <button onClick={() => handleDuplicate(selected)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-secondary)', fontSize: 13, cursor: 'pointer' }}>
+              <Copy size={13}/> Duplicar
+            </button>
           </div>
         </div>
 
-        {/* List */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-          {loadingList ? (
-            <div style={{ padding: 32, textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>
-              <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }}/>
-              <div style={{ marginTop: 8 }}>Carregando...</div>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div style={{ padding: 32, textAlign: 'center', color: 'var(--fg-muted)' }}>
-              <Mail size={28} style={{ opacity: 0.3, marginBottom: 8 }}/>
-              <div style={{ fontSize: 13 }}>Nenhum template encontrado</div>
-            </div>
-          ) : filtered.map(t => (
-            <div key={t.id}
-              onClick={() => loadDetail(t.id)}
-              style={{
-                padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid var(--border)',
-                background: selected?.id === t.id ? 'var(--accent-soft)' : 'transparent',
-                borderLeft: selected?.id === t.id ? '3px solid var(--accent)' : '3px solid transparent',
-              }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, color: selected?.id === t.id ? 'var(--accent)' : 'var(--fg)' }}>
-                  {t.name}
-                </div>
-                {!t.isActive && <span style={{ fontSize: 10, color: 'var(--fg-muted)', background: 'var(--bg-muted)', borderRadius: 4, padding: '1px 5px', flexShrink: 0 }}>Inativo</span>}
+        {/* Metrics */}
+        {selected.stats.sent > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+            {[
+              { label: 'Enviados',  value: selected.stats.sent,    color: '#6366f1' },
+              { label: 'Abertos',   value: selected.stats.opened,  color: '#10b981', rate: selected.stats.openRate },
+              { label: 'Clicados',  value: selected.stats.clicked, color: '#f59e0b', rate: selected.stats.clickRate },
+              { label: 'Bounced',   value: selected.stats.bounced, color: '#ef4444' },
+            ].map(m => (
+              <div key={m.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
+                <div style={{ fontSize: 24, fontWeight: 800, color: m.color }}>{m.value}</div>
+                <div style={{ fontSize: 12, color: 'var(--fg-secondary)', marginTop: 2 }}>{m.label}</div>
+                {m.rate !== undefined && <div style={{ fontSize: 11, color: m.color, marginTop: 4, fontWeight: 700 }}>{m.rate}% taxa</div>}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--fg-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 6 }}>
-                {t.subject}
-              </div>
-              <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--fg-muted)' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}><Send size={10}/> {t.stats.sent}</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}><Eye size={10}/> {t.stats.openRate}%</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}><BarChart2 size={10}/> {t.stats.clickRate}%</span>
+            ))}
+          </div>
+        )}
+
+        {/* Info */}
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 20, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>STATUS</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: s.color }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.dot }}/>{s.label}
               </div>
             </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>PÚBLICO</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{audienceLabel(selected)}</div>
+              {audienceSub(selected) && <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{audienceSub(selected)}</div>}
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>REMETENTE</div>
+              <div style={{ fontSize: 13 }}>{selected.fromName || 'AutoForce'}</div>
+              <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{selected.fromEmail || 'padrão'}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Preview */}
+        <div style={{ marginBottom: 20 }}>
+          <button onClick={() => setShowPreview(p => !p)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--accent)', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: 10 }}>
+            <Eye size={13}/> {showPreview ? 'Ocultar preview' : 'Ver preview do email'}
+          </button>
+          {showPreview && (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+              <iframe
+                srcDoc={`<html><head><style>body{margin:0;font-family:sans-serif;}</style></head><body>${selected.body}</body></html>`}
+                style={{ width: '100%', minHeight: 400, border: 'none', display: 'block' }}
+                title="Preview"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Test send */}
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Enviar e-mail de teste</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder="email@exemplo.com"
+              style={{ flex: 1, padding: '8px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}/>
+            <button onClick={handleTest} disabled={testSending || !testEmail.trim()}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 16px', borderRadius: 7, border: 'none', background: testDone ? '#10b981' : 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: testSending ? 0.7 : 1, whiteSpace: 'nowrap' }}>
+              {testDone ? <><CheckCircle size={13}/> Enviado!</> : testSending ? <><RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }}/> Enviando...</> : <><Send size={13}/> Enviar Teste</>}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Editor (Unlayer) ──
+  if (editorOpen) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        {/* Editor header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', flexShrink: 0, gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button onClick={() => setEditorOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer' }}>
+              <ArrowLeft size={14}/> Voltar
+            </button>
+            <div style={{ width: 1, height: 20, background: 'var(--border)' }}/>
+            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="Nome do e-mail (ex: Boas-vindas Lead)"
+              style={{ minWidth: 220, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--fg)', fontSize: 14, fontWeight: 600, outline: 'none' }}/>
+          </div>
+
+          {/* Subject + from row */}
+          <div style={{ display: 'flex', gap: 8, flex: 1, maxWidth: 580 }}>
+            <input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
+              placeholder="Assunto do email (use {{name}}, {{company}}...)"
+              style={{ flex: 2, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}/>
+            <input value={form.fromName} onChange={e => setForm(f => ({ ...f, fromName: e.target.value }))}
+              placeholder="Nome remetente"
+              style={{ flex: 1, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}/>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            {error && <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#ef4444' }}><AlertCircle size={13}/>{error}</div>}
+            <button onClick={() => handleSave(true)} disabled={saving}
+              style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
+              Salvar rascunho
+            </button>
+            <button onClick={() => handleSave(false)} disabled={saving || !editorReady}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 16px', borderRadius: 7, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: (saving || !editorReady) ? 0.7 : 1 }}>
+              {saving ? <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }}/> : <CheckCircle size={13}/>}
+              {saving ? 'Salvando...' : 'Salvar e-mail'}
+            </button>
+          </div>
+        </div>
+
+        {/* Unlayer Editor */}
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <EmailEditor
+            ref={editorRef}
+            onReady={handleEditorReady}
+            style={{ height: '100%', minHeight: 600 }}
+            options={{
+              locale: 'pt-BR',
+              appearance: { theme: 'modern_light' },
+              features: { textEditor: { tables: true } },
+            } as any}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // ── List view ──
+  return (
+    <div style={{ padding: '28px 32px' }}>
+      {error && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 8, background: '#fee2e2', color: '#dc2626', fontSize: 13, marginBottom: 16 }}>
+          <AlertCircle size={14}/>{error}
+          <button onClick={() => setError(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626' }}><X size={14}/></button>
+        </div>
+      )}
+
+      {/* Page header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>E-mails</h1>
+          <p style={{ margin: '4px 0 0', fontSize: 14, color: 'var(--fg-muted)' }}>Crie, dispare e acompanhe os e-mails enviados aos seus leads.</p>
+        </div>
+        <button onClick={openCreate}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 9, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px rgba(69,108,236,0.3)' }}>
+          <Plus size={15}/> Novo e-mail
+        </button>
+      </div>
+
+      {/* Search + filters */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: '0 0 280px' }}>
+          <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-muted)' }}/>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar e-mail por nome ou assunto..."
+            style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px 8px 30px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}/>
+        </div>
+
+        <div style={{ display: 'flex', gap: 6 }}>
+          {([
+            { key: 'all',       label: 'Todos',       count: counts.all },
+            { key: 'sent',      label: 'Enviados',    count: counts.sent },
+            { key: 'scheduled', label: 'Agendados',   count: counts.scheduled },
+            { key: 'automatic', label: 'Automáticos', count: counts.automatic },
+            { key: 'draft',     label: 'Rascunhos',   count: counts.draft },
+          ] as { key: string; label: string; count: number }[]).map(f => (
+            <button key={f.key} onClick={() => setFilterStatus(f.key)}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 20, border: `1px solid ${filterStatus === f.key ? 'var(--accent)' : 'var(--border)'}`, background: filterStatus === f.key ? 'var(--accent-soft)' : 'var(--bg-card)', color: filterStatus === f.key ? 'var(--accent)' : 'var(--fg-secondary)', fontSize: 13, fontWeight: filterStatus === f.key ? 700 : 400, cursor: 'pointer' }}>
+              {f.label}
+              <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 5px', borderRadius: 10, background: filterStatus === f.key ? 'var(--accent)' : 'var(--bg-muted)', color: filterStatus === f.key ? '#fff' : 'var(--fg-muted)' }}>
+                {f.count}
+              </span>
+            </button>
           ))}
         </div>
+
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+          <button onClick={() => setViewMode('list')} style={{ padding: '6px 8px', borderRadius: 7, border: `1px solid ${viewMode === 'list' ? 'var(--accent)' : 'var(--border)'}`, background: viewMode === 'list' ? 'var(--accent-soft)' : 'transparent', color: viewMode === 'list' ? 'var(--accent)' : 'var(--fg-muted)', cursor: 'pointer' }}>
+            <List size={14}/>
+          </button>
+          <button onClick={() => setViewMode('grid')} style={{ padding: '6px 8px', borderRadius: 7, border: `1px solid ${viewMode === 'grid' ? 'var(--accent)' : 'var(--border)'}`, background: viewMode === 'grid' ? 'var(--accent-soft)' : 'transparent', color: viewMode === 'grid' ? 'var(--accent)' : 'var(--fg-muted)', cursor: 'pointer' }}>
+            <LayoutGrid size={14}/>
+          </button>
+        </div>
       </div>
 
-      {/* ── Right panel ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* ── LIST VIEW ── */}
+      {viewMode === 'list' && (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+          {/* Table header */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 180px 200px 100px', gap: 0, padding: '10px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)' }}>
+            {['E-MAIL', 'STATUS', 'PÚBLICO', 'DESEMPENHO', 'AÇÕES'].map((h, i) => (
+              <div key={h} style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', letterSpacing: '.05em', textAlign: i === 4 ? 'right' : 'left' }}>{h}</div>
+            ))}
+          </div>
 
-        {/* ── CREATE / EDIT mode ── */}
-        {isEditing && (
-          <>
-            {/* Editor header */}
-            <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>
-                {mode === 'create' ? 'Novo Template' : `Editar: ${selected?.name}`}
-              </h3>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => { setMode(selected ? 'view' : 'view'); setError(null); }}
-                  style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer' }}>
-                  Cancelar
-                </button>
-                <button onClick={handleSave} disabled={saving}
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 7, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.7 : 1 }}>
-                  {saving ? <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }}/> : <CheckCircle size={13}/>}
-                  {saving ? 'Salvando...' : 'Salvar Template'}
-                </button>
-              </div>
+          {loading ? (
+            <div style={{ padding: 40, textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>
+              <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite', marginBottom: 8, display: 'block', margin: '0 auto 8px' }}/>
+              Carregando...
             </div>
-
-            <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-              {error && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 8, background: '#fee2e2', color: '#dc2626', fontSize: 13, marginBottom: 16 }}>
-                  <AlertCircle size={14}/> {error}
-                </div>
-              )}
-
-              {/* Form fields */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)', marginBottom: 6 }}>Nome interno do template *</label>
-                  <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                    placeholder="Ex: Boas-vindas, Follow-up 3 dias..."
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--fg)', fontSize: 14, outline: 'none' }}/>
-                </div>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)', marginBottom: 6 }}>
-                    Assunto do email *
-                    <span style={{ fontWeight: 400, color: 'var(--fg-muted)', marginLeft: 8 }}>use {'{{name}}'}, {'{{company}}'}, {'{{email}}'}</span>
-                  </label>
-                  <input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
-                    placeholder="Ex: {{name}}, veja como podemos ajudar sua empresa"
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--fg)', fontSize: 14, outline: 'none' }}/>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)', marginBottom: 6 }}>Nome do remetente</label>
-                  <input value={form.fromName} onChange={e => setForm(f => ({ ...f, fromName: e.target.value }))}
-                    placeholder="AutoForce (padrão)"
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--fg)', fontSize: 14, outline: 'none' }}/>
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)', marginBottom: 6 }}>Email do remetente</label>
-                  <input value={form.fromEmail} onChange={e => setForm(f => ({ ...f, fromEmail: e.target.value }))}
-                    placeholder="marketing@autoforce.com.br (padrão)"
-                    style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--fg)', fontSize: 14, outline: 'none' }}/>
-                </div>
-              </div>
-
-              {/* TipTap editor */}
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)', marginBottom: 6 }}>
-                  Corpo do email *
-                  <span style={{ fontWeight: 400, color: 'var(--fg-muted)', marginLeft: 8 }}>merge tags: {'{{name}}'}, {'{{email}}'}, {'{{company}}'}, {'{{phone}}'}, {'{{jobTitle}}'}</span>
-                </label>
-                <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: 'var(--bg-card)' }}>
-                  <Toolbar editor={editor}/>
-                  <EditorContent editor={editor}/>
-                </div>
-              </div>
+          ) : filtered.length === 0 ? (
+            <div style={{ padding: 56, textAlign: 'center', color: 'var(--fg-muted)' }}>
+              <Mail size={32} style={{ opacity: 0.3, marginBottom: 12, display: 'block', margin: '0 auto 12px' }}/>
+              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Nenhum e-mail encontrado</div>
+              <div style={{ fontSize: 13 }}>Crie seu primeiro e-mail clicando em "Novo e-mail"</div>
             </div>
-          </>
-        )}
-
-        {/* ── VIEW mode — template selected ── */}
-        {!isEditing && selected && (
-          <>
-            {/* Detail header */}
-            <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>{selected.name}</h3>
-                <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 2 }}>
-                  Criado em {new Date(selected.createdAt).toLocaleDateString('pt-BR')}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => setShowPreview(p => !p)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 7, border: '1px solid var(--border)', background: showPreview ? 'var(--accent-soft)' : 'transparent', color: showPreview ? 'var(--accent)' : 'var(--fg-muted)', fontSize: 13, cursor: 'pointer' }}>
-                  <Eye size={13}/> Preview
-                </button>
-                <button onClick={() => startEdit(selected)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-secondary)', fontSize: 13, cursor: 'pointer' }}>
-                  <Edit3 size={13}/> Editar
-                </button>
-                <button onClick={handleDelete} disabled={deleting}
-                  style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderRadius: 7, border: '1px solid #fee2e2', background: 'transparent', color: '#ef4444', fontSize: 13, cursor: 'pointer', opacity: deleting ? 0.6 : 1 }}>
-                  <Trash2 size={13}/> Excluir
-                </button>
-              </div>
-            </div>
-
-            {loadingDetail ? (
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--fg-muted)' }}>
-                <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite' }}/>
-              </div>
-            ) : (
-              <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-                {error && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 8, background: '#fee2e2', color: '#dc2626', fontSize: 13, marginBottom: 16 }}>
-                    <AlertCircle size={14}/> {error}
-                    <button onClick={() => setError(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626' }}><X size={14}/></button>
+          ) : filtered.map((email, idx) => {
+            const s = STATUS_CFG[email.status];
+            const isLast = idx === filtered.length - 1;
+            return (
+              <div key={email.id}
+                style={{ display: 'grid', gridTemplateColumns: '1fr 140px 180px 200px 100px', gap: 0, padding: '14px 20px', borderBottom: isLast ? 'none' : '1px solid var(--border)', alignItems: 'center', cursor: 'pointer', transition: 'background 0.1s' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-muted)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                onClick={() => setSelected(email)}
+              >
+                {/* Name + subject */}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {email.name}
+                    <ChevronRight size={12} style={{ color: 'var(--fg-muted)', flexShrink: 0 }}/>
                   </div>
-                )}
-
-                {/* Metrics */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
-                  <MetricCard label="Enviados"  value={selected.stats.sent}      color="#6366f1"/>
-                  <MetricCard label="Abertos"   value={selected.stats.opened}    sub={`${selected.stats.openRate}% taxa`}  color="#10b981"/>
-                  <MetricCard label="Clicados"  value={selected.stats.clicked}   sub={`${selected.stats.clickRate}% taxa`} color="#f59e0b"/>
-                  <MetricCard label="Bounced"   value={selected.stats.bounced}   sub={`${selected.stats.bounceRate}% taxa`} color="#ef4444"/>
+                  <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    Assunto: {email.subject || <em style={{ opacity: 0.6 }}>(sem assunto definido)</em>}
+                  </div>
                 </div>
 
-                {/* Subject + from */}
-                <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px', marginBottom: 20 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    <div>
-                      <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 3 }}>ASSUNTO</div>
-                      <div style={{ fontSize: 14, fontWeight: 600 }}>{selected.subject}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 3 }}>REMETENTE</div>
-                      <div style={{ fontSize: 14 }}>
-                        {selected.fromName || 'AutoForce'} &lt;{selected.fromEmail || 'padrão'}&gt;
+                {/* Status */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={e => e.stopPropagation()}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.dot, flexShrink: 0 }}/>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: s.color }}>{s.label}</span>
+                </div>
+
+                {/* Público */}
+                <div onClick={e => e.stopPropagation()}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>
+                    {email.audienceType === 'trigger' ? <><Zap size={12} style={{ verticalAlign: 'middle', color: '#3b82f6' }}/> Gatilho</> :
+                     email.audienceType === 'sequence' ? <><Clock size={12} style={{ verticalAlign: 'middle', color: '#8b5cf6' }}/> Sequência</> :
+                     email.audienceCount ? `${email.audienceCount.toLocaleString('pt-BR')} leads` : '—'}
+                  </div>
+                  {audienceSub(email) && <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 1 }}>{audienceSub(email)}</div>}
+                </div>
+
+                {/* Desempenho */}
+                <div onClick={e => e.stopPropagation()}>
+                  {email.stats.sent > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 11, color: 'var(--fg-muted)', width: 50 }}>Abertura</span>
+                        <ProgressBar value={email.stats.openRate} color="#10b981"/>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 11, color: 'var(--fg-muted)', width: 50 }}>Clique</span>
+                        <ProgressBar value={email.stats.clickRate} color="#3b82f6"/>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>não enviado</span>
+                  )}
                 </div>
 
-                {/* Preview */}
-                {showPreview && (
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)', marginBottom: 8 }}>PREVIEW</div>
-                    <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: 'white' }}>
-                      <iframe
-                        srcDoc={`<html><head><style>body{font-family:sans-serif;padding:24px;max-width:640px;margin:0 auto;color:#111;}</style></head><body>${selected.body}</body></html>`}
-                        style={{ width: '100%', minHeight: 300, border: 'none', display: 'block' }}
-                        title="Email preview"
-                      />
-                    </div>
-                  </div>
-                )}
+                {/* Ações */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }} onClick={e => e.stopPropagation()}>
+                  <button onClick={() => openEdit(email)}
+                    style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--fg-muted)' }}
+                    title="Editar">
+                    <Edit3 size={13}/>
+                  </button>
+                  <button onClick={() => handleDuplicate(email)}
+                    style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--fg-muted)' }}
+                    title="Duplicar">
+                    <Copy size={13}/>
+                  </button>
+                  <button onClick={() => handleDelete(email.id, email.name)}
+                    style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#ef4444' }}
+                    title="Excluir">
+                    <Trash2 size={13}/>
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-                {/* Test send */}
-                <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '16px', marginBottom: 24 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Enviar email de teste</div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <input value={testEmail} onChange={e => setTestEmail(e.target.value)}
-                      placeholder="email@exemplo.com"
-                      style={{ flex: 1, padding: '8px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}/>
-                    <button onClick={handleTest} disabled={testSending || !testEmail.trim()}
-                      style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: 7, border: 'none', background: testDone ? '#10b981' : 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: testSending ? 0.7 : 1, transition: 'background 0.3s', whiteSpace: 'nowrap' }}>
-                      {testDone ? <><CheckCircle size={13}/> Enviado!</> : testSending ? <><RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }}/> Enviando...</> : <><Send size={13}/> Enviar Teste</>}
-                    </button>
+      {/* ── GRID VIEW ── */}
+      {viewMode === 'grid' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+          {filtered.map(email => {
+            const s = STATUS_CFG[email.status];
+            return (
+              <div key={email.id}
+                onClick={() => setSelected(email)}
+                style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 18, cursor: 'pointer' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: s.color }}>
+                    <div style={{ width: 7, height: 7, borderRadius: '50%', background: s.dot }}/>{s.label}
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+                    <button onClick={() => openEdit(email)} style={{ width: 26, height: 26, borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--fg-muted)' }}><Edit3 size={12}/></button>
+                    <button onClick={() => handleDelete(email.id, email.name)} style={{ width: 26, height: 26, borderRadius: 5, border: '1px solid var(--border)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#ef4444' }}><Trash2 size={12}/></button>
                   </div>
                 </div>
-
-                {/* Recent sends */}
-                {selected.sends.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Mail size={14}/> Envios recentes
-                      <span style={{ fontSize: 11, color: 'var(--fg-muted)', fontWeight: 400 }}>({selected.sends.length})</span>
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {selected.sends.map(s => (
-                        <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }}>
-                          <div>
-                            <div style={{ fontSize: 13, fontWeight: 500 }}>{s.toEmail}</div>
-                            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 2 }}>
-                              {new Date(s.sentAt).toLocaleString('pt-BR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}
-                              {s.openedAt && ` · Aberto: ${new Date(s.openedAt).toLocaleString('pt-BR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}`}
-                            </div>
-                          </div>
-                          <StatusBadge status={s.status}/>
-                        </div>
-                      ))}
-                    </div>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{email.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginBottom: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email.subject}</div>
+                {email.stats.sent > 0 && (
+                  <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
+                    <span style={{ color: '#10b981', fontWeight: 700 }}>↗ {email.stats.openRate}% abertura</span>
+                    <span style={{ color: '#3b82f6', fontWeight: 700 }}>🖱 {email.stats.clickRate}% clique</span>
                   </div>
                 )}
               </div>
-            )}
-          </>
-        )}
+            );
+          })}
+        </div>
+      )}
 
-        {/* ── Empty state ── */}
-        {!isEditing && !selected && (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--fg-muted)', gap: 12 }}>
-            <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)' }}>
-              <Mail size={28} style={{ opacity: 0.4 }}/>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Selecione um template</div>
-              <div style={{ fontSize: 13 }}>ou crie um novo para começar</div>
-            </div>
-            <button onClick={startCreate}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginTop: 8 }}>
-              <Plus size={14}/> Criar primeiro template
-            </button>
-          </div>
-        )}
-      </div>
+      {/* Footer */}
+      {filtered.length > 0 && (
+        <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: 'var(--fg-muted)' }}>
+          <span>Mostrando {filtered.length} de {emails.length} e-mails</span>
+          {emails.filter(e => e.status === 'sent').length > 0 && (
+            <span>Último envio: {new Date(emails.filter(e => e.status === 'sent').sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0].updatedAt).toLocaleDateString('pt-BR')}</span>
+          )}
+        </div>
+      )}
     </div>
   );
 };
