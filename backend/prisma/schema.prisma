@@ -785,14 +785,37 @@ model AssetVersion {
 }
 
 // ============================================================
+// TEMPLATES DE EMAIL
+// ============================================================
+
+model EmailTemplate {
+  id        String   @id @default(cuid())
+  name      String
+  subject   String
+  body      String   @db.Text
+  fromName  String?
+  fromEmail String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sends EmailSent[]
+
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+// ============================================================
 // EMAILS ENVIADOS (via Resend)
 // ============================================================
 
 model EmailSent {
-  id            String   @id @default(cuid())
+  id            String         @id @default(cuid())
   leadEmail     String
-  lead          Lead     @relation(fields: [leadEmail], references: [email])
-  resendId      String?  @unique
+  lead          Lead           @relation(fields: [leadEmail], references: [email])
+  templateId    String?
+  template      EmailTemplate? @relation(fields: [templateId], references: [id])
+  resendId      String?        @unique
   subject       String
   fromName      String?
   fromEmail     String?
@@ -809,6 +832,7 @@ model EmailSent {
   updatedAt     DateTime @updatedAt
 
   @@index([leadEmail])
+  @@index([templateId])
   @@index([status])
   @@index([sentAt])
 }

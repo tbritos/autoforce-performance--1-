@@ -19,8 +19,10 @@ export interface SendEmailInput {
   html: string;
   fromName?: string;
   fromEmail?: string;
+  templateId?: string;
   automationExecutionId?: string;
   automationNodeId?: string;
+  skipRecord?: boolean;
 }
 
 export async function sendEmail(input: SendEmailInput): Promise<void> {
@@ -45,20 +47,23 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
     console.error('[resend] Erro ao enviar email:', err);
   }
 
-  await prisma.emailSent.create({
-    data: {
-      leadEmail:             input.leadEmail,
-      resendId,
-      subject:               input.subject,
-      fromName,
-      fromEmail,
-      toEmail:               input.toEmail,
-      status,
-      automationExecutionId: input.automationExecutionId ?? null,
-      automationNodeId:      input.automationNodeId      ?? null,
-      sentAt:                new Date(),
-    },
-  });
+  if (!input.skipRecord) {
+    await prisma.emailSent.create({
+      data: {
+        leadEmail:             input.leadEmail,
+        templateId:            input.templateId            ?? null,
+        resendId,
+        subject:               input.subject,
+        fromName,
+        fromEmail,
+        toEmail:               input.toEmail,
+        status,
+        automationExecutionId: input.automationExecutionId ?? null,
+        automationNodeId:      input.automationNodeId      ?? null,
+        sentAt:                new Date(),
+      },
+    });
+  }
 }
 
 export function renderTemplate(
