@@ -8,7 +8,7 @@ import {
   ExternalLink, GitBranch, Flame, LayoutList,
   CheckCircle, XCircle, MessageCircle, Send, Bot, UserCheck,
 } from 'lucide-react';
-import { LeadProfile, LeadStatus, LeadCustomFieldDef, PipedriveDealEvent, LeadConversion, WhatsAppConversationMessage } from '../types';
+import { LeadProfile, LeadStatus, LeadCustomFieldDef, PipedriveDealEvent, LeadConversion, WhatsAppConversationMessage, EmailSent } from '../types';
 import { DataService } from '../services/dataService';
 
 const isWppEmail = (email: string) => email.startsWith('wpp_') && email.endsWith('@autoforce.internal');
@@ -280,7 +280,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   const [fieldDefs, setFieldDefs]   = useState<LeadCustomFieldDef[]>([]);
   const [loading, setLoading]       = useState(true);
   const [deleting, setDeleting]     = useState(false);
-  const [activeTab, setActiveTab]   = useState<'dados' | 'conversoes' | 'atividade' | 'whatsapp'>('dados');
+  const [activeTab, setActiveTab]   = useState<'dados' | 'conversoes' | 'atividade' | 'whatsapp' | 'emails'>('dados');
   const [editMode, setEditMode]     = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savedProfile, setSavedProfile]   = useState(false);
@@ -297,6 +297,8 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   const [wppText, setWppText]                   = useState('');
   const [wppSending, setWppSending]             = useState(false);
   const wppBottomRef = useRef<HTMLDivElement>(null);
+  const [emailsSent, setEmailsSent]             = useState<EmailSent[] | null>(null);
+  const [loadingEmails, setLoadingEmails]       = useState(false);
 
   // Edit form state
   const [form, setForm] = useState({
@@ -352,6 +354,16 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
       wppBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [whatsAppMessages]);
+
+  useEffect(() => {
+    if (activeTab !== 'emails' || !profile?.email || loadingEmails) return;
+    if (emailsSent !== null) return;
+    setLoadingEmails(true);
+    DataService.getLeadEmails(profile.email)
+      .then(setEmailsSent)
+      .catch(() => setEmailsSent([]))
+      .finally(() => setLoadingEmails(false));
+  }, [activeTab, profile?.email, emailsSent, loadingEmails]);
 
   const handleHandoffToggle = async () => {
     if (!profile || handoffSaving) return;
@@ -639,6 +651,14 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                       {whatsAppMessages && whatsAppMessages.length > 0 && (
                         <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 'var(--r-full)', background: activeTab === 'whatsapp' ? 'var(--accent-soft)' : 'var(--bg-muted)', color: activeTab === 'whatsapp' ? 'var(--accent)' : 'var(--fg-muted)', fontWeight: 700 }}>
                           {whatsAppMessages.length}
+                        </span>
+                      )}
+                    </button>
+                    <button type="button" style={tabBtn(activeTab === 'emails')} onClick={() => setActiveTab('emails')}>
+                      <Mail size={14} /> Emails
+                      {emailsSent && emailsSent.length > 0 && (
+                        <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 'var(--r-full)', background: activeTab === 'emails' ? 'var(--accent-soft)' : 'var(--bg-muted)', color: activeTab === 'emails' ? 'var(--accent)' : 'var(--fg-muted)', fontWeight: 700 }}>
+                          {emailsSent.length}
                         </span>
                       )}
                     </button>
@@ -1075,6 +1095,106 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                       </div>
                     );
                   })()}
+
+                  {/* ── EMAILS TAB ── */}
+                  {activeTab === 'emails' && (
+                    <div>
+                      {/* Header */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Mail size={16} color="white" />
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: 14 }}>{profile.name || profile.email}</div>
+                            <div style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{profile.email}</div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { setEmailsSent(null); }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-muted)', fontSize: 12, cursor: 'pointer' }}
+                        >
+                          <RefreshCw size={12} /> Atualizar
+                        </button>
+                      </div>
+
+                      {/* Métricas rápidas */}
+                      {emailsSent && emailsSent.length > 0 && (() => {
+                        const total     = emailsSent.length;
+                        const opened    = emailsSent.filter(e => ['opened','clicked'].includes(e.status)).length;
+                        const clicked   = emailsSent.filter(e => e.status === 'clicked').length;
+                        const bounced   = emailsSent.filter(e => e.status === 'bounced').length;
+                        return (
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 16 }}>
+                            {([
+                              { label: 'Enviados',  value: total,   color: '#6366f1' },
+                              { label: 'Abertos',   value: opened,  color: '#10b981' },
+                              { label: 'Clicados',  value: clicked, color: '#f59e0b' },
+                              { label: 'Bounced',   value: bounced, color: '#ef4444' },
+                            ] as { label: string; value: number; color: string }[]).map(stat => (
+                              <div key={stat.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
+                                <div style={{ fontSize: 20, fontWeight: 800, color: stat.color }}>{stat.value}</div>
+                                <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 2 }}>{stat.label}</div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+
+                      {/* Lista de emails */}
+                      {loadingEmails ? (
+                        <div style={{ textAlign: 'center', padding: 40, color: 'var(--fg-muted)', fontSize: 13 }}>
+                          <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite', marginBottom: 8 }} />
+                          <div>Carregando emails...</div>
+                        </div>
+                      ) : !emailsSent || emailsSent.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: 48, color: 'var(--fg-muted)' }}>
+                          <Mail size={32} style={{ opacity: 0.3, marginBottom: 12 }} />
+                          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Nenhum email enviado</div>
+                          <div style={{ fontSize: 12 }}>Emails enviados por automações aparecem aqui com métricas de abertura e clique.</div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {emailsSent.map(email => {
+                            const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
+                              sent:       { label: 'Enviado',    color: '#6366f1', bg: '#eef2ff' },
+                              delivered:  { label: 'Entregue',   color: '#10b981', bg: '#d1fae5' },
+                              opened:     { label: 'Aberto',     color: '#10b981', bg: '#d1fae5' },
+                              clicked:    { label: 'Clicado',    color: '#f59e0b', bg: '#fef3c7' },
+                              bounced:    { label: 'Bounced',    color: '#ef4444', bg: '#fee2e2' },
+                              complained: { label: 'Spam',       color: '#dc2626', bg: '#fee2e2' },
+                              failed:     { label: 'Falhou',     color: '#9ca3af', bg: '#f3f4f6' },
+                            };
+                            const s = statusConfig[email.status] ?? statusConfig['sent'];
+                            const sentDate = new Date(email.sentAt).toLocaleString('pt-BR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+                            return (
+                              <div key={email.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px' }}>
+                                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email.subject}</div>
+                                    <div style={{ fontSize: 11, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      <span>{sentDate}</span>
+                                      {email.fromName && <span>· de {email.fromName}</span>}
+                                    </div>
+                                  </div>
+                                  <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 'var(--r-full)', color: s.color, background: s.bg }}>
+                                    {s.label}
+                                  </span>
+                                </div>
+                                {(email.openedAt || email.clickedAt) && (
+                                  <div style={{ marginTop: 8, display: 'flex', gap: 12, fontSize: 11, color: 'var(--fg-muted)' }}>
+                                    {email.openedAt && <span>Aberto: {new Date(email.openedAt).toLocaleString('pt-BR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}</span>}
+                                    {email.clickedAt && <span>Clicado: {new Date(email.clickedAt).toLocaleString('pt-BR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}</span>}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* ── Right sidebar ── */}

@@ -98,6 +98,7 @@ model Lead {
   pipedriveEvents  PipedriveDealEvent[]
   aiMemories       AIConversationMemory[]
   aiInteractions   AIInteractionLog[]
+  emailsSent       EmailSent[]
 
   @@index([status])
   @@index([firstSource])
@@ -781,6 +782,35 @@ model AssetVersion {
   createdAt DateTime  @default(now())
 
   @@index([assetId])
+}
+
+// ============================================================
+// EMAILS ENVIADOS (via Resend)
+// ============================================================
+
+model EmailSent {
+  id            String   @id @default(cuid())
+  leadEmail     String
+  lead          Lead     @relation(fields: [leadEmail], references: [email])
+  resendId      String?  @unique
+  subject       String
+  fromName      String?
+  fromEmail     String?
+  toEmail       String
+  status        String   @default("sent")
+  openedAt      DateTime?
+  clickedAt     DateTime?
+  bouncedAt     DateTime?
+  complainedAt  DateTime?
+  automationExecutionId String?
+  automationNodeId      String?
+  sentAt        DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([leadEmail])
+  @@index([status])
+  @@index([sentAt])
 }
 
 // ============================================================

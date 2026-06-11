@@ -476,6 +476,11 @@ async function executeNode(
       return 'ok';
     }
 
+    case 'send_email':
+      await executeSendEmail(executionId, node.id, leadEmail, c);
+      await appendLog(executionId, node.id, 'send_email', 'ok', String(c.subject ?? ''));
+      return 'ok';
+
     case 'pipedrive_action':
       await executePipedriveAction(executionId, node.id, leadEmail, c);
       return 'ok';
@@ -983,6 +988,41 @@ async function executePipedriveAction(
     default:
       await appendLog(executionId, nodeId, 'pipedrive_action', 'skipped', `ação desconhecida: ${actionType}`);
   }
+}
+
+async function executeSendEmail(
+  executionId: string,
+  nodeId: string,
+  leadEmail: string,
+  config: Record<string, string | number | boolean>
+): Promise<void> {
+  const { sendEmail, renderTemplate } = await import('./resend.service');
+
+  const lead = await prisma.lead.findUnique({
+    where: { email: leadEmail },
+    select: { email: true, name: true, company: true, phone: true, jobTitle: true },
+  });
+  if (!lead) throw new Error(`Lead ${leadEmail} não encontrado para envio de email`);
+
+  const subjectRaw = String(config.subject ?? '').trim();
+  const bodyRaw    = String(config.body    ?? '').trim();
+
+  if (!subjectRaw) throw new Error('Bloco Email: campo "Assunto" é obrigatório');
+  if (!bodyRaw)    throw new Error('Bloco Email: campo "Corpo" é obrigatório');
+
+  const subject = renderTemplate(subjectRaw, lead);
+  const html    = renderTemplate(bodyRaw,    lead);
+
+  await sendEmail({
+    leadEmail:             lead.email,
+    toEmail:               lead.email,
+    subject,
+    html,
+    fromName:              config.fromName  ? String(config.fromName)  : undefined,
+    fromEmail:             config.fromEmail ? String(config.fromEmail) : undefined,
+    automationExecutionId: executionId,
+    automationNodeId:      nodeId,
+  });
 }
 
 function resolveTemplate(template: string, lead: Record<string, unknown>): string {

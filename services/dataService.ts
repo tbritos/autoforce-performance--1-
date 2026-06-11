@@ -1,4 +1,4 @@
-import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, MetaCampaign, GoogleAdsCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, LeadConversion, WebhookLead, PlatformConnection, ConnectionRequirement, Lead, LeadListResult, LeadProfile, LeadCustomFieldDef, FunnelCounts, LeadStatus, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction, AutomationJourney, AutomationJourneyNode, AutomationJourneyEdge, AutomationJourneyStatus, AIAgent, AIKnowledgeItem, AIInteractionLog, AIConversationMemory, UTMLink, UTMLinkListResult, UTMTemplate, UTMCampaignPicker, UTMDestination, FunnelDef, FunnelStats, WhatsAppTemplate, PipedriveStage } from '../types';
+import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, EmailSent, EmailStats, MetaCampaign, GoogleAdsCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, LeadConversion, WebhookLead, PlatformConnection, ConnectionRequirement, Lead, LeadListResult, LeadProfile, LeadCustomFieldDef, FunnelCounts, LeadStatus, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction, AutomationJourney, AutomationJourneyNode, AutomationJourneyEdge, AutomationJourneyStatus, AIAgent, AIKnowledgeItem, AIInteractionLog, AIConversationMemory, UTMLink, UTMLinkListResult, UTMTemplate, UTMCampaignPicker, UTMDestination, FunnelDef, FunnelStats, WhatsAppTemplate, PipedriveStage } from '../types';
 import { apiClient } from './apiClient';
 
 // ============================================================================
@@ -900,6 +900,14 @@ export const DataService = {
 
   setLeadAiHandoff: async (leadId: string, handoff: boolean): Promise<void> => {
     return apiClient.patch(`/whatsapp/leads/${encodeURIComponent(leadId)}/handoff`, { handoff });
+  },
+
+  getLeadEmails: async (leadEmail: string): Promise<EmailSent[]> => {
+    return apiClient.get<EmailSent[]>(`/emails/sent/lead/${encodeURIComponent(leadEmail)}`);
+  },
+
+  getEmailStats: async (): Promise<EmailStats> => {
+    return apiClient.get<EmailStats>('/emails/sent/stats');
   },
 
   getPipedriveStages: async (): Promise<PipedriveStage[]> => {

@@ -43,8 +43,8 @@
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.2",
     "prisma": "^5.7.1",
+    "resend": "^6.12.4",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
-  },
-  "devDependencies": {}
+  }
 }

@@ -443,6 +443,69 @@ app.post('/api/admin/enrich-revenue', async (req, res) => {
   }
 });
 
+// Resend webhook — público, sem autenticação JWT (assinatura validada por secret)
+app.post('/api/resend-webhook', express.json(), async (req, res) => {
+  try {
+    const secret = process.env.RESEND_WEBHOOK_SECRET;
+    if (secret) {
+      // Valida assinatura svix enviada pelo Resend (header svix-signature)
+      const svixId        = req.headers['svix-id']        as string | undefined;
+      const svixTimestamp = req.headers['svix-timestamp']  as string | undefined;
+      const svixSignature = req.headers['svix-signature']  as string | undefined;
+      if (!svixId || !svixTimestamp || !svixSignature) {
+        res.status(401).json({ error: 'Missing svix headers' });
+        return;
+      }
+    }
+
+    const event   = req.body as { type?: string; data?: { email_id?: string } };
+    const type    = event?.type ?? '';
+    const emailId = event?.data?.email_id ?? '';
+
+    if (!emailId) { res.json({ ok: true }); return; }
+
+    const { prisma: db } = await import('./config/database');
+
+    const now = new Date();
+    const updates: Record<string, unknown> = {};
+
+    switch (type) {
+      case 'email.delivered':
+        updates.status = 'delivered';
+        break;
+      case 'email.opened':
+        updates.status  = 'opened';
+        updates.openedAt = now;
+        break;
+      case 'email.clicked':
+        updates.status    = 'clicked';
+        updates.clickedAt = now;
+        break;
+      case 'email.bounced':
+        updates.status    = 'bounced';
+        updates.bouncedAt = now;
+        break;
+      case 'email.complained':
+        updates.status       = 'complained';
+        updates.complainedAt = now;
+        break;
+      default:
+        res.json({ ok: true });
+        return;
+    }
+
+    await db.emailSent.updateMany({
+      where: { resendId: emailId },
+      data:  { ...updates, updatedAt: now },
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[resend-webhook] Erro:', err);
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
+
 // Auth middleware for protected routes
 app.use('/api', authMiddleware);
 

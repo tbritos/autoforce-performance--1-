@@ -777,6 +777,36 @@ export interface EmailCampaign {
   bounce: number;
 }
 
+export interface EmailSent {
+  id: string;
+  leadEmail: string;
+  resendId: string | null;
+  subject: string;
+  fromName: string | null;
+  fromEmail: string | null;
+  toEmail: string;
+  status: 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'complained' | 'failed';
+  openedAt: string | null;
+  clickedAt: string | null;
+  bouncedAt: string | null;
+  complainedAt: string | null;
+  automationExecutionId: string | null;
+  sentAt: string;
+  createdAt: string;
+}
+
+export interface EmailStats {
+  total: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  bounced: number;
+  deliveredRate: number;
+  openedRate: number;
+  clickedRate: number;
+  bounceRate: number;
+}
+
 export interface WorkflowEmailStat {
   id: string;
   externalId?: string;
