@@ -1,18 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import TiptapUnderline from '@tiptap/extension-underline';
-import TextAlign from '@tiptap/extension-text-align';
-import { TextStyle } from '@tiptap/extension-text-style';
-import { Color } from '@tiptap/extension-color';
-import { Image } from '@tiptap/extension-image';
-import Link from '@tiptap/extension-link';
+import EmailEditor, { EditorRef } from 'react-email-editor';
 import {
   Plus, Search, Mail, Trash2, Edit3, Send, RefreshCw,
   CheckCircle, AlertCircle, X, LayoutGrid, List,
-  Clock, Zap, Copy, ChevronRight, ArrowLeft, Eye, EyeOff,
-  Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight,
-  Link2, ImageIcon, Code, Heading1, Heading2,
+  Clock, Zap, Copy, ChevronRight, ArrowLeft, Eye,
 } from 'lucide-react';
 import { apiClient } from '../services/apiClient';
 
@@ -60,153 +51,7 @@ const ProgressBar = ({ value, color }: { value: number; color: string }) => (
   </div>
 );
 
-// ─── Toolbar button ───────────────────────────────────────────────────────────
-
-const TB = ({ onClick, active, title, children }: { onClick: () => void; active?: boolean; title: string; children: React.ReactNode }) => (
-  <button type="button" onClick={onClick} title={title}
-    style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 5, border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`, background: active ? 'var(--accent-soft)' : 'transparent', color: active ? 'var(--accent)' : 'var(--fg-secondary)', cursor: 'pointer' }}>
-    {children}
-  </button>
-);
-
-// ─── Email Editor (TipTap + preview) ─────────────────────────────────────────
-
-interface EditorPanelProps {
-  initialHtml: string;
-  onHtmlChange: (html: string) => void;
-}
-
-const EditorPanel: React.FC<EditorPanelProps> = ({ initialHtml, onHtmlChange }) => {
-  const [showPreview, setShowPreview] = useState(false);
-  const [showSource, setShowSource] = useState(false);
-  const [sourceHtml, setSourceHtml] = useState(initialHtml);
-
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      TiptapUnderline,
-      TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      TextStyle,
-      Color,
-      Image,
-      Link.configure({ openOnClick: false }),
-    ],
-    content: initialHtml || '<p>Comece a escrever seu e-mail aqui...</p>',
-    onUpdate: ({ editor: ed }) => {
-      const html = ed.getHTML();
-      onHtmlChange(html);
-      setSourceHtml(html);
-    },
-  });
-
-  const handleSourceChange = (val: string) => {
-    setSourceHtml(val);
-    editor?.commands.setContent(val, false);
-    onHtmlChange(val);
-  };
-
-  const addImage = () => {
-    const url = window.prompt('URL da imagem:');
-    if (url) editor?.chain().focus().setImage({ src: url }).run();
-  };
-
-  const addLink = () => {
-    const url = window.prompt('URL do link:');
-    if (url) editor?.chain().focus().setLink({ href: url }).run();
-  };
-
-  const addColor = () => {
-    const color = window.prompt('Cor em hex (ex: #ff0000):');
-    if (color) editor?.chain().focus().setColor(color).run();
-  };
-
-  const currentHtml = editor?.getHTML() ?? sourceHtml;
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', flexWrap: 'wrap', flexShrink: 0 }}>
-        <TB onClick={() => editor?.chain().focus().toggleBold().run()} active={editor?.isActive('bold')} title="Negrito"><Bold size={13}/></TB>
-        <TB onClick={() => editor?.chain().focus().toggleItalic().run()} active={editor?.isActive('italic')} title="Itálico"><Italic size={13}/></TB>
-        <TB onClick={() => editor?.chain().focus().toggleUnderline().run()} active={editor?.isActive('underline')} title="Sublinhado"><Underline size={13}/></TB>
-
-        <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }}/>
-
-        <TB onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()} active={editor?.isActive('heading', { level: 1 })} title="Título H1"><Heading1 size={13}/></TB>
-        <TB onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} active={editor?.isActive('heading', { level: 2 })} title="Título H2"><Heading2 size={13}/></TB>
-
-        <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }}/>
-
-        <TB onClick={() => editor?.chain().focus().setTextAlign('left').run()} active={editor?.isActive({ textAlign: 'left' })} title="Alinhar esquerda"><AlignLeft size={13}/></TB>
-        <TB onClick={() => editor?.chain().focus().setTextAlign('center').run()} active={editor?.isActive({ textAlign: 'center' })} title="Centralizar"><AlignCenter size={13}/></TB>
-        <TB onClick={() => editor?.chain().focus().setTextAlign('right').run()} active={editor?.isActive({ textAlign: 'right' })} title="Alinhar direita"><AlignRight size={13}/></TB>
-
-        <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }}/>
-
-        <TB onClick={addLink} active={editor?.isActive('link')} title="Inserir link"><Link2 size={13}/></TB>
-        <TB onClick={addImage} title="Inserir imagem"><ImageIcon size={13}/></TB>
-        <TB onClick={addColor} title="Cor do texto">
-          <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--accent)' }}>A</span>
-        </TB>
-
-        <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }}/>
-
-        <TB onClick={() => setShowSource(v => !v)} active={showSource} title="Ver HTML fonte"><Code size={13}/></TB>
-        <TB onClick={() => setShowPreview(v => !v)} active={showPreview} title="Preview">{showPreview ? <EyeOff size={13}/> : <Eye size={13}/>}</TB>
-      </div>
-
-      {/* Body */}
-      <div style={{ flex: 1, display: showPreview ? 'block' : 'flex', overflow: 'hidden' }}>
-        {showPreview ? (
-          /* Preview */
-          <div style={{ height: '100%', background: '#f3f4f6', padding: 24, overflow: 'auto' }}>
-            <div style={{ maxWidth: 600, margin: '0 auto', background: '#fff', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-              <iframe
-                srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:24px;font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;}img{max-width:100%;height:auto;}a{color:#456cec;}</style></head><body>${currentHtml}</body></html>`}
-                style={{ width: '100%', minHeight: 400, border: 'none', display: 'block' }}
-                title="Preview"
-              />
-            </div>
-          </div>
-        ) : showSource ? (
-          /* HTML source */
-          <textarea
-            value={sourceHtml}
-            onChange={e => handleSourceChange(e.target.value)}
-            style={{ flex: 1, width: '100%', padding: 16, fontFamily: 'monospace', fontSize: 13, border: 'none', outline: 'none', resize: 'none', background: '#1e1e2e', color: '#cdd6f4', lineHeight: 1.6 }}
-            spellCheck={false}
-          />
-        ) : (
-          /* Editor */
-          <div style={{ flex: 1, overflow: 'auto', padding: '16px 24px' }}>
-            <style>{`
-              .tiptap-email { outline: none; min-height: 300px; font-family: Arial, sans-serif; font-size: 15px; line-height: 1.7; color: var(--fg); }
-              .tiptap-email h1 { font-size: 24px; font-weight: 800; margin: 12px 0 8px; }
-              .tiptap-email h2 { font-size: 20px; font-weight: 700; margin: 10px 0 6px; }
-              .tiptap-email p { margin: 0 0 10px; }
-              .tiptap-email a { color: #456cec; }
-              .tiptap-email img { max-width: 100%; border-radius: 4px; }
-              .tiptap-email ul, .tiptap-email ol { padding-left: 20px; margin: 8px 0; }
-              .tiptap-email blockquote { border-left: 3px solid var(--accent); margin: 8px 0; padding-left: 12px; color: var(--fg-muted); }
-            `}</style>
-            <EditorContent editor={editor} className="tiptap-email" />
-          </div>
-        )}
-      </div>
-
-      {/* Merge tags hint */}
-      <div style={{ padding: '6px 16px', borderTop: '1px solid var(--border)', background: 'var(--bg-card)', flexShrink: 0 }}>
-        <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Merge tags: </span>
-        {['{{name}}', '{{email}}', '{{company}}', '{{phone}}', '{{jobTitle}}'].map(tag => (
-          <button key={tag} type="button" onClick={() => editor?.chain().focus().insertContent(tag).run()}
-            style={{ marginLeft: 4, padding: '1px 7px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-muted)', color: 'var(--fg-secondary)', fontSize: 11, cursor: 'pointer', fontFamily: 'monospace' }}>
-            {tag}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-};
+const HEADER_H = 50;
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -220,20 +65,20 @@ const EmailTemplatesView: React.FC = () => {
   const [editorOpen, setEditorOpen]     = useState(false);
   const [editingId, setEditingId]       = useState<string | null>(null);
   const [error, setError]               = useState<string | null>(null);
-  const [editorHtml, setEditorHtml]     = useState('');
 
-  const [form, setForm] = useState({
-    name: '', subject: '', fromName: '', fromEmail: '',
-  });
+  const [form, setForm] = useState({ name: '', subject: '', fromName: '', fromEmail: '' });
 
-  const [saving, setSaving]       = useState(false);
-  const [testEmail, setTestEmail] = useState('');
-  const [testSending, setTestSending] = useState(false);
-  const [testDone, setTestDone]   = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
+  const editorRef  = useRef<EditorRef>(null);
+  const [editorReady, setEditorReady]   = useState(false);
+  const [editorError, setEditorError]   = useState(false);
+  const [saving, setSaving]             = useState(false);
+  const [testEmail, setTestEmail]       = useState('');
+  const [testSending, setTestSending]   = useState(false);
+  const [testDone, setTestDone]         = useState(false);
+  const [showPreview, setShowPreview]   = useState(false);
 
-  const editorHtmlRef = useRef(editorHtml);
-  editorHtmlRef.current = editorHtml;
+  // Timeout: se o Unlayer não carregar em 20s, mostra erro
+  const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadEmails = useCallback(async () => {
     setLoading(true);
@@ -252,7 +97,8 @@ const EmailTemplatesView: React.FC = () => {
   const openCreate = () => {
     setEditingId(null);
     setForm({ name: '', subject: '', fromName: '', fromEmail: '' });
-    setEditorHtml('<p>Olá {{name}},</p><p>Escreva o conteúdo do seu e-mail aqui.</p>');
+    setEditorReady(false);
+    setEditorError(false);
     setEditorOpen(true);
     setSelected(null);
     setError(null);
@@ -261,36 +107,61 @@ const EmailTemplatesView: React.FC = () => {
   const openEdit = (t: EmailTemplate) => {
     setEditingId(t.id);
     setForm({ name: t.name, subject: t.subject, fromName: t.fromName ?? '', fromEmail: t.fromEmail ?? '' });
-    setEditorHtml(t.body ?? '');
+    setEditorReady(false);
+    setEditorError(false);
     setEditorOpen(true);
     setError(null);
+  };
+
+  // Inicia timer quando editor abre
+  useEffect(() => {
+    if (editorOpen && !editorReady) {
+      loadTimerRef.current = setTimeout(() => setEditorError(true), 20000);
+    }
+    return () => { if (loadTimerRef.current) clearTimeout(loadTimerRef.current); };
+  }, [editorOpen, editorReady]);
+
+  const handleEditorReady = () => {
+    if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
+    setEditorReady(true);
+    setEditorError(false);
+    if (editingId) {
+      const tpl = emails.find(e => e.id === editingId);
+      if (tpl?.design) {
+        try { editorRef.current?.editor?.loadDesign(tpl.design as any); } catch {}
+      }
+    }
   };
 
   const handleSave = async (asDraft = true) => {
     if (!form.name.trim()) { setError('Nome é obrigatório'); return; }
     setSaving(true);
     setError(null);
-    try {
-      const payload = {
-        name:      form.name.trim(),
-        subject:   form.subject.trim(),
-        body:      editorHtmlRef.current,
-        fromName:  form.fromName.trim()  || null,
-        fromEmail: form.fromEmail.trim() || null,
-        status:    asDraft ? 'draft' : 'sent',
-      };
-      if (editingId) {
-        await apiClient.put(`/email-templates/${editingId}`, payload);
-      } else {
-        await apiClient.post('/email-templates', payload);
+
+    editorRef.current?.editor?.exportHtml(async ({ html, design }) => {
+      try {
+        const payload = {
+          name:      form.name.trim(),
+          subject:   form.subject.trim(),
+          body:      html,
+          design,
+          fromName:  form.fromName.trim()  || null,
+          fromEmail: form.fromEmail.trim() || null,
+          status:    asDraft ? 'draft' : 'sent',
+        };
+        if (editingId) {
+          await apiClient.put(`/email-templates/${editingId}`, payload);
+        } else {
+          await apiClient.post('/email-templates', payload);
+        }
+        await loadEmails();
+        setEditorOpen(false);
+      } catch {
+        setError('Erro ao salvar e-mail');
+      } finally {
+        setSaving(false);
       }
-      await loadEmails();
-      setEditorOpen(false);
-    } catch {
-      setError('Erro ao salvar e-mail');
-    } finally {
-      setSaving(false);
-    }
+    });
   };
 
   const handleDelete = async (id: string, name: string) => {
@@ -305,7 +176,7 @@ const EmailTemplatesView: React.FC = () => {
   const handleDuplicate = async (t: EmailTemplate) => {
     try {
       await apiClient.post('/email-templates', {
-        name: `${t.name} (cópia)`, subject: t.subject, body: t.body,
+        name: `${t.name} (cópia)`, subject: t.subject, body: t.body, design: t.design,
         fromName: t.fromName, fromEmail: t.fromEmail, status: 'draft',
       });
       await loadEmails();
@@ -430,12 +301,12 @@ const EmailTemplatesView: React.FC = () => {
     );
   }
 
-  // ── Editor ──
+  // ── Editor (Unlayer) ──
   if (editorOpen) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', flexDirection: 'column', background: 'var(--bg-base)' }}>
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', height: 50, borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', flexShrink: 0, gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', height: HEADER_H, borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', flexShrink: 0, gap: 12, zIndex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
             <button onClick={() => setEditorOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer', flexShrink: 0 }}>
               <ArrowLeft size={14}/> Voltar
@@ -445,7 +316,7 @@ const EmailTemplatesView: React.FC = () => {
               placeholder="Nome do e-mail (ex: Boas-vindas Lead)"
               style={{ width: 220, padding: '5px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--fg)', fontSize: 14, fontWeight: 600, outline: 'none', flexShrink: 0 }}/>
             <input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
-              placeholder="Assunto do email (use {{name}}, {{company}}...)"
+              placeholder="Assunto (use {{name}}, {{company}}...)"
               style={{ flex: 1, minWidth: 0, padding: '5px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}/>
             <input value={form.fromName} onChange={e => setForm(f => ({ ...f, fromName: e.target.value }))}
               placeholder="Nome remetente"
@@ -454,21 +325,61 @@ const EmailTemplatesView: React.FC = () => {
 
           <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
             {error && <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#ef4444' }}><AlertCircle size={13}/>{error}</div>}
-            <button onClick={() => handleSave(true)} disabled={saving}
-              style={{ padding: '6px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer' }}>
+            <button onClick={() => handleSave(true)} disabled={saving || !editorReady}
+              style={{ padding: '6px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer', opacity: !editorReady ? 0.5 : 1 }}>
               Salvar rascunho
             </button>
-            <button onClick={() => handleSave(false)} disabled={saving}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 16px', borderRadius: 7, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.7 : 1 }}>
-              {saving ? <RefreshCw size={13}/> : <CheckCircle size={13}/>}
+            <button onClick={() => handleSave(false)} disabled={saving || !editorReady}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 16px', borderRadius: 7, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: (saving || !editorReady) ? 0.6 : 1 }}>
+              {saving ? <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }}/> : <CheckCircle size={13}/>}
               {saving ? 'Salvando...' : 'Salvar e-mail'}
             </button>
           </div>
         </div>
 
-        {/* Editor body */}
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <EditorPanel initialHtml={editorHtml} onHtmlChange={setEditorHtml} />
+        {/* Editor area */}
+        <div style={{ position: 'relative', flex: 1 }}>
+          {/* Loading overlay */}
+          {!editorReady && !editorError && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: 'var(--bg-base)', zIndex: 10 }}>
+              <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite', color: 'var(--accent)' }}/>
+              <span style={{ fontSize: 14, color: 'var(--fg-muted)' }}>Carregando editor...</span>
+            </div>
+          )}
+
+          {/* Error state */}
+          {editorError && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: 'var(--bg-base)', zIndex: 10 }}>
+              <AlertCircle size={32} style={{ color: '#ef4444' }}/>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>Editor não carregou</div>
+              <div style={{ fontSize: 13, color: 'var(--fg-muted)', textAlign: 'center', maxWidth: 360 }}>
+                O editor Unlayer depende de conexão com <strong>editor.unlayer.com</strong>.<br/>
+                Verifique sua conexão e tente novamente.
+              </div>
+              <button onClick={() => { setEditorError(false); setEditorReady(false); }}
+                style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                Tentar novamente
+              </button>
+            </div>
+          )}
+
+          <EmailEditor
+            ref={editorRef}
+            onReady={handleEditorReady}
+            style={{ height: `calc(100vh - ${HEADER_H}px)`, display: 'block' }}
+            options={{
+              locale: 'pt-BR',
+              appearance: { theme: 'modern_light' },
+              features: { textEditor: { tables: true } },
+              mergeTags: {
+                name:     { name: 'Nome',     value: '{{name}}' },
+                email:    { name: 'Email',    value: '{{email}}' },
+                company:  { name: 'Empresa',  value: '{{company}}' },
+                phone:    { name: 'Telefone', value: '{{phone}}' },
+                jobTitle: { name: 'Cargo',    value: '{{jobTitle}}' },
+              },
+            } as any}
+          />
         </div>
       </div>
     );
@@ -639,8 +550,8 @@ const EmailTemplatesView: React.FC = () => {
       )}
 
       {filtered.length > 0 && (
-        <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--fg-muted)' }}>
-          <span>Mostrando {filtered.length} de {emails.length} e-mails</span>
+        <div style={{ marginTop: 16, fontSize: 13, color: 'var(--fg-muted)' }}>
+          Mostrando {filtered.length} de {emails.length} e-mails
         </div>
       )}
     </div>
