@@ -1,10 +1,18 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import EmailEditor, { EditorRef } from 'react-email-editor';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import TiptapUnderline from '@tiptap/extension-underline';
+import TextAlign from '@tiptap/extension-text-align';
+import { TextStyle } from '@tiptap/extension-text-style';
+import { Color } from '@tiptap/extension-color';
+import { Image } from '@tiptap/extension-image';
+import Link from '@tiptap/extension-link';
 import {
   Plus, Search, Mail, Trash2, Edit3, Send, RefreshCw,
   CheckCircle, AlertCircle, X, LayoutGrid, List,
-  Clock, Zap, MoreVertical, Copy, ChevronRight,
-  ArrowLeft, Eye,
+  Clock, Zap, Copy, ChevronRight, ArrowLeft, Eye, EyeOff,
+  Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight,
+  Link2, ImageIcon, Code, Heading1, Heading2,
 } from 'lucide-react';
 import { apiClient } from '../services/apiClient';
 
@@ -13,91 +21,219 @@ import { apiClient } from '../services/apiClient';
 type EmailStatus = 'draft' | 'sent' | 'scheduled' | 'automatic';
 
 interface TemplateStats {
-  sent: number;
-  delivered: number;
-  opened: number;
-  clicked: number;
-  bounced: number;
-  openRate: number;
-  clickRate: number;
+  sent: number; delivered: number; opened: number;
+  clicked: number; bounced: number; openRate: number; clickRate: number;
 }
 
 interface EmailTemplate {
-  id: string;
-  name: string;
-  subject: string;
-  body: string;
-  design: unknown | null;
-  fromName: string | null;
-  fromEmail: string | null;
-  status: EmailStatus;
-  scheduledAt: string | null;
-  audienceType: string | null;
-  audienceValue: string | null;
-  audienceCount: number | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
+  id: string; name: string; subject: string; body: string;
+  design: unknown | null; fromName: string | null; fromEmail: string | null;
+  status: EmailStatus; scheduledAt: string | null;
+  audienceType: string | null; audienceValue: string | null; audienceCount: number | null;
+  isActive: boolean; createdAt: string; updatedAt: string;
   stats: TemplateStats;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const STATUS_CFG: Record<EmailStatus, { label: string; color: string; dot: string }> = {
-  sent:      { label: 'Enviado',   color: '#059669', dot: '#10b981' },
+  sent:      { label: 'Enviado',    color: '#059669', dot: '#10b981' },
   scheduled: { label: 'Agendado',  color: '#d97706', dot: '#f59e0b' },
   automatic: { label: 'Automático',color: '#2563eb', dot: '#3b82f6' },
   draft:     { label: 'Rascunho',  color: '#6b7280', dot: '#9ca3af' },
 };
 
-const audienceLabel = (t: EmailTemplate): string => {
-  if (t.audienceType === 'trigger') return 'Gatilho';
+const audienceLabel = (t: EmailTemplate) => {
+  if (t.audienceType === 'trigger')  return 'Gatilho';
   if (t.audienceType === 'sequence') return 'Sequência';
   if (t.audienceCount) return `${t.audienceCount.toLocaleString('pt-BR')} leads`;
   return '—';
 };
-
-const audienceSub = (t: EmailTemplate): string => {
-  if (t.audienceValue) return t.audienceValue;
-  if (t.audienceType === 'all') return 'Toda a base';
-  return '';
-};
+const audienceSub = (t: EmailTemplate) => t.audienceValue ?? (t.audienceType === 'all' ? 'Toda a base' : '');
 
 const ProgressBar = ({ value, color }: { value: number; color: string }) => (
   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
     <div style={{ flex: 1, height: 5, background: '#e5e7eb', borderRadius: 3, overflow: 'hidden', minWidth: 60 }}>
-      <div style={{ height: '100%', width: `${Math.min(value, 100)}%`, background: color, borderRadius: 3, transition: 'width 0.5s ease' }}/>
+      <div style={{ height: '100%', width: `${Math.min(value, 100)}%`, background: color, borderRadius: 3 }}/>
     </div>
     <span style={{ fontSize: 12, fontWeight: 700, color, minWidth: 34, textAlign: 'right' }}>{value}%</span>
   </div>
 );
 
+// ─── Toolbar button ───────────────────────────────────────────────────────────
+
+const TB = ({ onClick, active, title, children }: { onClick: () => void; active?: boolean; title: string; children: React.ReactNode }) => (
+  <button type="button" onClick={onClick} title={title}
+    style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 5, border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`, background: active ? 'var(--accent-soft)' : 'transparent', color: active ? 'var(--accent)' : 'var(--fg-secondary)', cursor: 'pointer' }}>
+    {children}
+  </button>
+);
+
+// ─── Email Editor (TipTap + preview) ─────────────────────────────────────────
+
+interface EditorPanelProps {
+  initialHtml: string;
+  onHtmlChange: (html: string) => void;
+}
+
+const EditorPanel: React.FC<EditorPanelProps> = ({ initialHtml, onHtmlChange }) => {
+  const [showPreview, setShowPreview] = useState(false);
+  const [showSource, setShowSource] = useState(false);
+  const [sourceHtml, setSourceHtml] = useState(initialHtml);
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      TiptapUnderline,
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      TextStyle,
+      Color,
+      Image,
+      Link.configure({ openOnClick: false }),
+    ],
+    content: initialHtml || '<p>Comece a escrever seu e-mail aqui...</p>',
+    onUpdate: ({ editor: ed }) => {
+      const html = ed.getHTML();
+      onHtmlChange(html);
+      setSourceHtml(html);
+    },
+  });
+
+  const handleSourceChange = (val: string) => {
+    setSourceHtml(val);
+    editor?.commands.setContent(val, false);
+    onHtmlChange(val);
+  };
+
+  const addImage = () => {
+    const url = window.prompt('URL da imagem:');
+    if (url) editor?.chain().focus().setImage({ src: url }).run();
+  };
+
+  const addLink = () => {
+    const url = window.prompt('URL do link:');
+    if (url) editor?.chain().focus().setLink({ href: url }).run();
+  };
+
+  const addColor = () => {
+    const color = window.prompt('Cor em hex (ex: #ff0000):');
+    if (color) editor?.chain().focus().setColor(color).run();
+  };
+
+  const currentHtml = editor?.getHTML() ?? sourceHtml;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '8px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', flexWrap: 'wrap', flexShrink: 0 }}>
+        <TB onClick={() => editor?.chain().focus().toggleBold().run()} active={editor?.isActive('bold')} title="Negrito"><Bold size={13}/></TB>
+        <TB onClick={() => editor?.chain().focus().toggleItalic().run()} active={editor?.isActive('italic')} title="Itálico"><Italic size={13}/></TB>
+        <TB onClick={() => editor?.chain().focus().toggleUnderline().run()} active={editor?.isActive('underline')} title="Sublinhado"><Underline size={13}/></TB>
+
+        <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }}/>
+
+        <TB onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()} active={editor?.isActive('heading', { level: 1 })} title="Título H1"><Heading1 size={13}/></TB>
+        <TB onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()} active={editor?.isActive('heading', { level: 2 })} title="Título H2"><Heading2 size={13}/></TB>
+
+        <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }}/>
+
+        <TB onClick={() => editor?.chain().focus().setTextAlign('left').run()} active={editor?.isActive({ textAlign: 'left' })} title="Alinhar esquerda"><AlignLeft size={13}/></TB>
+        <TB onClick={() => editor?.chain().focus().setTextAlign('center').run()} active={editor?.isActive({ textAlign: 'center' })} title="Centralizar"><AlignCenter size={13}/></TB>
+        <TB onClick={() => editor?.chain().focus().setTextAlign('right').run()} active={editor?.isActive({ textAlign: 'right' })} title="Alinhar direita"><AlignRight size={13}/></TB>
+
+        <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }}/>
+
+        <TB onClick={addLink} active={editor?.isActive('link')} title="Inserir link"><Link2 size={13}/></TB>
+        <TB onClick={addImage} title="Inserir imagem"><ImageIcon size={13}/></TB>
+        <TB onClick={addColor} title="Cor do texto">
+          <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--accent)' }}>A</span>
+        </TB>
+
+        <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }}/>
+
+        <TB onClick={() => setShowSource(v => !v)} active={showSource} title="Ver HTML fonte"><Code size={13}/></TB>
+        <TB onClick={() => setShowPreview(v => !v)} active={showPreview} title="Preview">{showPreview ? <EyeOff size={13}/> : <Eye size={13}/>}</TB>
+      </div>
+
+      {/* Body */}
+      <div style={{ flex: 1, display: showPreview ? 'block' : 'flex', overflow: 'hidden' }}>
+        {showPreview ? (
+          /* Preview */
+          <div style={{ height: '100%', background: '#f3f4f6', padding: 24, overflow: 'auto' }}>
+            <div style={{ maxWidth: 600, margin: '0 auto', background: '#fff', borderRadius: 8, boxShadow: '0 2px 12px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+              <iframe
+                srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:24px;font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;}img{max-width:100%;height:auto;}a{color:#456cec;}</style></head><body>${currentHtml}</body></html>`}
+                style={{ width: '100%', minHeight: 400, border: 'none', display: 'block' }}
+                title="Preview"
+              />
+            </div>
+          </div>
+        ) : showSource ? (
+          /* HTML source */
+          <textarea
+            value={sourceHtml}
+            onChange={e => handleSourceChange(e.target.value)}
+            style={{ flex: 1, width: '100%', padding: 16, fontFamily: 'monospace', fontSize: 13, border: 'none', outline: 'none', resize: 'none', background: '#1e1e2e', color: '#cdd6f4', lineHeight: 1.6 }}
+            spellCheck={false}
+          />
+        ) : (
+          /* Editor */
+          <div style={{ flex: 1, overflow: 'auto', padding: '16px 24px' }}>
+            <style>{`
+              .tiptap-email { outline: none; min-height: 300px; font-family: Arial, sans-serif; font-size: 15px; line-height: 1.7; color: var(--fg); }
+              .tiptap-email h1 { font-size: 24px; font-weight: 800; margin: 12px 0 8px; }
+              .tiptap-email h2 { font-size: 20px; font-weight: 700; margin: 10px 0 6px; }
+              .tiptap-email p { margin: 0 0 10px; }
+              .tiptap-email a { color: #456cec; }
+              .tiptap-email img { max-width: 100%; border-radius: 4px; }
+              .tiptap-email ul, .tiptap-email ol { padding-left: 20px; margin: 8px 0; }
+              .tiptap-email blockquote { border-left: 3px solid var(--accent); margin: 8px 0; padding-left: 12px; color: var(--fg-muted); }
+            `}</style>
+            <EditorContent editor={editor} className="tiptap-email" />
+          </div>
+        )}
+      </div>
+
+      {/* Merge tags hint */}
+      <div style={{ padding: '6px 16px', borderTop: '1px solid var(--border)', background: 'var(--bg-card)', flexShrink: 0 }}>
+        <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Merge tags: </span>
+        {['{{name}}', '{{email}}', '{{company}}', '{{phone}}', '{{jobTitle}}'].map(tag => (
+          <button key={tag} type="button" onClick={() => editor?.chain().focus().insertContent(tag).run()}
+            style={{ marginLeft: 4, padding: '1px 7px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-muted)', color: 'var(--fg-secondary)', fontSize: 11, cursor: 'pointer', fontFamily: 'monospace' }}>
+            {tag}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const EmailTemplatesView: React.FC = () => {
-  const [emails, setEmails]               = useState<EmailTemplate[]>([]);
-  const [loading, setLoading]             = useState(true);
-  const [search, setSearch]               = useState('');
-  const [filterStatus, setFilterStatus]   = useState<string>('all');
-  const [viewMode, setViewMode]           = useState<'list' | 'grid'>('list');
-  const [selected, setSelected]           = useState<EmailTemplate | null>(null);
-  const [editorOpen, setEditorOpen]       = useState(false);
-  const [editingId, setEditingId]         = useState<string | null>(null);
-  const [error, setError]                 = useState<string | null>(null);
+  const [emails, setEmails]             = useState<EmailTemplate[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [search, setSearch]             = useState('');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [viewMode, setViewMode]         = useState<'list' | 'grid'>('list');
+  const [selected, setSelected]         = useState<EmailTemplate | null>(null);
+  const [editorOpen, setEditorOpen]     = useState(false);
+  const [editingId, setEditingId]       = useState<string | null>(null);
+  const [error, setError]               = useState<string | null>(null);
+  const [editorHtml, setEditorHtml]     = useState('');
 
-  // Form
   const [form, setForm] = useState({
     name: '', subject: '', fromName: '', fromEmail: '',
-    audienceType: '', audienceValue: '', audienceCount: '',
   });
 
-  const editorRef = useRef<EditorRef>(null);
-  const [editorReady, setEditorReady] = useState(false);
-  const [saving, setSaving]           = useState(false);
-  const [testEmail, setTestEmail]     = useState('');
+  const [saving, setSaving]       = useState(false);
+  const [testEmail, setTestEmail] = useState('');
   const [testSending, setTestSending] = useState(false);
-  const [testDone, setTestDone]       = useState(false);
+  const [testDone, setTestDone]   = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+
+  const editorHtmlRef = useRef(editorHtml);
+  editorHtmlRef.current = editorHtml;
 
   const loadEmails = useCallback(async () => {
     setLoading(true);
@@ -115,8 +251,8 @@ const EmailTemplatesView: React.FC = () => {
 
   const openCreate = () => {
     setEditingId(null);
-    setForm({ name: '', subject: '', fromName: '', fromEmail: '', audienceType: '', audienceValue: '', audienceCount: '' });
-    setEditorReady(false);
+    setForm({ name: '', subject: '', fromName: '', fromEmail: '' });
+    setEditorHtml('<p>Olá {{name}},</p><p>Escreva o conteúdo do seu e-mail aqui.</p>');
     setEditorOpen(true);
     setSelected(null);
     setError(null);
@@ -124,61 +260,37 @@ const EmailTemplatesView: React.FC = () => {
 
   const openEdit = (t: EmailTemplate) => {
     setEditingId(t.id);
-    setForm({
-      name: t.name, subject: t.subject,
-      fromName: t.fromName ?? '', fromEmail: t.fromEmail ?? '',
-      audienceType: t.audienceType ?? '', audienceValue: t.audienceValue ?? '',
-      audienceCount: t.audienceCount ? String(t.audienceCount) : '',
-    });
-    setEditorReady(false);
+    setForm({ name: t.name, subject: t.subject, fromName: t.fromName ?? '', fromEmail: t.fromEmail ?? '' });
+    setEditorHtml(t.body ?? '');
     setEditorOpen(true);
     setError(null);
-  };
-
-  const handleEditorReady = () => {
-    setEditorReady(true);
-    if (editingId) {
-      const tpl = emails.find(e => e.id === editingId);
-      if (tpl?.design) {
-        try { editorRef.current?.editor?.loadDesign(tpl.design as any); } catch {}
-      }
-    }
   };
 
   const handleSave = async (asDraft = true) => {
     if (!form.name.trim()) { setError('Nome é obrigatório'); return; }
     setSaving(true);
     setError(null);
-
-    editorRef.current?.editor?.exportHtml(async ({ html, design }) => {
-      try {
-        const payload = {
-          name:          form.name.trim(),
-          subject:       form.subject.trim(),
-          body:          html,
-          design,
-          fromName:      form.fromName.trim()  || null,
-          fromEmail:     form.fromEmail.trim() || null,
-          status:        asDraft ? 'draft' : 'sent',
-          audienceType:  form.audienceType  || null,
-          audienceValue: form.audienceValue || null,
-          audienceCount: form.audienceCount ? Number(form.audienceCount) : null,
-        };
-
-        if (editingId) {
-          await apiClient.put(`/email-templates/${editingId}`, payload);
-        } else {
-          await apiClient.post('/email-templates', payload);
-        }
-
-        await loadEmails();
-        setEditorOpen(false);
-      } catch {
-        setError('Erro ao salvar e-mail');
-      } finally {
-        setSaving(false);
+    try {
+      const payload = {
+        name:      form.name.trim(),
+        subject:   form.subject.trim(),
+        body:      editorHtmlRef.current,
+        fromName:  form.fromName.trim()  || null,
+        fromEmail: form.fromEmail.trim() || null,
+        status:    asDraft ? 'draft' : 'sent',
+      };
+      if (editingId) {
+        await apiClient.put(`/email-templates/${editingId}`, payload);
+      } else {
+        await apiClient.post('/email-templates', payload);
       }
-    });
+      await loadEmails();
+      setEditorOpen(false);
+    } catch {
+      setError('Erro ao salvar e-mail');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (id: string, name: string) => {
@@ -187,53 +299,37 @@ const EmailTemplatesView: React.FC = () => {
       await apiClient.delete(`/email-templates/${id}`);
       if (selected?.id === id) setSelected(null);
       await loadEmails();
-    } catch {
-      setError('Erro ao excluir');
-    }
+    } catch { setError('Erro ao excluir'); }
   };
 
   const handleDuplicate = async (t: EmailTemplate) => {
     try {
       await apiClient.post('/email-templates', {
-        name:          `${t.name} (cópia)`,
-        subject:       t.subject,
-        body:          t.body,
-        design:        t.design,
-        fromName:      t.fromName,
-        fromEmail:     t.fromEmail,
-        status:        'draft',
-        audienceType:  t.audienceType,
-        audienceValue: t.audienceValue,
-        audienceCount: t.audienceCount,
+        name: `${t.name} (cópia)`, subject: t.subject, body: t.body,
+        fromName: t.fromName, fromEmail: t.fromEmail, status: 'draft',
       });
       await loadEmails();
-    } catch {
-      setError('Erro ao duplicar');
-    }
+    } catch { setError('Erro ao duplicar'); }
   };
 
   const handleTest = async () => {
     if (!selected || !testEmail.trim()) return;
-    setTestSending(true);
-    setTestDone(false);
+    setTestSending(true); setTestDone(false);
     try {
       await apiClient.post(`/email-templates/${selected.id}/test`, { toEmail: testEmail.trim() });
       setTestDone(true);
       setTimeout(() => setTestDone(false), 4000);
-    } catch {
-      setError('Erro ao enviar teste');
-    } finally {
-      setTestSending(false);
-    }
+    } catch { setError('Erro ao enviar teste'); }
+    finally { setTestSending(false); }
   };
 
   // ── Filters ──
   const counts = {
-    all:       emails.length,
-    sent:      emails.filter(e => e.status === 'sent').length,
+    all: emails.length,
+    sent: emails.filter(e => e.status === 'sent').length,
     scheduled: emails.filter(e => e.status === 'scheduled').length,
     automatic: emails.filter(e => e.status === 'automatic').length,
-    draft:     emails.filter(e => e.status === 'draft').length,
+    draft: emails.filter(e => e.status === 'draft').length,
   };
 
   const filtered = emails.filter(e => {
@@ -266,7 +362,6 @@ const EmailTemplatesView: React.FC = () => {
           </div>
         </div>
 
-        {/* Metrics */}
         {selected.stats.sent > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
             {[
@@ -284,7 +379,6 @@ const EmailTemplatesView: React.FC = () => {
           </div>
         )}
 
-        {/* Info */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 20, marginBottom: 20 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
             <div>
@@ -306,7 +400,6 @@ const EmailTemplatesView: React.FC = () => {
           </div>
         </div>
 
-        {/* Preview */}
         <div style={{ marginBottom: 20 }}>
           <button onClick={() => setShowPreview(p => !p)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--accent)', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: 10 }}>
             <Eye size={13}/> {showPreview ? 'Ocultar preview' : 'Ver preview do email'}
@@ -314,7 +407,7 @@ const EmailTemplatesView: React.FC = () => {
           {showPreview && (
             <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
               <iframe
-                srcDoc={`<html><head><style>body{margin:0;font-family:sans-serif;}</style></head><body>${selected.body}</body></html>`}
+                srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:24px;font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;}</style></head><body>${selected.body}</body></html>`}
                 style={{ width: '100%', minHeight: 400, border: 'none', display: 'block' }}
                 title="Preview"
               />
@@ -322,7 +415,6 @@ const EmailTemplatesView: React.FC = () => {
           )}
         </div>
 
-        {/* Test send */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Enviar e-mail de teste</div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -330,7 +422,7 @@ const EmailTemplatesView: React.FC = () => {
               style={{ flex: 1, padding: '8px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}/>
             <button onClick={handleTest} disabled={testSending || !testEmail.trim()}
               style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 16px', borderRadius: 7, border: 'none', background: testDone ? '#10b981' : 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: testSending ? 0.7 : 1, whiteSpace: 'nowrap' }}>
-              {testDone ? <><CheckCircle size={13}/> Enviado!</> : testSending ? <><RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }}/> Enviando...</> : <><Send size={13}/> Enviar Teste</>}
+              {testDone ? <><CheckCircle size={13}/> Enviado!</> : testSending ? <><RefreshCw size={13}/> Enviando...</> : <><Send size={13}/> Enviar Teste</>}
             </button>
           </div>
         </div>
@@ -338,72 +430,51 @@ const EmailTemplatesView: React.FC = () => {
     );
   }
 
-  const EDITOR_HEADER_H = 50;
-
-  // ── Editor (Unlayer) ──
+  // ── Editor ──
   if (editorOpen) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-        {/* Editor header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', height: EDITOR_HEADER_H, borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', flexShrink: 0, gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button onClick={() => setEditorOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer' }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', height: 50, borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', flexShrink: 0, gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+            <button onClick={() => setEditorOpen(false)} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer', flexShrink: 0 }}>
               <ArrowLeft size={14}/> Voltar
             </button>
-            <div style={{ width: 1, height: 20, background: 'var(--border)' }}/>
+            <div style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0 }}/>
             <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               placeholder="Nome do e-mail (ex: Boas-vindas Lead)"
-              style={{ minWidth: 220, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--fg)', fontSize: 14, fontWeight: 600, outline: 'none' }}/>
-          </div>
-
-          {/* Subject + from row */}
-          <div style={{ display: 'flex', gap: 8, flex: 1, maxWidth: 580 }}>
+              style={{ width: 220, padding: '5px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--fg)', fontSize: 14, fontWeight: 600, outline: 'none', flexShrink: 0 }}/>
             <input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
               placeholder="Assunto do email (use {{name}}, {{company}}...)"
-              style={{ flex: 2, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}/>
+              style={{ flex: 1, minWidth: 0, padding: '5px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}/>
             <input value={form.fromName} onChange={e => setForm(f => ({ ...f, fromName: e.target.value }))}
               placeholder="Nome remetente"
-              style={{ flex: 1, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}/>
+              style={{ width: 160, padding: '5px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--fg)', fontSize: 13, outline: 'none', flexShrink: 0 }}/>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
             {error && <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#ef4444' }}><AlertCircle size={13}/>{error}</div>}
             <button onClick={() => handleSave(true)} disabled={saving}
-              style={{ padding: '7px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
+              style={{ padding: '6px 14px', borderRadius: 7, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer' }}>
               Salvar rascunho
             </button>
-            <button onClick={() => handleSave(false)} disabled={saving || !editorReady}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 16px', borderRadius: 7, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: (saving || !editorReady) ? 0.7 : 1 }}>
-              {saving ? <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }}/> : <CheckCircle size={13}/>}
+            <button onClick={() => handleSave(false)} disabled={saving}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 16px', borderRadius: 7, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.7 : 1 }}>
+              {saving ? <RefreshCw size={13}/> : <CheckCircle size={13}/>}
               {saving ? 'Salvando...' : 'Salvar e-mail'}
             </button>
           </div>
         </div>
 
-        {/* Unlayer Editor */}
-        <div style={{ position: 'relative', height: `calc(100vh - ${EDITOR_HEADER_H}px)` }}>
-          {!editorReady && (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: 'var(--bg-base)', zIndex: 10 }}>
-              <RefreshCw size={22} style={{ animation: 'spin 1s linear infinite', color: 'var(--accent)' }}/>
-              <span style={{ fontSize: 13, color: 'var(--fg-muted)' }}>Carregando editor...</span>
-            </div>
-          )}
-          <EmailEditor
-            ref={editorRef}
-            onReady={handleEditorReady}
-            style={{ height: `calc(100vh - ${EDITOR_HEADER_H}px)` }}
-            options={{
-              locale: 'pt-BR',
-              appearance: { theme: 'modern_light' },
-              features: { textEditor: { tables: true } },
-            } as any}
-          />
+        {/* Editor body */}
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <EditorPanel initialHtml={editorHtml} onHtmlChange={setEditorHtml} />
         </div>
       </div>
     );
   }
 
-  // ── List view ──
+  // ── List / Grid view ──
   return (
     <div style={{ padding: '28px 32px' }}>
       {error && (
@@ -413,7 +484,6 @@ const EmailTemplatesView: React.FC = () => {
         </div>
       )}
 
-      {/* Page header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>E-mails</h1>
@@ -429,17 +499,17 @@ const EmailTemplatesView: React.FC = () => {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: '0 0 280px' }}>
           <Search size={13} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-muted)' }}/>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar e-mail por nome ou assunto..."
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nome ou assunto..."
             style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px 8px 30px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}/>
         </div>
 
         <div style={{ display: 'flex', gap: 6 }}>
           {([
-            { key: 'all',       label: 'Todos',       count: counts.all },
-            { key: 'sent',      label: 'Enviados',    count: counts.sent },
-            { key: 'scheduled', label: 'Agendados',   count: counts.scheduled },
+            { key: 'all', label: 'Todos', count: counts.all },
+            { key: 'sent', label: 'Enviados', count: counts.sent },
+            { key: 'scheduled', label: 'Agendados', count: counts.scheduled },
             { key: 'automatic', label: 'Automáticos', count: counts.automatic },
-            { key: 'draft',     label: 'Rascunhos',   count: counts.draft },
+            { key: 'draft', label: 'Rascunhos', count: counts.draft },
           ] as { key: string; label: string; count: number }[]).map(f => (
             <button key={f.key} onClick={() => setFilterStatus(f.key)}
               style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 20, border: `1px solid ${filterStatus === f.key ? 'var(--accent)' : 'var(--border)'}`, background: filterStatus === f.key ? 'var(--accent-soft)' : 'var(--bg-card)', color: filterStatus === f.key ? 'var(--accent)' : 'var(--fg-secondary)', fontSize: 13, fontWeight: filterStatus === f.key ? 700 : 400, cursor: 'pointer' }}>
@@ -461,11 +531,10 @@ const EmailTemplatesView: React.FC = () => {
         </div>
       </div>
 
-      {/* ── LIST VIEW ── */}
+      {/* LIST */}
       {viewMode === 'list' && (
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-          {/* Table header */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 180px 200px 100px', gap: 0, padding: '10px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 180px 200px 100px', padding: '10px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)' }}>
             {['E-MAIL', 'STATUS', 'PÚBLICO', 'DESEMPENHO', 'AÇÕES'].map((h, i) => (
               <div key={h} style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', letterSpacing: '.05em', textAlign: i === 4 ? 'right' : 'left' }}>{h}</div>
             ))}
@@ -473,53 +542,45 @@ const EmailTemplatesView: React.FC = () => {
 
           {loading ? (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>
-              <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite', marginBottom: 8, display: 'block', margin: '0 auto 8px' }}/>
+              <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite', display: 'block', margin: '0 auto 8px' }}/>
               Carregando...
             </div>
           ) : filtered.length === 0 ? (
             <div style={{ padding: 56, textAlign: 'center', color: 'var(--fg-muted)' }}>
-              <Mail size={32} style={{ opacity: 0.3, marginBottom: 12, display: 'block', margin: '0 auto 12px' }}/>
+              <Mail size={32} style={{ opacity: 0.3, display: 'block', margin: '0 auto 12px' }}/>
               <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Nenhum e-mail encontrado</div>
               <div style={{ fontSize: 13 }}>Crie seu primeiro e-mail clicando em "Novo e-mail"</div>
             </div>
           ) : filtered.map((email, idx) => {
             const s = STATUS_CFG[email.status];
-            const isLast = idx === filtered.length - 1;
             return (
               <div key={email.id}
-                style={{ display: 'grid', gridTemplateColumns: '1fr 140px 180px 200px 100px', gap: 0, padding: '14px 20px', borderBottom: isLast ? 'none' : '1px solid var(--border)', alignItems: 'center', cursor: 'pointer', transition: 'background 0.1s' }}
+                style={{ display: 'grid', gridTemplateColumns: '1fr 140px 180px 200px 100px', padding: '14px 20px', borderBottom: idx < filtered.length - 1 ? '1px solid var(--border)' : 'none', alignItems: 'center', cursor: 'pointer' }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-muted)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                onClick={() => setSelected(email)}
-              >
-                {/* Name + subject */}
+                onClick={() => setSelected(email)}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {email.name}
-                    <ChevronRight size={12} style={{ color: 'var(--fg-muted)', flexShrink: 0 }}/>
+                    {email.name}<ChevronRight size={12} style={{ color: 'var(--fg-muted)', flexShrink: 0 }}/>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    Assunto: {email.subject || <em style={{ opacity: 0.6 }}>(sem assunto definido)</em>}
+                    {email.subject || <em style={{ opacity: 0.6 }}>(sem assunto)</em>}
                   </div>
                 </div>
 
-                {/* Status */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={e => e.stopPropagation()}>
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.dot, flexShrink: 0 }}/>
                   <span style={{ fontSize: 13, fontWeight: 600, color: s.color }}>{s.label}</span>
                 </div>
 
-                {/* Público */}
                 <div onClick={e => e.stopPropagation()}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>
                     {email.audienceType === 'trigger' ? <><Zap size={12} style={{ verticalAlign: 'middle', color: '#3b82f6' }}/> Gatilho</> :
                      email.audienceType === 'sequence' ? <><Clock size={12} style={{ verticalAlign: 'middle', color: '#8b5cf6' }}/> Sequência</> :
                      email.audienceCount ? `${email.audienceCount.toLocaleString('pt-BR')} leads` : '—'}
                   </div>
-                  {audienceSub(email) && <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 1 }}>{audienceSub(email)}</div>}
                 </div>
 
-                {/* Desempenho */}
                 <div onClick={e => e.stopPropagation()}>
                   {email.stats.sent > 0 ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -532,28 +593,13 @@ const EmailTemplatesView: React.FC = () => {
                         <ProgressBar value={email.stats.clickRate} color="#3b82f6"/>
                       </div>
                     </div>
-                  ) : (
-                    <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>não enviado</span>
-                  )}
+                  ) : <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>não enviado</span>}
                 </div>
 
-                {/* Ações */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }} onClick={e => e.stopPropagation()}>
-                  <button onClick={() => openEdit(email)}
-                    style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--fg-muted)' }}
-                    title="Editar">
-                    <Edit3 size={13}/>
-                  </button>
-                  <button onClick={() => handleDuplicate(email)}
-                    style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--fg-muted)' }}
-                    title="Duplicar">
-                    <Copy size={13}/>
-                  </button>
-                  <button onClick={() => handleDelete(email.id, email.name)}
-                    style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#ef4444' }}
-                    title="Excluir">
-                    <Trash2 size={13}/>
-                  </button>
+                  <button onClick={() => openEdit(email)} style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--fg-muted)' }} title="Editar"><Edit3 size={13}/></button>
+                  <button onClick={() => handleDuplicate(email)} style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--fg-muted)' }} title="Duplicar"><Copy size={13}/></button>
+                  <button onClick={() => handleDelete(email.id, email.name)} style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#ef4444' }} title="Excluir"><Trash2 size={13}/></button>
                 </div>
               </div>
             );
@@ -561,14 +607,13 @@ const EmailTemplatesView: React.FC = () => {
         </div>
       )}
 
-      {/* ── GRID VIEW ── */}
+      {/* GRID */}
       {viewMode === 'grid' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
           {filtered.map(email => {
             const s = STATUS_CFG[email.status];
             return (
-              <div key={email.id}
-                onClick={() => setSelected(email)}
+              <div key={email.id} onClick={() => setSelected(email)}
                 style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 18, cursor: 'pointer' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: s.color }}>
@@ -584,7 +629,7 @@ const EmailTemplatesView: React.FC = () => {
                 {email.stats.sent > 0 && (
                   <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
                     <span style={{ color: '#10b981', fontWeight: 700 }}>↗ {email.stats.openRate}% abertura</span>
-                    <span style={{ color: '#3b82f6', fontWeight: 700 }}>🖱 {email.stats.clickRate}% clique</span>
+                    <span style={{ color: '#3b82f6', fontWeight: 700 }}>↗ {email.stats.clickRate}% clique</span>
                   </div>
                 )}
               </div>
@@ -593,13 +638,9 @@ const EmailTemplatesView: React.FC = () => {
         </div>
       )}
 
-      {/* Footer */}
       {filtered.length > 0 && (
-        <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: 'var(--fg-muted)' }}>
+        <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--fg-muted)' }}>
           <span>Mostrando {filtered.length} de {emails.length} e-mails</span>
-          {emails.filter(e => e.status === 'sent').length > 0 && (
-            <span>Último envio: {new Date(emails.filter(e => e.status === 'sent').sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0].updatedAt).toLocaleDateString('pt-BR')}</span>
-          )}
         </div>
       )}
     </div>

@@ -14,9 +14,12 @@
     "test:e2e:report": "playwright show-report tests/e2e/report"
   },
   "dependencies": {
+    "@tiptap/extension-color": "^3.26.1",
+    "@tiptap/extension-image": "^3.26.1",
     "@tiptap/extension-link": "^3.26.0",
     "@tiptap/extension-placeholder": "^3.26.0",
     "@tiptap/extension-text-align": "^3.26.0",
+    "@tiptap/extension-text-style": "^3.26.1",
     "@tiptap/extension-underline": "^3.26.0",
     "@tiptap/pm": "^3.26.0",
     "@tiptap/react": "^3.26.0",
