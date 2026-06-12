@@ -145,9 +145,13 @@ export class PipedriveWebhookController {
       return;
     }
 
+    console.log(`[pipedrive-webhook] event=${event} dealId=${current.id} title="${current.title}" stage=${current.stage_id} status=${current.status}`);
+
     // 2. Find matching lead — email can be in person_email or nested in person_id.email
     const email = primaryEmail(current.person_email ?? current.person_id?.email ?? []);
     const personId = current.person_id?.value ? String(current.person_id.value) : null;
+
+    console.log(`[pipedrive-webhook] looking up lead — email="${email}" personId=${personId}`);
 
     let lead = email
       ? await prisma.lead.findUnique({ where: { email: email.toLowerCase().trim() } })
@@ -159,9 +163,12 @@ export class PipedriveWebhookController {
 
     // No matching lead — acknowledge and skip silently
     if (!lead) {
+      console.log(`[pipedrive-webhook] lead NOT FOUND — email="${email}" personId=${personId} — skipping`);
       res.status(200).json({ ok: true, skipped: true });
       return;
     }
+
+    console.log(`[pipedrive-webhook] lead found: ${lead.email} (current status: ${lead.status})`);
 
     const dealId        = String(current.id);
     const dealTitle     = current.title ?? null;
@@ -265,6 +272,8 @@ export class PipedriveWebhookController {
       }
     }
 
+    console.log(`[pipedrive-webhook] events to create: ${eventsToCreate.length} — currentStage=${currentStage} previousStage=${previousStage} stageName="${currentStage != null ? stageNameCache.get(currentStage) : 'n/a'}"`);
+
     if (eventsToCreate.length === 0) {
       res.status(200).json({ ok: true, skipped: true });
       return;
@@ -272,6 +281,7 @@ export class PipedriveWebhookController {
 
     // 5. Persist events + update lead atomically
     const newLeadStatus = resolveLeadStatus(dealStatus, currentStage);
+    console.log(`[pipedrive-webhook] updating lead ${lead.email}: ${lead.status} → ${newLeadStatus}`);
 
     await prisma.$transaction(async (tx) => {
       for (const data of eventsToCreate) {
