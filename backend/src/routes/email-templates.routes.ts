@@ -71,7 +71,25 @@ router.get('/:id', async (req: Request, res: Response) => {
       },
     });
 
-    res.json({ ...template, sends });
+    const s: Record<string, number> = {};
+    for (const send of sends) { s[send.status] = (s[send.status] ?? 0) + 1; }
+    const sent      = sends.length;
+    const delivered = (s['delivered'] ?? 0) + (s['opened'] ?? 0) + (s['clicked'] ?? 0);
+    const opened    = (s['opened']    ?? 0) + (s['clicked'] ?? 0);
+    const clicked   = s['clicked']   ?? 0;
+    const bounced   = s['bounced']   ?? 0;
+    const stats = {
+      sent,
+      delivered,
+      opened,
+      clicked,
+      bounced,
+      openRate:  delivered > 0 ? Number((opened  / delivered * 100).toFixed(1)) : 0,
+      clickRate: delivered > 0 ? Number((clicked / delivered * 100).toFixed(1)) : 0,
+      bounceRate: sent     > 0 ? Number((bounced / sent      * 100).toFixed(1)) : 0,
+    };
+
+    res.json({ ...template, sends, stats });
   } catch (err) {
     res.status(500).json({ error: 'Erro ao buscar template' });
   }
