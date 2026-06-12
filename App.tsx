@@ -16,6 +16,7 @@ import FunnelView from './components/FunnelView';
 import AutomationJourneysView from './components/AutomationJourneysView';
 import AIAgentsView from './components/AIAgentsView';
 import EmailTemplatesView from './components/EmailTemplatesView';
+import EmailEditorView from './components/EmailEditorView';
 import { DataService } from './services/dataService';
 import { User, Metric, LandingPage, DailyLeadEntry, RevenueEntry, FunnelCounts, LeadStatus } from './types';
 import {
@@ -1208,6 +1209,8 @@ const AppContent: React.FC = () => {
             <Route path="/campaigns" element={<CampaignsView />} />
             <Route path="/analytics" element={<LPView />} />
             <Route path="/emails" element={<EmailTemplatesView />} />
+            <Route path="/emails/new" element={<EmailEditorView />} />
+            <Route path="/emails/:id/edit" element={<EmailEditorView />} />
             <Route path="/email-templates" element={<Navigate to="/emails" replace />} />
 
             {/* Receita & Metas */}
