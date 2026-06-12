@@ -247,29 +247,6 @@ export default function AIAgentsView() {
             )}
           </div>
 
-          {/* Env var reference */}
-          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)' }}>
-              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>Variáveis de ambiente (Railway)</p>
-              <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>Configure no painel do Railway em Variables.</p>
-            </div>
-            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {[
-                { key: 'WHATSAPP_ACCESS_TOKEN',         desc: 'Token de acesso permanente da Meta Business API' },
-                { key: 'WHATSAPP_BUSINESS_ACCOUNT_ID',  desc: 'ID da conta de negócios do WhatsApp (WABA ID)' },
-                { key: 'WHATSAPP_PHONE_NUMBER_ID',       desc: 'ID do número de telefone (Phone Number ID)' },
-                { key: 'WHATSAPP_WEBHOOK_VERIFY_TOKEN',  desc: 'Token de verificação do webhook Meta' },
-                { key: 'CLOSER_EMAILS',                  desc: 'Emails dos closers para agendamento de reunião (separados por vírgula)' },
-              ].map(v => (
-                <div key={v.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                  <code style={{ padding: '3px 8px', borderRadius: 6, background: 'var(--bg-subtle)', fontSize: 12, fontFamily: 'monospace', color: 'var(--accent)', flexShrink: 0, whiteSpace: 'nowrap' }}>
-                    {v.key}
-                  </code>
-                  <span style={{ fontSize: 13, color: 'var(--fg-muted)', paddingTop: 2 }}>{v.desc}</span>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       )}
 
