@@ -393,6 +393,81 @@ export async function sendWhatsAppTextFromUI(leadId: string, text: string): Prom
   });
 }
 
+export interface CreateTemplateInput {
+  name: string;
+  category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
+  language: string;
+  headerText?: string;
+  bodyText: string;
+  footerText?: string;
+}
+
+function extractVarCount(text: string): number {
+  const matches = text.match(/\{\{\d+\}\}/g) ?? [];
+  return new Set(matches.map(m => m.replace(/\D/g, ''))).size;
+}
+
+export async function createWhatsAppTemplate(input: CreateTemplateInput): Promise<{ id: string; status: string }> {
+  const { accessToken, businessAccountId } = await getWhatsAppCredentials();
+
+  const components: Record<string, unknown>[] = [];
+
+  if (input.headerText?.trim()) {
+    const headerVars = extractVarCount(input.headerText);
+    const headerComp: Record<string, unknown> = { type: 'HEADER', format: 'TEXT', text: input.headerText.trim() };
+    if (headerVars > 0) {
+      headerComp.example = { header_text: [Array.from({ length: headerVars }, (_, i) => `Exemplo ${i + 1}`)] };
+    }
+    components.push(headerComp);
+  }
+
+  const bodyVars = extractVarCount(input.bodyText);
+  const bodyComp: Record<string, unknown> = { type: 'BODY', text: input.bodyText.trim() };
+  if (bodyVars > 0) {
+    bodyComp.example = { body_text: [Array.from({ length: bodyVars }, (_, i) => `Exemplo ${i + 1}`)] };
+  }
+  components.push(bodyComp);
+
+  if (input.footerText?.trim()) {
+    components.push({ type: 'FOOTER', text: input.footerText.trim() });
+  }
+
+  const res = await fetch(`https://graph.facebook.com/v19.0/${businessAccountId}/message_templates`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: input.name,
+      language: input.language,
+      category: input.category,
+      components,
+    }),
+  });
+
+  const data = await res.json() as { id?: string; status?: string; error?: { message: string } };
+  if (!res.ok || data.error) {
+    throw new Error(data.error?.message ?? `Meta API error ${res.status}`);
+  }
+  return { id: data.id ?? '', status: data.status ?? 'PENDING' };
+}
+
+export async function deleteWhatsAppTemplate(templateName: string): Promise<void> {
+  const { accessToken, businessAccountId } = await getWhatsAppCredentials();
+
+  const url = `https://graph.facebook.com/v19.0/${businessAccountId}/message_templates?name=${encodeURIComponent(templateName)}`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!res.ok) {
+    const data = await res.json() as { error?: { message: string } };
+    throw new Error(data.error?.message ?? `Meta API error ${res.status}`);
+  }
+}
+
 export async function setLeadAiHandoff(leadId: string, handoff: boolean): Promise<void> {
   const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true } });
   if (!lead) throw new Error('Lead não encontrado');

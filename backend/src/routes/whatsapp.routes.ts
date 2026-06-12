@@ -5,6 +5,8 @@ const router = Router();
 
 router.get('/phone-numbers', WhatsAppController.getPhoneNumbers);
 router.get('/templates', WhatsAppController.getTemplates);
+router.post('/templates', WhatsAppController.createTemplate);
+router.delete('/templates/:templateName', WhatsAppController.deleteTemplate);
 router.get('/leads/:leadId/conversation', WhatsAppController.getConversation);
 router.post('/leads/:leadId/send', WhatsAppController.sendMessage);
 router.patch('/leads/:leadId/handoff', WhatsAppController.updateHandoff);

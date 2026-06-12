@@ -890,6 +890,21 @@ export const DataService = {
     return apiClient.get(`/whatsapp/templates${qs}`);
   },
 
+  createWhatsAppTemplate: async (payload: {
+    name: string;
+    category: string;
+    language: string;
+    headerText?: string;
+    bodyText: string;
+    footerText?: string;
+  }): Promise<{ id: string; status: string }> => {
+    return apiClient.post('/whatsapp/templates', payload);
+  },
+
+  deleteWhatsAppTemplate: async (templateName: string): Promise<void> => {
+    return apiClient.delete(`/whatsapp/templates/${encodeURIComponent(templateName)}`);
+  },
+
   getWhatsAppConversation: async (leadId: string): Promise<import('../types').WhatsAppConversationMessage[]> => {
     return apiClient.get(`/whatsapp/leads/${encodeURIComponent(leadId)}/conversation`);
   },

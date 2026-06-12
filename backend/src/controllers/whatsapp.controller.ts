@@ -6,6 +6,9 @@ import {
   listWhatsAppConversationByLead,
   sendWhatsAppTextFromUI,
   setLeadAiHandoff,
+  createWhatsAppTemplate,
+  deleteWhatsAppTemplate,
+  type CreateTemplateInput,
 } from '../services/whatsapp.service';
 
 export class WhatsAppController {
@@ -57,6 +60,32 @@ export class WhatsAppController {
       }
       await setLeadAiHandoff(req.params.leadId, handoff);
       res.json({ ok: true, aiHandoff: handoff });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async createTemplate(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { name, category, language, headerText, bodyText, footerText } = req.body as Partial<CreateTemplateInput>;
+      if (!name?.trim())     { res.status(400).json({ error: 'Nome é obrigatório' }); return; }
+      if (!bodyText?.trim()) { res.status(400).json({ error: 'Body é obrigatório' }); return; }
+      if (!category)         { res.status(400).json({ error: 'Categoria é obrigatória' }); return; }
+
+      const safeName = name.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+      const result = await createWhatsAppTemplate({ name: safeName, category, language: language ?? 'pt_BR', headerText, bodyText, footerText });
+      res.status(201).json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async deleteTemplate(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { templateName } = req.params;
+      if (!templateName) { res.status(400).json({ error: 'Nome do template obrigatório' }); return; }
+      await deleteWhatsAppTemplate(decodeURIComponent(templateName));
+      res.json({ ok: true });
     } catch (err) {
       next(err);
     }

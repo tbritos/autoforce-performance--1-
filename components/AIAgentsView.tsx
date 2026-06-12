@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle, BrainCircuit, Check, CheckCircle, ChevronDown,
-  MessageSquare, Phone, RefreshCw, Search, Smartphone, XCircle,
+  MessageSquare, Phone, Plus, RefreshCw, Search,
+  Smartphone, Trash2, X,
 } from 'lucide-react';
 import { DataService } from '../services/dataService';
 import type { AIAgent, WhatsAppPhoneNumber } from '../types';
@@ -22,12 +23,12 @@ interface WppTemplate {
 const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-1.5-flash'];
 const OPENAI_MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'];
 
-const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  APPROVED:  { label: 'Aprovado',  color: '#16a34a', bg: '#dcfce7' },
-  PENDING:   { label: 'Pendente',  color: '#d97706', bg: '#fef3c7' },
-  REJECTED:  { label: 'Rejeitado', color: '#dc2626', bg: '#fee2e2' },
-  PAUSED:    { label: 'Pausado',   color: '#6b7280', bg: '#f3f4f6' },
-  DISABLED:  { label: 'Desativado',color: '#6b7280', bg: '#f3f4f6' },
+const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
+  APPROVED:  { label: 'Aprovado',   color: '#16a34a', bg: '#dcfce7' },
+  PENDING:   { label: 'Pendente',   color: '#d97706', bg: '#fef3c7' },
+  REJECTED:  { label: 'Rejeitado',  color: '#dc2626', bg: '#fee2e2' },
+  PAUSED:    { label: 'Pausado',    color: '#6b7280', bg: '#f3f4f6' },
+  DISABLED:  { label: 'Desativado', color: '#6b7280', bg: '#f3f4f6' },
 };
 
 const QUALITY_LABELS: Record<string, { label: string; color: string }> = {
@@ -42,6 +43,13 @@ const CATEGORY_LABELS: Record<string, string> = {
   UTILITY:        'Utilitário',
   AUTHENTICATION: 'Autenticação',
 };
+
+const LANGUAGES = [
+  { value: 'pt_BR', label: 'Português (BR)' },
+  { value: 'en_US', label: 'Inglês (EUA)' },
+  { value: 'es',    label: 'Espanhol' },
+  { value: 'es_AR', label: 'Espanhol (Argentina)' },
+];
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
@@ -64,7 +72,7 @@ function Field({ label, note, children }: { label: string; note?: string; childr
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const s = STATUS_LABELS[status] ?? { label: status, color: '#6b7280', bg: '#f3f4f6' };
+  const s = STATUS_META[status] ?? { label: status, color: '#6b7280', bg: '#f3f4f6' };
   return (
     <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: s.color, background: s.bg }}>
       {s.label}
@@ -84,21 +92,193 @@ function EmptyState({ icon: Icon, title, subtitle }: { icon: React.ElementType; 
   );
 }
 
+// ─── Template creation form (slide panel) ────────────────────────────────────
+
+const emptyForm = { name: '', category: 'MARKETING', language: 'pt_BR', headerText: '', bodyText: '', footerText: '' };
+
+function TemplateForm({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [form, setForm]     = useState({ ...emptyForm });
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
+
+  const safeName = form.name.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+
+  const varCount = (text: string) => {
+    const matches = text.match(/\{\{\d+\}\}/g) ?? [];
+    return new Set(matches).size;
+  };
+
+  const submit = async () => {
+    setError('');
+    if (!safeName) { setError('Nome é obrigatório.'); return; }
+    if (!form.bodyText.trim()) { setError('Body é obrigatório.'); return; }
+    setSaving(true);
+    try {
+      await DataService.createWhatsAppTemplate({
+        name:       safeName,
+        category:   form.category,
+        language:   form.language,
+        headerText: form.headerText || undefined,
+        bodyText:   form.bodyText,
+        footerText: form.footerText || undefined,
+      });
+      onCreated();
+    } catch (e: any) {
+      setError(e?.message ?? 'Erro ao criar template.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const insertVar = (field: 'headerText' | 'bodyText') => {
+    const count = varCount(form[field]) + 1;
+    setForm(f => ({ ...f, [field]: f[field] + `{{${count}}}` }));
+  };
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 50 }} />
+
+      {/* Panel */}
+      <div style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: 480, zIndex: 51,
+        background: 'var(--bg-surface)', borderLeft: '1px solid var(--border)',
+        display: 'flex', flexDirection: 'column', overflowY: 'auto',
+      }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)' }}>
+          <div>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: 'var(--fg-primary)' }}>Novo template</p>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>Será enviado para aprovação da Meta.</p>
+          </div>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+            <X size={18} color="var(--fg-muted)" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16, flex: 1 }}>
+
+          {error && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 8, background: '#fee2e2', border: '1px solid #fca5a5' }}>
+              <AlertCircle size={13} color="#dc2626" />
+              <span style={{ fontSize: 13, color: '#dc2626' }}>{error}</span>
+            </div>
+          )}
+
+          <Field label="Nome do template">
+            <input value={form.name}
+              onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="ex: boas_vindas_lead"
+              style={iStyle} />
+            {form.name && (
+              <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--fg-subtle)', fontFamily: 'monospace' }}>
+                será criado como: <strong>{safeName}</strong>
+              </p>
+            )}
+          </Field>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="Categoria">
+              <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} style={{ ...iStyle, cursor: 'pointer' }}>
+                <option value="MARKETING">Marketing</option>
+                <option value="UTILITY">Utilitário</option>
+                <option value="AUTHENTICATION">Autenticação</option>
+              </select>
+            </Field>
+            <Field label="Idioma">
+              <select value={form.language} onChange={e => setForm(f => ({ ...f, language: e.target.value }))} style={{ ...iStyle, cursor: 'pointer' }}>
+                {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Header" note="(opcional — texto curto)">
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input value={form.headerText}
+                onChange={e => setForm(f => ({ ...f, headerText: e.target.value }))}
+                placeholder="Ex: Olá, {{1}}!"
+                style={{ ...iStyle, flex: 1 }} />
+              <button type="button" onClick={() => insertVar('headerText')}
+                title="Inserir variável"
+                style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', fontSize: 12, cursor: 'pointer', color: 'var(--accent)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                + var
+              </button>
+            </div>
+          </Field>
+
+          <Field label="Body" note="(obrigatório)">
+            <textarea rows={6} value={form.bodyText}
+              onChange={e => setForm(f => ({ ...f, bodyText: e.target.value }))}
+              placeholder={'Olá {{1}}, temos uma novidade para você!\n\nAcesse agora e confira as novidades da AutoForce.'}
+              style={{ ...iStyle, resize: 'vertical', lineHeight: 1.6 }} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+              <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>Use {'{{1}}'}, {'{{2}}'} para variáveis personalizadas.</span>
+              <button type="button" onClick={() => insertVar('bodyText')}
+                style={{ fontSize: 11, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                + inserir variável
+              </button>
+            </div>
+          </Field>
+
+          <Field label="Footer" note="(opcional — ex: nome da empresa)">
+            <input value={form.footerText}
+              onChange={e => setForm(f => ({ ...f, footerText: e.target.value }))}
+              placeholder="AutoForce"
+              style={iStyle} />
+          </Field>
+
+          {/* Preview */}
+          {(form.headerText || form.bodyText || form.footerText) && (
+            <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', background: '#f0f2f5' }}>
+              <p style={{ margin: 0, padding: '8px 12px', fontSize: 11, fontWeight: 600, color: 'var(--fg-subtle)', background: 'var(--bg-subtle)', borderBottom: '1px solid var(--border)' }}>
+                Preview
+              </p>
+              <div style={{ padding: '8px 12px' }}>
+                <div style={{ background: 'white', borderRadius: '3px 12px 12px 12px', padding: '10px 12px', maxWidth: 300, boxShadow: '0 1px 2px rgba(0,0,0,.1)', fontSize: 13, lineHeight: 1.5, color: '#111' }}>
+                  {form.headerText && <p style={{ margin: '0 0 6px', fontWeight: 700 }}>{form.headerText}</p>}
+                  {form.bodyText && <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{form.bodyText}</p>}
+                  {form.footerText && <p style={{ margin: '6px 0 0', fontSize: 11, color: '#999' }}>{form.footerText}</p>}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
+          <button type="button" onClick={onClose}
+            style={{ flex: 1, padding: '9px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', fontSize: 13, fontWeight: 600, color: 'var(--fg-secondary)', cursor: 'pointer' }}>
+            Cancelar
+          </button>
+          <button type="button" onClick={submit} disabled={saving}
+            style={{ flex: 2, padding: '9px', borderRadius: 8, border: 'none', background: 'var(--accent)', fontSize: 13, fontWeight: 700, color: 'white', cursor: 'pointer', opacity: saving ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <Check size={13} /> {saving ? 'Enviando...' : 'Criar e enviar para aprovação'}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── Main view ────────────────────────────────────────────────────────────────
 
 export default function AIAgentsView() {
-  const [tab, setTab]           = useState<Tab>('number');
-  const [phoneNums, setPhoneNums] = useState<WhatsAppPhoneNumber[]>([]);
-  const [templates, setTemplates] = useState<WppTemplate[]>([]);
-  const [agent, setAgent]       = useState<AIAgent | null>(null);
+  const [tab, setTab]               = useState<Tab>('number');
+  const [phoneNums, setPhoneNums]   = useState<WhatsAppPhoneNumber[]>([]);
+  const [templates, setTemplates]   = useState<WppTemplate[]>([]);
+  const [agent, setAgent]           = useState<AIAgent | null>(null);
   const [agentDraft, setAgentDraft] = useState<Partial<AIAgent>>({});
-  const [loading, setLoading]   = useState(false);
-  const [saving, setSaving]     = useState(false);
-  const [error, setError]       = useState('');
+  const [loading, setLoading]       = useState(false);
+  const [saving, setSaving]         = useState(false);
+  const [error, setError]           = useState('');
   const [templateQuery, setTemplateQuery] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showForm, setShowForm]     = useState(false);
+  const [deletingName, setDeletingName] = useState<string | null>(null);
 
-  const provider    = String(agentDraft.defaultProvider || 'gemini');
+  const provider     = String(agentDraft.defaultProvider || 'gemini');
   const modelOptions = provider === 'openai' ? OPENAI_MODELS : GEMINI_MODELS;
 
   const asLines   = (v: unknown) => Array.isArray(v) ? v.join('\n') : '';
@@ -127,7 +307,7 @@ export default function AIAgentsView() {
         setAgent(agents[0]);
         setAgentDraft(agents[0]);
       }
-    } catch (e) {
+    } catch {
       setError('Erro ao carregar dados do WhatsApp.');
     } finally {
       setLoading(false);
@@ -154,6 +334,19 @@ export default function AIAgentsView() {
     }
   };
 
+  const deleteTemplate = async (name: string) => {
+    setDeletingName(name);
+    try {
+      await DataService.deleteWhatsAppTemplate(name);
+      await loadAll();
+      setExpandedId(null);
+    } catch (e: any) {
+      alert(e?.message ?? 'Erro ao deletar template.');
+    } finally {
+      setDeletingName(null);
+    }
+  };
+
   const tabs: Array<{ id: Tab; label: string; icon: React.ElementType }> = [
     { id: 'number',    label: 'Número',           icon: Phone },
     { id: 'templates', label: 'Templates da Meta', icon: MessageSquare },
@@ -163,6 +356,13 @@ export default function AIAgentsView() {
   return (
     <div style={{ padding: '24px 28px 64px', maxWidth: 1100, margin: '0 auto' }} className="animate-fade-in-up">
 
+      {showForm && (
+        <TemplateForm
+          onClose={() => setShowForm(false)}
+          onCreated={async () => { setShowForm(false); await loadAll(); setTab('templates'); }}
+        />
+      )}
+
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
@@ -171,10 +371,16 @@ export default function AIAgentsView() {
             Gerenciamento do número, templates da Meta e configurações do agente Lara.
           </p>
         </div>
-        <button type="button" onClick={loadAll}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', fontSize: 13, fontWeight: 600, color: 'var(--fg-secondary)', cursor: 'pointer' }}>
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Atualizar
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" onClick={loadAll}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', fontSize: 13, fontWeight: 600, color: 'var(--fg-secondary)', cursor: 'pointer' }}>
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Atualizar
+          </button>
+          <button type="button" onClick={() => setShowForm(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', fontSize: 13, fontWeight: 700, color: 'white', cursor: 'pointer' }}>
+            <Plus size={14} /> Novo template
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -207,46 +413,41 @@ export default function AIAgentsView() {
 
       {/* ── Número ──────────────────────────────────────────────────────────────── */}
       {tab === 'number' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* Connected numbers */}
-          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)' }}>
-              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>Número conectado</p>
-              <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>Número de telefone registrado na Meta Business API.</p>
-            </div>
-
-            {loading ? (
-              <div style={{ padding: '32px', textAlign: 'center' }}>
-                <RefreshCw size={20} className="animate-spin" color="var(--fg-muted)" />
-              </div>
-            ) : phoneNums.length === 0 ? (
-              <EmptyState icon={Smartphone} title="Nenhum número encontrado" subtitle="Verifique se WHATSAPP_ACCESS_TOKEN e WHATSAPP_BUSINESS_ACCOUNT_ID estão configurados no Railway." />
-            ) : (
-              phoneNums.map(num => {
-                const q = QUALITY_LABELS[num.quality_rating] ?? QUALITY_LABELS['UNKNOWN'];
-                return (
-                  <div key={num.id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
-                    <div style={{ width: 44, height: 44, borderRadius: 12, background: '#25d366', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <Phone size={20} color="white" />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--fg-primary)' }}>{num.display_phone_number}</p>
-                      <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--fg-muted)' }}>{num.verified_name}</p>
-                    </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end' }}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: q.color, display: 'inline-block' }} />
-                        <span style={{ fontSize: 12, fontWeight: 600, color: q.color }}>{q.label}</span>
-                      </div>
-                      <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--fg-subtle)', fontFamily: 'monospace' }}>ID: {num.id}</p>
-                    </div>
-                  </div>
-                );
-              })
-            )}
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)' }}>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>Número conectado</p>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>Número de telefone registrado na Meta Business API.</p>
           </div>
 
+          {loading ? (
+            <div style={{ padding: '32px', textAlign: 'center' }}>
+              <RefreshCw size={20} className="animate-spin" color="var(--fg-muted)" />
+            </div>
+          ) : phoneNums.length === 0 ? (
+            <EmptyState icon={Smartphone} title="Nenhum número encontrado" subtitle="Verifique se WHATSAPP_ACCESS_TOKEN e WHATSAPP_BUSINESS_ACCOUNT_ID estão configurados." />
+          ) : (
+            phoneNums.map(num => {
+              const q = QUALITY_LABELS[num.quality_rating] ?? QUALITY_LABELS['UNKNOWN'];
+              return (
+                <div key={num.id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px' }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 12, background: '#25d366', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Phone size={20} color="white" />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--fg-primary)' }}>{num.display_phone_number}</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--fg-muted)' }}>{num.verified_name}</p>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end' }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: q.color, display: 'inline-block' }} />
+                      <span style={{ fontSize: 12, fontWeight: 600, color: q.color }}>{q.label}</span>
+                    </div>
+                    <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--fg-subtle)', fontFamily: 'monospace' }}>ID: {num.id}</p>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       )}
 
@@ -273,11 +474,12 @@ export default function AIAgentsView() {
               <RefreshCw size={20} className="animate-spin" color="var(--fg-muted)" />
             </div>
           ) : filteredTemplates.length === 0 ? (
-            <EmptyState icon={MessageSquare} title="Nenhum template encontrado" subtitle="Crie templates no Meta Business Manager e eles aparecerão aqui." />
+            <EmptyState icon={MessageSquare} title="Nenhum template encontrado" subtitle='Clique em "Novo template" para criar o primeiro.' />
           ) : (
             filteredTemplates.map(tpl => {
-              const bodyComp = tpl.components.find(c => c.type === 'BODY');
+              const bodyComp   = tpl.components.find(c => c.type === 'BODY');
               const headerComp = tpl.components.find(c => c.type === 'HEADER');
+              const footerComp = tpl.components.find(c => c.type === 'FOOTER');
               const isExpanded = expandedId === tpl.id;
 
               return (
@@ -303,20 +505,30 @@ export default function AIAgentsView() {
                   </button>
 
                   {isExpanded && (
-                    <div style={{ padding: '0 20px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {headerComp?.text && (
-                        <div style={{ padding: '8px 12px', borderRadius: 8, background: 'var(--bg-subtle)', border: '1px solid var(--border)' }}>
-                          <p style={{ margin: '0 0 4px', fontSize: 10, fontWeight: 700, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: 1 }}>Header</p>
-                          <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-primary)', lineHeight: 1.5 }}>{headerComp.text}</p>
+                    <div style={{ padding: '0 20px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {/* Bubble preview */}
+                      <div style={{ background: '#f0f2f5', borderRadius: 10, padding: '10px 12px', display: 'inline-block', maxWidth: 360 }}>
+                        <div style={{ background: 'white', borderRadius: '3px 12px 12px 12px', padding: '10px 12px', fontSize: 13, lineHeight: 1.5, color: '#111', boxShadow: '0 1px 2px rgba(0,0,0,.08)' }}>
+                          {headerComp?.text && <p style={{ margin: '0 0 6px', fontWeight: 700 }}>{headerComp.text}</p>}
+                          {bodyComp?.text   && <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{bodyComp.text}</p>}
+                          {footerComp?.text && <p style={{ margin: '6px 0 0', fontSize: 11, color: '#999' }}>{footerComp.text}</p>}
                         </div>
-                      )}
-                      {bodyComp?.text && (
-                        <div style={{ padding: '8px 12px', borderRadius: 8, background: 'var(--bg-subtle)', border: '1px solid var(--border)' }}>
-                          <p style={{ margin: '0 0 4px', fontSize: 10, fontWeight: 700, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: 1 }}>Body</p>
-                          <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-primary)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{bodyComp.text}</p>
-                        </div>
-                      )}
-                      <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)', fontFamily: 'monospace' }}>ID: {tpl.id}</p>
+                      </div>
+
+                      {/* Meta info + delete */}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)', fontFamily: 'monospace' }}>ID: {tpl.id}</p>
+                        <button type="button"
+                          disabled={deletingName === tpl.name}
+                          onClick={() => {
+                            if (window.confirm(`Deletar o template "${tpl.name}"? Esta ação não pode ser desfeita.`)) {
+                              void deleteTemplate(tpl.name);
+                            }
+                          }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 6, border: '1px solid rgba(239,68,68,.3)', background: 'transparent', color: '#ef4444', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: deletingName === tpl.name ? 0.5 : 1 }}>
+                          <Trash2 size={12} /> {deletingName === tpl.name ? 'Deletando...' : 'Deletar'}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -377,7 +589,6 @@ export default function AIAgentsView() {
                   style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
               </Field>
 
-              {/* Status do agente */}
               <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--bg-subtle)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <CheckCircle size={14} color="#16a34a" />
                 <span style={{ fontSize: 13, color: 'var(--fg-secondary)' }}>
