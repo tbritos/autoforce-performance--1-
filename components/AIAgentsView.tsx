@@ -1,58 +1,55 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Bot, BrainCircuit, Check, ChevronDown, ChevronRight,
-  FileText, HelpCircle, Plus, RefreshCw, RotateCcw,
-  Search, Send, User,
+  AlertCircle, BrainCircuit, Check, CheckCircle, ChevronDown,
+  MessageSquare, Phone, RefreshCw, Search, Smartphone, XCircle,
 } from 'lucide-react';
 import { DataService } from '../services/dataService';
-import { AIAgent, AIInteractionLog } from '../types';
+import type { AIAgent, WhatsAppPhoneNumber } from '../types';
 
-type Tab        = 'agents' | 'logs';
-type SectionKey = 'identity' | 'model' | 'discovery';
+type Tab = 'number' | 'templates' | 'agent';
+
+interface WppTemplate {
+  id: string;
+  name: string;
+  status: string;
+  category: string;
+  language: string;
+  components: Array<{ type: string; format?: string; text?: string }>;
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const emptyAgent: Partial<AIAgent> = {
-  name: '',
-  description: '',
-  objective: '',
-  defaultProvider: 'gemini',
-  defaultModel: 'gemini-2.5-flash',
-  discoveryQuestions: [],
-};
 
 const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-1.5-flash'];
 const OPENAI_MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'];
 
-// ─── Accordion section metadata ───────────────────────────────────────────────
-
-interface SectionMeta { title: string; subtitle: string; iconBg: string; icon: React.ElementType }
-
-const SECTION_META: Record<SectionKey, SectionMeta> = {
-  identity:  { title: 'Identidade',             subtitle: 'Nome, descrição e objetivo do agente',        iconBg: '#f97316', icon: User },
-  model:     { title: 'Modelo de IA',            subtitle: 'Provider e versão do modelo',                iconBg: '#8b5cf6', icon: BrainCircuit },
-  discovery: { title: 'Perguntas de descoberta', subtitle: 'Perguntas que o agente faz para qualificar', iconBg: '#eab308', icon: HelpCircle },
+const STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
+  APPROVED:  { label: 'Aprovado',  color: '#16a34a', bg: '#dcfce7' },
+  PENDING:   { label: 'Pendente',  color: '#d97706', bg: '#fef3c7' },
+  REJECTED:  { label: 'Rejeitado', color: '#dc2626', bg: '#fee2e2' },
+  PAUSED:    { label: 'Pausado',   color: '#6b7280', bg: '#f3f4f6' },
+  DISABLED:  { label: 'Desativado',color: '#6b7280', bg: '#f3f4f6' },
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+const QUALITY_LABELS: Record<string, { label: string; color: string }> = {
+  GREEN:   { label: 'Qualidade alta',  color: '#16a34a' },
+  YELLOW:  { label: 'Qualidade média', color: '#d97706' },
+  RED:     { label: 'Qualidade baixa', color: '#dc2626' },
+  UNKNOWN: { label: 'Desconhecido',    color: '#6b7280' },
+};
 
-const asLines   = (v: unknown): string => Array.isArray(v) ? v.join('\n') : '';
-const fromLines = (v: string): string[] => v.split('\n').map(s => s.trim()).filter(Boolean);
-const nowTime   = () => new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+const CATEGORY_LABELS: Record<string, string> = {
+  MARKETING:      'Marketing',
+  UTILITY:        'Utilitário',
+  AUTHENTICATION: 'Autenticação',
+};
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface ChatMsg { role: 'assistant' | 'user'; text: string; time: string }
-
-// ─── Shared input style ───────────────────────────────────────────────────────
+// ─── Shared styles ────────────────────────────────────────────────────────────
 
 const iStyle: React.CSSProperties = {
   width: '100%', padding: '8px 12px', fontSize: 13, boxSizing: 'border-box',
   background: 'var(--bg-subtle)', border: '1px solid var(--border)',
   borderRadius: 8, color: 'var(--fg-primary)', outline: 'none', fontFamily: 'inherit',
 };
-
-// ─── Field wrapper ────────────────────────────────────────────────────────────
 
 function Field({ label, note, children }: { label: string; note?: string; children: React.ReactNode }) {
   return (
@@ -66,45 +63,23 @@ function Field({ label, note, children }: { label: string; note?: string; childr
   );
 }
 
-// ─── AccordionSection ─────────────────────────────────────────────────────────
-
-function AccordionSection({
-  sectionKey, open, onToggle, children,
-}: {
-  sectionKey: SectionKey;
-  open: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-}) {
-  const meta = SECTION_META[sectionKey];
-  const Icon = meta.icon;
+function StatusBadge({ status }: { status: string }) {
+  const s = STATUS_LABELS[status] ?? { label: status, color: '#6b7280', bg: '#f3f4f6' };
   return (
-    <div style={{ borderBottom: '1px solid var(--border)' }}>
-      <button
-        type="button"
-        onClick={onToggle}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 12,
-          width: '100%', padding: '13px 20px',
-          background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left',
-        }}
-      >
-        <div style={{ width: 30, height: 30, borderRadius: 8, background: meta.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <Icon size={14} color="white" />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--fg-primary)' }}>{meta.title}</p>
-          <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)', marginTop: 1 }}>{meta.subtitle}</p>
-        </div>
-        {open
-          ? <ChevronDown size={14} style={{ color: 'var(--fg-muted)', flexShrink: 0 }} />
-          : <ChevronRight size={14} style={{ color: 'var(--fg-muted)', flexShrink: 0 }} />}
-      </button>
-      {open && (
-        <div style={{ padding: '4px 20px 20px' }}>
-          {children}
-        </div>
-      )}
+    <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: s.color, background: s.bg }}>
+      {s.label}
+    </span>
+  );
+}
+
+function EmptyState({ icon: Icon, title, subtitle }: { icon: React.ElementType; title: string; subtitle: string }) {
+  return (
+    <div style={{ padding: '48px 24px', textAlign: 'center' }}>
+      <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--bg-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+        <Icon size={22} color="var(--fg-muted)" />
+      </div>
+      <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>{title}</p>
+      <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--fg-muted)' }}>{subtitle}</p>
     </div>
   );
 }
@@ -112,53 +87,48 @@ function AccordionSection({
 // ─── Main view ────────────────────────────────────────────────────────────────
 
 export default function AIAgentsView() {
-  const [tab, setTab]                   = useState<Tab>('agents');
-  const [agents, setAgents]             = useState<AIAgent[]>([]);
-  const [selectedId, setSelectedId]     = useState('');
-  const [agentDraft, setAgentDraft]     = useState<Partial<AIAgent>>(emptyAgent);
-  const [logs, setLogs]                 = useState<AIInteractionLog[]>([]);
-  const [query, setQuery]               = useState('');
-  const [loading, setLoading]           = useState(false);
-  const [saving, setSaving]             = useState(false);
-  const [openSections, setOpenSections] = useState<Set<SectionKey>>(new Set(['identity']));
+  const [tab, setTab]           = useState<Tab>('number');
+  const [phoneNums, setPhoneNums] = useState<WhatsAppPhoneNumber[]>([]);
+  const [templates, setTemplates] = useState<WppTemplate[]>([]);
+  const [agent, setAgent]       = useState<AIAgent | null>(null);
+  const [agentDraft, setAgentDraft] = useState<Partial<AIAgent>>({});
+  const [loading, setLoading]   = useState(false);
+  const [saving, setSaving]     = useState(false);
+  const [error, setError]       = useState('');
+  const [templateQuery, setTemplateQuery] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Chat preview state
-  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([{
-    role: 'assistant',
-    text: 'Olá! Sou a Lara da AutoForce. Vi que você se interessou pela nossa plataforma. Posso fazer algumas perguntas rápidas pra te ajudar melhor?',
-    time: nowTime(),
-  }]);
-  const [chatInput, setChatInput]     = useState('');
-  const [chatLoading, setChatLoading] = useState(false);
-  const chatEndRef                    = useRef<HTMLDivElement>(null);
+  const provider    = String(agentDraft.defaultProvider || 'gemini');
+  const modelOptions = provider === 'openai' ? OPENAI_MODELS : GEMINI_MODELS;
 
-  const selectedAgent = useMemo(() => agents.find(a => a.id === selectedId), [agents, selectedId]);
-  const provider      = String(agentDraft.defaultProvider || 'gemini');
-  const modelOptions  = provider === 'openai' ? OPENAI_MODELS : GEMINI_MODELS;
+  const asLines   = (v: unknown) => Array.isArray(v) ? v.join('\n') : '';
+  const fromLines = (v: string) => v.split('\n').map(s => s.trim()).filter(Boolean);
 
-  const filteredAgents = useMemo(() => {
-    const term = query.toLowerCase().trim();
-    if (!term) return agents;
-    return agents.filter(a =>
-      [a.name, a.description, a.objective].filter(Boolean).join(' ').toLowerCase().includes(term)
+  const filteredTemplates = useMemo(() => {
+    const q = templateQuery.toLowerCase().trim();
+    if (!q) return templates;
+    return templates.filter(t =>
+      [t.name, t.category, t.language, t.status].join(' ').toLowerCase().includes(q)
     );
-  }, [agents, query]);
+  }, [templates, templateQuery]);
 
   const loadAll = async () => {
     setLoading(true);
+    setError('');
     try {
-      const [agentList, logList] = await Promise.all([
-        DataService.listAIAgents(),
-        DataService.listAIInteractionLogs({ limit: 30 }),
+      const [nums, tpls, agents] = await Promise.all([
+        DataService.getWhatsAppPhoneNumbers().catch(() => [] as WhatsAppPhoneNumber[]),
+        DataService.getWhatsAppTemplates().catch(() => [] as WppTemplate[]),
+        DataService.listAIAgents().catch(() => [] as AIAgent[]),
       ]);
-      setAgents(agentList);
-      setLogs(logList);
-      if (!selectedId && agentList[0]) {
-        setSelectedId(agentList[0].id);
-        setAgentDraft(agentList[0]);
+      setPhoneNums(nums);
+      setTemplates(tpls);
+      if (agents[0]) {
+        setAgent(agents[0]);
+        setAgentDraft(agents[0]);
       }
     } catch (e) {
-      console.error(e);
+      setError('Erro ao carregar dados do WhatsApp.');
     } finally {
       setLoading(false);
     }
@@ -166,44 +136,17 @@ export default function AIAgentsView() {
 
   useEffect(() => { void loadAll(); }, []);
 
-  useEffect(() => {
-    if (selectedAgent) setAgentDraft(selectedAgent);
-  }, [selectedAgent?.id]);
-
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMsgs]);
-
-  const toggleSection = (key: SectionKey) =>
-    setOpenSections(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
-
-  const selectAgent = (agent: AIAgent) => {
-    setSelectedId(agent.id);
-    setAgentDraft(agent);
-  };
-
-  const newAgent = () => {
-    setSelectedId('');
-    setAgentDraft({ ...emptyAgent });
-  };
-
   const saveAgent = async () => {
+    if (!agent) return;
     setSaving(true);
     try {
       const payload = {
         ...agentDraft,
         discoveryQuestions: fromLines(asLines(agentDraft.discoveryQuestions)),
       };
-      const saved = selectedId
-        ? await DataService.updateAIAgent(selectedId, payload)
-        : await DataService.createAIAgent(payload);
-      setSelectedId(saved.id);
+      const saved = await DataService.updateAIAgent(agent.id, payload);
+      setAgent(saved);
       setAgentDraft(saved);
-      await loadAll();
     } catch (e) {
       console.error(e);
     } finally {
@@ -211,61 +154,39 @@ export default function AIAgentsView() {
     }
   };
 
-  const sendChat = () => {
-    const text = chatInput.trim();
-    if (!text || chatLoading) return;
-    setChatInput('');
-    setChatMsgs(prev => [...prev, { role: 'user', text, time: nowTime() }]);
-    setChatLoading(true);
-    setTimeout(() => {
-      setChatMsgs(prev => [...prev, {
-        role: 'assistant',
-        text: 'Qual o principal desafio da sua operação de marketing hoje?',
-        time: nowTime(),
-      }]);
-      setChatLoading(false);
-    }, 1200);
-  };
-
-  const resetChat = () => {
-    setChatMsgs([{
-      role: 'assistant',
-      text: 'Olá! Sou a Lara da AutoForce. Vi que você se interessou pela nossa plataforma. Posso fazer algumas perguntas rápidas pra te ajudar melhor?',
-      time: nowTime(),
-    }]);
-  };
-
-  // ─── Render ─────────────────────────────────────────────────────────────────
+  const tabs: Array<{ id: Tab; label: string; icon: React.ElementType }> = [
+    { id: 'number',    label: 'Número',           icon: Phone },
+    { id: 'templates', label: 'Templates da Meta', icon: MessageSquare },
+    { id: 'agent',     label: 'Agente IA',         icon: BrainCircuit },
+  ];
 
   return (
-    <div style={{ padding: '24px 28px 64px', maxWidth: 1480, margin: '0 auto' }} className="animate-fade-in-up">
+    <div style={{ padding: '24px 28px 64px', maxWidth: 1100, margin: '0 auto' }} className="animate-fade-in-up">
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--fg-primary)', margin: 0 }}>IA / Agentes</h1>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--fg-primary)', margin: 0 }}>WhatsApp</h1>
           <p style={{ fontSize: 13, color: 'var(--fg-muted)', marginTop: 4 }}>
-            Configure o modelo, objetivo e perguntas de qualificação de cada agente.
+            Gerenciamento do número, templates da Meta e configurações do agente Lara.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" onClick={loadAll}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', fontSize: 13, fontWeight: 600, color: 'var(--fg-secondary)', cursor: 'pointer' }}>
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Atualizar
-          </button>
-          <button type="button" onClick={() => { newAgent(); setTab('agents'); }}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', fontSize: 13, fontWeight: 700, color: 'white', cursor: 'pointer' }}>
-            <Plus size={14} /> Novo agente
-          </button>
-        </div>
+        <button type="button" onClick={loadAll}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', fontSize: 13, fontWeight: 600, color: 'var(--fg-secondary)', cursor: 'pointer' }}>
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Atualizar
+        </button>
       </div>
+
+      {error && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 8, background: '#fee2e2', border: '1px solid #fca5a5', marginBottom: 16 }}>
+          <AlertCircle size={14} color="#dc2626" />
+          <span style={{ fontSize: 13, color: '#dc2626' }}>{error}</span>
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
-        {([
-          { id: 'agents', label: 'Agentes',      icon: BrainCircuit },
-          { id: 'logs',   label: 'Logs e memória', icon: FileText },
-        ] as const).map(t => {
+        {tabs.map(t => {
           const Icon   = t.icon;
           const active = tab === t.id;
           return (
@@ -284,108 +205,170 @@ export default function AIAgentsView() {
         })}
       </div>
 
-      {/* ── Agents tab ─────────────────────────────────────────────────────────── */}
-      {tab === 'agents' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr 268px', gap: 16, alignItems: 'flex-start' }}>
+      {/* ── Número ──────────────────────────────────────────────────────────────── */}
+      {tab === 'number' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          {/* Sidebar: agent list */}
-          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', position: 'sticky', top: 24 }}>
-            <div style={{ padding: 10, borderBottom: '1px solid var(--border)' }}>
-              <div style={{ position: 'relative' }}>
-                <Search size={12} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-subtle)', pointerEvents: 'none' }} />
-                <input value={query} onChange={e => setQuery(e.target.value)}
-                  placeholder="Buscar agente..."
-                  style={{ ...iStyle, paddingLeft: 28, fontSize: 12, background: 'var(--bg-subtle)' }} />
+          {/* Connected numbers */}
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)' }}>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>Número conectado</p>
+              <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>Número de telefone registrado na Meta Business API.</p>
+            </div>
+
+            {loading ? (
+              <div style={{ padding: '32px', textAlign: 'center' }}>
+                <RefreshCw size={20} className="animate-spin" color="var(--fg-muted)" />
               </div>
-            </div>
-
-            <div style={{ padding: '6px 0' }}>
-              {filteredAgents.map(agent => {
-                const active = agent.id === selectedId;
-                const isNew  = (agent as any).isActive === false;
+            ) : phoneNums.length === 0 ? (
+              <EmptyState icon={Smartphone} title="Nenhum número encontrado" subtitle="Verifique se WHATSAPP_ACCESS_TOKEN e WHATSAPP_BUSINESS_ACCOUNT_ID estão configurados no Railway." />
+            ) : (
+              phoneNums.map(num => {
+                const q = QUALITY_LABELS[num.quality_rating] ?? QUALITY_LABELS['UNKNOWN'];
                 return (
-                  <button key={agent.id} type="button" onClick={() => selectAgent(agent)}
-                    style={{
-                      display: 'block', width: '100%', textAlign: 'left',
-                      padding: '10px 14px', background: active ? 'var(--accent-soft)' : 'transparent',
-                      border: 'none', cursor: 'pointer',
-                      borderLeft: active ? '3px solid var(--accent)' : '3px solid transparent',
-                    }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 28, height: 28, borderRadius: 8, background: active ? 'var(--accent)' : 'var(--bg-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <Bot size={13} color={active ? 'white' : 'var(--fg-muted)'} />
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: active ? 'var(--accent)' : 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {agent.name}
-                        </p>
-                        <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)' }}>
-                          <span style={{ color: isNew ? 'var(--fg-subtle)' : '#22c55e' }}>●</span>
-                          {' '}{isNew ? 'Rascunho' : 'Ativo'} · {agent.defaultProvider || 'gemini'}
-                        </p>
-                      </div>
+                  <div key={num.id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+                    <div style={{ width: 44, height: 44, borderRadius: 12, background: '#25d366', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <Phone size={20} color="white" />
                     </div>
-                  </button>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--fg-primary)' }}>{num.display_phone_number}</p>
+                      <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--fg-muted)' }}>{num.verified_name}</p>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end' }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: q.color, display: 'inline-block' }} />
+                        <span style={{ fontSize: 12, fontWeight: 600, color: q.color }}>{q.label}</span>
+                      </div>
+                      <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--fg-subtle)', fontFamily: 'monospace' }}>ID: {num.id}</p>
+                    </div>
+                  </div>
                 );
-              })}
-              {filteredAgents.length === 0 && (
-                <p style={{ padding: '12px 14px', fontSize: 12, color: 'var(--fg-muted)', margin: 0 }}>
-                  Nenhum agente encontrado.
-                </p>
-              )}
-            </div>
+              })
+            )}
+          </div>
 
-            <div style={{ padding: '8px 10px', borderTop: '1px solid var(--border)' }}>
-              <button type="button" onClick={newAgent}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px dashed var(--border)', background: 'transparent', fontSize: 12, color: 'var(--fg-muted)', cursor: 'pointer', fontWeight: 500 }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--fg-muted)'; }}>
-                <Plus size={12} /> Novo agente
-              </button>
+          {/* Env var reference */}
+          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)' }}>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>Variáveis de ambiente (Railway)</p>
+              <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>Configure no painel do Railway em Variables.</p>
+            </div>
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {[
+                { key: 'WHATSAPP_ACCESS_TOKEN',         desc: 'Token de acesso permanente da Meta Business API' },
+                { key: 'WHATSAPP_BUSINESS_ACCOUNT_ID',  desc: 'ID da conta de negócios do WhatsApp (WABA ID)' },
+                { key: 'WHATSAPP_PHONE_NUMBER_ID',       desc: 'ID do número de telefone (Phone Number ID)' },
+                { key: 'WHATSAPP_WEBHOOK_VERIFY_TOKEN',  desc: 'Token de verificação do webhook Meta' },
+                { key: 'CLOSER_EMAILS',                  desc: 'Emails dos closers para agendamento de reunião (separados por vírgula)' },
+              ].map(v => (
+                <div key={v.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                  <code style={{ padding: '3px 8px', borderRadius: 6, background: 'var(--bg-subtle)', fontSize: 12, fontFamily: 'monospace', color: 'var(--accent)', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                    {v.key}
+                  </code>
+                  <span style={{ fontSize: 13, color: 'var(--fg-muted)', paddingTop: 2 }}>{v.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Templates ────────────────────────────────────────────────────────────── */}
+      {tab === 'templates' && (
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+          <div style={{ padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>Templates da Meta</p>
+              <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>
+                {templates.length} template{templates.length !== 1 ? 's' : ''} cadastrado{templates.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+            <div style={{ position: 'relative' }}>
+              <Search size={12} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-subtle)', pointerEvents: 'none' }} />
+              <input value={templateQuery} onChange={e => setTemplateQuery(e.target.value)}
+                placeholder="Buscar template..."
+                style={{ ...iStyle, paddingLeft: 28, width: 220, fontSize: 12 }} />
             </div>
           </div>
 
-          {/* Main: accordion form */}
-          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-            {/* Panel header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)' }}>
-              <div>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: 'var(--fg-primary)' }}>
-                  {selectedId ? (agentDraft.name || 'Editar agente') : 'Novo agente'}
-                </p>
-                <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-muted)' }}>
-                  Configurações aplicadas em tempo de execução pelo agente.
-                </p>
-              </div>
-              <button type="button" onClick={saveAgent} disabled={saving}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
-                <Check size={13} /> {saving ? 'Salvando...' : 'Salvar agente'}
-              </button>
+          {loading ? (
+            <div style={{ padding: '32px', textAlign: 'center' }}>
+              <RefreshCw size={20} className="animate-spin" color="var(--fg-muted)" />
             </div>
+          ) : filteredTemplates.length === 0 ? (
+            <EmptyState icon={MessageSquare} title="Nenhum template encontrado" subtitle="Crie templates no Meta Business Manager e eles aparecerão aqui." />
+          ) : (
+            filteredTemplates.map(tpl => {
+              const bodyComp = tpl.components.find(c => c.type === 'BODY');
+              const headerComp = tpl.components.find(c => c.type === 'HEADER');
+              const isExpanded = expandedId === tpl.id;
 
-            {/* Accordion: Identidade */}
-            <AccordionSection sectionKey="identity" open={openSections.has('identity')} onToggle={() => toggleSection('identity')}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <Field label="Nome do agente">
-                    <input value={agentDraft.name || ''} onChange={e => setAgentDraft(d => ({ ...d, name: e.target.value }))}
-                      placeholder="Ex: Lara — SDR AutoForce" style={iStyle} />
-                  </Field>
-                  <Field label="Descrição">
-                    <input value={agentDraft.description || ''} onChange={e => setAgentDraft(d => ({ ...d, description: e.target.value }))}
-                      placeholder="Pré-qualificação de leads inbound via WhatsApp" style={iStyle} />
-                  </Field>
+              return (
+                <div key={tpl.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <button type="button" onClick={() => setExpandedId(isExpanded ? null : tpl.id)}
+                    style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '14px 20px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', gap: 14 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <strong style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-primary)', fontFamily: 'monospace' }}>{tpl.name}</strong>
+                        <StatusBadge status={tpl.status} />
+                        <span style={{ fontSize: 11, color: 'var(--fg-muted)', padding: '2px 7px', borderRadius: 99, background: 'var(--bg-subtle)', border: '1px solid var(--border)' }}>
+                          {CATEGORY_LABELS[tpl.category] ?? tpl.category}
+                        </span>
+                        <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{tpl.language}</span>
+                      </div>
+                      {!isExpanded && bodyComp?.text && (
+                        <p style={{ margin: '5px 0 0', fontSize: 12, color: 'var(--fg-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 600 }}>
+                          {bodyComp.text}
+                        </p>
+                      )}
+                    </div>
+                    <ChevronDown size={14} color="var(--fg-muted)" style={{ transition: 'transform .2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', flexShrink: 0 }} />
+                  </button>
+
+                  {isExpanded && (
+                    <div style={{ padding: '0 20px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {headerComp?.text && (
+                        <div style={{ padding: '8px 12px', borderRadius: 8, background: 'var(--bg-subtle)', border: '1px solid var(--border)' }}>
+                          <p style={{ margin: '0 0 4px', fontSize: 10, fontWeight: 700, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: 1 }}>Header</p>
+                          <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-primary)', lineHeight: 1.5 }}>{headerComp.text}</p>
+                        </div>
+                      )}
+                      {bodyComp?.text && (
+                        <div style={{ padding: '8px 12px', borderRadius: 8, background: 'var(--bg-subtle)', border: '1px solid var(--border)' }}>
+                          <p style={{ margin: '0 0 4px', fontSize: 10, fontWeight: 700, color: 'var(--fg-subtle)', textTransform: 'uppercase', letterSpacing: 1 }}>Body</p>
+                          <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-primary)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{bodyComp.text}</p>
+                        </div>
+                      )}
+                      <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)', fontFamily: 'monospace' }}>ID: {tpl.id}</p>
+                    </div>
+                  )}
                 </div>
-                <Field label="Objetivo">
-                  <textarea rows={3} value={agentDraft.objective || ''} onChange={e => setAgentDraft(d => ({ ...d, objective: e.target.value }))}
-                    placeholder="Qualificar, entender a dor do lead, decidir MQL/nutrição e recomendar o próximo passo."
-                    style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
-                </Field>
-              </div>
-            </AccordionSection>
+              );
+            })
+          )}
+        </div>
+      )}
 
-            {/* Accordion: Modelo de IA */}
-            <AccordionSection sectionKey="model" open={openSections.has('model')} onToggle={() => toggleSection('model')}>
+      {/* ── Agente IA ────────────────────────────────────────────────────────────── */}
+      {tab === 'agent' && (
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', maxWidth: 640 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)' }}>
+            <div>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>
+                {agentDraft.name || 'Agente IA'}
+              </p>
+              <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>Modelo e configurações de execução.</p>
+            </div>
+            <button type="button" onClick={saveAgent} disabled={saving || !agent}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: (saving || !agent) ? 0.6 : 1 }}>
+              <Check size={13} /> {saving ? 'Salvando...' : 'Salvar'}
+            </button>
+          </div>
+
+          {!agent ? (
+            <EmptyState icon={BrainCircuit} title="Nenhum agente configurado" subtitle="Configure um agente no banco de dados para habilitar edição aqui." />
+          ) : (
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <Field label="Provider">
                   <select value={provider}
@@ -403,125 +386,29 @@ export default function AIAgentsView() {
                   </select>
                 </Field>
               </div>
-            </AccordionSection>
 
-            {/* Accordion: Perguntas de descoberta */}
-            <AccordionSection sectionKey="discovery" open={openSections.has('discovery')} onToggle={() => toggleSection('discovery')}>
+              <Field label="Objetivo do agente">
+                <textarea rows={3} value={agentDraft.objective || ''}
+                  onChange={e => setAgentDraft(d => ({ ...d, objective: e.target.value }))}
+                  style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
+              </Field>
+
               <Field label="Perguntas de qualificação" note="(1 por linha)">
-                <textarea rows={6} value={asLines(agentDraft.discoveryQuestions)}
+                <textarea rows={5} value={asLines(agentDraft.discoveryQuestions)}
                   onChange={e => setAgentDraft(d => ({ ...d, discoveryQuestions: fromLines(e.target.value) }))}
                   placeholder={'Qual o tamanho do seu time de vendas?\nVocê já usa algum CRM hoje?\nQuantos leads você recebe por mês?'}
                   style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
               </Field>
-            </AccordionSection>
-          </div>
 
-          {/* Preview: chat simulation */}
-          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'sticky', top: 24 }}>
-            {/* Preview header */}
-            <div style={{ padding: '11px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Bot size={13} color="white" />
-                </div>
-                <div>
-                  <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: 'var(--fg-primary)' }}>
-                    Testar agente · <span style={{ fontWeight: 400, color: 'var(--fg-muted)' }}>preview</span>
-                  </p>
-                  <p style={{ margin: 0, fontSize: 10, color: 'var(--fg-subtle)' }}>WhatsApp</p>
-                </div>
-              </div>
-              <button type="button" onClick={resetChat}
-                style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--fg-muted)', padding: '3px 8px', borderRadius: 6 }}>
-                <RotateCcw size={10} /> Reiniciar
-              </button>
-            </div>
-
-            {/* Chat messages */}
-            <div style={{ padding: '10px 8px', display: 'flex', flexDirection: 'column', gap: 6, height: 260, overflowY: 'auto', background: '#f0f2f5' }}>
-              {chatMsgs.map((msg, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                  <div style={{
-                    maxWidth: '85%', padding: '7px 10px',
-                    borderRadius: msg.role === 'user' ? '12px 2px 12px 12px' : '2px 12px 12px 12px',
-                    background: msg.role === 'user' ? '#dcf8c6' : 'white',
-                    fontSize: 12, color: '#111', lineHeight: 1.45,
-                    boxShadow: '0 1px 2px rgba(0,0,0,.07)',
-                  }}>
-                    {msg.text}
-                    <p style={{ margin: '3px 0 0', fontSize: 10, color: '#999', textAlign: 'right' }}>{msg.time}</p>
-                  </div>
-                </div>
-              ))}
-              {chatLoading && (
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <div style={{ padding: '8px 12px', background: 'white', borderRadius: '2px 12px 12px 12px', fontSize: 14, color: '#aaa', boxShadow: '0 1px 2px rgba(0,0,0,.07)', letterSpacing: 2 }}>
-                    •••
-                  </div>
-                </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-
-            {/* Chat input */}
-            <div style={{ padding: '7px 8px', borderTop: '1px solid var(--border)', display: 'flex', gap: 6, alignItems: 'center', background: 'white' }}>
-              <input
-                value={chatInput}
-                onChange={e => setChatInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && sendChat()}
-                placeholder="Simular mensagem do lead..."
-                style={{ flex: 1, padding: '6px 10px', fontSize: 12, background: '#f0f2f5', border: 'none', borderRadius: 18, outline: 'none', color: '#111' }}
-              />
-              <button type="button" onClick={sendChat} disabled={!chatInput.trim() || chatLoading}
-                style={{ width: 28, height: 28, borderRadius: '50%', background: chatInput.trim() ? 'var(--accent)' : '#ccc', border: 'none', cursor: chatInput.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background .15s' }}>
-                <Send size={12} color="white" />
-              </button>
-            </div>
-
-            {/* Stats footer */}
-            <div style={{ padding: '9px 14px', borderTop: '1px solid var(--border)', background: 'var(--bg-subtle)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {[
-                { label: 'Tokens no prompt',          value: '~1.240' },
-                { label: 'Custo estimado / conversa', value: 'R$ 0,03' },
-                { label: 'Tempo médio de resposta',    value: '1,8s' },
-              ].map(s => (
-                <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>{s.label}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-secondary)' }}>{s.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Logs tab ────────────────────────────────────────────────────────────── */}
-      {tab === 'logs' && (
-        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-          <div style={{ padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)' }}>
-            <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>Últimas decisões da IA</p>
-            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>Histórico do prompt e resultado para cada lead.</p>
-          </div>
-          <div>
-            {logs.map(log => (
-              <div key={log.id} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr auto', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border)', alignItems: 'center' }}>
-                <div>
-                  <strong style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-primary)', display: 'block' }}>{log.leadEmail}</strong>
-                  <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>{log.agent?.name || log.agentId}</span>
-                </div>
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>{log.provider} / {log.model}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: log.error ? '#ef4444' : '#22c55e' }}>
-                  {log.decision || 'sem decisão'}{log.confidence !== null ? ` — ${Math.round((log.confidence || 0) * 100)}%` : ''}
-                </span>
-                <span style={{ fontSize: 11, color: 'var(--fg-subtle)', whiteSpace: 'nowrap' }}>
-                  {new Date(log.createdAt).toLocaleString('pt-BR')}
+              {/* Status do agente */}
+              <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--bg-subtle)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <CheckCircle size={14} color="#16a34a" />
+                <span style={{ fontSize: 13, color: 'var(--fg-secondary)' }}>
+                  Agente <strong>{agentDraft.name}</strong> ativo · rodando em <strong>{agentDraft.defaultProvider || 'gemini'} / {agentDraft.defaultModel || '—'}</strong>
                 </span>
               </div>
-            ))}
-            {logs.length === 0 && (
-              <p style={{ padding: '24px 20px', fontSize: 13, color: 'var(--fg-muted)', textAlign: 'center' }}>Nenhum log de IA ainda.</p>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>

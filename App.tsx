@@ -48,6 +48,7 @@ import {
   Info,
   Workflow,
   Bot,
+  MessageSquare,
 } from 'lucide-react';
 import { FunnelChart, FunnelStep } from './components/Charts';
 
@@ -942,7 +943,7 @@ const AppContent: React.FC = () => {
       label: 'AUTOMACAO',
       items: [
         { label: 'Automacao', path: '/automation', icon: Workflow },
-        { label: 'IA / Agentes', path: '/ai-agents', icon: Bot },
+        { label: 'WhatsApp', path: '/ai-agents', icon: MessageSquare },
       ],
     },
     {

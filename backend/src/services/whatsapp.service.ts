@@ -148,7 +148,7 @@ export async function fetchWhatsAppTemplates(phoneNumberId?: string): Promise<Wh
 
   const url = `https://graph.facebook.com/v19.0/${wabaId}/message_templates?limit=100&fields=id,name,status,category,language,components`;
   const data = await metaGet<{ data?: WhatsAppTemplate[] }>(url, accessToken);
-  return (data.data ?? []).filter(t => t.status === 'APPROVED');
+  return data.data ?? [];
 }
 
 export async function listWhatsAppConversationByLead(leadId: string): Promise<WhatsAppConversationMessage[]> {
