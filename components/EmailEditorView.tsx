@@ -90,8 +90,8 @@ const SetupStep: React.FC<SetupStepProps> = ({ form, onChange, onContinue, onBac
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-base)' }}>
       {/* Top bar */}
       <div style={{ height: HEADER_H, display: 'flex', alignItems: 'center', padding: '0 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', flexShrink: 0 }}>
-        <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer' }}>
-          <ArrowLeft size={14}/> Voltar
+        <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 14px', color: 'var(--fg-base)', fontSize: 13, cursor: 'pointer' }}>
+          <ArrowLeft size={14}/> {isEdit ? 'Cancelar edição' : 'Cancelar'}
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 auto', fontSize: 13 }}>
           <span style={{ fontWeight: 700, color: 'var(--accent)' }}>Configuração</span>
@@ -180,7 +180,11 @@ const SetupStep: React.FC<SetupStepProps> = ({ form, onChange, onContinue, onBac
             </div>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 24 }}>
+            <button onClick={onBack}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: '1px solid var(--border)', borderRadius: 10, padding: '11px 22px', color: 'var(--fg-muted)', fontSize: 14, cursor: 'pointer' }}>
+              <ArrowLeft size={15}/> {isEdit ? 'Cancelar edição' : 'Cancelar'}
+            </button>
             <button onClick={handleContinue}
               style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 28px', borderRadius: 10, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 10px rgba(69,108,236,0.3)' }}>
               Continuar para o editor <ChevronRight size={16}/>
@@ -283,7 +287,7 @@ const EmailEditorView: React.FC = () => {
         form={form}
         onChange={setForm}
         onContinue={() => setStep(2)}
-        onBack={() => navigate('/emails')}
+        onBack={() => navigate(isEdit && id ? `/emails/${id}` : '/emails')}
         isEdit={isEdit}
       />
     );

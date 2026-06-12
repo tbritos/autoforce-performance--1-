@@ -2,15 +2,29 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, Edit3, Copy, Send, RefreshCw,
-  CheckCircle, AlertCircle, Eye,
+  CheckCircle, AlertCircle, Eye, Mail, MousePointerClick,
+  TrendingUp, Package, X, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { apiClient } from '../services/apiClient';
 
 type EmailStatus = 'draft' | 'sent' | 'scheduled' | 'automatic';
+type SendStatus  = 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'failed';
 
 interface TemplateStats {
   sent: number; delivered: number; opened: number;
-  clicked: number; bounced: number; openRate: number; clickRate: number;
+  clicked: number; bounced: number;
+  openRate: number; clickRate: number; bounceRate: number;
+}
+
+interface SendRecord {
+  id: string;
+  leadEmail: string;
+  toEmail: string;
+  status: SendStatus;
+  openedAt: string | null;
+  clickedAt: string | null;
+  bouncedAt: string | null;
+  sentAt: string;
 }
 
 interface EmailTemplate {
@@ -20,13 +34,23 @@ interface EmailTemplate {
   audienceType: string | null; audienceValue: string | null; audienceCount: number | null;
   isActive: boolean; createdAt: string; updatedAt: string;
   stats: TemplateStats;
+  sends: SendRecord[];
 }
 
 const STATUS_CFG: Record<EmailStatus, { label: string; color: string; dot: string }> = {
-  sent:      { label: 'Enviado',    color: '#059669', dot: '#10b981' },
-  scheduled: { label: 'Agendado',  color: '#d97706', dot: '#f59e0b' },
-  automatic: { label: 'Automático',color: '#2563eb', dot: '#3b82f6' },
-  draft:     { label: 'Rascunho',  color: '#6b7280', dot: '#9ca3af' },
+  sent:      { label: 'Enviado',     color: '#059669', dot: '#10b981' },
+  scheduled: { label: 'Agendado',   color: '#d97706', dot: '#f59e0b' },
+  automatic: { label: 'Automático', color: '#2563eb', dot: '#3b82f6' },
+  draft:     { label: 'Rascunho',   color: '#6b7280', dot: '#9ca3af' },
+};
+
+const SEND_STATUS_CFG: Record<SendStatus, { label: string; bg: string; color: string }> = {
+  clicked:   { label: 'Clicado',    bg: '#d1fae5', color: '#059669' },
+  opened:    { label: 'Aberto',     bg: '#dbeafe', color: '#2563eb' },
+  delivered: { label: 'Entregue',   bg: '#f3f4f6', color: '#374151' },
+  sent:      { label: 'Enviado',    bg: '#f3f4f6', color: '#6b7280' },
+  bounced:   { label: 'Bounced',    bg: '#fee2e2', color: '#dc2626' },
+  failed:    { label: 'Falhou',     bg: '#fee2e2', color: '#dc2626' },
 };
 
 const audienceLabel = (t: EmailTemplate) => {
@@ -36,6 +60,36 @@ const audienceLabel = (t: EmailTemplate) => {
   return '—';
 };
 const audienceSub = (t: EmailTemplate) => t.audienceValue ?? (t.audienceType === 'all' ? 'Toda a base' : '');
+
+const fmt = (d: string | null) => {
+  if (!d) return '—';
+  return new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+};
+
+const StatCard: React.FC<{
+  icon: React.ReactNode;
+  label: string;
+  value: number | string;
+  rate?: number | string;
+  color: string;
+  rateLabel?: string;
+}> = ({ icon, label, value, rate, color, rateLabel }) => (
+  <div style={{
+    background: 'var(--bg-card)', border: '1px solid var(--border)',
+    borderRadius: 12, padding: '16px 18px', position: 'relative', overflow: 'hidden',
+  }}>
+    <div style={{ position: 'absolute', top: 12, right: 14, opacity: 0.1, color }}>
+      {icon}
+    </div>
+    <div style={{ fontSize: 28, fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
+    <div style={{ fontSize: 12, color: 'var(--fg-secondary)', marginTop: 4 }}>{label}</div>
+    {rate !== undefined && (
+      <div style={{ fontSize: 12, fontWeight: 700, color, marginTop: 6, display: 'flex', alignItems: 'center', gap: 3 }}>
+        <TrendingUp size={11}/> {rate}% {rateLabel ?? 'taxa'}
+      </div>
+    )}
+  </div>
+);
 
 const EmailTemplateDetailView: React.FC = () => {
   const { id }     = useParams<{ id: string }>();
@@ -49,6 +103,7 @@ const EmailTemplateDetailView: React.FC = () => {
   const [testDone, setTestDone]   = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [showSends, setShowSends]     = useState(true);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -111,10 +166,13 @@ const EmailTemplateDetailView: React.FC = () => {
     );
   }
 
-  const s = STATUS_CFG[template.status] ?? STATUS_CFG.draft;
+  const s    = STATUS_CFG[template.status] ?? STATUS_CFG.draft;
+  const st   = template.stats;
+  const hasSends = template.sends && template.sends.length > 0;
+  const deliveryRate = st.sent > 0 ? Number((st.delivered / st.sent * 100).toFixed(1)) : 0;
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 900, margin: '0 auto' }}>
+    <div style={{ padding: '28px 32px', maxWidth: 1000, margin: '0 auto' }}>
       <button onClick={() => navigate('/emails')} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer', marginBottom: 20 }}>
         <ArrowLeft size={14}/> Voltar para E-mails
       </button>
@@ -122,8 +180,20 @@ const EmailTemplateDetailView: React.FC = () => {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, gap: 16 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>{template.name}</h2>
-          <div style={{ fontSize: 13, color: 'var(--fg-muted)', marginTop: 4 }}>{template.subject}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>{template.name}</h2>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+              background: `${s.dot}22`, color: s.color,
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.dot, display: 'inline-block' }}/>
+              {s.label}
+            </span>
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--fg-muted)' }}>
+            {template.subject}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
           <button onClick={() => navigate(`/emails/${template.id}/edit`)}
@@ -137,54 +207,114 @@ const EmailTemplateDetailView: React.FC = () => {
         </div>
       </div>
 
-      {/* Stats */}
-      {template.stats.sent > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
-          {[
-            { label: 'Enviados',  value: template.stats.sent,    color: '#6366f1' },
-            { label: 'Abertos',   value: template.stats.opened,  color: '#10b981', rate: template.stats.openRate },
-            { label: 'Clicados',  value: template.stats.clicked, color: '#f59e0b', rate: template.stats.clickRate },
-            { label: 'Bounced',   value: template.stats.bounced, color: '#ef4444' },
-          ].map(m => (
-            <div key={m.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
-              <div style={{ fontSize: 24, fontWeight: 800, color: m.color }}>{m.value}</div>
-              <div style={{ fontSize: 12, color: 'var(--fg-secondary)', marginTop: 2 }}>{m.label}</div>
-              {m.rate !== undefined && <div style={{ fontSize: 11, color: m.color, marginTop: 4, fontWeight: 700 }}>{m.rate}% taxa</div>}
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Stats grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24 }}>
+        <StatCard icon={<Send size={32}/>}              label="Enviados"  value={st.sent}      color="#6366f1" />
+        <StatCard icon={<Package size={32}/>}           label="Entregues" value={st.delivered} color="#0ea5e9" rate={deliveryRate}     rateLabel="entrega" />
+        <StatCard icon={<Mail size={32}/>}              label="Abertos"   value={st.opened}    color="#10b981" rate={st.openRate}      rateLabel="abertura" />
+        <StatCard icon={<MousePointerClick size={32}/>} label="Clicados"  value={st.clicked}   color="#f59e0b" rate={st.clickRate}     rateLabel="clique" />
+        <StatCard icon={<X size={32}/>}                 label="Bounced"   value={st.bounced}   color="#ef4444" rate={st.bounceRate}    rateLabel="bounce" />
+      </div>
 
       {/* Info card */}
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 20, marginBottom: 20 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16 }}>
           <div>
-            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>STATUS</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: s.color }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.dot }}/>{s.label}
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>PÚBLICO</div>
+            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Público</div>
             <div style={{ fontSize: 13, fontWeight: 600 }}>{audienceLabel(template)}</div>
             {audienceSub(template) && <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{audienceSub(template)}</div>}
           </div>
           <div>
-            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>REMETENTE</div>
-            <div style={{ fontSize: 13 }}>{template.fromName || 'AutoForce'}</div>
+            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Remetente</div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{template.fromName || 'AutoForce'}</div>
             <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{template.fromEmail || 'padrão'}</div>
           </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Criado em</div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{fmt(template.createdAt)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Atualizado</div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{fmt(template.updatedAt)}</div>
+          </div>
         </div>
+      </div>
+
+      {/* Sends history */}
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, marginBottom: 20, overflow: 'hidden' }}>
+        <button
+          onClick={() => setShowSends(p => !p)}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '14px 20px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+        >
+          <span style={{ fontSize: 14, fontWeight: 700 }}>
+            Histórico de envios
+            {hasSends && (
+              <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 500, color: 'var(--fg-muted)' }}>
+                ({template.sends.length} registro{template.sends.length !== 1 ? 's' : ''})
+              </span>
+            )}
+          </span>
+          {showSends ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+        </button>
+
+        {showSends && (
+          hasSends ? (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-base)' }}>
+                    {['Lead', 'Status', 'Enviado em', 'Aberto em', 'Clicado em'].map(h => (
+                      <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 600, fontSize: 11, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {template.sends.map((send, i) => {
+                    const sc = SEND_STATUS_CFG[send.status] ?? SEND_STATUS_CFG.sent;
+                    return (
+                      <tr key={send.id} style={{ borderTop: '1px solid var(--border)', background: i % 2 === 0 ? 'transparent' : 'var(--bg-base)' }}>
+                        <td style={{ padding: '10px 16px', color: 'var(--fg-base)', fontWeight: 500 }}>
+                          {send.leadEmail}
+                          {send.toEmail !== send.leadEmail && (
+                            <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{send.toEmail}</div>
+                          )}
+                        </td>
+                        <td style={{ padding: '10px 16px' }}>
+                          <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: sc.bg, color: sc.color }}>
+                            {sc.label}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px 16px', color: 'var(--fg-secondary)', whiteSpace: 'nowrap' }}>{fmt(send.sentAt)}</td>
+                        <td style={{ padding: '10px 16px', color: send.openedAt ? '#10b981' : 'var(--fg-muted)', whiteSpace: 'nowrap' }}>
+                          {send.openedAt ? fmt(send.openedAt) : '—'}
+                        </td>
+                        <td style={{ padding: '10px 16px', color: send.clickedAt ? '#f59e0b' : 'var(--fg-muted)', whiteSpace: 'nowrap' }}>
+                          {send.clickedAt ? fmt(send.clickedAt) : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>
+              Nenhum envio registrado ainda.
+            </div>
+          )
+        )}
       </div>
 
       {/* Preview */}
       <div style={{ marginBottom: 20 }}>
         <button onClick={() => setShowPreview(p => !p)}
           style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--accent)', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: 10 }}>
-          <Eye size={13}/> {showPreview ? 'Ocultar preview' : 'Ver preview do email'}
+          <Eye size={13}/> {showPreview ? 'Ocultar preview' : 'Ver preview do e-mail'}
         </button>
         {showPreview && (
-          <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+          <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
             <iframe
               srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:24px;font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;}</style></head><body>${template.body}</body></html>`}
               style={{ width: '100%', minHeight: 400, border: 'none', display: 'block' }}
@@ -195,7 +325,7 @@ const EmailTemplateDetailView: React.FC = () => {
       </div>
 
       {/* Test send */}
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Enviar e-mail de teste</div>
         <div style={{ display: 'flex', gap: 8 }}>
           <input value={testEmail} onChange={e => setTestEmail(e.target.value)}
