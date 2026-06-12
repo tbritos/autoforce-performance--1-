@@ -393,6 +393,13 @@ export async function sendWhatsAppTextFromUI(leadId: string, text: string): Prom
   });
 }
 
+export interface TemplateButton {
+  type: 'QUICK_REPLY' | 'PHONE_NUMBER' | 'URL';
+  text: string;
+  phone_number?: string;
+  url?: string;
+}
+
 export interface CreateTemplateInput {
   name: string;
   category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
@@ -400,6 +407,7 @@ export interface CreateTemplateInput {
   headerText?: string;
   bodyText: string;
   footerText?: string;
+  buttons?: TemplateButton[];
 }
 
 function extractVarCount(text: string): number {
@@ -430,6 +438,20 @@ export async function createWhatsAppTemplate(input: CreateTemplateInput): Promis
 
   if (input.footerText?.trim()) {
     components.push({ type: 'FOOTER', text: input.footerText.trim() });
+  }
+
+  if (input.buttons && input.buttons.length > 0) {
+    const buttons = input.buttons.slice(0, 3).map(btn => {
+      const b: Record<string, unknown> = { type: btn.type, text: btn.text.trim() };
+      if (btn.type === 'PHONE_NUMBER' && btn.phone_number) b.phone_number = btn.phone_number.trim();
+      if (btn.type === 'URL' && btn.url) {
+        b.url = btn.url.trim();
+        // If URL contains {{1}}, provide example
+        if (btn.url.includes('{{1}}')) b.example = ['pagina'];
+      }
+      return b;
+    });
+    components.push({ type: 'BUTTONS', buttons });
   }
 
   const res = await fetch(`https://graph.facebook.com/v19.0/${businessAccountId}/message_templates`, {
