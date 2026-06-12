@@ -151,11 +151,15 @@ export class PipedriveWebhookController {
     const email = primaryEmail(current.person_email ?? current.person_id?.email ?? []);
     const personId = current.person_id?.value ? String(current.person_id.value) : null;
 
-    console.log(`[pipedrive-webhook] looking up lead — email="${email}" personId=${personId}`);
+    const dealId = String(current.id);
 
-    let lead = email
-      ? await prisma.lead.findUnique({ where: { email: email.toLowerCase().trim() } })
-      : null;
+    console.log(`[pipedrive-webhook] looking up lead — email="${email}" personId=${personId} dealId=${dealId}`);
+
+    let lead = await prisma.lead.findFirst({ where: { pipedriveDealId: dealId } });
+
+    if (!lead && email) {
+      lead = await prisma.lead.findUnique({ where: { email: email.toLowerCase().trim() } });
+    }
 
     if (!lead && personId) {
       lead = await prisma.lead.findFirst({ where: { pipedrivePersonId: personId } });
@@ -163,14 +167,13 @@ export class PipedriveWebhookController {
 
     // No matching lead — acknowledge and skip silently
     if (!lead) {
-      console.log(`[pipedrive-webhook] lead NOT FOUND — email="${email}" personId=${personId} — skipping`);
+      console.log(`[pipedrive-webhook] lead NOT FOUND — dealId=${dealId} email="${email}" personId=${personId} — skipping`);
       res.status(200).json({ ok: true, skipped: true });
       return;
     }
 
     console.log(`[pipedrive-webhook] lead found: ${lead.email} (current status: ${lead.status})`);
 
-    const dealId        = String(current.id);
     const dealTitle     = current.title ?? null;
     const dealStatus    = current.status ?? 'open';
     const currentStage  = current.stage_id ?? null;
