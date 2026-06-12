@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus, Search, Mail, Trash2, Edit3, Send, RefreshCw,
-  CheckCircle, AlertCircle, X, LayoutGrid, List,
-  Clock, Zap, Copy, ChevronRight, ArrowLeft, Eye,
+  Plus, Search, Mail, Trash2, Edit3, RefreshCw,
+  AlertCircle, X, LayoutGrid, List,
+  Clock, Zap, Copy, ChevronRight,
 } from 'lucide-react';
 import { apiClient } from '../services/apiClient';
 
@@ -60,12 +60,7 @@ const EmailTemplatesView: React.FC = () => {
   const [search, setSearch]             = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [viewMode, setViewMode]         = useState<'list' | 'grid'>('list');
-  const [selected, setSelected]         = useState<EmailTemplate | null>(null);
   const [error, setError]               = useState<string | null>(null);
-  const [testEmail, setTestEmail]       = useState('');
-  const [testSending, setTestSending]   = useState(false);
-  const [testDone, setTestDone]         = useState(false);
-  const [showPreview, setShowPreview]   = useState(false);
 
   const loadEmails = useCallback(async () => {
     setLoading(true);
@@ -85,7 +80,6 @@ const EmailTemplatesView: React.FC = () => {
     if (!window.confirm(`Excluir "${name}"?`)) return;
     try {
       await apiClient.delete(`/email-templates/${id}`);
-      if (selected?.id === id) setSelected(null);
       await loadEmails();
     } catch { setError('Erro ao excluir'); }
   };
@@ -98,17 +92,6 @@ const EmailTemplatesView: React.FC = () => {
       });
       await loadEmails();
     } catch { setError('Erro ao duplicar'); }
-  };
-
-  const handleTest = async () => {
-    if (!selected || !testEmail.trim()) return;
-    setTestSending(true); setTestDone(false);
-    try {
-      await apiClient.post(`/email-templates/${selected.id}/test`, { toEmail: testEmail.trim() });
-      setTestDone(true);
-      setTimeout(() => setTestDone(false), 4000);
-    } catch { setError('Erro ao enviar teste'); }
-    finally { setTestSending(false); }
   };
 
   // ── Filters ──
@@ -125,98 +108,6 @@ const EmailTemplatesView: React.FC = () => {
     if (search && !e.name.toLowerCase().includes(search.toLowerCase()) && !e.subject.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
-
-  // ── Detail view ──
-  if (selected) {
-    const s = STATUS_CFG[selected.status];
-    return (
-      <div style={{ padding: '28px 32px', maxWidth: 900, margin: '0 auto' }}>
-        <button onClick={() => setSelected(null)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer', marginBottom: 20 }}>
-          <ArrowLeft size={14}/> Voltar para E-mails
-        </button>
-
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, gap: 16 }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>{selected.name}</h2>
-            <div style={{ fontSize: 13, color: 'var(--fg-muted)', marginTop: 4 }}>{selected.subject}</div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            <button onClick={() => navigate(`/emails/${selected.id}/edit`)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-secondary)', fontSize: 13, cursor: 'pointer' }}>
-              <Edit3 size={13}/> Editar
-            </button>
-            <button onClick={() => handleDuplicate(selected)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-secondary)', fontSize: 13, cursor: 'pointer' }}>
-              <Copy size={13}/> Duplicar
-            </button>
-          </div>
-        </div>
-
-        {selected.stats.sent > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
-            {[
-              { label: 'Enviados',  value: selected.stats.sent,    color: '#6366f1' },
-              { label: 'Abertos',   value: selected.stats.opened,  color: '#10b981', rate: selected.stats.openRate },
-              { label: 'Clicados',  value: selected.stats.clicked, color: '#f59e0b', rate: selected.stats.clickRate },
-              { label: 'Bounced',   value: selected.stats.bounced, color: '#ef4444' },
-            ].map(m => (
-              <div key={m.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 16px' }}>
-                <div style={{ fontSize: 24, fontWeight: 800, color: m.color }}>{m.value}</div>
-                <div style={{ fontSize: 12, color: 'var(--fg-secondary)', marginTop: 2 }}>{m.label}</div>
-                {m.rate !== undefined && <div style={{ fontSize: 11, color: m.color, marginTop: 4, fontWeight: 700 }}>{m.rate}% taxa</div>}
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 20, marginBottom: 20 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>STATUS</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: s.color }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.dot }}/>{s.label}
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>PÚBLICO</div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{audienceLabel(selected)}</div>
-              {audienceSub(selected) && <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{audienceSub(selected)}</div>}
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4 }}>REMETENTE</div>
-              <div style={{ fontSize: 13 }}>{selected.fromName || 'AutoForce'}</div>
-              <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{selected.fromEmail || 'padrão'}</div>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ marginBottom: 20 }}>
-          <button onClick={() => setShowPreview(p => !p)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--accent)', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: 10 }}>
-            <Eye size={13}/> {showPreview ? 'Ocultar preview' : 'Ver preview do email'}
-          </button>
-          {showPreview && (
-            <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
-              <iframe
-                srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;padding:24px;font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;}</style></head><body>${selected.body}</body></html>`}
-                style={{ width: '100%', minHeight: 400, border: 'none', display: 'block' }}
-                title="Preview"
-              />
-            </div>
-          )}
-        </div>
-
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Enviar e-mail de teste</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder="email@exemplo.com"
-              style={{ flex: 1, padding: '8px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}/>
-            <button onClick={handleTest} disabled={testSending || !testEmail.trim()}
-              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 16px', borderRadius: 7, border: 'none', background: testDone ? '#10b981' : 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: testSending ? 0.7 : 1, whiteSpace: 'nowrap' }}>
-              {testDone ? <><CheckCircle size={13}/> Enviado!</> : testSending ? <><RefreshCw size={13}/> Enviando...</> : <><Send size={13}/> Enviar Teste</>}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // ── List / Grid view ──
   return (
@@ -302,7 +193,7 @@ const EmailTemplatesView: React.FC = () => {
                 style={{ display: 'grid', gridTemplateColumns: '1fr 140px 180px 200px 100px', padding: '14px 20px', borderBottom: idx < filtered.length - 1 ? '1px solid var(--border)' : 'none', alignItems: 'center', cursor: 'pointer' }}
                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-muted)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                onClick={() => setSelected(email)}>
+                onClick={() => navigate(`/emails/${email.id}`)}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
                     {email.name}<ChevronRight size={12} style={{ color: 'var(--fg-muted)', flexShrink: 0 }}/>
@@ -357,7 +248,7 @@ const EmailTemplatesView: React.FC = () => {
           {filtered.map(email => {
             const s = STATUS_CFG[email.status];
             return (
-              <div key={email.id} onClick={() => setSelected(email)}
+              <div key={email.id} onClick={() => navigate(`/emails/${email.id}`)}
                 style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 18, cursor: 'pointer' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: s.color }}>
