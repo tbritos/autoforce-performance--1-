@@ -59,6 +59,7 @@ interface SetupStepProps {
 
 const SetupStep: React.FC<SetupStepProps> = ({ form, onChange, onContinue, onBack, isEdit }) => {
   const [error, setError] = useState('');
+  const [senderEditing, setSenderEditing] = useState(!form.fromName.trim() || !form.fromEmail.trim());
   const subjectRef = useRef<HTMLInputElement>(null);
 
   const insertVar = (tag: string) => {
@@ -78,7 +79,8 @@ const SetupStep: React.FC<SetupStepProps> = ({ form, onChange, onContinue, onBac
     onContinue();
   };
 
-  const senderDone    = !!(form.fromName.trim() && form.fromEmail.trim());
+  const senderFilled  = !!(form.fromName.trim() && form.fromEmail.trim());
+  const senderDone    = senderFilled && !senderEditing;
   const senderSummary = senderDone ? `${form.fromName} via ${form.fromEmail}` : undefined;
 
   const subjectLen = form.subject.length;
@@ -116,15 +118,21 @@ const SetupStep: React.FC<SetupStepProps> = ({ form, onChange, onContinue, onBac
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <Field label="Nome do remetente">
-                    <Input value={form.fromName} onChange={e => onChange({ ...form, fromName: e.target.value })} placeholder="Ex: Marketing AutoForce"/>
+                    <Input value={form.fromName} onChange={e => onChange({ ...form, fromName: e.target.value })} placeholder="Ex: Marketing AutoForce" autoComplete="off"/>
                   </Field>
                   <Field label="E-mail do remetente" hint="Precisa ser um domínio verificado no Resend">
-                    <Input value={form.fromEmail} onChange={e => onChange({ ...form, fromEmail: e.target.value })} placeholder="Ex: marketing@autoforce.com.br" type="email"/>
+                    <Input value={form.fromEmail} onChange={e => onChange({ ...form, fromEmail: e.target.value })} placeholder="Ex: marketing@updates.autoforce.com" autoComplete="off"/>
                   </Field>
+                  {senderFilled && (
+                    <button onClick={() => setSenderEditing(false)}
+                      style={{ alignSelf: 'flex-start', padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                      Confirmar remetente
+                    </button>
+                  )}
                 </div>
               )}
               {senderDone && (
-                <button onClick={() => onChange({ ...form, fromName: '', fromEmail: '' })}
+                <button onClick={() => setSenderEditing(true)}
                   style={{ marginTop: 10, background: 'none', border: 'none', color: 'var(--accent)', fontSize: 13, cursor: 'pointer', padding: 0 }}>
                   Alterar
                 </button>
