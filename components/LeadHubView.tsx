@@ -408,12 +408,31 @@ const CsvImportModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({
 
 // ─── Main view ────────────────────────────────────────────────────────────────
 
+const CACHE_KEY = 'lead-hub-result-v1';
+const CACHE_TTL = 60_000; // 60s
+
+function readCache(): LeadListResult | null {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw) as { data: LeadListResult; ts: number };
+    if (Date.now() - ts > CACHE_TTL) return null;
+    return data;
+  } catch { return null; }
+}
+
+function writeCache(data: LeadListResult) {
+  try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data, ts: Date.now() })); } catch {}
+}
+
 const LeadHubView: React.FC = () => {
   const navigate = useNavigate();
   const [activeView, setActiveView] = useState<'leads' | 'webhooks'>('leads');
-  const [result, setResult]         = useState<LeadListResult | null>(null);
+  const cached = readCache();
+  const [result, setResult]         = useState<LeadListResult | null>(cached);
   const [funnel, setFunnel]         = useState<FunnelCounts | null>(null);
-  const [loading, setLoading]       = useState(true);
+  const [loading, setLoading]       = useState(!cached);
+  const [loadError, setLoadError]   = useState(false);
   const [search, setSearch]         = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<LeadStatus | undefined>();
@@ -453,7 +472,12 @@ const LeadHubView: React.FC = () => {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
+      const isDefaultQuery = !debouncedSearch && !statusFilter && !isHotFilter && !tagFilter &&
+        !customFilterField && !dateFrom && !dateTo && !conversionSource && page === 1 &&
+        sortBy === 'lastSeenAt' && sortDir === 'desc';
+
       const [listRes, funnelRes] = await Promise.all([
         DataService.listLeads({
           search: debouncedSearch || undefined,
@@ -476,9 +500,11 @@ const LeadHubView: React.FC = () => {
         }),
       ]);
       setResult(listRes);
+      if (isDefaultQuery) writeCache(listRes);
       if (funnelRes) setFunnel(funnelRes);
     } catch (err) {
       console.error('Erro ao carregar leads:', err);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -686,6 +712,16 @@ const LeadHubView: React.FC = () => {
                     ))}
                   </tr>
                 ))
+              ) : loadError ? (
+                <tr>
+                  <td colSpan={7} style={{ padding: '64px 16px', textAlign: 'center' }}>
+                    <AlertCircle size={28} style={{ margin: '0 auto 10px', color: '#ef4444', display: 'block' }} />
+                    <p style={{ fontSize: 13, color: 'var(--fg-muted)', margin: '0 0 12px' }}>Erro ao carregar leads</p>
+                    <button onClick={load} style={{ padding: '7px 18px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <RotateCw size={13}/> Tentar novamente
+                    </button>
+                  </td>
+                </tr>
               ) : leads.length === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ padding: '64px 16px', textAlign: 'center' }}>
