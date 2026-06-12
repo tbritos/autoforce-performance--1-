@@ -15,13 +15,10 @@ interface EmailTemplate {
 
 // ─── Seção visual ─────────────────────────────────────────────────────────────
 
-const Section: React.FC<{ done: boolean; number: number; title: string; summary?: string; children: React.ReactNode }> = ({ done, number, title, summary, children }) => (
+const Section: React.FC<{ done: boolean; title: string; summary?: string; children: React.ReactNode }> = ({ done, title, summary, children }) => (
   <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
-      {done
-        ? <CheckCircle size={20} style={{ color: '#10b981', flexShrink: 0 }}/>
-        : <div style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, lineHeight: 1, color: 'var(--accent)', flexShrink: 0 }}>{number}</div>
-      }
+      {done && <CheckCircle size={18} style={{ color: '#10b981', flexShrink: 0 }}/>}
       <div>
         <div style={{ fontWeight: 700, fontSize: 15 }}>{title}</div>
         {done && summary && <div style={{ fontSize: 13, color: 'var(--fg-muted)', marginTop: 2 }}>{summary}</div>}
@@ -95,15 +92,9 @@ const SetupStep: React.FC<SetupStepProps> = ({ form, onChange, onContinue, onBac
           <ArrowLeft size={14}/> Voltar
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 auto', fontSize: 13 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: 'var(--accent)' }}>
-            <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--accent)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, lineHeight: 1 }}>1</div>
-            Configuração
-          </div>
+          <span style={{ fontWeight: 700, color: 'var(--accent)' }}>Configuração</span>
           <ChevronRight size={13} style={{ color: 'var(--fg-muted)' }}/>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--fg-muted)' }}>
-            <div style={{ width: 22, height: 22, borderRadius: '50%', border: '2px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, lineHeight: 1 }}>2</div>
-            Layout
-          </div>
+          <span style={{ color: 'var(--fg-muted)' }}>Layout</span>
         </div>
         <div style={{ width: 80 }}/>
       </div>
@@ -117,7 +108,7 @@ const SetupStep: React.FC<SetupStepProps> = ({ form, onChange, onContinue, onBac
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
             {/* Remetente */}
-            <Section done={senderDone} number={1} title="Remetente" summary={senderSummary ? `O envio será feito por ${senderSummary}` : undefined}>
+            <Section done={senderDone} title="Remetente" summary={senderSummary ? `O envio será feito por ${senderSummary}` : undefined}>
               {senderDone ? (
                 <p style={{ margin: 0, fontSize: 14, color: 'var(--fg-muted)' }}>
                   O envio será feito por <strong style={{ color: 'var(--fg)' }}>{form.fromName}</strong> através do email <strong style={{ color: 'var(--fg)' }}>{form.fromEmail}</strong>
@@ -141,14 +132,14 @@ const SetupStep: React.FC<SetupStepProps> = ({ form, onChange, onContinue, onBac
             </Section>
 
             {/* Nome do template */}
-            <Section done={!!form.name.trim()} number={2} title="Nome do template" summary={form.name.trim() || undefined}>
+            <Section done={!!form.name.trim()} title="Nome do template" summary={form.name.trim() || undefined}>
               <Field label="Nome interno do template">
                 <Input value={form.name} onChange={e => onChange({ ...form, name: e.target.value })} placeholder="Ex: Boas-vindas Lead, Oferta Black Friday..."/>
               </Field>
             </Section>
 
             {/* Assunto */}
-            <Section done={!!form.subject.trim()} number={3} title="Assunto" summary={form.subject.trim() ? `O assunto da campanha é "${form.subject}"` : undefined}>
+            <Section done={!!form.subject.trim()} title="Assunto" summary={form.subject.trim() ? `O assunto da campanha é "${form.subject}"` : undefined}>
               <Field label="Assunto do e-mail">
                 <div style={{ position: 'relative' }}>
                   <Input ref={subjectRef} value={form.subject} onChange={e => onChange({ ...form, subject: e.target.value })} placeholder="Ex: Olá {{name}}, temos uma novidade para você!"/>
