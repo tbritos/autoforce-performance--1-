@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import EmailEditor, { EditorRef } from 'react-email-editor';
-import { ArrowLeft, CheckCircle, AlertCircle, RefreshCw, ChevronRight, Mail, User, AtSign, FileText } from 'lucide-react';
+import { ArrowLeft, CheckCircle, AlertCircle, RefreshCw, ChevronRight } from 'lucide-react';
 import { apiClient } from '../services/apiClient';
 
 const HEADER_H = 50;
+const MERGE_TAGS = ['{{name}}', '{{email}}', '{{company}}', '{{phone}}', '{{jobTitle}}'];
 
 interface EmailTemplate {
   id: string; name: string; subject: string; body: string;
@@ -12,7 +13,44 @@ interface EmailTemplate {
   status: string;
 }
 
-// ─── Step 1: formulário de configuração ──────────────────────────────────────
+// ─── Seção visual ─────────────────────────────────────────────────────────────
+
+const Section: React.FC<{ done: boolean; number: number; title: string; summary?: string; children: React.ReactNode }> = ({ done, number, title, summary, children }) => (
+  <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+      {done
+        ? <CheckCircle size={20} style={{ color: '#10b981', flexShrink: 0 }}/>
+        : <div style={{ width: 20, height: 20, borderRadius: '50%', border: '2px solid var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: 'var(--accent)', flexShrink: 0 }}>{number}</div>
+      }
+      <div>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>{title}</div>
+        {done && summary && <div style={{ fontSize: 13, color: 'var(--fg-muted)', marginTop: 2 }}>{summary}</div>}
+      </div>
+    </div>
+    <div style={{ padding: '20px' }}>{children}</div>
+  </div>
+);
+
+// ─── Input com foco ───────────────────────────────────────────────────────────
+
+const Field: React.FC<{ label: string; hint?: string; children: React.ReactNode }> = ({ label, hint, children }) => (
+  <div>
+    <label style={{ display: 'block', fontSize: 13, fontWeight: 600, marginBottom: 6, color: 'var(--fg-secondary)' }}>{label}</label>
+    {children}
+    {hint && <p style={{ margin: '5px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>{hint}</p>}
+  </div>
+);
+
+const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = (props) => (
+  <input
+    {...props}
+    style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--fg)', fontSize: 14, outline: 'none', transition: 'border-color .15s', ...props.style }}
+    onFocus={e => { e.currentTarget.style.borderColor = 'var(--accent)'; props.onFocus?.(e); }}
+    onBlur={e => { e.currentTarget.style.borderColor = 'var(--border)'; props.onBlur?.(e); }}
+  />
+);
+
+// ─── Step 1 ───────────────────────────────────────────────────────────────────
 
 interface SetupStepProps {
   form: { name: string; subject: string; fromName: string; fromEmail: string };
@@ -24,6 +62,17 @@ interface SetupStepProps {
 
 const SetupStep: React.FC<SetupStepProps> = ({ form, onChange, onContinue, onBack, isEdit }) => {
   const [error, setError] = useState('');
+  const subjectRef = useRef<HTMLInputElement>(null);
+
+  const insertVar = (tag: string) => {
+    const el = subjectRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? form.subject.length;
+    const end   = el.selectionEnd   ?? form.subject.length;
+    const next  = form.subject.slice(0, start) + tag + form.subject.slice(end);
+    onChange({ ...form, subject: next });
+    setTimeout(() => { el.focus(); el.setSelectionRange(start + tag.length, start + tag.length); }, 0);
+  };
 
   const handleContinue = () => {
     if (!form.name.trim())    { setError('Nome do template é obrigatório'); return; }
@@ -32,86 +81,109 @@ const SetupStep: React.FC<SetupStepProps> = ({ form, onChange, onContinue, onBac
     onContinue();
   };
 
-  const field = (
-    label: string,
-    placeholder: string,
-    value: string,
-    key: keyof typeof form,
-    icon: React.ReactNode,
-    hint?: string,
-    required = false,
-  ) => (
-    <div>
-      <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--fg-secondary)', marginBottom: 6 }}>
-        {label} {required && <span style={{ color: '#ef4444' }}>*</span>}
-      </label>
-      <div style={{ position: 'relative' }}>
-        <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-muted)', display: 'flex' }}>
-          {icon}
-        </span>
-        <input
-          value={value}
-          onChange={e => onChange({ ...form, [key]: e.target.value })}
-          placeholder={placeholder}
-          style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px 10px 36px', borderRadius: 9, border: `1px solid var(--border)`, background: 'var(--bg-base)', color: 'var(--fg)', fontSize: 14, outline: 'none' }}
-          onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
-          onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-        />
-      </div>
-      {hint && <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--fg-muted)' }}>{hint}</p>}
-    </div>
-  );
+  const senderDone    = !!(form.fromName.trim() && form.fromEmail.trim());
+  const senderSummary = senderDone ? `${form.fromName} via ${form.fromEmail}` : undefined;
+
+  const subjectLen = form.subject.length;
+  const subjectColor = subjectLen > 70 ? '#ef4444' : subjectLen > 50 ? '#f59e0b' : 'var(--fg-muted)';
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-base)' }}>
       {/* Top bar */}
       <div style={{ height: HEADER_H, display: 'flex', alignItems: 'center', padding: '0 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg-card)', flexShrink: 0 }}>
         <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer' }}>
-          <ArrowLeft size={14}/> Voltar para E-mails
+          <ArrowLeft size={14}/> Voltar
         </button>
-        {/* Progress */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 auto', fontSize: 13 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: 'var(--accent)' }}>
             <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--accent)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800 }}>1</div>
             Configuração
           </div>
-          <ChevronRight size={14} style={{ color: 'var(--fg-muted)' }}/>
+          <ChevronRight size={13} style={{ color: 'var(--fg-muted)' }}/>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--fg-muted)' }}>
-            <div style={{ width: 22, height: 22, borderRadius: '50%', border: '2px solid var(--border)', color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800 }}>2</div>
+            <div style={{ width: 22, height: 22, borderRadius: '50%', border: '2px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800 }}>2</div>
             Layout
           </div>
         </div>
+        <div style={{ width: 80 }}/>
       </div>
 
-      {/* Form */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
-        <div style={{ width: '100%', maxWidth: 520 }}>
-          <h2 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 800 }}>
-            {isEdit ? 'Editar e-mail' : 'Novo e-mail'}
-          </h2>
-          <p style={{ margin: '0 0 32px', fontSize: 14, color: 'var(--fg-muted)' }}>
-            Preencha as informações básicas antes de montar o layout.
-          </p>
+      {/* Content */}
+      <div style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '40px 24px' }}>
+        <div style={{ width: '100%', maxWidth: 600 }}>
+          <h2 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 800 }}>{isEdit ? 'Editar e-mail' : 'Novo e-mail'}</h2>
+          <p style={{ margin: '0 0 28px', fontSize: 14, color: 'var(--fg-muted)' }}>Configure as informações antes de montar o layout.</p>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            {field('Nome do template', 'Ex: Boas-vindas Lead, Oferta Especial...', form.name, 'name', <FileText size={14}/>, undefined, true)}
-            {field('Assunto do e-mail', 'Ex: Olá {{name}}, temos uma novidade para você!', form.subject, 'subject', <Mail size={14}/>, 'Use {{name}}, {{company}}, {{email}} para personalizar', true)}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-            <div style={{ height: 1, background: 'var(--border)' }}/>
+            {/* Remetente */}
+            <Section done={senderDone} number={1} title="Remetente" summary={senderSummary ? `O envio será feito por ${senderSummary}` : undefined}>
+              {senderDone ? (
+                <p style={{ margin: 0, fontSize: 14, color: 'var(--fg-muted)' }}>
+                  O envio será feito por <strong style={{ color: 'var(--fg)' }}>{form.fromName}</strong> através do email <strong style={{ color: 'var(--fg)' }}>{form.fromEmail}</strong>
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <Field label="Nome do remetente">
+                    <Input value={form.fromName} onChange={e => onChange({ ...form, fromName: e.target.value })} placeholder="Ex: Marketing AutoForce"/>
+                  </Field>
+                  <Field label="E-mail do remetente" hint="Precisa ser um domínio verificado no Resend">
+                    <Input value={form.fromEmail} onChange={e => onChange({ ...form, fromEmail: e.target.value })} placeholder="Ex: marketing@autoforce.com.br" type="email"/>
+                  </Field>
+                </div>
+              )}
+              {senderDone && (
+                <button onClick={() => onChange({ ...form, fromName: '', fromEmail: '' })}
+                  style={{ marginTop: 10, background: 'none', border: 'none', color: 'var(--accent)', fontSize: 13, cursor: 'pointer', padding: 0 }}>
+                  Alterar
+                </button>
+              )}
+            </Section>
 
-            {field('Nome do remetente', 'Ex: AutoForce', form.fromName, 'fromName', <User size={14}/>, 'Nome que aparece no campo "De:" do e-mail')}
-            {field('E-mail do remetente', 'Ex: contato@autoforce.com.br', form.fromEmail, 'fromEmail', <AtSign size={14}/>, 'Precisa ser um domínio verificado no Resend')}
+            {/* Nome do template */}
+            <Section done={!!form.name.trim()} number={2} title="Nome do template" summary={form.name.trim() || undefined}>
+              <Field label="Nome interno do template">
+                <Input value={form.name} onChange={e => onChange({ ...form, name: e.target.value })} placeholder="Ex: Boas-vindas Lead, Oferta Black Friday..."/>
+              </Field>
+            </Section>
+
+            {/* Assunto */}
+            <Section done={!!form.subject.trim()} number={3} title="Assunto" summary={form.subject.trim() ? `O assunto da campanha é "${form.subject}"` : undefined}>
+              <Field label="Assunto do e-mail">
+                <div style={{ position: 'relative' }}>
+                  <Input ref={subjectRef} value={form.subject} onChange={e => onChange({ ...form, subject: e.target.value })} placeholder="Ex: Olá {{name}}, temos uma novidade para você!"/>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>Inserir variável:</span>
+                    {MERGE_TAGS.map(tag => (
+                      <button key={tag} type="button" onClick={() => insertVar(tag)}
+                        style={{ padding: '1px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg-muted)', color: 'var(--accent)', fontSize: 12, cursor: 'pointer', fontFamily: 'monospace' }}>
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                  <span style={{ fontSize: 12, color: subjectColor, fontWeight: 600, flexShrink: 0 }}>
+                    {subjectLen} caracteres
+                  </span>
+                </div>
+                <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>
+                  Celulares exibem cerca de 35 caracteres e desktop em média 70.
+                </p>
+              </Field>
+            </Section>
+
           </div>
 
           {error && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 20, padding: '10px 14px', borderRadius: 8, background: '#fee2e2', color: '#dc2626', fontSize: 13 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 16, padding: '10px 14px', borderRadius: 8, background: '#fee2e2', color: '#dc2626', fontSize: 13 }}>
               <AlertCircle size={14}/>{error}
             </div>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 32 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24 }}>
             <button onClick={handleContinue}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 24px', borderRadius: 10, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px rgba(69,108,236,0.3)' }}>
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 28px', borderRadius: 10, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 10px rgba(69,108,236,0.3)' }}>
               Continuar para o editor <ChevronRight size={16}/>
             </button>
           </div>
