@@ -371,16 +371,10 @@ export default function AIAgentsView() {
             Gerenciamento do número, templates da Meta e configurações do agente Lara.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button type="button" onClick={loadAll}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', fontSize: 13, fontWeight: 600, color: 'var(--fg-secondary)', cursor: 'pointer' }}>
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Atualizar
-          </button>
-          <button type="button" onClick={() => setShowForm(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: 'none', background: 'var(--accent)', fontSize: 13, fontWeight: 700, color: 'white', cursor: 'pointer' }}>
-            <Plus size={14} /> Novo template
-          </button>
-        </div>
+        <button type="button" onClick={loadAll}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', fontSize: 13, fontWeight: 600, color: 'var(--fg-secondary)', cursor: 'pointer' }}>
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Atualizar
+        </button>
       </div>
 
       {error && (
@@ -461,11 +455,17 @@ export default function AIAgentsView() {
                 {templates.length} template{templates.length !== 1 ? 's' : ''} cadastrado{templates.length !== 1 ? 's' : ''}
               </p>
             </div>
-            <div style={{ position: 'relative' }}>
-              <Search size={12} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-subtle)', pointerEvents: 'none' }} />
-              <input value={templateQuery} onChange={e => setTemplateQuery(e.target.value)}
-                placeholder="Buscar template..."
-                style={{ ...iStyle, paddingLeft: 28, width: 220, fontSize: 12 }} />
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div style={{ position: 'relative' }}>
+                <Search size={12} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-subtle)', pointerEvents: 'none' }} />
+                <input value={templateQuery} onChange={e => setTemplateQuery(e.target.value)}
+                  placeholder="Buscar template..."
+                  style={{ ...iStyle, paddingLeft: 28, width: 200, fontSize: 12 }} />
+              </div>
+              <button type="button" onClick={() => setShowForm(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', fontSize: 13, fontWeight: 700, color: 'white', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                <Plus size={13} /> Novo template
+              </button>
             </div>
           </div>
 
