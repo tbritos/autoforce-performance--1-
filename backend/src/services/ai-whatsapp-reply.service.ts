@@ -55,6 +55,18 @@ async function processAIReply(phone: string): Promise<void> {
   });
 
   try {
+    // If lead is responding to a meeting slot offer, handle it without going through AI
+    const messages = await loadMessagesByPhone(phone);
+    const lastMsg  = messages.filter(m => m.direction === 'inbound').slice(-1)[0]?.text ?? '';
+    if (lead.tags.some(t => t.startsWith('__slots__')) && lastMsg) {
+      const handled = await tryHandleMeetingSelection(
+        { email: lead.email, name: lead.name, phone: lead.phone, tags: lead.tags },
+        phone,
+        lastMsg,
+      );
+      if (handled) return;
+    }
+
     await executeAIAndReply(lead, phone);
   } finally {
     await prisma.lead
@@ -300,6 +312,100 @@ async function sendWhatsAppText(params: SendTextParams): Promise<void> {
   });
 }
 
+// ─── Meeting scheduler handlers ───────────────────────────────────────────────
+
+async function handleOfferMeetingSlots(leadEmail: string, phone: string): Promise<void> {
+  try {
+    const { getAvailableSlots } = await import('./meeting-scheduler.service');
+    const { recordOutgoingWhatsAppMessage, getWhatsAppCredentials } = await import('./whatsapp.service');
+
+    const slots = await getAvailableSlots();
+    if (slots.length === 0) {
+      await sendWhatsAppText({
+        to: phone,
+        text: 'Deixa eu verificar a agenda do nosso time e te passo os horários disponíveis em breve, tudo bem?',
+        leadEmail,
+        getCredentials: getWhatsAppCredentials,
+        recordOutgoing: recordOutgoingWhatsAppMessage,
+      });
+      return;
+    }
+
+    // Store slots in lead tags temporarily as JSON
+    const top3 = slots.slice(0, 3);
+    await prisma.lead.update({
+      where: { email: leadEmail },
+      data: { tags: { push: `__slots__${JSON.stringify(top3)}` } },
+    });
+
+    const lines = [
+      'Ótimo! Tenho esses horários disponíveis para você:\n',
+      ...top3.map((s, i) => `*${i + 1}.* ${s.label}`),
+      '\nQual funciona melhor pra você? Responda com 1, 2 ou 3.',
+    ];
+
+    await sendWhatsAppText({
+      to: phone,
+      text: lines.join('\n'),
+      leadEmail,
+      getCredentials: getWhatsAppCredentials,
+      recordOutgoing: recordOutgoingWhatsAppMessage,
+    });
+  } catch (err) {
+    console.error('[AI-WPP] Erro ao oferecer slots de reunião:', err);
+  }
+}
+
+async function tryHandleMeetingSelection(
+  lead: { email: string; name: string | null; phone: string | null; tags: string[] },
+  phone: string,
+  lastMessage: string,
+): Promise<boolean> {
+  const slotTag = lead.tags.find(t => t.startsWith('__slots__'));
+  if (!slotTag) return false;
+
+  const choice = lastMessage.trim().replace(/\D/g, '');
+  const idx = parseInt(choice, 10) - 1;
+  if (isNaN(idx) || idx < 0 || idx > 2) return false;
+
+  try {
+    const slots = JSON.parse(slotTag.replace('__slots__', ''));
+    const slot = slots[idx];
+    if (!slot) return false;
+
+    const { bookMeeting } = await import('./meeting-scheduler.service');
+    const { recordOutgoingWhatsAppMessage, getWhatsAppCredentials } = await import('./whatsapp.service');
+
+    const booked = await bookMeeting(slot, { name: lead.name, email: lead.email, phone: lead.phone });
+
+    // Remove slots tag
+    await prisma.lead.update({
+      where: { email: lead.email },
+      data: { tags: lead.tags.filter(t => !t.startsWith('__slots__')) },
+    });
+
+    const confirmMsg = [
+      `✅ Reunião confirmada!\n`,
+      `📅 ${slot.label}`,
+      booked.meetLink ? `🔗 Link: ${booked.meetLink}` : '',
+      `\nUm especialista da AutoForce vai estar te esperando. Qualquer dúvida, é só chamar aqui!`,
+    ].filter(Boolean).join('\n');
+
+    await sendWhatsAppText({
+      to: phone,
+      text: confirmMsg,
+      leadEmail: lead.email,
+      getCredentials: getWhatsAppCredentials,
+      recordOutgoing: recordOutgoingWhatsAppMessage,
+    });
+
+    return true;
+  } catch (err) {
+    console.error('[AI-WPP] Erro ao confirmar reunião:', err);
+    return false;
+  }
+}
+
 // ─── Action applier ───────────────────────────────────────────────────────────
 
 async function applyRecommendedActions(
@@ -328,6 +434,10 @@ async function applyRecommendedActions(
       case 'handoff_to_human':
         await prisma.lead.update({ where: { email: leadEmail }, data: { aiHandoff: true } });
         break;
+      case 'offer_meeting_slots': {
+        await handleOfferMeetingSlots(leadEmail, phone);
+        break;
+      }
       case 'apply_tag': {
         const tag = String(action.payload?.tag ?? '').trim();
         if (tag) {
