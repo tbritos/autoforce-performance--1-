@@ -299,15 +299,9 @@ const EmailEditorView: React.FC = () => {
 
         {/* Progress */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--fg-muted)' }}>
-            <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#10b981', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>✓</div>
-            Configuração
-          </div>
+          <span style={{ color: 'var(--fg-muted)' }}>Configuração</span>
           <ChevronRight size={13} style={{ color: 'var(--fg-muted)' }}/>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: 'var(--accent)' }}>
-            <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--accent)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800 }}>2</div>
-            Layout
-          </div>
+          <span style={{ fontWeight: 700, color: 'var(--accent)' }}>Layout</span>
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
