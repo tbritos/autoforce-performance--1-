@@ -2,14 +2,12 @@ import { Platform } from '@prisma/client';
 import { PlatformConnectionService } from './platform-connection.service';
 
 // Sync intervals in milliseconds — conservative to respect API rate limits
-// Pipedrive is intentionally excluded from auto-sync — webhook handles all
-// real-time updates (stage changes, won/lost). Manual sync remains available
-// via triggerSync('PIPEDRIVE') for backfill or recovery.
 const ACTIVE_SYNC_PLATFORMS = [
   'META_ADS',
   'GOOGLE_ANALYTICS',
   'GOOGLE_ADS',
   'RD_STATION',
+  'PIPEDRIVE',
 ] as const satisfies readonly Platform[];
 
 type ActiveSyncPlatform = (typeof ACTIVE_SYNC_PLATFORMS)[number];
@@ -19,6 +17,7 @@ const SYNC_INTERVALS_MS: Record<ActiveSyncPlatform, number> = {
   GOOGLE_ANALYTICS: 30 * 60 * 1000,
   GOOGLE_ADS:       30 * 60 * 1000,
   RD_STATION:       15 * 60 * 1000,
+  PIPEDRIVE:        30 * 60 * 1000, // 30min fallback — webhook handles real-time
 };
 
 export interface SyncResult {
@@ -65,11 +64,18 @@ async function syncRdStation(): Promise<SyncResult> {
   return { platform: 'RD_STATION', synced: 1, errors: 0 };
 }
 
+async function syncPipedriveDeals(): Promise<SyncResult> {
+  const { syncPipedrive } = await import('./pipedrive.service');
+  const { synced, errors } = await syncPipedrive();
+  return { platform: 'PIPEDRIVE', synced, errors };
+}
+
 const SYNC_FNS: Record<ActiveSyncPlatform, () => Promise<SyncResult>> = {
   META_ADS: syncMetaAds,
   GOOGLE_ANALYTICS: syncGoogleAnalytics,
   GOOGLE_ADS: syncGoogleAds,
   RD_STATION: syncRdStation,
+  PIPEDRIVE: syncPipedriveDeals,
 };
 
 const SYNC_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutos por plataforma
@@ -112,7 +118,7 @@ export function startSyncScheduler(): void {
     }).catch(() => {});
   }, 60_000);
 
-  console.log('[sync] Scheduler started for:', Object.keys(SYNC_INTERVALS_MS).join(', '));
+  console.log('[sync] Scheduler started for:', ACTIVE_SYNC_PLATFORMS.join(', '));
 }
 
 export function stopSyncScheduler(): void {
@@ -123,21 +129,12 @@ export function stopSyncScheduler(): void {
 }
 
 export async function triggerSync(platform: Platform): Promise<SyncResult> {
+  if (!ACTIVE_SYNC_PLATFORMS.includes(platform as ActiveSyncPlatform)) {
+    throw new Error(`Sync nao suportado para ${platform}`);
+  }
   try {
-    // Pipedrive is not in the auto-scheduler but can still be triggered manually
-    if (platform === 'PIPEDRIVE') {
-      const { syncPipedrive } = await import('./pipedrive.service');
-      const { synced, errors } = await syncPipedrive();
-      await PlatformConnectionService.recordSyncSuccess('PIPEDRIVE');
-      return { platform: 'PIPEDRIVE', synced, errors };
-    }
-
-    if (!ACTIVE_SYNC_PLATFORMS.includes(platform as ActiveSyncPlatform)) {
-      throw new Error(`Sync nao suportado para ${platform}`);
-    }
-    const activePlatform = platform as ActiveSyncPlatform;
-    const result = await SYNC_FNS[activePlatform]();
-    await PlatformConnectionService.recordSyncSuccess(activePlatform);
+    const result = await SYNC_FNS[platform as ActiveSyncPlatform]();
+    await PlatformConnectionService.recordSyncSuccess(platform);
     return result;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
