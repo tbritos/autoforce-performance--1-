@@ -142,7 +142,7 @@ async function executeAIAndReply(
   }
 
   // Known lead: apply actions and persist memory
-  await applyRecommendedActions(lead.email, result.recommendedActions ?? [], result.tags ?? []);
+  await applyRecommendedActions(lead.email, phone, result.recommendedActions ?? [], result.tags ?? []);
   await persistAIAgentDecision({
     agentId: agentContext.agent.id,
     leadEmail: lead.email,
@@ -410,6 +410,7 @@ async function tryHandleMeetingSelection(
 
 async function applyRecommendedActions(
   leadEmail: string,
+  phone: string,
   actions: Array<{ type: string; reason: string; payload?: Record<string, unknown> }>,
   aiTags: string[]
 ): Promise<void> {

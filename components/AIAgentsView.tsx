@@ -1,14 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bot, BrainCircuit, Check, ChevronDown, ChevronRight,
-  Database, FileText, HelpCircle, Plus, RefreshCw, RotateCcw,
-  Search, Send, Shield, Trash2, User,
+  FileText, HelpCircle, Plus, RefreshCw, RotateCcw,
+  Search, Send, User,
 } from 'lucide-react';
 import { DataService } from '../services/dataService';
-import { AIAgent, AIInteractionLog, AIKnowledgeItem } from '../types';
+import { AIAgent, AIInteractionLog } from '../types';
 
-type Tab        = 'agents' | 'knowledge' | 'logs';
-type SectionKey = 'identity' | 'model' | 'behavior' | 'context' | 'discovery';
+type Tab        = 'agents' | 'logs';
+type SectionKey = 'identity' | 'model' | 'discovery';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -16,25 +16,12 @@ const emptyAgent: Partial<AIAgent> = {
   name: '',
   description: '',
   objective: '',
-  companyContext: '',
-  salesContext: '',
   defaultProvider: 'gemini',
   defaultModel: 'gemini-2.5-flash',
-  toneOfVoice: ['consultivo', 'objetivo', 'humano'],
-  safetyRules: ['Nao inventar informacoes.', 'Nao prometer resultados garantidos.'],
   discoveryQuestions: [],
 };
 
-const emptyKnowledge: Partial<AIKnowledgeItem> = {
-  title: '',
-  category: 'geral',
-  content: '',
-  tags: [],
-  priority: 100,
-  agentId: null,
-};
-
-const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-1.5-flash'];
 const OPENAI_MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'];
 
 // ─── Accordion section metadata ───────────────────────────────────────────────
@@ -42,20 +29,16 @@ const OPENAI_MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'];
 interface SectionMeta { title: string; subtitle: string; iconBg: string; icon: React.ElementType }
 
 const SECTION_META: Record<SectionKey, SectionMeta> = {
-  identity:  { title: 'Identidade',             subtitle: 'Nome, descrição e objetivo do agente',          iconBg: '#f97316', icon: User },
-  model:     { title: 'Modelo de IA',            subtitle: 'Provider e versão do modelo',                  iconBg: '#8b5cf6', icon: BrainCircuit },
-  behavior:  { title: 'Comportamento',           subtitle: 'Tom de voz e regras de segurança',             iconBg: '#10b981', icon: Shield },
-  context:   { title: 'Contexto & conhecimento', subtitle: 'O que o agente sabe sobre a empresa e vendas', iconBg: '#f59e0b', icon: Database },
-  discovery: { title: 'Perguntas de descoberta', subtitle: 'Perguntas que o agente faz para qualificar',   iconBg: '#eab308', icon: HelpCircle },
+  identity:  { title: 'Identidade',             subtitle: 'Nome, descrição e objetivo do agente',        iconBg: '#f97316', icon: User },
+  model:     { title: 'Modelo de IA',            subtitle: 'Provider e versão do modelo',                iconBg: '#8b5cf6', icon: BrainCircuit },
+  discovery: { title: 'Perguntas de descoberta', subtitle: 'Perguntas que o agente faz para qualificar', iconBg: '#eab308', icon: HelpCircle },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const asLines  = (v: unknown): string => Array.isArray(v) ? v.join('\n') : '';
+const asLines   = (v: unknown): string => Array.isArray(v) ? v.join('\n') : '';
 const fromLines = (v: string): string[] => v.split('\n').map(s => s.trim()).filter(Boolean);
-const asTags   = (v: unknown): string => Array.isArray(v) ? v.join(', ') : '';
-const fromTags = (v: string): string[] => v.split(',').map(s => s.trim()).filter(Boolean);
-const nowTime  = () => new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+const nowTime   = () => new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -129,27 +112,25 @@ function AccordionSection({
 // ─── Main view ────────────────────────────────────────────────────────────────
 
 export default function AIAgentsView() {
-  const [tab, setTab]                     = useState<Tab>('agents');
-  const [agents, setAgents]               = useState<AIAgent[]>([]);
-  const [selectedId, setSelectedId]       = useState('');
-  const [agentDraft, setAgentDraft]       = useState<Partial<AIAgent>>(emptyAgent);
-  const [knowledge, setKnowledge]         = useState<AIKnowledgeItem[]>([]);
-  const [knowledgeDraft, setKnowledgeDraft] = useState<Partial<AIKnowledgeItem>>(emptyKnowledge);
-  const [logs, setLogs]                   = useState<AIInteractionLog[]>([]);
-  const [query, setQuery]                 = useState('');
-  const [loading, setLoading]             = useState(false);
-  const [saving, setSaving]               = useState(false);
-  const [openSections, setOpenSections]   = useState<Set<SectionKey>>(new Set(['identity']));
+  const [tab, setTab]                   = useState<Tab>('agents');
+  const [agents, setAgents]             = useState<AIAgent[]>([]);
+  const [selectedId, setSelectedId]     = useState('');
+  const [agentDraft, setAgentDraft]     = useState<Partial<AIAgent>>(emptyAgent);
+  const [logs, setLogs]                 = useState<AIInteractionLog[]>([]);
+  const [query, setQuery]               = useState('');
+  const [loading, setLoading]           = useState(false);
+  const [saving, setSaving]             = useState(false);
+  const [openSections, setOpenSections] = useState<Set<SectionKey>>(new Set(['identity']));
 
   // Chat preview state
   const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([{
     role: 'assistant',
-    text: 'Olá! 👋 Sou o assistente da AutoForce. Vi que você se interessou pela nossa plataforma. Posso fazer algumas perguntas rápidas pra te ajudar melhor?',
+    text: 'Olá! Sou a Lara da AutoForce. Vi que você se interessou pela nossa plataforma. Posso fazer algumas perguntas rápidas pra te ajudar melhor?',
     time: nowTime(),
   }]);
-  const [chatInput, setChatInput]   = useState('');
+  const [chatInput, setChatInput]     = useState('');
   const [chatLoading, setChatLoading] = useState(false);
-  const chatEndRef                  = useRef<HTMLDivElement>(null);
+  const chatEndRef                    = useRef<HTMLDivElement>(null);
 
   const selectedAgent = useMemo(() => agents.find(a => a.id === selectedId), [agents, selectedId]);
   const provider      = String(agentDraft.defaultProvider || 'gemini');
@@ -166,13 +147,11 @@ export default function AIAgentsView() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [agentList, knowledgeList, logList] = await Promise.all([
+      const [agentList, logList] = await Promise.all([
         DataService.listAIAgents(),
-        DataService.listAIKnowledge(),
         DataService.listAIInteractionLogs({ limit: 30 }),
       ]);
       setAgents(agentList);
-      setKnowledge(knowledgeList);
       setLogs(logList);
       if (!selectedId && agentList[0]) {
         setSelectedId(agentList[0].id);
@@ -217,8 +196,6 @@ export default function AIAgentsView() {
     try {
       const payload = {
         ...agentDraft,
-        toneOfVoice:        fromLines(asLines(agentDraft.toneOfVoice)),
-        safetyRules:        fromLines(asLines(agentDraft.safetyRules)),
         discoveryQuestions: fromLines(asLines(agentDraft.discoveryQuestions)),
       };
       const saved = selectedId
@@ -226,29 +203,6 @@ export default function AIAgentsView() {
         : await DataService.createAIAgent(payload);
       setSelectedId(saved.id);
       setAgentDraft(saved);
-      await loadAll();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const saveKnowledge = async () => {
-    setSaving(true);
-    try {
-      const payload = {
-        ...knowledgeDraft,
-        agentId:  knowledgeDraft.agentId || selectedId || null,
-        tags:     fromTags(asTags(knowledgeDraft.tags)),
-        priority: Number(knowledgeDraft.priority || 100),
-      };
-      if (knowledgeDraft.id) {
-        await DataService.updateAIKnowledge(knowledgeDraft.id, payload);
-      } else {
-        await DataService.createAIKnowledge(payload);
-      }
-      setKnowledgeDraft({ ...emptyKnowledge, agentId: selectedId || null });
       await loadAll();
     } catch (e) {
       console.error(e);
@@ -276,7 +230,7 @@ export default function AIAgentsView() {
   const resetChat = () => {
     setChatMsgs([{
       role: 'assistant',
-      text: 'Olá! 👋 Sou o assistente da AutoForce. Vi que você se interessou pela nossa plataforma. Posso fazer algumas perguntas rápidas pra te ajudar melhor?',
+      text: 'Olá! Sou a Lara da AutoForce. Vi que você se interessou pela nossa plataforma. Posso fazer algumas perguntas rápidas pra te ajudar melhor?',
       time: nowTime(),
     }]);
   };
@@ -291,7 +245,7 @@ export default function AIAgentsView() {
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--fg-primary)', margin: 0 }}>IA / Agentes</h1>
           <p style={{ fontSize: 13, color: 'var(--fg-muted)', marginTop: 4 }}>
-            Configure contexto, base de conhecimento e memória usados nos fluxos de WhatsApp.
+            Configure o modelo, objetivo e perguntas de qualificação de cada agente.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -309,9 +263,8 @@ export default function AIAgentsView() {
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: 20 }}>
         {([
-          { id: 'agents',    label: 'Agentes',              icon: BrainCircuit },
-          { id: 'knowledge', label: 'Base de conhecimento', icon: Database },
-          { id: 'logs',      label: 'Logs e memória',        icon: FileText },
+          { id: 'agents', label: 'Agentes',      icon: BrainCircuit },
+          { id: 'logs',   label: 'Logs e memória', icon: FileText },
         ] as const).map(t => {
           const Icon   = t.icon;
           const active = tab === t.id;
@@ -401,7 +354,7 @@ export default function AIAgentsView() {
                   {selectedId ? (agentDraft.name || 'Editar agente') : 'Novo agente'}
                 </p>
                 <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-muted)' }}>
-                  Esse contexto entra no prompt enviado ao modelo de IA.
+                  Configurações aplicadas em tempo de execução pelo agente.
                 </p>
               </div>
               <button type="button" onClick={saveAgent} disabled={saving}
@@ -416,11 +369,11 @@ export default function AIAgentsView() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <Field label="Nome do agente">
                     <input value={agentDraft.name || ''} onChange={e => setAgentDraft(d => ({ ...d, name: e.target.value }))}
-                      placeholder="Ex: SDR Inbound AutoForce" style={iStyle} />
+                      placeholder="Ex: Lara — SDR AutoForce" style={iStyle} />
                   </Field>
                   <Field label="Descrição">
                     <input value={agentDraft.description || ''} onChange={e => setAgentDraft(d => ({ ...d, description: e.target.value }))}
-                      placeholder="Pré-qualificação de leads inbound" style={iStyle} />
+                      placeholder="Pré-qualificação de leads inbound via WhatsApp" style={iStyle} />
                   </Field>
                 </div>
                 <Field label="Objetivo">
@@ -452,43 +405,12 @@ export default function AIAgentsView() {
               </div>
             </AccordionSection>
 
-            {/* Accordion: Comportamento */}
-            <AccordionSection sectionKey="behavior" open={openSections.has('behavior')} onToggle={() => toggleSection('behavior')}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <Field label="Tom de voz" note="(1 por linha)">
-                  <textarea rows={5} value={asLines(agentDraft.toneOfVoice)}
-                    onChange={e => setAgentDraft(d => ({ ...d, toneOfVoice: fromLines(e.target.value) }))}
-                    style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
-                </Field>
-                <Field label="Regras de segurança" note="(1 por linha)">
-                  <textarea rows={5} value={asLines(agentDraft.safetyRules)}
-                    onChange={e => setAgentDraft(d => ({ ...d, safetyRules: fromLines(e.target.value) }))}
-                    style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
-                </Field>
-              </div>
-            </AccordionSection>
-
-            {/* Accordion: Contexto & conhecimento */}
-            <AccordionSection sectionKey="context" open={openSections.has('context')} onToggle={() => toggleSection('context')}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <Field label="Contexto AutoForce">
-                  <textarea rows={7} value={agentDraft.companyContext || ''}
-                    onChange={e => setAgentDraft(d => ({ ...d, companyContext: e.target.value }))}
-                    style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
-                </Field>
-                <Field label="Contexto de vendas">
-                  <textarea rows={7} value={agentDraft.salesContext || ''}
-                    onChange={e => setAgentDraft(d => ({ ...d, salesContext: e.target.value }))}
-                    style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
-                </Field>
-              </div>
-            </AccordionSection>
-
             {/* Accordion: Perguntas de descoberta */}
             <AccordionSection sectionKey="discovery" open={openSections.has('discovery')} onToggle={() => toggleSection('discovery')}>
               <Field label="Perguntas de qualificação" note="(1 por linha)">
-                <textarea rows={5} value={asLines(agentDraft.discoveryQuestions)}
+                <textarea rows={6} value={asLines(agentDraft.discoveryQuestions)}
                   onChange={e => setAgentDraft(d => ({ ...d, discoveryQuestions: fromLines(e.target.value) }))}
+                  placeholder={'Qual o tamanho do seu time de vendas?\nVocê já usa algum CRM hoje?\nQuantos leads você recebe por mês?'}
                   style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
               </Field>
             </AccordionSection>
@@ -559,104 +481,15 @@ export default function AIAgentsView() {
             {/* Stats footer */}
             <div style={{ padding: '9px 14px', borderTop: '1px solid var(--border)', background: 'var(--bg-subtle)', display: 'flex', flexDirection: 'column', gap: 4 }}>
               {[
-                { label: 'Tokens no prompt',            value: '~1.240' },
-                { label: 'Custo estimado / conversa',   value: 'R$ 0,03' },
-                { label: 'Tempo médio de resposta',      value: '1,8s' },
+                { label: 'Tokens no prompt',          value: '~1.240' },
+                { label: 'Custo estimado / conversa', value: 'R$ 0,03' },
+                { label: 'Tempo médio de resposta',    value: '1,8s' },
               ].map(s => (
                 <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>{s.label}</span>
                   <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-secondary)' }}>{s.value}</span>
                 </div>
               ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Knowledge tab ───────────────────────────────────────────────────────── */}
-      {tab === 'knowledge' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 400px', gap: 16, alignItems: 'flex-start' }}>
-          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)' }}>
-              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>Base cadastrada</p>
-            </div>
-            <div>
-              {knowledge.map(item => (
-                <button key={item.id} type="button" onClick={() => setKnowledgeDraft(item)}
-                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '14px 20px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-subtle)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                    <strong style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-primary)' }}>{item.title}</strong>
-                    <span style={{ fontSize: 11, color: 'var(--fg-muted)', flexShrink: 0 }}>{item.category}</span>
-                  </div>
-                  <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--fg-muted)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{item.content}</p>
-                  {item.tags.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
-                      {item.tags.map(tag => (
-                        <span key={tag} style={{ padding: '2px 8px', borderRadius: 'var(--r-full)', background: 'var(--accent-soft)', fontSize: 11, color: 'var(--accent)', fontWeight: 500 }}>{tag}</span>
-                      ))}
-                    </div>
-                  )}
-                </button>
-              ))}
-              {knowledge.length === 0 && (
-                <p style={{ padding: '24px 20px', fontSize: 13, color: 'var(--fg-muted)', textAlign: 'center' }}>Nenhum conhecimento cadastrado.</p>
-              )}
-            </div>
-          </div>
-
-          <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', position: 'sticky', top: 24 }}>
-            <div style={{ padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>
-                {knowledgeDraft.id ? 'Editar conhecimento' : 'Novo conhecimento'}
-              </p>
-              {knowledgeDraft.id && (
-                <button type="button" onClick={() => setKnowledgeDraft({ ...emptyKnowledge, agentId: selectedId || null })}
-                  style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                  Novo
-                </button>
-              )}
-            </div>
-            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <Field label="Agente">
-                <select value={knowledgeDraft.agentId || selectedId || ''} onChange={e => setKnowledgeDraft(d => ({ ...d, agentId: e.target.value || null }))} style={{ ...iStyle, cursor: 'pointer' }}>
-                  <option value="">Global</option>
-                  {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                </select>
-              </Field>
-              <Field label="Título">
-                <input value={knowledgeDraft.title || ''} onChange={e => setKnowledgeDraft(d => ({ ...d, title: e.target.value }))} style={iStyle} />
-              </Field>
-              <Field label="Categoria">
-                <input value={knowledgeDraft.category || ''} onChange={e => setKnowledgeDraft(d => ({ ...d, category: e.target.value }))}
-                  placeholder="produto, objeções, playbook" style={iStyle} />
-              </Field>
-              <Field label="Tags" note="(separadas por vírgula)">
-                <input value={asTags(knowledgeDraft.tags)} onChange={e => setKnowledgeDraft(d => ({ ...d, tags: fromTags(e.target.value) }))}
-                  placeholder="inbound, automotivo, mql" style={iStyle} />
-              </Field>
-              <Field label="Conteúdo">
-                <textarea rows={8} value={knowledgeDraft.content || ''} onChange={e => setKnowledgeDraft(d => ({ ...d, content: e.target.value }))}
-                  style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
-              </Field>
-              <button type="button" onClick={saveKnowledge} disabled={saving}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: saving ? 0.6 : 1 }}>
-                <Check size={14} /> Salvar conhecimento
-              </button>
-              {knowledgeDraft.id && (
-                <button type="button"
-                  onClick={async () => {
-                    if (knowledgeDraft.id) {
-                      await DataService.deleteAIKnowledge(knowledgeDraft.id);
-                      setKnowledgeDraft({ ...emptyKnowledge, agentId: selectedId || null });
-                      await loadAll();
-                    }
-                  }}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '9px', borderRadius: 8, border: '1px solid rgba(239,68,68,.3)', background: 'transparent', color: '#ef4444', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                  <Trash2 size={13} /> Remover
-                </button>
-              )}
             </div>
           </div>
         </div>
