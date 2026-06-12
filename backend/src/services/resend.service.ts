@@ -27,7 +27,7 @@ export interface SendEmailInput {
 
 export async function sendEmail(input: SendEmailInput): Promise<void> {
   const fromName  = input.fromName  || process.env.RESEND_FROM_NAME  || 'AutoForce';
-  const fromEmail = input.fromEmail || process.env.RESEND_FROM_EMAIL || 'noreply@autoforce.com.br';
+  const fromEmail = input.fromEmail || process.env.RESEND_FROM_EMAIL || 'noreply@updates.autoforce.com';
   const from      = `${fromName} <${fromEmail}>`;
 
   let resendId: string | null = null;
