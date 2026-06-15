@@ -301,6 +301,7 @@ export type AutomationNodeType =
   | 'condition'
   | 'wait'
   | 'whatsapp_wait_reply'
+  | 'email_wait_event'
   | 'ai_prequalify'
   | 'internal_action'
   | 'rd_conversion'

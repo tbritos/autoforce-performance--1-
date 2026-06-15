@@ -11,6 +11,7 @@ import {
   Database,
   GitBranch,
   Mail,
+  MailOpen,
   MessageCircle,
   MoreHorizontal,
   MousePointer2,
@@ -152,6 +153,7 @@ const BLOCKS: Array<{
   { type: 'condition',        label: 'Condição',     description: 'Cargo, tag, score, dor, origem ou campo',        color: '#22C55E', icon: GitBranch },
   { type: 'wait',             label: 'Esperar',      description: 'Aguardar horas ou dias antes do próximo passo',  color: '#F59E0B', icon: Clock },
   { type: 'whatsapp_wait_reply', label: 'Esperar resposta', description: 'Aguardar resposta do lead no WhatsApp',    color: '#10B981', icon: MessageCircle },
+  { type: 'email_wait_event',  label: 'Evento de email', description: 'Aguardar abertura ou clique no email enviado', color: '#3B82F6', icon: MailOpen },
   { type: 'ai_prequalify',     label: 'IA',           description: 'Pre-qualificar conversa e atualizar o lead',      color: '#6366F1', icon: Bot },
   { type: 'internal_action',  label: 'Ação interna', description: 'Adicionar tag, score, etapa ou campo',           color: '#14B8A6', icon: Tags },
   { type: 'rd_conversion',    label: 'RD Station',   description: 'Criar conversão para entrar em fluxo de e-mail', color: '#8B5CF6', icon: Mail },
@@ -204,6 +206,11 @@ function nodeSubtitle(node: AutomationJourneyNode): { text: string; warn: boolea
     case 'whatsapp_wait_reply':
       if (c.amount && c.unit) return { text: `Resposta por até ${c.amount} ${c.unit}`, warn: false };
       return { text: 'Definir prazo de resposta...', warn: false };
+    case 'email_wait_event': {
+      const eventLabel = c.waitForEvent === 'clicked' ? 'clique' : 'abertura';
+      if (c.timeoutAmount && c.timeoutUnit) return { text: `${eventLabel} por até ${c.timeoutAmount} ${c.timeoutUnit}`, warn: false };
+      return { text: 'Definir condição de email...', warn: false };
+    }
     case 'ai_prequalify':
       return { text: c.goal || 'Analisar conversa e qualificar lead', warn: false };
     case 'condition':
@@ -1086,7 +1093,7 @@ const AutomationJourneysView: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AutomationJourneyStatus>('all');
   const [sortOrder, setSortOrder] = useState<'recent' | 'name' | 'executions'>('recent');
-  type ConnectionHandle = 'default' | 'true' | 'false' | 'replied' | 'no_reply' | 'failed';
+  type ConnectionHandle = 'default' | 'true' | 'false' | 'replied' | 'no_reply' | 'failed' | 'event' | 'timeout';
   const [connectFrom, setConnectFrom] = useState<{ nodeId: string; handle: ConnectionHandle } | null>(null);
   const [dragNodeId, setDragNodeId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -1897,6 +1904,8 @@ const AutomationJourneysView: React.FC = () => {
                 source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'replied' ? NODE_H - 42 :
                 source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'no_reply' ? NODE_H - 25 :
                 source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'failed' ? NODE_H - 8 :
+                source.type === 'email_wait_event' && edge.sourceHandle === 'event' ? NODE_H - 30 :
+                source.type === 'email_wait_event' && edge.sourceHandle === 'timeout' ? NODE_H - 12 :
                 NODE_H / 2
               );
               const x2 = target.x;
@@ -1908,6 +1917,8 @@ const AutomationJourneysView: React.FC = () => {
                 edge.sourceHandle === 'replied' ? 'var(--green-500)' :
                 edge.sourceHandle === 'no_reply' ? '#F59E0B' :
                 edge.sourceHandle === 'failed' ? 'var(--red-500)' :
+                edge.sourceHandle === 'event' ? 'var(--green-500)' :
+                edge.sourceHandle === 'timeout' ? '#F59E0B' :
                 'var(--accent)';
               const label =
                 edge.sourceHandle === 'true' ? 'Verdadeiro' :
@@ -1915,6 +1926,8 @@ const AutomationJourneysView: React.FC = () => {
                 edge.sourceHandle === 'replied' ? 'Respondeu' :
                 edge.sourceHandle === 'no_reply' ? 'Não respondeu' :
                 edge.sourceHandle === 'failed' ? 'Falhou' :
+                edge.sourceHandle === 'event' ? 'Abriu/Clicou' :
+                edge.sourceHandle === 'timeout' ? 'Não abriu' :
                 '';
               return (
                 <g key={edge.id}>
@@ -1924,9 +1937,9 @@ const AutomationJourneysView: React.FC = () => {
                     stroke={edgeColor}
                     strokeWidth="2"
                     markerEnd={`url(#arrow-${
-                      edge.sourceHandle === 'true' || edge.sourceHandle === 'replied' ? 'true' :
+                      edge.sourceHandle === 'true' || edge.sourceHandle === 'replied' || edge.sourceHandle === 'event' ? 'true' :
                       edge.sourceHandle === 'false' || edge.sourceHandle === 'failed' ? 'false' :
-                      edge.sourceHandle === 'no_reply' ? 'warning' : 'default'
+                      edge.sourceHandle === 'no_reply' || edge.sourceHandle === 'timeout' ? 'warning' : 'default'
                     })`}
                   />
                   {label && (
@@ -1968,6 +1981,8 @@ const AutomationJourneysView: React.FC = () => {
               source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'replied' ? NODE_H - 42 :
               source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'no_reply' ? NODE_H - 25 :
               source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'failed' ? NODE_H - 8 :
+              source.type === 'email_wait_event' && edge.sourceHandle === 'event' ? NODE_H - 30 :
+              source.type === 'email_wait_event' && edge.sourceHandle === 'timeout' ? NODE_H - 12 :
               NODE_H / 2
             );
             return (
@@ -2004,6 +2019,7 @@ const AutomationJourneysView: React.FC = () => {
             const connecting = connectFrom?.nodeId === node.id;
             const conditionOutputs = node.type === 'condition';
             const whatsAppReplyOutputs = node.type === 'whatsapp_wait_reply';
+            const emailWaitOutputs = node.type === 'email_wait_event';
             return (
               <div
                 key={node.id}
@@ -2046,12 +2062,15 @@ const AutomationJourneysView: React.FC = () => {
                     ); })()}
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: (conditionOutputs || whatsAppReplyOutputs) ? 'stretch' : 'center', justifyContent: 'space-between', gap: 8, marginTop: 10 }}>
-                  {conditionOutputs || whatsAppReplyOutputs ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: conditionOutputs ? '1fr 1fr' : '1fr', gap: 6, width: '100%' }}>
+                <div style={{ display: 'flex', alignItems: (conditionOutputs || whatsAppReplyOutputs || emailWaitOutputs) ? 'stretch' : 'center', justifyContent: 'space-between', gap: 8, marginTop: 10 }}>
+                  {conditionOutputs || whatsAppReplyOutputs || emailWaitOutputs ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: conditionOutputs || emailWaitOutputs ? '1fr 1fr' : '1fr', gap: 6, width: '100%' }}>
                       {(conditionOutputs ? [
                         { handle: 'true' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Verdadeiro', color: 'var(--green-500)' },
                         { handle: 'false' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Falso', color: 'var(--red-500)' },
+                      ] : emailWaitOutputs ? [
+                        { handle: 'event' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Abriu/Clicou', color: 'var(--green-500)' },
+                        { handle: 'timeout' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Não abriu', color: '#F59E0B' },
                       ] : [
                         { handle: 'replied' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Respondeu', color: 'var(--green-500)' },
                         { handle: 'no_reply' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Não respondeu', color: '#F59E0B' },
@@ -2100,7 +2119,7 @@ const AutomationJourneysView: React.FC = () => {
                       {connectFrom && !connecting ? 'Ligar aqui' : 'Conectar'}
                     </button>
                   )}
-                  {!conditionOutputs && !whatsAppReplyOutputs && <MousePointer2 size={13} style={{ color: 'var(--fg-subtle)' }} />}
+                  {!conditionOutputs && !whatsAppReplyOutputs && !emailWaitOutputs && <MousePointer2 size={13} style={{ color: 'var(--fg-subtle)' }} />}
                 </div>
               </div>
             );
@@ -2427,6 +2446,64 @@ const AutomationJourneysView: React.FC = () => {
                           {amount && unit
                             ? <>A execução aguarda resposta por até <strong style={{ color: 'var(--fg-primary)' }}>{amount} {unitLabel}</strong>. Se chegar resposta, segue por <strong style={{ color: 'var(--green-500)' }}>Respondeu</strong>; se expirar, segue por <strong style={{ color: '#F59E0B' }}>Não respondeu</strong>.</>
                             : <>Defina por quanto tempo o fluxo deve aguardar uma resposta do lead no WhatsApp.</>}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* ── EMAIL WAIT EVENT ── */}
+                  {panelNode.type === 'email_wait_event' && (() => {
+                    const eventOptions: SmartSelectOption[] = [
+                      { value: 'opened', label: 'Abriu o email', description: 'Qualquer abertura já conta' },
+                      { value: 'clicked', label: 'Clicou em link', description: 'Só conta se clicou num link' },
+                    ];
+                    const unitOptions: SmartSelectOption[] = [
+                      { value: 'hours', label: 'Horas' },
+                      { value: 'days',  label: 'Dias' },
+                    ];
+                    const waitForEvent = panelValues.config.waitForEvent ?? 'opened';
+                    const timeoutAmount = panelValues.config.timeoutAmount ?? '';
+                    const timeoutUnit = panelValues.config.timeoutUnit ?? '';
+                    const unitLabel = unitOptions.find(u => u.value === timeoutUnit)?.label?.toLowerCase() ?? timeoutUnit;
+
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        <div style={{ display: 'grid', gap: 7 }}>
+                          <span style={fieldLabelStyle}>Aguardar</span>
+                          <SmartSelect
+                            value={String(waitForEvent)}
+                            options={eventOptions}
+                            onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, waitForEvent: v } } : prev)}
+                            placeholder="Selecionar evento..."
+                          />
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                          <label style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>Tempo limite</span>
+                            <input
+                              type="number" min={1}
+                              value={timeoutAmount}
+                              onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, timeoutAmount: e.target.value } } : prev)}
+                              placeholder="ex: 48"
+                              style={fieldInputStyle}
+                              onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
+                              onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
+                            />
+                          </label>
+                          <div style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>Unidade</span>
+                            <SmartSelect
+                              value={String(timeoutUnit)}
+                              options={unitOptions}
+                              onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, timeoutUnit: v } } : prev)}
+                              placeholder="Selecionar..."
+                            />
+                          </div>
+                        </div>
+                        <div style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--bg-subtle)', fontSize: 13, color: 'var(--fg-muted)', lineHeight: 1.45 }}>
+                          {timeoutAmount && timeoutUnit
+                            ? <>Após enviar o email, aguarda até <strong style={{ color: 'var(--fg-primary)' }}>{timeoutAmount} {unitLabel}</strong>. Se o lead <strong style={{ color: 'var(--green-500)' }}>{waitForEvent === 'clicked' ? 'clicar num link' : 'abrir o email'}</strong>, segue por <strong style={{ color: 'var(--green-500)' }}>Abriu/Clicou</strong>; caso contrário, segue por <strong style={{ color: '#F59E0B' }}>Não abriu</strong>.</>
+                            : <>Defina o evento esperado e o tempo máximo de espera antes de continuar pelo caminho alternativo.</>}
                         </div>
                       </div>
                     );

@@ -44,8 +44,8 @@ interface LogEntry {
   ts: string;
 }
 
-type NodeResult = 'ok' | 'wait' | 'stop' | boolean;
-type ResumeHandle = 'default' | 'true' | 'false' | 'replied' | 'no_reply' | 'failed';
+type NodeResult = 'ok' | 'wait' | 'stop' | boolean | ResumeHandle;
+type ResumeHandle = 'default' | 'true' | 'false' | 'replied' | 'no_reply' | 'failed' | 'event' | 'timeout';
 
 function pickNextEdge(outEdges: AutomationEdge[], handle: ResumeHandle, fallbackIndex = 0): AutomationEdge | null {
   return outEdges.find(edge => edge.sourceHandle === handle)
@@ -205,7 +205,9 @@ export async function resumeWaitingExecutions(): Promise<void> {
     // Resume from the node AFTER the wait node
     const outEdges = edges.filter(e => e.source === execution.currentNodeId);
     const currentNode = nodes.find(n => n.id === execution.currentNodeId);
-    const resumeHandle: ResumeHandle = currentNode?.type === 'whatsapp_wait_reply' ? 'no_reply' : 'default';
+    const resumeHandle: ResumeHandle =
+      currentNode?.type === 'whatsapp_wait_reply' ? 'no_reply' :
+      currentNode?.type === 'email_wait_event'    ? 'timeout'  : 'default';
     const nextEdge = pickNextEdge(outEdges, resumeHandle);
 
     if (!nextEdge) {
@@ -221,6 +223,8 @@ export async function resumeWaitingExecutions(): Promise<void> {
 
     if (currentNode?.type === 'whatsapp_wait_reply') {
       await appendLog(execution.id, currentNode.id, 'whatsapp_wait_reply', 'ok', 'Tempo esgotado sem resposta');
+    } else if (currentNode?.type === 'email_wait_event') {
+      await appendLog(execution.id, currentNode.id, 'email_wait_event', 'ok', 'Tempo esgotado sem evento de email');
     }
 
     runExecution(execution.id, execution.journeyId, nodes, edges, execution.leadEmail, {}, nextEdge.target, guardKey).catch(err => {
@@ -290,6 +294,54 @@ export async function resumeWaitingWhatsAppReply(
   }
 
   return resumed;
+}
+
+export async function resumeWaitingEmailEvent(
+  resendId: string,
+  eventType: 'opened' | 'clicked'
+): Promise<number> {
+  const emailSent = await prisma.emailSent.findFirst({
+    where: { resendId, automationExecutionId: { not: null } },
+  });
+  if (!emailSent?.automationExecutionId) return 0;
+
+  const execution = await prisma.automationExecution.findUnique({
+    where: { id: emailSent.automationExecutionId },
+    include: { journey: true },
+  });
+  if (!execution || execution.status !== 'waiting') return 0;
+
+  const nodes = (execution.journey.nodes as unknown as AutomationNode[]) ?? [];
+  const edges = (execution.journey.edges as unknown as AutomationEdge[]) ?? [];
+  const currentNode = nodes.find(n => n.id === execution.currentNodeId);
+  if (currentNode?.type !== 'email_wait_event') return 0;
+
+  const waitFor = String(currentNode.config?.waitForEvent || 'opened');
+  // If node waits for 'clicked', only 'clicked' event qualifies; 'opened' qualifies for either
+  if (waitFor === 'clicked' && eventType !== 'clicked') return 0;
+
+  const outEdges = edges.filter(e => e.source === currentNode.id);
+  const nextEdge = pickNextEdge(outEdges, 'event');
+  if (!nextEdge) return 0;
+
+  const guardKey = `${execution.journeyId}:${execution.leadEmail}`;
+  if (executingLeads.has(guardKey)) return 0;
+
+  const claimed = await prisma.automationExecution.updateMany({
+    where: { id: execution.id, status: 'waiting' },
+    data: { status: 'running', resumeAt: null },
+  });
+  if (claimed.count === 0) return 0;
+
+  executingLeads.add(guardKey);
+  await appendLog(execution.id, currentNode.id, 'email_wait_event', 'ok', `Evento recebido: ${eventType}`);
+
+  runExecution(execution.id, execution.journeyId, nodes, edges, execution.leadEmail, {}, nextEdge.target, guardKey).catch(err => {
+    console.error(`[automation] email event resume ${execution.id} crashed:`, err);
+    executingLeads.delete(guardKey);
+  });
+
+  return 1;
 }
 
 async function runExecution(
@@ -362,7 +414,9 @@ async function runExecution(
         if (!nextEdge) break;
         currentNodeId = nextEdge.target;
       } else {
-        const nextEdge = pickNextEdge(outEdges, 'default');
+        // String results other than 'ok' are used as the sourceHandle directly (e.g. 'event')
+        const handle: ResumeHandle = (typeof result === 'string' && result !== 'ok') ? result as ResumeHandle : 'default';
+        const nextEdge = pickNextEdge(outEdges, handle);
         if (!nextEdge) break;
         currentNodeId = nextEdge.target;
       }
@@ -436,6 +490,38 @@ async function executeNode(
           ? `Aguardando resposta WhatsApp por ${amount} ${unit}(s). Palavras: ${keywords}`
           : `Aguardando qualquer resposta WhatsApp por ${amount} ${unit}(s)`
       );
+      return 'wait';
+    }
+
+    case 'email_wait_event': {
+      const amount = Number(c.timeoutAmount) || 24;
+      const unit = String(c.timeoutUnit || 'hours');
+      const ms =
+        unit === 'minute' || unit === 'minutes' ? amount * 60_000 :
+        unit === 'hour'   || unit === 'hours'   ? amount * 3_600_000 :
+        /* day / days */                          amount * 86_400_000;
+
+      // Eager check: email may have already been opened/clicked before this node ran
+      const emailSent = await prisma.emailSent.findFirst({
+        where: { automationExecutionId: executionId },
+        orderBy: { sentAt: 'desc' },
+      });
+
+      const waitFor = String(c.waitForEvent || 'opened');
+      const alreadyHappened = emailSent && (
+        waitFor === 'clicked' ? !!emailSent.clickedAt : !!(emailSent.openedAt || emailSent.clickedAt)
+      );
+
+      if (alreadyHappened) {
+        await appendLog(executionId, node.id, 'email_wait_event', 'ok', `Evento já ocorreu: ${waitFor}`);
+        return 'event';
+      }
+
+      await prisma.automationExecution.update({
+        where: { id: executionId },
+        data: { status: 'waiting', resumeAt: new Date(Date.now() + ms) },
+      });
+      await appendLog(executionId, node.id, 'email_wait_event', 'ok', `Aguardando ${waitFor} por ${amount} ${unit}(s)`);
       return 'wait';
     }
 

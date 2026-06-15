@@ -500,6 +500,14 @@ app.post('/api/resend-webhook', express.json(), async (req, res) => {
       data:  { ...updates, updatedAt: now },
     });
 
+    if (type === 'email.opened' || type === 'email.clicked') {
+      const { resumeWaitingEmailEvent } = await import('./services/automation-engine.service');
+      const evtType = type === 'email.clicked' ? 'clicked' : 'opened';
+      resumeWaitingEmailEvent(emailId, evtType).catch(err =>
+        console.error('[resend-webhook] automation resume error:', err)
+      );
+    }
+
     res.json({ ok: true });
   } catch (err) {
     console.error('[resend-webhook] Erro:', err);
