@@ -248,7 +248,7 @@ async function recordInboundMessage(message: any, senderName?: string | null): P
         // Fill in name if it was missing and now we have it
         ...(senderName ? { name: senderName } : {}),
       },
-      select: { id: true, email: true, phone: true },
+      select: { id: true, email: true, phone: true, name: true },
     });
   } else if (senderName && !lead.name) {
     // Update name on existing lead if it was blank
@@ -257,6 +257,8 @@ async function recordInboundMessage(message: any, senderName?: string | null): P
       data: { name: senderName },
     });
   }
+
+  if (!lead) return;
 
   const { type, text } = extractInboundText(message);
   const receivedAt = metaTimestamp(message.timestamp);

@@ -4,6 +4,13 @@ import { getGA4PageTotals } from './googleAnalytics.service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export interface FunnelStageInput {
+  id:     string;
+  name:   string;
+  source: string;
+  color?: string;
+}
+
 export interface CreateFunnelInput {
   name:             string;
   description?:     string;
@@ -15,6 +22,7 @@ export interface CreateFunnelInput {
   leadTags?:        string[];
   impressionPages?: string[];
   campaignIds?:     string[];
+  stagesConfig?:    FunnelStageInput[];
 }
 
 export type UpdateFunnelInput = Partial<CreateFunnelInput> & {
@@ -47,6 +55,7 @@ export class FunnelService {
         leadTags:          input.leadTags          ?? [],
         impressionPages:   input.impressionPages   ?? [],
         campaignIds:       input.campaignIds       ?? [],
+        stagesConfig:      input.stagesConfig ? (input.stagesConfig as unknown as Prisma.JsonArray) : Prisma.JsonNull,
         sortOrder:         count,
       },
     });
@@ -65,6 +74,7 @@ export class FunnelService {
     if (input.leadTags          !== undefined) data.leadTags          = input.leadTags;
     if (input.impressionPages   !== undefined) data.impressionPages   = input.impressionPages;
     if (input.campaignIds       !== undefined) data.campaignIds       = input.campaignIds;
+    if (input.stagesConfig      !== undefined) data.stagesConfig      = input.stagesConfig ? (input.stagesConfig as unknown as Prisma.JsonArray) : Prisma.JsonNull;
     if (input.sortOrder         !== undefined) data.sortOrder         = input.sortOrder;
     if (input.isActive          !== undefined) data.isActive          = input.isActive;
     return prisma.funnel.update({ where: { id }, data });
