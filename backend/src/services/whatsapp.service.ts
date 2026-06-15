@@ -108,7 +108,7 @@ async function findLeadByPhone(phone: string) {
   for (const value of candidates) {
     const lead = await prisma.lead.findFirst({
       where: { phone: { contains: value } },
-      select: { id: true, email: true, phone: true },
+      select: { id: true, email: true, phone: true, name: true },
     });
     if (lead) return lead;
   }
@@ -226,7 +226,7 @@ function extractInboundText(message: any): { type: string; text: string | null }
   return { type: String(message.type ?? 'unknown'), text: null };
 }
 
-async function recordInboundMessage(message: any): Promise<void> {
+async function recordInboundMessage(message: any, senderName?: string | null): Promise<void> {
   const from = normalizePhone(message.from);
   if (!from) return;
 
@@ -238,9 +238,23 @@ async function recordInboundMessage(message: any): Promise<void> {
     const generatedEmail = `wpp_${toE164}@autoforce.internal`;
     lead = await prisma.lead.upsert({
       where: { email: generatedEmail },
-      create: { email: generatedEmail, phone: toE164, tags: ['whatsapp_inbound'] },
-      update: {},
+      create: {
+        email: generatedEmail,
+        phone: toE164,
+        name: senderName ?? null,
+        tags: ['whatsapp_inbound'],
+      },
+      update: {
+        // Fill in name if it was missing and now we have it
+        ...(senderName ? { name: senderName } : {}),
+      },
       select: { id: true, email: true, phone: true },
+    });
+  } else if (senderName && !lead.name) {
+    // Update name on existing lead if it was blank
+    await prisma.lead.update({
+      where: { id: lead.id },
+      data: { name: senderName },
     });
   }
 
@@ -334,8 +348,18 @@ export async function handleWhatsAppWebhook(payload: any): Promise<{ messages: n
   for (const entry of payload?.entry ?? []) {
     for (const change of entry?.changes ?? []) {
       const value = change?.value ?? {};
+
+      // Build wa_id → display name map from contacts array
+      const nameByPhone: Record<string, string> = {};
+      for (const contact of value.contacts ?? []) {
+        const waId = contact?.wa_id as string | undefined;
+        const name = contact?.profile?.name as string | undefined;
+        if (waId && name) nameByPhone[waId] = name;
+      }
+
       for (const message of value.messages ?? []) {
-        await recordInboundMessage(message);
+        const senderName = nameByPhone[message.from] ?? null;
+        await recordInboundMessage(message, senderName);
         messages += 1;
       }
       for (const status of value.statuses ?? []) {
