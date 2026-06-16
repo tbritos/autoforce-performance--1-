@@ -189,7 +189,9 @@ export async function resumeWaitingExecutions(): Promise<void> {
 
   for (const execution of waiting) {
     const guardKey = `${execution.journeyId}:${execution.leadEmail}`;
-    if (executingLeads.has(guardKey)) continue;
+    // NOTE: intentionally NOT checking executingLeads here — the guard is kept in memory
+    // while an execution is in 'waiting' state (to block duplicate triggers), so checking
+    // it would prevent the resume from ever running. The DB atomic claim below is sufficient.
 
     // Optimistic DB claim — only succeeds if still 'waiting' (prevents multi-process dupe)
     const claimed = await prisma.automationExecution.updateMany({
@@ -225,7 +227,8 @@ export async function resumeWaitingExecutions(): Promise<void> {
       continue;
     }
 
-    // FIX: set guard before calling runExecution
+    // Reset guard so runExecution's finally block can manage it correctly
+    executingLeads.delete(guardKey);
     executingLeads.add(guardKey);
 
     if (currentNode?.type === 'whatsapp_wait_reply') {
