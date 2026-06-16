@@ -103,9 +103,9 @@ export class AutomationJourneysService {
     }));
   }
 
-  static async testRun(journeyId: string, leadEmail: string): Promise<{ executionId: string }> {
+  static async testRun(journeyId: string, leadEmail: string, startNodeId?: string): Promise<{ executionId: string }> {
     const { testJourneyForLead } = await import('./automation-engine.service');
-    return testJourneyForLead(journeyId, leadEmail.toLowerCase().trim());
+    return testJourneyForLead(journeyId, leadEmail.toLowerCase().trim(), startNodeId);
   }
 
   static async getExecutionStats(journeyId: string) {

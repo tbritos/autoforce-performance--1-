@@ -54,7 +54,7 @@ export class AutomationJourneysController {
 
   static async testRun(req: Request, res: Response, next: NextFunction) {
     try {
-      const { email } = req.body as { email?: string };
+      const { email, startNodeId } = req.body as { email?: string; startNodeId?: string };
       if (!email?.trim()) {
         res.status(400).json({ error: 'email é obrigatório' });
         return;
@@ -68,7 +68,7 @@ export class AutomationJourneysController {
         return;
       }
 
-      res.json(await AutomationJourneysService.testRun(req.params.id, email));
+      res.json(await AutomationJourneysService.testRun(req.params.id, email, startNodeId || undefined));
     } catch (error) {
       next(error);
     }

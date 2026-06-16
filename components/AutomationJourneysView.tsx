@@ -1111,6 +1111,7 @@ const AutomationJourneysView: React.FC = () => {
   const [testSearching, setTestSearching] = useState(false);
   const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const [testError, setTestError] = useState('');
+  const [testStartNodeId, setTestStartNodeId] = useState<string | null>(null);
   const [aiAgents, setAiAgents] = useState<AIAgent[]>([]);
 
   useEffect(() => {
@@ -1513,7 +1514,7 @@ const AutomationJourneysView: React.FC = () => {
     setTestStatus('loading');
     setTestError('');
     try {
-      await DataService.testAutomationJourney(selected.id, testEmail.trim());
+      await DataService.testAutomationJourney(selected.id, testEmail.trim(), testStartNodeId ?? undefined);
       setTestStatus('ok');
       setTimeout(() => {
         setTestModalOpen(false);
@@ -1771,7 +1772,7 @@ const AutomationJourneysView: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => { setTestEmail(''); setTestLeadName(''); setTestSearch(''); setTestSuggestions([]); setTestStatus('idle'); setTestError(''); setTestModalOpen(true); }}
+            onClick={() => { setTestEmail(''); setTestLeadName(''); setTestSearch(''); setTestSuggestions([]); setTestStatus('idle'); setTestError(''); setTestStartNodeId(null); setTestModalOpen(true); }}
             disabled={!selected.id}
             title={!selected.id ? 'Salve a automação antes de testar' : 'Testar com um lead'}
             style={{
@@ -3034,6 +3035,63 @@ const AutomationJourneysView: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* ── Seletor de nó de início ── */}
+            {(() => {
+              const nonTriggerNodes = selected.nodes.filter(n => n.type !== 'trigger');
+              if (nonTriggerNodes.length === 0) return null;
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-muted)' }}>Iniciar a partir do passo</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {/* Opção: início completo */}
+                    <button
+                      type="button"
+                      onClick={() => setTestStartNodeId(null)}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px',
+                        borderRadius: 8, border: `1.5px solid ${testStartNodeId === null ? 'var(--accent)' : 'var(--border)'}`,
+                        background: testStartNodeId === null ? 'var(--accent-soft)' : 'transparent',
+                        cursor: 'pointer', textAlign: 'left',
+                      }}
+                    >
+                      <div style={{ width: 24, height: 24, borderRadius: '50%', background: testStartNodeId === null ? 'var(--accent)' : 'var(--bg-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <Play size={10} style={{ fill: testStartNodeId === null ? '#fff' : 'var(--fg-muted)', color: testStartNodeId === null ? '#fff' : 'var(--fg-muted)' }} />
+                      </div>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: testStartNodeId === null ? 'var(--accent)' : 'var(--fg-primary)' }}>Início completo do fluxo</span>
+                    </button>
+                    {/* Nós individuais */}
+                    {nonTriggerNodes.map((node, idx) => {
+                      const meta = NODE_TYPES.find(t => t.type === node.type);
+                      const isSelected = testStartNodeId === node.id;
+                      const label = node.label || meta?.label || node.type;
+                      const color = meta?.color ?? 'var(--fg-muted)';
+                      return (
+                        <button
+                          key={node.id}
+                          type="button"
+                          onClick={() => setTestStartNodeId(node.id)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px',
+                            borderRadius: 8, border: `1.5px solid ${isSelected ? color : 'var(--border)'}`,
+                            background: isSelected ? `${color}12` : 'transparent',
+                            cursor: 'pointer', textAlign: 'left',
+                          }}
+                        >
+                          <div style={{ width: 24, height: 24, borderRadius: '50%', background: isSelected ? color : 'var(--bg-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: isSelected ? '#fff' : 'var(--fg-muted)', fontSize: 10, fontWeight: 700 }}>
+                            {idx + 1}
+                          </div>
+                          <div>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: isSelected ? color : 'var(--fg-primary)' }}>{label}</span>
+                            {meta && <span style={{ fontSize: 11, color: 'var(--fg-muted)', marginLeft: 6 }}>{meta.label}</span>}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
 
             {testStatus === 'error' && (
               <p style={{ margin: 0, fontSize: 13, color: 'var(--red-500)', background: 'var(--red-500)12', border: '1px solid var(--red-500)33', borderRadius: 8, padding: '8px 12px' }}>

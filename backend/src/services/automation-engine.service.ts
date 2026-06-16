@@ -133,7 +133,8 @@ export async function fireTrigger(
 
 export async function testJourneyForLead(
   journeyId: string,
-  leadEmail: string
+  leadEmail: string,
+  startNodeId?: string
 ): Promise<{ executionId: string }> {
   const journey = await prisma.automationJourney.findUniqueOrThrow({ where: { id: journeyId } });
   const nodes = (journey.nodes as unknown as AutomationNode[]) ?? [];
@@ -145,6 +146,10 @@ export async function testJourneyForLead(
     throw new Error('Journey não tem nó de Entrada configurado. Adicione e configure o bloco de Entrada antes de testar.');
   }
 
+  if (startNodeId && !nodes.find(n => n.id === startNodeId)) {
+    throw new Error('Nó de início não encontrado na automação.');
+  }
+
   // Test runs use a separate guard namespace so they don't block real executions
   const guardKey = `test:${journeyId}:${leadEmail}`;
   if (executingLeads.has(guardKey)) {
@@ -152,17 +157,19 @@ export async function testJourneyForLead(
   }
   executingLeads.add(guardKey);
 
+  const initialNodeId = startNodeId ?? triggerNode.id;
+
   const execution = await prisma.automationExecution.create({
     data: {
       journeyId,
       leadEmail,
       status: 'running',
-      currentNodeId: triggerNode.id,
+      currentNodeId: initialNodeId,
       log: [],
     },
   });
 
-  runExecution(execution.id, journeyId, nodes, edges, leadEmail, { _test: true }, undefined, guardKey).catch(err => {
+  runExecution(execution.id, journeyId, nodes, edges, leadEmail, { _test: true }, startNodeId, guardKey).catch(err => {
     console.error(`[automation] test execution ${execution.id} failed:`, err);
     executingLeads.delete(guardKey);
   });
