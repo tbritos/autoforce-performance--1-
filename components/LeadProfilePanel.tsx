@@ -794,7 +794,13 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                         </button>
                       </div>
                       <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, tableLayout: 'fixed' }}>
+                          <colgroup>
+                            <col style={{ width: '22%' }} />
+                            <col style={{ width: '18%' }} />
+                            <col style={{ width: '45%' }} />
+                            <col style={{ width: '15%' }} />
+                          </colgroup>
                           <thead>
                             <tr style={{ background: 'var(--bg-subtle)' }}>
                               {['Conversão', 'Origem / UTM', 'Página', 'Data'].map(h => (
@@ -825,8 +831,8 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                   <td style={{ padding: '12px 16px' }}>
                                     <p style={{ margin: 0, color: 'var(--fg-secondary)' }}>{c.utmSource ? `${c.utmSource}${c.utmMedium ? ' / ' + c.utmMedium : ''}` : (c.campaignName ?? '—')}</p>
                                   </td>
-                                  <td style={{ padding: '12px 16px' }}>
-                                    <span style={{ fontSize: 12, color: 'var(--fg-muted)', fontFamily: 'monospace' }}>{c.landingPage ?? '—'}</span>
+                                  <td style={{ padding: '12px 16px', wordBreak: 'break-all', overflow: 'hidden' }}>
+                                    <span style={{ fontSize: 12, color: 'var(--fg-muted)', fontFamily: 'monospace', wordBreak: 'break-all' }}>{c.landingPage ?? '—'}</span>
                                   </td>
                                   <td style={{ padding: '12px 16px', whiteSpace: 'nowrap', color: 'var(--fg-muted)', fontSize: 12 }}>
                                     {fmt(c.convertedAt, { day: '2-digit', month: 'short' })} · {fmtTime(c.convertedAt)}
