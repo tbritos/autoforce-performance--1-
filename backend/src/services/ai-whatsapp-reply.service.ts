@@ -141,6 +141,19 @@ async function executeAIAndReply(
     return;
   }
 
+  // Known lead: apply lead_updates captured by AI (name, jobTitle, company)
+  const leadUpdates = result.leadUpdates ?? {};
+  const allowedUpdateFields: Record<string, unknown> = {};
+  for (const field of ['name', 'jobTitle', 'company'] as const) {
+    const val = leadUpdates[field];
+    if (val && typeof val === 'string' && val.trim()) {
+      allowedUpdateFields[field] = val.trim();
+    }
+  }
+  if (Object.keys(allowedUpdateFields).length > 0) {
+    await prisma.lead.update({ where: { email: lead.email }, data: allowedUpdateFields }).catch(() => {});
+  }
+
   // Known lead: apply actions and persist memory
   await applyRecommendedActions(lead.email, phone, result.recommendedActions ?? [], result.tags ?? []);
   await persistAIAgentDecision({

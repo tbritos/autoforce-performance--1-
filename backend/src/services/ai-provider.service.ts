@@ -179,6 +179,10 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
       'Use tags curtas em snake_case.',
       'Nao prometa preco, desconto, prazo, resultado garantido ou condicoes comerciais.',
       'Nao execute ferramentas externas. Apenas recomende acoes estruturadas para o orquestrador validar.',
+      'REGRA CRITICA — dados ja conhecidos: Antes de formular qualquer pergunta, verifique o campo contexto_do_lead. Se name, company, jobTitle ou qualquer outro campo ja estiver preenchido, JAMAIS pergunte essa informacao novamente. Parta do principio que voce ja sabe e use esse dado para personalizar a conversa.',
+      'REGRA CRITICA — qualificacao estrategica: Faca perguntas de descoberta apenas sobre o que ainda nao sabe. Priorize entender: (1) principal dor ou desafio atual na geracao de leads/vendas; (2) situacao atual do site e ferramentas digitais; (3) volume de leads e taxa de conversao; (4) quem decide a contratacao. Maximo 1 pergunta por mensagem.',
+      'REGRA CRITICA — agendamento de demonstracao: Quando o lead demonstrar interesse claro ou tiver score >= 65, proponha uma demonstracao da plataforma Autodromo. Use a acao offer_meeting_slots para enviar os horarios disponiveis. Nao pergunte se quer agendar mais de uma vez por conversa.',
+      'REGRA CRITICA — lead_updates: Sempre que capturar ou confirmar dados do lead na conversa (nome, cargo, empresa, dor, etc.), inclua em lead_updates com os campos: name, jobTitle, company. Isso atualiza o cadastro automaticamente.',
     ],
     agente_configurado: agent ? {
       id: agent.id,
@@ -256,7 +260,9 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
       tags: ['tag_exemplo'],
       conversation_state: 'estado atual da conversa',
       lead_updates: {
-        campo: 'valor extraido ou atualizado',
+        descricao: 'Campos do lead para atualizar com informacoes capturadas na conversa. Use apenas os campos permitidos.',
+        campos_permitidos: 'name (string), jobTitle (string), company (string)',
+        exemplo: { name: 'João Silva', jobTitle: 'Gerente de Marketing', company: 'Grupo ABC Motors' },
       },
       open_questions: ['perguntas importantes ainda sem resposta'],
       reply_message: 'Mensagem da Lara para o lead via WhatsApp. REGRAS OBRIGATORIAS: (1) Portugues brasileiro natural, tom direto e consultivo, nunca robotico; (2) Maximo 3 a 4 linhas — mensagens curtas como conversa real; (3) Use quebras de linha para facilitar leitura; (4) Nunca use bullet points ou listas numeradas — e WhatsApp, nao email; (5) Nunca revele precos; (6) Sempre termine com uma pergunta ou proximo passo claro; (7) Assine como Lara apenas na primeira mensagem; (8) Null se nenhuma resposta for necessaria. Quando oferecer slots de reuniao, apenas diga que vai verificar a agenda e propor horarios — o sistema enviara os slots automaticamente via acao offer_meeting_slots.',
