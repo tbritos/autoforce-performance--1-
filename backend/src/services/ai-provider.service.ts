@@ -400,11 +400,6 @@ const AUTOFORCE_CONTEXT = {
         'desconexao entre marketing, atendimento, CRM e vendas',
       ],
       o_que_o_cliente_realmente_quer: 'Transformar a operacao comercial em uma maquina moderna, previsivel, eficiente e escalavel — sem depender do caos humano para crescer.',
-      camadas_do_produto: [
-        { nome: 'AutoPilot Core', ideal: 'operacoes que precisam organizar atendimento, CRM conversacional e automacoes basicas' },
-        { nome: 'AutoPilot Pro', ideal: 'operacoes com maior volume, necessidade de agentes de IA, fluxos avancados e acompanhamento de performance' },
-        { nome: 'AutoPilot VIP', ideal: 'grupos, redes e montadoras que querem infraestrutura completa de IA, governanca, consultoria e operacao assistida. Posicionamento: central de comando comercial, nao apenas software.' },
-      ],
       funcionalidades: [
         'CRM Kanban conversacional com multiplos funis por produto, unidade ou equipe',
         'Inbox omnichannel: WhatsApp, Instagram, Facebook, Telegram unificados',
@@ -488,7 +483,7 @@ const AUTOFORCE_CONTEXT = {
         'Criacao de campanhas e anuncios (texto, imagem, carrossel, video, animacao) com suporte de IA',
         'Segmentacao por modelo, campanha, interesse e geolocalizacao',
         'Dashboard e reports automaticos por e-mail e WhatsApp',
-        'Reunioes de PDCA: PRO (1/mes), TURBO (2/mes), MAX (4/mes)',
+        'Reunioes de PDCA e otimizacoes frequentes',
         'Otimizacao continua de criativos, lances, segmentacoes e palavras-chave',
       ],
       diferenciais_vs_agencia_tradicional: [
