@@ -6,7 +6,7 @@ import {
   RefreshCw, ChevronDown, Plus, Check, PenLine,
   Trash2, FileText, Download, Wrench, Activity,
   ExternalLink, GitBranch, Flame, LayoutList,
-  CheckCircle, XCircle, MessageCircle, Send, Bot, UserCheck,
+  CheckCircle, XCircle, MessageCircle, Send, Bot, UserCheck, AlertCircle,
 } from 'lucide-react';
 import { LeadProfile, LeadStatus, LeadCustomFieldDef, PipedriveDealEvent, LeadConversion, WhatsAppConversationMessage, EmailSent } from '../types';
 import { DataService } from '../services/dataService';
@@ -1048,6 +1048,17 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                       const bubbleBg = out ? (isTemplate ? '#cfe9ba' : '#d9fdd3') : '#ffffff';
                                       const statusIcon = msg.status==='read' ? '✓✓' : msg.status==='delivered' ? '✓✓' : msg.status==='sent' ? '✓' : msg.status==='failed' ? '✗' : '';
                                       const statusColor = msg.status==='read' ? '#53bdeb' : msg.status==='failed' ? '#ef4444' : '#aaa';
+
+                                      // Extract error reason from WhatsApp webhook payload
+                                      const failError = msg.status === 'failed' ? (() => {
+                                        try {
+                                          const p = msg.payload as { errors?: Array<{ title?: string; message?: string; code?: number; error_data?: { details?: string } }> };
+                                          const err = p?.errors?.[0];
+                                          if (!err) return null;
+                                          return err.error_data?.details || err.title || err.message || `Código ${err.code}`;
+                                        } catch { return null; }
+                                      })() : null;
+
                                       return (
                                         <div key={msg.id} style={{ display:'flex', justifyContent: out?'flex-end':'flex-start', padding:'0 8px', marginBottom:2 }}>
                                           <div style={{ maxWidth:'72%' }}>
@@ -1063,6 +1074,11 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                                 {out && <span style={{ fontSize:10, color: statusColor, fontWeight:600 }}>{statusIcon}</span>}
                                               </div>
                                             </div>
+                                            {failError && (
+                                              <p style={{ margin:'3px 4px 0', fontSize:10, color:'#ef4444', textAlign:'right', display:'flex', alignItems:'center', justifyContent:'flex-end', gap:3 }}>
+                                                <AlertCircle size={9} /> {failError}
+                                              </p>
+                                            )}
                                           </div>
                                         </div>
                                       );
