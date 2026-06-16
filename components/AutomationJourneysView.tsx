@@ -3062,7 +3062,7 @@ const AutomationJourneysView: React.FC = () => {
                     </button>
                     {/* Nós individuais */}
                     {nonTriggerNodes.map((node, idx) => {
-                      const meta = NODE_TYPES.find(t => t.type === node.type);
+                      const meta = BLOCKS.find(t => t.type === node.type);
                       const isSelected = testStartNodeId === node.id;
                       const label = node.label || meta?.label || node.type;
                       const color = meta?.color ?? 'var(--fg-muted)';
