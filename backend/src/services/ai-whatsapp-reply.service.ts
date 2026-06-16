@@ -78,8 +78,12 @@ async function processAIReply(phone: string): Promise<void> {
 async function executeAIAndReply(
   lead: {
     id: string; email: string; name: string | null; company: string | null;
-    jobTitle: string | null; status: string; score: number; tags: string[];
-    phone: string | null;
+    jobTitle: string | null; city: string | null; state: string | null;
+    status: string; score: number; isHot: boolean; tags: string[]; notes: string | null;
+    phone: string | null; assignedTo: string | null;
+    firstSource: string | null; firstMedium: string | null; firstCampaign: string | null; firstLandingPage: string | null;
+    customFields: unknown;
+    firstSeenAt: Date; lastSeenAt: Date;
   },
   phone: string
 ): Promise<void> {
@@ -89,6 +93,49 @@ async function executeAIAndReply(
 
   const messages = await loadMessagesByPhone(phone);
   const transcript = buildTranscript(messages);
+
+  // Load custom field definitions to label the values
+  const customFieldDefs = await (prisma as any).leadCustomFieldDef.findMany({ select: { name: true, label: true } })
+    .catch(() => []) as Array<{ name: string; label: string }>;
+
+  const customFieldsLabeled: Record<string, unknown> = {};
+  if (lead.customFields && typeof lead.customFields === 'object') {
+    for (const [key, value] of Object.entries(lead.customFields as Record<string, unknown>)) {
+      if (value === null || value === undefined || value === '') continue;
+      const def = customFieldDefs.find((d: { name: string }) => d.name === key);
+      customFieldsLabeled[def?.label ?? key] = value;
+    }
+  }
+
+  const leadContext = {
+    identificacao: {
+      email: isNewContact ? null : lead.email,
+      nome: lead.name,
+      telefone: lead.phone,
+      cargo: lead.jobTitle,
+      empresa: lead.company,
+      cidade: lead.city,
+      estado: lead.state,
+    },
+    qualificacao: {
+      status: lead.status,
+      score: lead.score,
+      lead_quente: lead.isHot,
+      tags: lead.tags,
+    },
+    origem: {
+      fonte: lead.firstSource,
+      midia: lead.firstMedium,
+      campanha: lead.firstCampaign,
+      landing_page: lead.firstLandingPage,
+    },
+    campos_personalizados: Object.keys(customFieldsLabeled).length > 0 ? customFieldsLabeled : null,
+    observacoes: lead.notes,
+    historico: {
+      primeiro_contato: lead.firstSeenAt,
+      ultimo_contato: lead.lastSeenAt,
+    },
+  };
 
   const agentContext = await loadAIAgentContext({
     leadEmail: isNewContact ? undefined : lead.email,
@@ -101,15 +148,7 @@ async function executeAIAndReply(
     : agentContext.agent.objective;
 
   const result = await runAIPrequalification({
-    lead: {
-      email: isNewContact ? '' : lead.email,
-      name: lead.name,
-      company: lead.company,
-      jobTitle: lead.jobTitle,
-      status: lead.status as any,
-      score: lead.score,
-      tags: lead.tags,
-    },
+    lead: leadContext as any,
     transcript,
     goal,
     criteria: '',
@@ -208,7 +247,12 @@ async function findLeadByPhone(phone: string) {
   const candidates = phoneSearchVariants(phone);
   const selectFields = {
     id: true, email: true, name: true, company: true, jobTitle: true,
-    status: true, score: true, tags: true, phone: true,
+    city: true, state: true,
+    status: true, score: true, isHot: true, tags: true, notes: true,
+    phone: true, assignedTo: true,
+    firstSource: true, firstMedium: true, firstCampaign: true, firstLandingPage: true,
+    customFields: true,
+    firstSeenAt: true, lastSeenAt: true,
     aiHandoff: true, aiProcessing: true, aiProcessingAt: true,
   };
 
