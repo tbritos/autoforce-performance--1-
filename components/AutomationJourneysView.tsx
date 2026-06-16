@@ -2968,7 +2968,8 @@ const AutomationJourneysView: React.FC = () => {
           <div onClick={() => setTestModalOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000 }} />
           <div style={{
             position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-            width: 420, background: 'var(--bg-surface)', borderRadius: 16,
+            width: 580, maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
+            background: 'var(--bg-surface)', borderRadius: 16,
             border: '1px solid var(--border)', boxShadow: 'var(--shadow-xl)', zIndex: 1001,
             padding: 28, display: 'flex', flexDirection: 'column', gap: 18,
           }}>
@@ -3003,7 +3004,7 @@ const AutomationJourneysView: React.FC = () => {
                     placeholder="Nome ou email do lead..."
                     value={testSearch}
                     onChange={e => handleTestSearch(e.target.value)}
-                    style={{ height: 40, paddingLeft: 38 }}
+                    style={{ height: 40, paddingLeft: 38, width: '100%' }}
                     disabled={testStatus === 'loading' || testStatus === 'ok'}
                   />
                   <Search size={14} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-muted)', pointerEvents: 'none' }} />
