@@ -519,7 +519,14 @@ export async function deleteWhatsAppTemplate(templateName: string): Promise<void
 export async function setLeadAiHandoff(leadId: string, handoff: boolean): Promise<void> {
   const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true } });
   if (!lead) throw new Error('Lead não encontrado');
-  await prisma.lead.update({ where: { id: leadId }, data: { aiHandoff: handoff } });
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: {
+      aiHandoff: handoff,
+      // When re-enabling IA mode, clear any stuck processing lock
+      ...(handoff === false ? { aiProcessing: false, aiProcessingAt: null } : {}),
+    },
+  });
 }
 
 export { getWhatsAppCredentials };
