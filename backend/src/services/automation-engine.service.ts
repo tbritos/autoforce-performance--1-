@@ -790,7 +790,7 @@ async function executeWhatsAppMessage(
 
   const lead = await prisma.lead.findUnique({
     where: { email: leadEmail },
-    select: { phone: true, name: true },
+    select: { phone: true, name: true, email: true, jobTitle: true, company: true, status: true, score: true },
   });
   if (!lead?.phone) {
     throw new Error(`Lead ${leadEmail} não tem telefone para envio de WhatsApp`);
@@ -807,11 +807,42 @@ async function executeWhatsAppMessage(
   const phone = lead.phone.replace(/\D/g, '');
   const to = phone.startsWith('55') ? phone : `55${phone}`;
 
+  // Map lead fields by the same keys used in OUR_LEAD_FIELDS on the frontend
+  const leadFieldValues: Record<string, string> = {
+    name:        lead.name     ?? '',
+    email:       lead.email    ?? '',
+    phone:       lead.phone    ?? '',
+    jobTitle:    lead.jobTitle ?? '',
+    companyName: lead.company  ?? '',
+    status:      lead.status   ?? '',
+    score:       String(lead.score ?? ''),
+  };
+
+  // varMappings: { "{{1}}": "name", "{{2}}": "email", ... }
+  let varMappings: Record<string, string> = {};
+  try { varMappings = JSON.parse(String(config.varMappings ?? '{}')); } catch { /* ignore */ }
+
+  const bodyParams = Object.entries(varMappings)
+    .sort(([a], [b]) => {
+      const idxA = parseInt(a.replace(/\D/g, ''), 10) || 0;
+      const idxB = parseInt(b.replace(/\D/g, ''), 10) || 0;
+      return idxA - idxB;
+    })
+    .map(([, field]) => ({ type: 'text', text: leadFieldValues[field] ?? '' }));
+
+  const templatePayload: Record<string, unknown> = {
+    name: templateName,
+    language: { code: language },
+  };
+  if (bodyParams.length > 0) {
+    templatePayload.components = [{ type: 'body', parameters: bodyParams }];
+  }
+
   const body: Record<string, unknown> = {
     messaging_product: 'whatsapp',
     to,
     type: 'template',
-    template: { name: templateName, language: { code: language } },
+    template: templatePayload,
   };
 
   const res = await fetch(
