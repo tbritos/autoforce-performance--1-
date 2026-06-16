@@ -893,7 +893,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                   subtitle = (
                                     <span>
                                       {meta.label}
-                                      {ev.conversion.landingPage && <> em <code style={{ fontSize: 11 }}>{ev.conversion.landingPage}</code></>}
+                                      {ev.conversion.landingPage && <> em <code style={{ fontSize: 11, wordBreak: 'break-all' }}>{ev.conversion.landingPage}</code></>}
                                       {ev.conversion.utmSource && <> · {ev.conversion.utmSource}{ev.conversion.utmMedium ? ' / ' + ev.conversion.utmMedium : ''}</>}
                                     </span>
                                   );
@@ -915,9 +915,9 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                     <div style={{ width: 30, height: 30, borderRadius: '50%', background: iconBg, color: iconColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                       {icon}
                                     </div>
-                                    <div style={{ flex: 1, paddingTop: 5 }}>
+                                    <div style={{ flex: 1, minWidth: 0, paddingTop: 5 }}>
                                       <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-primary)', fontWeight: 500 }}>{title}</p>
-                                      {subtitle && <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>{subtitle}</p>}
+                                      {subtitle && <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-muted)', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{subtitle}</p>}
                                       <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>{fmtTime(ev.date)}</p>
                                     </div>
                                   </div>
