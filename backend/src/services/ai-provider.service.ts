@@ -371,11 +371,6 @@ const AUTOFORCE_CONTEXT = {
         '100% responsivo — mobile, tablet e desktop',
         'Controle de acesso por usuario e historico de versoes',
       ],
-      planos: [
-        { nome: 'Starter', ideal: 'operacoes que querem iniciar ou modernizar a presenca digital' },
-        { nome: 'Racer', ideal: 'concessionarias que precisam de operacao digital mais forte e orientada a resultados' },
-        { nome: 'Champion', ideal: 'grupos que buscam maxima performance, escala e lideranca digital no setor' },
-      ],
       pagamento: 'mensalidade via boleto ou PIX; setup parcelavel em ate 3x; valor pode ser rateado entre CNPJs',
       garantia: 'contrato sem multas; cancelamento com 30 dias de aviso previo; garantia de resultado em ate 3 meses seguindo a metodologia',
       quando_indicar: 'lead com site lento, sem geracao de leads organicos, dependente de agencia, sem autonomia para atualizacoes, ou que quer uma presenca digital profissional no automotivo',
