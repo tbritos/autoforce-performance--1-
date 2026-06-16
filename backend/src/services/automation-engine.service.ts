@@ -870,11 +870,26 @@ async function executeWhatsAppMessage(
   }
 
   const data = await res.json() as { messages?: Array<{ id?: string }> };
+
+  // Build resolved text preview from template components + resolved params
+  let resolvedText: string | null = null;
+  try {
+    const components: Array<{ type: string; text?: string }> = JSON.parse(String(config.templateComponents ?? '[]'));
+    const bodyComp = components.find(c => c.type === 'BODY' || c.type === 'body');
+    if (bodyComp?.text) {
+      resolvedText = bodyComp.text.replace(/\{\{(\d+)\}\}/g, (_: string, idx: string) => {
+        const param = bodyParams[parseInt(idx, 10) - 1];
+        return param?.text ?? `{{${idx}}}`;
+      });
+    }
+  } catch { /* ignore — fall back to null */ }
+
   await recordOutgoingWhatsAppMessage({
     leadEmail,
     phone: to,
     messageId: data.messages?.[0]?.id ?? null,
     templateName,
+    text: resolvedText,
     payload: body,
     automationJourneyId: journeyId,
     automationExecutionId: executionId,
