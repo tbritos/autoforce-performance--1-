@@ -13,6 +13,7 @@ import {
   Eye,
   Wifi,
   MessageCircle,
+  CalendarDays,
 } from 'lucide-react';
 import { PlatformConnection, ConnectionStatus, ConnectionRequirement } from '../types';
 import { DataService } from '../services/dataService';
@@ -37,6 +38,7 @@ const PLATFORMS: PlatformMeta[] = [
   { id: 'GOOGLE_ANALYTICS', label: 'Google Analytics',   description: 'GA4 — Landing pages e comportamento',  Icon: BarChart3, accentColor: '#fb923c', accentBg: 'rgba(251,146,60,0.12)' },
   { id: 'RD_STATION',       label: 'RD Station',         description: 'CRM, e-mails e automações',            Icon: Mail,      accentColor: '#a78bfa', accentBg: 'rgba(167,139,250,0.12)' },
   { id: 'PIPEDRIVE',        label: 'Pipedrive',          description: 'CRM — Negócios, contatos e pipeline',  Icon: PlugZap,       accentColor: '#34d399', accentBg: 'rgba(52,211,153,0.12)' },
+  { id: 'GOOGLE_CALENDAR',  label: 'Google Calendar',    description: 'Agendamento de demos — freebusy dos closers', Icon: CalendarDays,  accentColor: '#4285f4', accentBg: 'rgba(66,133,244,0.12)' },
   { id: 'WHATSAPP',         label: 'WhatsApp Business',  description: 'API Oficial — envio de mensagens e templates', Icon: MessageCircle, accentColor: '#25d366', accentBg: 'rgba(37,211,102,0.12)', envVarOnly: true, envVars: ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_BUSINESS_ACCOUNT_ID'] },
   { id: 'CLARITY',          label: 'Microsoft Clarity',  description: 'Heatmaps, rage clicks e comportamento', Icon: Eye,           accentColor: '#38bdf8', accentBg: 'rgba(56,189,248,0.12)', disabled: true },
 ];
