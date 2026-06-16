@@ -5,7 +5,7 @@ import { PlatformConnectionService } from '../services/platform-connection.servi
 import { getWhatsAppCredentials } from '../services/whatsapp.service';
 
 const VALID_PLATFORMS = [
-  'META_ADS', 'GOOGLE_ADS', 'GOOGLE_ANALYTICS', 'RD_STATION', 'PIPEDRIVE', 'CLARITY', 'WHATSAPP',
+  'META_ADS', 'GOOGLE_ADS', 'GOOGLE_ANALYTICS', 'GOOGLE_CALENDAR', 'RD_STATION', 'PIPEDRIVE', 'CLARITY', 'WHATSAPP',
 ] as const satisfies readonly Platform[];
 
 function parsePlatform(raw: string): Platform | null {
@@ -16,6 +16,7 @@ const OAUTH_ENV_REQUIREMENTS: Record<(typeof VALID_PLATFORMS)[number], string[]>
   META_ADS:          ['META_APP_ID', 'META_APP_SECRET', 'APP_URL'],
   GOOGLE_ADS:        ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_ADS_DEVELOPER_TOKEN', 'APP_URL'],
   GOOGLE_ANALYTICS:  ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'APP_URL'],
+  GOOGLE_CALENDAR:   ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'APP_URL'],
   RD_STATION:        ['RD_STATION_CLIENT_ID', 'RD_STATION_CLIENT_SECRET', 'APP_URL'],
   PIPEDRIVE:         ['PIPEDRIVE_CLIENT_ID', 'PIPEDRIVE_CLIENT_SECRET', 'APP_URL'],
   CLARITY:           [],
