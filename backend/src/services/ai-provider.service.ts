@@ -119,7 +119,9 @@ async function runGeminiPrequalification(input: AIPrequalificationInput): Promis
     const content = payload.candidates?.[0]?.content?.parts?.map(part => part.text ?? '').join('') ?? '{}';
     return normalizeAIPrequalificationResult(JSON.parse(content), 'gemini', model, prompt);
   } catch (error) {
-    return fallbackAIPrequalification(input, error instanceof Error ? error.message : 'Falha ao chamar Gemini');
+    const reason = error instanceof Error ? error.message : 'Falha ao chamar Gemini';
+    console.error('[AI-Gemini] Prequalification failed:', reason);
+    return fallbackAIPrequalification(input, reason);
   }
 }
 
@@ -164,7 +166,9 @@ async function runOpenAIPrequalification(input: AIPrequalificationInput): Promis
     const content = payload.choices?.[0]?.message?.content ?? '{}';
     return normalizeAIPrequalificationResult(JSON.parse(content), 'openai', model, buildPrequalificationPrompt(input));
   } catch (error) {
-    return fallbackAIPrequalification(input, error instanceof Error ? error.message : 'Falha ao chamar OpenAI');
+    const reason = error instanceof Error ? error.message : 'Falha ao chamar OpenAI';
+    console.error('[AI-OpenAI] Prequalification failed:', reason);
+    return fallbackAIPrequalification(input, reason);
   }
 }
 

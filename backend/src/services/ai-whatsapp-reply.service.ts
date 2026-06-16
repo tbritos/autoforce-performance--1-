@@ -41,12 +41,18 @@ async function processAIReply(phone: string): Promise<void> {
   const lead = await findLeadByPhone(phone);
   if (!lead) return;
 
-  if (lead.aiHandoff) return;
+  if (lead.aiHandoff) {
+    console.log(`[AI-WPP] aiHandoff=true for ${phone} (${lead.email}) — skipping AI reply`);
+    return;
+  }
 
   // Acquire DB lock
   const now = new Date();
   if (lead.aiProcessing && lead.aiProcessingAt) {
-    if (now.getTime() - lead.aiProcessingAt.getTime() < LOCK_TTL_MS) return;
+    if (now.getTime() - lead.aiProcessingAt.getTime() < LOCK_TTL_MS) {
+      console.log(`[AI-WPP] aiProcessing lock active for ${phone} — skipping`);
+      return;
+    }
   }
 
   await prisma.lead.update({
@@ -158,6 +164,9 @@ async function executeAIAndReply(
   });
 
   // Send text reply
+  if (result.source === 'fallback') {
+    console.error('[AI-WPP] AI returned fallback — no reply sent to', phone, '| reason:', (result as { reason?: string }).reason ?? 'unknown');
+  }
   const replyText = result.replyMessage?.trim();
   if (replyText) {
     await sendWhatsAppText({
