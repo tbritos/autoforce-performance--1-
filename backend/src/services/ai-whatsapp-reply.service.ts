@@ -419,6 +419,17 @@ async function handleOfferMeetingSlots(leadEmail: string, phone: string): Promis
     });
   } catch (err) {
     console.error('[AI-WPP] Erro ao oferecer slots de reunião:', err);
+    // Send fallback so the lead doesn't get silence
+    try {
+      const { recordOutgoingWhatsAppMessage, getWhatsAppCredentials } = await import('./whatsapp.service');
+      await sendWhatsAppText({
+        to: phone,
+        text: 'Deixa eu verificar a agenda do nosso time e já te passo os próximos horários disponíveis, pode ser?',
+        leadEmail,
+        getCredentials: getWhatsAppCredentials,
+        recordOutgoing: recordOutgoingWhatsAppMessage,
+      });
+    } catch { /* silencioso */ }
   }
 }
 
