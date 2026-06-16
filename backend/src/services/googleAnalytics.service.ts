@@ -212,7 +212,7 @@ export async function getLandingPagesFromGA4(
         start = past.toISOString().split('T')[0];
     }
 
-    console.log(`🔍 Buscando GA4 de ${start} até ${end} (${lpHost})...`);
+    console.log(`🔍 Buscando GA4 de ${start} até ${end} (${lpHost ?? `property/${resolvedPropertyId}`})...`);
 
     const response = await client.properties.runReport({
       property: `properties/${resolvedPropertyId}`,
