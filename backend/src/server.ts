@@ -40,8 +40,11 @@ import emailTemplatesRoutes from './routes/email-templates.routes';
 dotenv.config();
 
 // Validação de variáveis de ambiente obrigatórias
-const REQUIRED_ENV = ['DATABASE_URL', 'JWT_SECRET', 'GOOGLE_CLIENT_ID', 'ENCRYPTION_KEY'] as const;
+const REQUIRED_ENV = ['DATABASE_URL', 'GOOGLE_CLIENT_ID', 'ENCRYPTION_KEY'] as const;
 const missing = REQUIRED_ENV.filter(key => !process.env[key]);
+if (!process.env.AUTH_SESSION_SECRET && !process.env.JWT_SECRET) {
+  missing.push('AUTH_SESSION_SECRET');
+}
 if (missing.length > 0) {
   console.error(`[startup] Variáveis de ambiente ausentes: ${missing.join(', ')}`);
   process.exit(1);
@@ -65,11 +68,11 @@ app.use(cookieParser());
 // O Express processa rotas na ordem de registro; esta captura o request antes do middleware global
 app.post('/api/auth/google/redirect', async (req, res) => {
   const { verifyGoogleToken, createSessionToken } = await import('./services/auth.service');
-  const frontendUrl = (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',')[0].trim();
+  const frontendUrl = process.env.FRONTEND_URL || (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',')[0].trim();
   try {
     const credential = typeof req.body?.credential === 'string' ? req.body.credential : '';
     if (!credential) {
-      res.redirect(`${frontendUrl}/?auth_error=${encodeURIComponent('Missing credential')}`);
+      res.redirect(`${frontendUrl}/#auth?auth_error=${encodeURIComponent('Missing credential')}`);
       return;
     }
     const user = await verifyGoogleToken(credential);
@@ -88,7 +91,7 @@ app.post('/api/auth/google/redirect', async (req, res) => {
     res.redirect(`${frontendUrl}/#auth?${params.toString()}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Google login failed';
-    res.redirect(`${frontendUrl}/?auth_error=${encodeURIComponent(message)}`);
+    res.redirect(`${frontendUrl}/#auth?auth_error=${encodeURIComponent(message)}`);
   }
 });
 
