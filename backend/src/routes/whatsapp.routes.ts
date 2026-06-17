@@ -12,6 +12,7 @@ router.delete('/templates/:templateName', WhatsAppController.deleteTemplate);
 router.get('/leads/:leadId/conversation', WhatsAppController.getConversation);
 router.post('/leads/:leadId/send', WhatsAppController.sendMessage);
 router.patch('/leads/:leadId/handoff', WhatsAppController.updateHandoff);
+router.post('/leads/:leadId/ai-reply', WhatsAppController.triggerAiReply);
 router.get('/webhook', WhatsAppController.verifyWebhook);
 router.post('/webhook', WhatsAppController.receiveWebhook);
 

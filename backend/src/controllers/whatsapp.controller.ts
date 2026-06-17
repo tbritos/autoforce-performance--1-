@@ -10,6 +10,7 @@ import {
   deleteWhatsAppTemplate,
   type CreateTemplateInput,
 } from '../services/whatsapp.service';
+import { prisma } from '../config/database';
 
 export class WhatsAppController {
   static async getTemplates(req: Request, res: Response, next: NextFunction) {
@@ -79,6 +80,42 @@ export class WhatsAppController {
       }
       await setLeadAiHandoff(req.params.leadId, handoff);
       res.json({ ok: true, aiHandoff: handoff });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async triggerAiReply(req: Request, res: Response, next: NextFunction) {
+    try {
+      const lead = await prisma.lead.findUnique({
+        where: { id: req.params.leadId },
+        select: { email: true, phone: true, aiHandoff: true },
+      });
+
+      if (!lead) {
+        res.status(404).json({ error: 'Lead nao encontrado' });
+        return;
+      }
+
+      if (!lead.phone?.trim()) {
+        res.status(400).json({ error: 'Lead sem telefone para WhatsApp' });
+        return;
+      }
+
+      if (lead.aiHandoff) {
+        res.status(409).json({ error: 'Lead esta em atendimento humano. Ative a IA antes de forcar resposta.' });
+        return;
+      }
+
+      await prisma.lead.update({
+        where: { email: lead.email },
+        data: { aiProcessing: false, aiProcessingAt: null },
+      });
+
+      const { triggerAIReplyNow } = await import('../services/ai-whatsapp-reply.service');
+      await triggerAIReplyNow(lead.phone);
+
+      res.json({ ok: true });
     } catch (err) {
       next(err);
     }

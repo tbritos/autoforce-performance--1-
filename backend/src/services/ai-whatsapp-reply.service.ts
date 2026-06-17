@@ -33,6 +33,14 @@ export function scheduleAIReply(phone: string): void {
   pendingTimers.set(key, timer);
 }
 
+export async function triggerAIReplyNow(phone: string): Promise<void> {
+  const key = normalizePhone(phone);
+  const existing = pendingTimers.get(key);
+  if (existing) clearTimeout(existing);
+  pendingTimers.delete(key);
+  await processAIReply(key);
+}
+
 function normalizePhone(phone: string): string {
   return normalizePhoneE164(phone) ?? phone.replace(/\D/g, '');
 }
@@ -167,7 +175,11 @@ async function executeAIAndReply(
   if (result.source === 'fallback') {
     console.error('[AI-WPP] AI returned fallback — no reply sent to', phone, '| reason:', (result as { reason?: string }).reason ?? 'unknown');
   }
-  const replyText = result.replyMessage?.trim();
+  const replyText = result.replyMessage?.trim() || (
+    result.source === 'fallback'
+      ? 'Oi! Tive uma instabilidade aqui para analisar sua mensagem agora, mas ja estou retomando. Me conta rapidinho qual e sua principal duvida ou desafio hoje?'
+      : ''
+  );
   if (replyText) {
     await sendWhatsAppText({
       to: phone,
