@@ -489,46 +489,16 @@ async function applyRecommendedActions(
   leadEmail: string,
   phone: string,
   actions: Array<{ type: string; reason: string; payload?: Record<string, unknown> }>,
-  aiTags: string[]
+  _aiTags: string[]
 ): Promise<void> {
-  if (aiTags.length > 0) {
-    const lead = await prisma.lead.findUnique({ where: { email: leadEmail }, select: { tags: true } });
-    if (lead) {
-      const merged = Array.from(new Set([...lead.tags, ...aiTags]));
-      const addedTags = aiTags.filter(t => !lead.tags.includes(t));
-      if (addedTags.length > 0) {
-        await prisma.lead.update({ where: { email: leadEmail }, data: { tags: merged } });
-        for (const tag of addedTags) {
-          import('./automation-engine.service').then(({ fireTrigger }) => {
-            fireTrigger('tag_added', leadEmail, { tag });
-          }).catch(() => {});
-        }
-      }
-    }
-  }
-
   for (const action of actions) {
     switch (action.type) {
       case 'handoff_to_human':
         await prisma.lead.update({ where: { email: leadEmail }, data: { aiHandoff: true } });
         break;
-      case 'offer_meeting_slots': {
+      case 'offer_meeting_slots':
         await handleOfferMeetingSlots(leadEmail, phone);
         break;
-      }
-      case 'apply_tag': {
-        const tag = String(action.payload?.tag ?? '').trim();
-        if (tag) {
-          const lead = await prisma.lead.findUnique({ where: { email: leadEmail }, select: { tags: true } });
-          if (lead && !lead.tags.includes(tag)) {
-            await prisma.lead.update({ where: { email: leadEmail }, data: { tags: { push: tag } } });
-            import('./automation-engine.service').then(({ fireTrigger }) => {
-              fireTrigger('tag_added', leadEmail, { tag });
-            }).catch(() => {});
-          }
-        }
-        break;
-      }
     }
   }
 }

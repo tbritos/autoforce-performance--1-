@@ -322,7 +322,6 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
       },
       urgencia: ['baixa', 'media', 'alta'],
       acoes_recomendadas_permitidas: [
-        'apply_tag',
         'create_rd_conversion',
         'send_whatsapp_followup',
         'create_pipedrive_deal',
@@ -333,6 +332,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
         'offer_meeting_slots',
         'confirm_meeting',
       ],
+      nota_sobre_tags: 'NAO use a acao apply_tag. O sistema de tags e gerenciado automaticamente. A unica tag criada pelo sistema e reuniao_agendada, quando o lead confirmar o agendamento.',
     },
     formato_obrigatorio_de_saida: {
       fit: 'qualified | nurture | disqualified',
@@ -721,14 +721,8 @@ function fallbackAIPrequalification(
     summary: lastLines ? `Analise pendente. Ultimas mensagens: ${lastLines}` : `Analise pendente: ${reason}`,
     decisionReason: reason,
     recommendedNextStep: 'Revisar conversa manualmente ou configurar AI_PROVIDER/GEMINI_API_KEY.',
-    recommendedActions: [
-      {
-        type: 'handoff_to_human',
-        reason: 'A IA nao conseguiu analisar com seguranca.',
-        payload: { reason },
-      },
-    ],
-    tags: ['ia_pendente'],
+    recommendedActions: [],
+    tags: [],
     source: 'fallback',
     model: 'fallback',
     reason,
