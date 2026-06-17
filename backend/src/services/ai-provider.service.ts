@@ -93,7 +93,7 @@ async function runGeminiPrequalification(input: AIPrequalificationInput): Promis
   if (!apiKey) return fallbackAIPrequalification(input, 'GEMINI_API_KEY nao configurada');
 
   const model = resolveModel('gemini', input.model, process.env.GEMINI_MODEL, 'gemini-2.5-flash');
-  const prompt = buildPrequalificationPrompt(input);
+  const prompt = compactPrequalificationPrompt(buildPrequalificationPrompt(input));
   const promptText = JSON.stringify(prompt);
 
   try {
@@ -142,6 +142,7 @@ async function runOpenAIPrequalification(input: AIPrequalificationInput): Promis
   if (!apiKey) return fallbackAIPrequalification(input, 'OPENAI_API_KEY nao configurada');
 
   const model = resolveModel('openai', input.model, process.env.OPENAI_MODEL, 'gpt-4o-mini');
+  const prompt = compactPrequalificationPrompt(buildPrequalificationPrompt(input));
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -164,7 +165,7 @@ async function runOpenAIPrequalification(input: AIPrequalificationInput): Promis
               'Use score de 0 a 100 e crie tags curtas em snake_case.',
             ].join(' '),
           },
-          { role: 'user', content: JSON.stringify(buildPrequalificationPrompt(input)) },
+          { role: 'user', content: JSON.stringify(prompt) },
         ],
       }),
     });
@@ -176,7 +177,7 @@ async function runOpenAIPrequalification(input: AIPrequalificationInput): Promis
 
     const payload = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
     const content = payload.choices?.[0]?.message?.content ?? '{}';
-    return normalizeAIPrequalificationResult(JSON.parse(content), 'openai', model, buildPrequalificationPrompt(input));
+    return normalizeAIPrequalificationResult(JSON.parse(content), 'openai', model, prompt);
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'Falha ao chamar OpenAI';
     console.error('[AI-OpenAI] Prequalification failed:', reason);
@@ -417,6 +418,51 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
       },
       open_questions: ['perguntas importantes ainda sem resposta'],
       reply_message: 'Mensagem da Lara para o lead via WhatsApp. REGRAS OBRIGATORIAS: (1) Portugues brasileiro natural, tom direto e consultivo, nunca robotico; (2) Maximo 3 a 4 linhas — mensagens curtas como conversa real; (3) Use quebras de linha para facilitar leitura; (4) Nunca use bullet points ou listas numeradas — e WhatsApp, nao email; (5) Nunca revele precos; (6) Sempre termine com uma pergunta ou proximo passo claro; (7) Assine como Lara apenas na primeira mensagem; (8) Para mensagens inbound do WhatsApp, nunca retorne null, vazio ou omita este campo; se o lead disse apenas "oi", cumprimente e faca uma pergunta de descoberta. Quando oferecer reuniao, apenas diga que vai verificar a agenda — o sistema enviara automaticamente o link ou horarios via acao offer_meeting_slots.',
+    },
+  };
+}
+
+function compactPrequalificationPrompt(prompt: Record<string, unknown>): Record<string, unknown> {
+  const journey = isRecord(prompt.contexto_da_jornada) ? prompt.contexto_da_jornada : {};
+  const taxonomy = isRecord(prompt.taxonomia) ? prompt.taxonomia : {};
+  const outputFormat = isRecord(prompt.formato_obrigatorio_de_saida) ? prompt.formato_obrigatorio_de_saida : {};
+
+  return {
+    role: prompt.role,
+    contrato_de_saida: outputFormat,
+    regras_criticas: prompt.instrucoes_de_resposta,
+    agente_configurado: prompt.agente_configurado,
+    memoria_persistente_do_lead: prompt.memoria_persistente_do_lead,
+    contexto_do_lead: prompt.contexto_do_lead,
+    conversa_whatsapp: prompt.conversa_whatsapp,
+    conhecimento_recuperado: prompt.base_de_conhecimento_relevante,
+    contexto_empresa_resumido: {
+      empresa: 'AutoForce',
+      posicionamento: 'Tecnologia e marketing digital especializado no setor automotivo.',
+      produtos: [
+        'Autodromo: CMS/site automotivo de alta performance.',
+        'AutoPilot: CRM, automacao conversacional e operacao comercial assistida.',
+        'NitroAds: midia de performance para o setor automotivo.',
+      ],
+      regra: 'Use detalhes de produto, cases e politicas apenas quando aparecerem em conhecimento_recuperado ou nos dados do lead.',
+    },
+    jornada_resumida: {
+      objetivo_do_bloco: journey.objetivo_do_bloco,
+      criterios_configurados: journey.criterios_configurados,
+      regras: [
+        'Responda a ultima mensagem do lead antes de tentar qualificar.',
+        'Faca no maximo uma pergunta por mensagem.',
+        'Nao pergunte informacao ja presente em contexto_do_lead ou memoria.',
+        'Nao invente cases, numeros, fornecedores, precos ou politicas.',
+        'Se o lead pedir reuniao e houver contexto minimo, use offer_meeting_slots e diga que vai enviar a agenda.',
+        'Se faltar contexto, colete a informacao mais importante com uma pergunta natural.',
+      ],
+    },
+    taxonomia: {
+      fit: isRecord(taxonomy.fit) ? taxonomy.fit : undefined,
+      acoes_recomendadas_permitidas: Array.isArray(taxonomy.acoes_recomendadas_permitidas)
+        ? taxonomy.acoes_recomendadas_permitidas
+        : Array.from(ALLOWED_ACTION_TYPES),
     },
   };
 }

@@ -278,20 +278,48 @@ async function listKnowledge(
   categories?: string[],
   tags?: string[]
 ): Promise<any[]> {
-  const where: Record<string, unknown> = {
+  const baseWhere: Record<string, unknown> = {
     isActive: true,
     OR: [{ agentId }, { agentId: null }],
   };
 
   const cleanCategories = (categories ?? []).map(item => item.trim()).filter(Boolean);
-  if (cleanCategories.length > 0) where.category = { in: cleanCategories };
-
   const cleanTags = (tags ?? []).map(item => item.trim()).filter(Boolean);
-  if (cleanTags.length > 0) where.tags = { hasSome: cleanTags };
 
-  return (prisma as any).aIKnowledgeItem.findMany({
+  const where = { ...baseWhere };
+  if (cleanCategories.length > 0 || cleanTags.length > 0) {
+    where.AND = [{
+      OR: [
+        ...(cleanCategories.length > 0 ? [{ category: { in: cleanCategories } }] : []),
+        ...(cleanTags.length > 0 ? [{ tags: { hasSome: cleanTags } }] : []),
+      ],
+    }];
+  }
+
+  let items = await (prisma as any).aIKnowledgeItem.findMany({
     where,
     orderBy: [{ priority: 'asc' }, { updatedAt: 'desc' }],
-    take: 12,
+    take: 40,
   });
+
+  if (items.length === 0 && (cleanCategories.length > 0 || cleanTags.length > 0)) {
+    items = await (prisma as any).aIKnowledgeItem.findMany({
+      where: baseWhere,
+      orderBy: [{ priority: 'asc' }, { updatedAt: 'desc' }],
+      take: 12,
+    });
+  }
+
+  const scored = items.map((item: any) => {
+    const itemTags = Array.isArray(item.tags) ? item.tags.map((tag: unknown) => String(tag).toLowerCase()) : [];
+    const tagScore = cleanTags.reduce((total, tag) => total + (itemTags.includes(tag.toLowerCase()) ? 4 : 0), 0);
+    const categoryScore = cleanCategories.includes(String(item.category)) ? 2 : 0;
+    const priorityScore = Math.max(0, 100 - Number(item.priority ?? 100)) / 100;
+    return { item, score: tagScore + categoryScore + priorityScore };
+  });
+
+  return scored
+    .sort((a, b) => b.score - a.score || Number(a.item.priority ?? 100) - Number(b.item.priority ?? 100))
+    .slice(0, 6)
+    .map(entry => entry.item);
 }

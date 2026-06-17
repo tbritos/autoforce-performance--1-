@@ -118,6 +118,64 @@ function recoverAIReply(input: {
   };
 }
 
+function uniq(values: string[]): string[] {
+  return Array.from(new Set(values.map(value => value.trim()).filter(Boolean)));
+}
+
+function deriveKnowledgeHints(input: {
+  lastInboundText: string;
+  transcript: string;
+  leadTags: string[];
+  firstCampaign: string | null;
+  firstLandingPage: string | null;
+}): { categories: string[]; tags: string[] } {
+  const text = normalizeText([
+    input.lastInboundText,
+    input.transcript.split('\n').slice(-8).join('\n'),
+    input.firstCampaign ?? '',
+    input.firstLandingPage ?? '',
+    input.leadTags.join(' '),
+  ].join(' '));
+
+  const categories = ['regra', 'politica'];
+  const tags = ['whatsapp', 'qualificacao'];
+
+  if (/\b(site|seo|pagespeed|landing|pagina|cms|autodromo|dealer|webmotors|wordpress)\b/.test(text)) {
+    tags.push('autodromo', 'site', 'seo', 'cms');
+    categories.push('produto', 'case', 'objecao');
+  }
+
+  if (/\b(crm|atendimento|whatsapp|vendedor|follow|resposta|lead perdido|autopilot|automacao)\b/.test(text)) {
+    tags.push('autopilot', 'crm', 'atendimento', 'whatsapp');
+    categories.push('produto', 'case', 'objecao');
+  }
+
+  if (/\b(midia|trafego|google|meta|anuncio|campanha|ads|roi|nitroads)\b/.test(text)) {
+    tags.push('nitroads', 'midia', 'performance', 'ads');
+    categories.push('produto', 'case', 'objecao');
+  }
+
+  if (/\b(preco|valor|orcamento|mensalidade|contrato|cancelamento|garantia)\b/.test(text)) {
+    tags.push('preco', 'comercial', 'contrato');
+    categories.push('politica', 'objecao');
+  }
+
+  if (/\b(reuniao|agenda|agendar|marcar|horario|demo|demonstracao|apresentacao|call)\b/.test(text)) {
+    tags.push('agenda', 'reuniao', 'demo');
+    categories.push('regra', 'politica');
+  }
+
+  if (/\b(grupo|lojas|unidades|rede|multimarcas)\b/.test(text)) {
+    tags.push('grupo_automotivo', 'governanca', 'unidades');
+    categories.push('produto', 'case');
+  }
+
+  return {
+    categories: uniq(categories),
+    tags: uniq(tags),
+  };
+}
+
 async function processAIReply(phone: string): Promise<void> {
   const lead = await findLeadByPhone(phone);
   if (!lead) {
@@ -203,6 +261,14 @@ async function executeAIAndReply(
 
   const messages = await loadMessagesByPhone(phone);
   const transcript = buildTranscript(messages);
+  const lastInboundText = messages.filter(m => m.direction === 'inbound').slice(-1)[0]?.text ?? '';
+  const knowledgeHints = deriveKnowledgeHints({
+    lastInboundText,
+    transcript,
+    leadTags: lead.tags,
+    firstCampaign: lead.firstCampaign,
+    firstLandingPage: lead.firstLandingPage,
+  });
 
   // Load custom field definitions to label the values
   const customFieldDefs = await (prisma as any).leadCustomFieldDef.findMany({ select: { name: true, label: true } })
@@ -251,6 +317,8 @@ async function executeAIAndReply(
     leadEmail: isNewContact ? undefined : lead.email,
     channel: 'whatsapp',
     skipMemory: isNewContact,
+    knowledgeCategories: knowledgeHints.categories,
+    knowledgeTags: knowledgeHints.tags,
   });
 
   const goal = isNewContact
@@ -267,7 +335,6 @@ async function executeAIAndReply(
     agentContext,
   });
 
-  const lastInboundText = messages.filter(m => m.direction === 'inbound').slice(-1)[0]?.text ?? '';
   const recovered = recoverAIReply({
     leadName: lead.name,
     company: lead.company,
