@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Loader2 } from 'lucide-react';
 import { User } from '../types';
 
 declare global {
@@ -9,7 +8,6 @@ declare global {
         id?: {
           initialize: (options: Record<string, unknown>) => void;
           renderButton: (element: HTMLElement, options: Record<string, unknown>) => void;
-          prompt: () => void;
         };
       };
     };
@@ -23,66 +21,76 @@ interface LoginProps {
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-const GoogleIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.36-8.16 2.36-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-  </svg>
-);
-
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
-  const googleBtnRef = useRef<HTMLDivElement>(null);
+  const googleButtonRef = useRef<HTMLDivElement>(null);
+  const initializedRef = useRef(false);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
 
   const handleCredentialResponse = async (response: { credential?: string }) => {
-    if (!response.credential) { setError('Falha ao autenticar. Tente novamente.'); return; }
-    setLoading(true);
+    if (!response.credential) {
+      setError('Falha ao autenticar. Tente novamente.');
+      return;
+    }
+
     setError('');
     try {
-      // credentials: 'include' so the httpOnly cookie set by the server is accepted
       const result = await fetch(`${API_URL}/auth/google`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ credential: response.credential }),
       });
-      if (!result.ok) { const t = await result.text(); throw new Error(t || 'Falha'); }
+
+      if (!result.ok) {
+        const text = await result.text();
+        throw new Error(text || 'Falha no login Google');
+      }
+
       const data = await result.json();
-      // Token now lives in httpOnly cookie — only store user info in localStorage
       localStorage.setItem('autoforce_user', JSON.stringify(data.user));
       localStorage.removeItem('autoforce_token');
       onLogin(data.user);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('Login error:', msg);
-      setError(msg || 'Acesso restrito a contas @autoforce.com');
-      setLoading(false);
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('Login error:', message);
+      setError(message || 'Acesso restrito a contas @autoforce.com');
     }
   };
 
   useEffect(() => {
-    if (!GOOGLE_CLIENT_ID) { setError('Google Client ID não configurado.'); return; }
+    if (!GOOGLE_CLIENT_ID) {
+      setError('Google Client ID nao configurado.');
+      return;
+    }
+
     const init = () => {
-      if (!window.google?.accounts?.id || !googleBtnRef.current) return;
+      if (initializedRef.current || !window.google?.accounts?.id || !googleButtonRef.current) return;
+      initializedRef.current = true;
+
       window.google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
         callback: handleCredentialResponse,
         ux_mode: 'popup',
       });
-      window.google.accounts.id.renderButton(googleBtnRef.current, { theme: 'filled_black', size: 'large', text: 'continue_with', shape: 'pill' });
+
+      googleButtonRef.current.innerHTML = '';
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: 'outline',
+        size: 'large',
+        text: 'continue_with',
+        shape: 'rectangular',
+        width: 336,
+      });
       setReady(true);
     };
-    if (window.google?.accounts?.id) { init(); return; }
-    const t = setInterval(() => { if (window.google?.accounts?.id) { clearInterval(t); init(); } }, 200);
-    return () => clearInterval(t);
+
+    init();
+    const interval = window.setInterval(init, 200);
+    return () => window.clearInterval(interval);
   }, []);
 
   const handleDevLogin = async () => {
-    setLoading(true);
     setError('');
     try {
       const result = await fetch(`${API_URL}/auth/dev-login`, { method: 'POST' });
@@ -94,15 +102,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       onLogin(data.user, devToken);
     } catch {
       setError('Falha no login dev. Backend rodando?');
-      setLoading(false);
     }
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F7F8FA] font-sans select-none">
-
-
-      {/* ── Top nav ──────────────────────────────────────────── */}
       <header className="flex items-center justify-between px-8 py-4 bg-white border-b border-gray-200/80">
         <img
           src="https://static.autodromo.com.br/uploads/1dc32f4d-ab47-428d-91dd-756266d45b47_LOGOTIPO-AUTOFORCE-HORIZONTAL.svg"
@@ -111,7 +115,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           draggable={false}
         />
         <nav className="flex items-center gap-1">
-          {['Documentação', 'Suporte'].map(label => (
+          {['Documentacao', 'Suporte'].map(label => (
             <a
               key={label}
               href={label.startsWith('Document') ? '/docs' : '#'}
@@ -125,69 +129,35 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         </nav>
       </header>
 
-      {/* ── Main ─────────────────────────────────────────────── */}
       <main className="flex-1 flex items-center justify-center px-4 py-12">
         <div
           className="w-full max-w-[400px] bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden"
           style={{ animation: 'fadeUp 0.4s ease both' }}
         >
-          {/* Blue accent bar */}
           <div className="h-1 w-full bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-600" />
 
           <div className="px-8 py-10 flex flex-col gap-8">
-
-            {/* Headline */}
             <div className="flex flex-col gap-2">
               <h1 className="text-3xl font-bold text-gray-900 leading-tight tracking-tight">
-                Acesse a{' '}
-                <span className="text-blue-600">AutoForce</span>
-                .
+                Acesse a <span className="text-blue-600">AutoForce</span>.
               </h1>
               <p className="text-[13.5px] text-gray-500 leading-relaxed">
-                Sistema central da operação de marketing.
+                Sistema central da operacao de marketing.
               </p>
             </div>
 
-            {/* Button area */}
             <div className="flex flex-col gap-3">
-
-              {/* Custom Google button with real Google button as invisible overlay */}
-              <div className="relative h-[46px]">
-                <button
-                  type="button"
-                  disabled={!ready || loading}
-                  className="
-                    w-full h-full flex items-center justify-center gap-3
-                    px-5 rounded-xl
-                    bg-white border border-gray-200
-                    text-[14px] font-medium text-gray-700
-                    shadow-[0_1px_3px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)]
-                    hover:shadow-[0_4px_12px_rgba(0,0,0,0.10)]
-                    hover:border-gray-300
-                    hover:-translate-y-px
-                    active:translate-y-0 active:shadow-sm
-                    disabled:opacity-50 disabled:cursor-not-allowed
-                    transition-all duration-200 ease-out
-                  "
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin text-gray-400" />
-                      <span className="text-gray-500">Autenticando...</span>
-                    </>
-                  ) : (
-                    <>
-                      <GoogleIcon />
-                      <span>Continuar com Google</span>
-                    </>
-                  )}
-                </button>
-                {/* Real Google SDK button — transparent overlay so user clicks it directly */}
-                <div
-                  ref={googleBtnRef}
-                  className="absolute inset-0 overflow-hidden rounded-xl"
-                  style={{ opacity: 0, pointerEvents: ready && !loading ? 'auto' : 'none' }}
-                />
+              <div className="min-h-[44px] w-full flex items-center justify-center">
+                {!ready && (
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full h-[44px] rounded border border-gray-200 bg-white text-[14px] font-medium text-gray-400 disabled:cursor-not-allowed"
+                  >
+                    Carregando Google...
+                  </button>
+                )}
+                <div ref={googleButtonRef} className={ready ? 'block' : 'hidden'} />
               </div>
 
               {error && (
@@ -198,8 +168,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               )}
 
               <p className="text-xs text-gray-400 text-center pt-1">
-                Use sua conta corporativa{' '}
-                <span className="font-semibold text-gray-500">@autoforce.com</span>
+                Use sua conta corporativa <span className="font-semibold text-gray-500">@autoforce.com</span>
               </p>
 
               {import.meta.env.DEV && (
@@ -212,33 +181,30 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   <button
                     type="button"
                     onClick={handleDevLogin}
-                    disabled={loading}
-                    className="w-full h-10 px-4 rounded-xl border border-dashed border-gray-200 text-xs text-gray-400 hover:text-gray-600 hover:border-gray-300 hover:bg-gray-50 disabled:opacity-50 transition-all duration-150 font-mono"
+                    className="w-full h-10 px-4 rounded-xl border border-dashed border-gray-200 text-xs text-gray-400 hover:text-gray-600 hover:border-gray-300 hover:bg-gray-50 transition-all duration-150 font-mono"
                   >
-                    ⚡ Entrar sem Google (localhost)
+                    Entrar sem Google (localhost)
                   </button>
                 </>
               )}
             </div>
-
           </div>
         </div>
       </main>
 
-      {/* ── Footer ───────────────────────────────────────────── */}
       <footer className="flex items-center justify-between px-8 py-4 text-[11px] text-gray-400">
-        <span>© 2026 AutoForce · v2.0.0</span>
+        <span>(c) 2026 AutoForce - v2.0.0</span>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
             </span>
-            <span>Todos os serviços operando</span>
+            <span>Todos os servicos operando</span>
           </div>
           {['Status', 'Termos', 'Privacidade'].map(link => (
             <React.Fragment key={link}>
-              <span className="text-gray-200">·</span>
+              <span className="text-gray-200">-</span>
               <a href="#" className="hover:text-gray-700 transition-colors">{link}</a>
             </React.Fragment>
           ))}
