@@ -86,13 +86,31 @@ async function processAIReply(phone: string): Promise<void> {
       if (handled) return;
     }
 
-    await executeAIAndReply(lead, phone);
-    console.log(`[AI-WPP] finished reply flow for ${phone} lead=${lead.email}`);
+    try {
+      await executeAIAndReply(lead, phone);
+      console.log(`[AI-WPP] finished reply flow for ${phone} lead=${lead.email}`);
+    } catch (err) {
+      console.error(`[AI-WPP] reply flow failed for ${phone} lead=${lead.email}:`, err);
+      await sendSystemFallbackReply(phone, lead.email).catch(fallbackErr => {
+        console.error(`[AI-WPP] failed to send system fallback to ${phone}:`, fallbackErr);
+      });
+    }
   } finally {
     await prisma.lead
       .update({ where: { email: lead.email }, data: { aiProcessing: false, aiProcessingAt: null } })
       .catch(() => {});
   }
+}
+
+async function sendSystemFallbackReply(phone: string, leadEmail: string): Promise<void> {
+  const { recordOutgoingWhatsAppMessage, getWhatsAppCredentials } = await import('./whatsapp.service');
+  await sendWhatsAppText({
+    to: phone,
+    text: 'Oi! Tive uma instabilidade aqui para analisar sua mensagem agora, mas ja estou retomando. Me conta rapidinho qual e sua principal duvida ou desafio hoje?',
+    leadEmail,
+    getCredentials: getWhatsAppCredentials,
+    recordOutgoing: recordOutgoingWhatsAppMessage,
+  });
 }
 
 async function executeAIAndReply(
@@ -181,11 +199,11 @@ async function executeAIAndReply(
   if (result.source === 'fallback') {
     console.error('[AI-WPP] AI returned fallback; sending safe fallback to', phone, '| reason:', (result as { reason?: string }).reason ?? 'unknown');
   }
-  const replyText = result.replyMessage?.trim() || (
-    result.source === 'fallback'
-      ? 'Oi! Tive uma instabilidade aqui para analisar sua mensagem agora, mas ja estou retomando. Me conta rapidinho qual e sua principal duvida ou desafio hoje?'
-      : ''
-  );
+  const replyText = result.replyMessage?.trim()
+    || 'Oi! Tive uma instabilidade aqui para analisar sua mensagem agora, mas ja estou retomando. Me conta rapidinho qual e sua principal duvida ou desafio hoje?';
+  if (!result.replyMessage?.trim()) {
+    console.warn(`[AI-WPP] AI returned empty reply for ${phone}; sending safe fallback`);
+  }
   if (replyText) {
     await sendWhatsAppText({
       to: phone,
@@ -221,7 +239,8 @@ async function executeAIAndReply(
   }
 
   // Known lead: apply actions and persist memory
-  await applyRecommendedActions(lead.email, phone, result.recommendedActions ?? [], result.tags ?? []);
+  await applyRecommendedActions(lead.email, phone, result.recommendedActions ?? [], result.tags ?? [])
+    .catch(err => console.error('[AI-WPP] applyRecommendedActions failed:', err));
   await persistAIAgentDecision({
     agentId: agentContext.agent.id,
     leadEmail: lead.email,
@@ -231,7 +250,7 @@ async function executeAIAndReply(
     promptSnapshot: result.promptSnapshot ?? {},
     result,
     lastMessageAt: new Date(),
-  });
+  }).catch(err => console.error('[AI-WPP] persistAIAgentDecision failed:', err));
 }
 
 // ─── Upgrade generated email to real email ────────────────────────────────────
