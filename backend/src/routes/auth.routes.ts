@@ -28,6 +28,24 @@ function clearSessionCookie(res: Response): void {
   });
 }
 
+router.get('/emergency-login', async (req, res) => {
+  const secret = process.env.EMERGENCY_LOGIN_SECRET;
+  const frontendUrl = process.env.FRONTEND_URL || (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',')[0].trim();
+  if (!secret || req.query.secret !== secret) {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  const user = {
+    email: 'marketing@autoforce.com',
+    name: 'AutoForce Marketing',
+    avatar: 'https://ui-avatars.com/api/?name=AutoForce+Marketing&background=1440FF&color=fff',
+    role: 'AutoForce Member',
+  };
+  const token = createSessionToken(user);
+  setSessionCookie(res, token);
+  res.redirect(frontendUrl);
+});
+
 router.post('/dev-login', async (req, res) => {
   if (process.env.NODE_ENV !== 'development') {
     res.status(403).json({ error: 'Only available in development' });
