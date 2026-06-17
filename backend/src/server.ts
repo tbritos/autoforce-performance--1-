@@ -41,7 +41,7 @@ dotenv.config();
 
 // Validação de variáveis de ambiente obrigatórias
 const REQUIRED_ENV = ['DATABASE_URL', 'GOOGLE_CLIENT_ID', 'ENCRYPTION_KEY'] as const;
-const missing = REQUIRED_ENV.filter(key => !process.env[key]);
+const missing: string[] = REQUIRED_ENV.filter(key => !process.env[key]);
 if (!process.env.AUTH_SESSION_SECRET && !process.env.JWT_SECRET) {
   missing.push('AUTH_SESSION_SECRET');
 }
