@@ -7,8 +7,11 @@ import { normalizePhoneE164, phoneSearchVariants } from '../utils/phone';
 const DEBOUNCE_MS = 5_000;
 const LOCK_TTL_MS = 120_000;
 const MAX_TRANSCRIPT_MSGS = 40;
+const DEFAULT_DISCOVERY_REPLY = 'Oi! Tudo bem? Sou a Lara, da AutoForce.\n\nMe conta rapidinho: hoje o maior desafio da sua concessionaria esta em gerar mais leads qualificados ou em converter melhor os leads que ja chegam?';
 
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+type AIAction = { type: string; reason: string; payload?: Record<string, unknown> };
 
 export function isGeneratedWppEmail(email: string): boolean {
   return email.startsWith('wpp_') && email.endsWith('@autoforce.internal');
@@ -44,6 +47,75 @@ export async function triggerAIReplyNow(phone: string): Promise<void> {
 
 function normalizePhone(phone: string): string {
   return normalizePhoneE164(phone) ?? phone.replace(/\D/g, '');
+}
+
+function normalizeText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function detectLeadIntent(message: string): 'meeting_request' | 'greeting' | 'price_question' | 'company_answer' | 'generic' {
+  const text = normalizeText(message);
+  if (/\b(preco|valor|quanto custa|orcamento|mensalidade|custa)\b/.test(text)) return 'price_question';
+  if (/\b(reuniao|agenda|agendar|marcar|horario|demo|demonstracao|apresentacao|call)\b/.test(text)) return 'meeting_request';
+  if (/^(oi|ola|bom dia|boa tarde|boa noite|e ai|eai)\b/.test(text.trim())) return 'greeting';
+  if (message.trim().split(/\s+/).length <= 4) return 'company_answer';
+  return 'generic';
+}
+
+function hasAction(actions: AIAction[], type: string): boolean {
+  return actions.some(action => action.type === type);
+}
+
+function recoverAIReply(input: {
+  leadName: string | null;
+  company: string | null;
+  lastInboundText: string;
+  resultActions: AIAction[];
+}): { replyText: string; actions: AIAction[]; intent: string } {
+  const actions = input.resultActions.map(action => ({ ...action }));
+  const intent = detectLeadIntent(input.lastInboundText);
+  const name = input.leadName?.trim();
+  const company = input.company?.trim();
+  const greetingName = name ? `, ${name}` : '';
+
+  if (intent === 'meeting_request') {
+    if (!hasAction(actions, 'offer_meeting_slots')) {
+      actions.push({
+        type: 'offer_meeting_slots',
+        reason: 'Lead pediu para marcar uma reuniao pelo WhatsApp.',
+      });
+    }
+    return {
+      intent,
+      actions,
+      replyText: `Perfeito${greetingName}. Vou te mandar a agenda para voce escolher o melhor horario.\n\nPara eu deixar o diagnostico bem direcionado, preencha com seu melhor email quando abrir o link.`,
+    };
+  }
+
+  if (intent === 'price_question') {
+    return {
+      intent,
+      actions,
+      replyText: `Boa pergunta${greetingName}. O valor depende do contexto da operacao, como site atual, volume de leads e ferramentas que voces usam hoje.\n\nPara eu te direcionar melhor: hoje voces querem melhorar mais a geracao de leads ou o atendimento/conversao desses leads?`,
+    };
+  }
+
+  if (intent === 'company_answer') {
+    return {
+      intent,
+      actions,
+      replyText: `Perfeito${greetingName}, obrigado.\n\n${company ? `Na ${company},` : 'Hoje,'} qual e o maior gargalo: gerar mais leads qualificados ou converter melhor os leads que ja chegam?`,
+    };
+  }
+
+  return {
+    intent,
+    actions,
+    replyText: DEFAULT_DISCOVERY_REPLY,
+  };
 }
 
 async function processAIReply(phone: string): Promise<void> {
@@ -106,7 +178,7 @@ async function sendSystemFallbackReply(phone: string, leadEmail: string): Promis
   const { recordOutgoingWhatsAppMessage, getWhatsAppCredentials } = await import('./whatsapp.service');
   await sendWhatsAppText({
     to: phone,
-    text: 'Oi! Tudo bem? Sou a Lara, da AutoForce.\n\nMe conta rapidinho: hoje o maior desafio da sua concessionaria esta em gerar mais leads qualificados ou em converter melhor os leads que ja chegam?',
+    text: DEFAULT_DISCOVERY_REPLY,
     leadEmail,
     getCredentials: getWhatsAppCredentials,
     recordOutgoing: recordOutgoingWhatsAppMessage,
@@ -195,15 +267,29 @@ async function executeAIAndReply(
     agentContext,
   });
 
+  const lastInboundText = messages.filter(m => m.direction === 'inbound').slice(-1)[0]?.text ?? '';
+  const recovered = recoverAIReply({
+    leadName: lead.name,
+    company: lead.company,
+    lastInboundText,
+    resultActions: result.recommendedActions ?? [],
+  });
+  const actionsToApply = recovered.actions;
+
   // Send text reply
   if (result.source === 'fallback') {
     console.error('[AI-WPP] AI returned fallback; sending safe fallback to', phone, '| reason:', (result as { reason?: string }).reason ?? 'unknown');
   }
   const replyText = result.replyMessage?.trim()
-    || 'Oi! Tudo bem? Sou a Lara, da AutoForce.\n\nMe conta rapidinho: hoje o maior desafio da sua concessionaria esta em gerar mais leads qualificados ou em converter melhor os leads que ja chegam?';
+    || recovered.replyText;
   if (!result.replyMessage?.trim()) {
-    console.warn(`[AI-WPP] AI returned empty reply for ${phone}; source=${result.source} model=${result.model}; sending safe fallback`);
+    console.warn(`[AI-WPP] AI returned empty reply for ${phone}; source=${result.source} model=${result.model}; recoveredIntent=${recovered.intent}`);
   }
+  const effectiveResult = {
+    ...result,
+    replyMessage: replyText,
+    recommendedActions: actionsToApply,
+  };
   if (replyText) {
     await sendWhatsAppText({
       to: phone,
@@ -216,11 +302,18 @@ async function executeAIAndReply(
 
   // If new contact, check if AI discovered the real email
   if (isNewContact) {
+    let actionLeadEmail = lead.email;
     const registerAction = result.recommendedActions?.find(a => a.type === 'register_lead');
     if (registerAction?.payload?.email) {
       const realEmail = String(registerAction.payload.email).trim().toLowerCase();
       const realName = registerAction.payload.name ? String(registerAction.payload.name).trim() : lead.name;
       await upgradeLeadEmail(lead.email, realEmail, realName);
+      actionLeadEmail = realEmail;
+    }
+    const newContactAllowedActions = actionsToApply.filter(action => action.type === 'offer_meeting_slots');
+    if (newContactAllowedActions.length > 0) {
+      await applyRecommendedActions(actionLeadEmail, phone, newContactAllowedActions, result.tags ?? [])
+        .catch(err => console.error('[AI-WPP] applyRecommendedActions for new contact failed:', err));
     }
     return;
   }
@@ -239,16 +332,16 @@ async function executeAIAndReply(
   }
 
   // Known lead: apply actions and persist memory
-  await applyRecommendedActions(lead.email, phone, result.recommendedActions ?? [], result.tags ?? [])
+  await applyRecommendedActions(lead.email, phone, actionsToApply, result.tags ?? [])
     .catch(err => console.error('[AI-WPP] applyRecommendedActions failed:', err));
   await persistAIAgentDecision({
     agentId: agentContext.agent.id,
     leadEmail: lead.email,
     channel: 'whatsapp',
-    provider: result.source,
-    model: result.model,
-    promptSnapshot: result.promptSnapshot ?? {},
-    result,
+    provider: effectiveResult.source,
+    model: effectiveResult.model,
+    promptSnapshot: effectiveResult.promptSnapshot ?? {},
+    result: effectiveResult,
     lastMessageAt: new Date(),
   }).catch(err => console.error('[AI-WPP] persistAIAgentDecision failed:', err));
 }

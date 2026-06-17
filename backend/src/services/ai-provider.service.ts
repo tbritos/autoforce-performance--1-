@@ -29,6 +29,18 @@ export type AIPrequalificationResult = {
   promptSnapshot?: unknown;
 };
 
+const ALLOWED_ACTION_TYPES = new Set([
+  'create_rd_conversion',
+  'send_whatsapp_followup',
+  'create_pipedrive_deal',
+  'handoff_to_human',
+  'stop_sequence',
+  'ask_discovery_question',
+  'register_lead',
+  'offer_meeting_slots',
+  'confirm_meeting',
+]);
+
 export type AIPrequalificationInput = {
   lead: {
     email: string;
@@ -190,6 +202,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
       'REGRA CRITICA — handoff_to_human: Use handoff_to_human APENAS em dois casos: (1) lead pede explicitamente para falar com um humano agora; (2) lead demonstra raiva ou hostilidade clara. NUNCA use handoff_to_human junto com offer_meeting_slots — o agendamento e automatizado e a IA continua gerenciando a conversa ate o lead confirmar o horario. Apos offer_meeting_slots, continue respondendo normalmente.',
       'REGRA CRITICA — lead_updates: Sempre que capturar ou confirmar dados do lead na conversa (nome, cargo, empresa, dor, etc.), inclua em lead_updates com os campos: name, jobTitle, company. Isso atualiza o cadastro automaticamente.',
       'REGRA CRITICA — reply_message no WhatsApp: Quando a conversa vier do WhatsApp e a ultima mensagem for inbound do lead, reply_message e OBRIGATORIO e nunca pode ser null, vazio ou omitido. Mesmo que o lead envie apenas "oi", responda naturalmente e faca uma unica pergunta util para continuar a descoberta.',
+      'CONTRATO DE SAIDA: Sempre retorne um objeto JSON com estes campos no topo: fit, score, confidence, pain, persona, urgency, summary, decision_reason, recommended_next_step, recommended_actions, tags, conversation_state, lead_updates, open_questions, reply_message. Nao aninhe a resposta em output/data/result.',
     ],
     agente_configurado: agent ? {
       id: agent.id,
@@ -390,7 +403,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
       recommended_next_step: 'proxima acao recomendada',
       recommended_actions: [
         {
-          type: 'apply_tag | create_rd_conversion | send_whatsapp_followup | create_pipedrive_deal | handoff_to_human | stop_sequence | ask_discovery_question',
+          type: 'create_rd_conversion | send_whatsapp_followup | create_pipedrive_deal | handoff_to_human | stop_sequence | ask_discovery_question | register_lead | offer_meeting_slots | confirm_meeting',
           reason: 'por que essa acao faz sentido',
           payload: {},
         },
@@ -809,17 +822,19 @@ function normalizeAIPrequalificationResult(
   const tags = Array.isArray(data.tags)
     ? data.tags.map(tag => String(tag).trim()).filter(Boolean).slice(0, 12)
     : [];
-  const recommendedActions = Array.isArray(data.recommended_actions)
-    ? data.recommended_actions
+  const rawActions = firstArrayValue(data, ['recommended_actions', 'recommendedActions', 'actions', 'acoes_recomendadas']);
+  const recommendedActions = rawActions
         .filter(isRecord)
         .slice(0, 8)
-        .map(action => ({
-          type: String(action.type ?? ''),
-          reason: String(action.reason ?? ''),
-          payload: isRecord(action.payload) ? action.payload : undefined,
-        }))
-        .filter(action => action.type)
-    : [];
+        .map(action => {
+          const type = normalizeActionType(String(action.type ?? action.action ?? action.name ?? ''));
+          return {
+            type,
+            reason: String(action.reason ?? action.motivo ?? ''),
+            payload: isRecord(action.payload) ? action.payload : undefined,
+          };
+        })
+        .filter(action => action.type && ALLOWED_ACTION_TYPES.has(action.type));
   const openQuestions = Array.isArray(data.open_questions)
     ? data.open_questions.map(question => String(question).trim()).filter(Boolean).slice(0, 12)
     : [];
@@ -860,6 +875,14 @@ function firstStringValue(data: Record<string, unknown>, keys: string[]): string
   return undefined;
 }
 
+function firstArrayValue(data: Record<string, unknown>, keys: string[]): unknown[] {
+  for (const key of keys) {
+    const value = data[key];
+    if (Array.isArray(value)) return value;
+  }
+  return [];
+}
+
 function firstNestedStringValue(data: Record<string, unknown>, paths: string[][]): string | undefined {
   for (const path of paths) {
     let current: unknown = data;
@@ -875,4 +898,32 @@ function firstNestedStringValue(data: Record<string, unknown>, paths: string[][]
     if (text) return text;
   }
   return undefined;
+}
+
+function normalizeActionType(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\s-]+/g, '_');
+
+  const aliases: Record<string, string> = {
+    schedule_meeting: 'offer_meeting_slots',
+    schedule_demo: 'offer_meeting_slots',
+    book_meeting: 'offer_meeting_slots',
+    meeting_request: 'offer_meeting_slots',
+    offer_meeting: 'offer_meeting_slots',
+    send_booking_link: 'offer_meeting_slots',
+    agendar_reuniao: 'offer_meeting_slots',
+    marcar_reuniao: 'offer_meeting_slots',
+    enviar_link_agenda: 'offer_meeting_slots',
+    human_handoff: 'handoff_to_human',
+    transfer_to_human: 'handoff_to_human',
+    falar_com_humano: 'handoff_to_human',
+    register_contact: 'register_lead',
+    cadastrar_lead: 'register_lead',
+  };
+
+  return aliases[normalized] ?? normalized;
 }
