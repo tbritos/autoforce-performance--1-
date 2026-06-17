@@ -33,7 +33,7 @@ const GoogleIcon = () => (
 );
 
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
-  const hiddenButtonRef = useRef<HTMLDivElement>(null);
+  const googleBtnRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
@@ -67,24 +67,19 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID) { setError('Google Client ID não configurado.'); return; }
     const init = () => {
-      if (!window.google?.accounts?.id || !hiddenButtonRef.current) return;
+      if (!window.google?.accounts?.id || !googleBtnRef.current) return;
       window.google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
         callback: handleCredentialResponse,
         ux_mode: 'popup',
       });
-      window.google.accounts.id.renderButton(hiddenButtonRef.current, { theme: 'filled_black', size: 'large', text: 'continue_with', shape: 'pill', width: 300 });
+      window.google.accounts.id.renderButton(googleBtnRef.current, { theme: 'filled_black', size: 'large', text: 'continue_with', shape: 'pill' });
       setReady(true);
     };
     if (window.google?.accounts?.id) { init(); return; }
     const t = setInterval(() => { if (window.google?.accounts?.id) { clearInterval(t); init(); } }, 200);
     return () => clearInterval(t);
   }, []);
-
-  const handleGoogleClick = () => {
-    const btn = hiddenButtonRef.current?.querySelector<HTMLElement>('div[role="button"]');
-    btn?.click();
-  };
 
   const handleDevLogin = async () => {
     setLoading(true);
@@ -106,8 +101,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   return (
     <div className="min-h-screen flex flex-col bg-[#F7F8FA] font-sans select-none">
 
-      {/* Hidden Google SDK button */}
-      <div ref={hiddenButtonRef} className="absolute opacity-0 pointer-events-none w-0 h-0 overflow-hidden" />
 
       {/* ── Top nav ──────────────────────────────────────────── */}
       <header className="flex items-center justify-between px-8 py-4 bg-white border-b border-gray-200/80">
@@ -158,37 +151,44 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             {/* Button area */}
             <div className="flex flex-col gap-3">
 
-              {/* Custom Google button */}
-              <button
-                type="button"
-                onClick={handleGoogleClick}
-                disabled={!ready || loading}
-                className="
-                  group relative w-full flex items-center justify-center gap-3
-                  h-[46px] px-5 rounded-xl
-                  bg-white border border-gray-200
-                  text-[14px] font-medium text-gray-700
-                  shadow-[0_1px_3px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)]
-                  hover:shadow-[0_4px_12px_rgba(0,0,0,0.10)]
-                  hover:border-gray-300
-                  hover:-translate-y-px
-                  active:translate-y-0 active:shadow-sm
-                  disabled:opacity-50 disabled:cursor-not-allowed
-                  transition-all duration-200 ease-out
-                "
-              >
-                {loading ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin text-gray-400" />
-                    <span className="text-gray-500">Autenticando...</span>
-                  </>
-                ) : (
-                  <>
-                    <GoogleIcon />
-                    <span>Continuar com Google</span>
-                  </>
-                )}
-              </button>
+              {/* Custom Google button with real Google button as invisible overlay */}
+              <div className="relative h-[46px]">
+                <button
+                  type="button"
+                  disabled={!ready || loading}
+                  className="
+                    w-full h-full flex items-center justify-center gap-3
+                    px-5 rounded-xl
+                    bg-white border border-gray-200
+                    text-[14px] font-medium text-gray-700
+                    shadow-[0_1px_3px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)]
+                    hover:shadow-[0_4px_12px_rgba(0,0,0,0.10)]
+                    hover:border-gray-300
+                    hover:-translate-y-px
+                    active:translate-y-0 active:shadow-sm
+                    disabled:opacity-50 disabled:cursor-not-allowed
+                    transition-all duration-200 ease-out
+                  "
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin text-gray-400" />
+                      <span className="text-gray-500">Autenticando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <GoogleIcon />
+                      <span>Continuar com Google</span>
+                    </>
+                  )}
+                </button>
+                {/* Real Google SDK button — transparent overlay so user clicks it directly */}
+                <div
+                  ref={googleBtnRef}
+                  className="absolute inset-0 overflow-hidden rounded-xl"
+                  style={{ opacity: 0, pointerEvents: ready && !loading ? 'auto' : 'none' }}
+                />
+              </div>
 
               {error && (
                 <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-red-50 border border-red-100">
