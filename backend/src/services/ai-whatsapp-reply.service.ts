@@ -398,10 +398,20 @@ async function handleOfferMeetingSlots(leadEmail: string, phone: string): Promis
     }
 
     // Store slots in lead tags temporarily as JSON
+    const lead = await prisma.lead.findUnique({
+      where: { email: leadEmail },
+      select: { tags: true },
+    });
+
     const top3 = slots.slice(0, 3);
     await prisma.lead.update({
       where: { email: leadEmail },
-      data: { tags: { push: `__slots__${JSON.stringify(top3)}` } },
+      data: {
+        tags: [
+          ...(lead?.tags ?? []).filter(t => !t.startsWith('__slots__')),
+          `__slots__${JSON.stringify(top3)}`,
+        ],
+      },
     });
 
     const lines = [
@@ -479,6 +489,21 @@ async function tryHandleMeetingSelection(
     return true;
   } catch (err) {
     console.error('[AI-WPP] Erro ao confirmar reunião:', err);
+    try {
+      const message = err instanceof Error ? err.message : '';
+      if (message.includes('Horario indisponivel')) {
+        const { recordOutgoingWhatsAppMessage, getWhatsAppCredentials } = await import('./whatsapp.service');
+        await sendWhatsAppText({
+          to: phone,
+          text: 'Esse horario acabou de ficar indisponivel. Vou te mandar novas opcoes agora.',
+          leadEmail: lead.email,
+          getCredentials: getWhatsAppCredentials,
+          recordOutgoing: recordOutgoingWhatsAppMessage,
+        });
+        await handleOfferMeetingSlots(lead.email, phone);
+        return true;
+      }
+    } catch { /* silencioso */ }
     return false;
   }
 }

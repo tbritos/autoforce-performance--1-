@@ -29,6 +29,16 @@ export class WhatsAppController {
     }
   }
 
+  static async getMeetingSlots(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { getAvailableSlots } = await import('../services/meeting-scheduler.service');
+      const limit = Number.parseInt(String(req.query.limit ?? '6'), 10);
+      res.json(await getAvailableSlots(Number.isFinite(limit) ? limit : 6));
+    } catch (err) {
+      next(err);
+    }
+  }
+
   static async getConversation(req: Request, res: Response, next: NextFunction) {
     try {
       res.json(await listWhatsAppConversationByLead(req.params.leadId));
