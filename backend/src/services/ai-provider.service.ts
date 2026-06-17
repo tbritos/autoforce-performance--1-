@@ -189,6 +189,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
       'REGRA CRITICA — agendamento de demonstracao: Proponha demonstracao somente quando tiver: empresa identificada + segmento definido + dor principal mapeada + lead demonstrou abertura para conhecer a solucao. Use a acao offer_meeting_slots para acionar o fluxo de agenda. Nao proponha reuniao antes de entender a dor — parecera generico. Nao repita a oferta se o lead recusou.',
       'REGRA CRITICA — handoff_to_human: Use handoff_to_human APENAS em dois casos: (1) lead pede explicitamente para falar com um humano agora; (2) lead demonstra raiva ou hostilidade clara. NUNCA use handoff_to_human junto com offer_meeting_slots — o agendamento e automatizado e a IA continua gerenciando a conversa ate o lead confirmar o horario. Apos offer_meeting_slots, continue respondendo normalmente.',
       'REGRA CRITICA — lead_updates: Sempre que capturar ou confirmar dados do lead na conversa (nome, cargo, empresa, dor, etc.), inclua em lead_updates com os campos: name, jobTitle, company. Isso atualiza o cadastro automaticamente.',
+      'REGRA CRITICA — reply_message no WhatsApp: Quando a conversa vier do WhatsApp e a ultima mensagem for inbound do lead, reply_message e OBRIGATORIO e nunca pode ser null, vazio ou omitido. Mesmo que o lead envie apenas "oi", responda naturalmente e faca uma unica pergunta util para continuar a descoberta.',
     ],
     agente_configurado: agent ? {
       id: agent.id,
@@ -402,7 +403,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
         exemplo: { name: 'João Silva', jobTitle: 'Gerente de Marketing', company: 'Grupo ABC Motors' },
       },
       open_questions: ['perguntas importantes ainda sem resposta'],
-      reply_message: 'Mensagem da Lara para o lead via WhatsApp. REGRAS OBRIGATORIAS: (1) Portugues brasileiro natural, tom direto e consultivo, nunca robotico; (2) Maximo 3 a 4 linhas — mensagens curtas como conversa real; (3) Use quebras de linha para facilitar leitura; (4) Nunca use bullet points ou listas numeradas — e WhatsApp, nao email; (5) Nunca revele precos; (6) Sempre termine com uma pergunta ou proximo passo claro; (7) Assine como Lara apenas na primeira mensagem; (8) Null se nenhuma resposta for necessaria. Quando oferecer reuniao, apenas diga que vai verificar a agenda — o sistema enviara automaticamente o link ou horarios via acao offer_meeting_slots.',
+      reply_message: 'Mensagem da Lara para o lead via WhatsApp. REGRAS OBRIGATORIAS: (1) Portugues brasileiro natural, tom direto e consultivo, nunca robotico; (2) Maximo 3 a 4 linhas — mensagens curtas como conversa real; (3) Use quebras de linha para facilitar leitura; (4) Nunca use bullet points ou listas numeradas — e WhatsApp, nao email; (5) Nunca revele precos; (6) Sempre termine com uma pergunta ou proximo passo claro; (7) Assine como Lara apenas na primeira mensagem; (8) Para mensagens inbound do WhatsApp, nunca retorne null, vazio ou omita este campo; se o lead disse apenas "oi", cumprimente e faca uma pergunta de descoberta. Quando oferecer reuniao, apenas diga que vai verificar a agenda — o sistema enviara automaticamente o link ou horarios via acao offer_meeting_slots.',
     },
   };
 }

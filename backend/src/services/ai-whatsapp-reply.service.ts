@@ -106,7 +106,7 @@ async function sendSystemFallbackReply(phone: string, leadEmail: string): Promis
   const { recordOutgoingWhatsAppMessage, getWhatsAppCredentials } = await import('./whatsapp.service');
   await sendWhatsAppText({
     to: phone,
-    text: 'Oi! Tive uma instabilidade aqui para analisar sua mensagem agora, mas ja estou retomando. Me conta rapidinho qual e sua principal duvida ou desafio hoje?',
+    text: 'Oi! Tudo bem? Sou a Lara, da AutoForce.\n\nMe conta rapidinho: hoje o maior desafio da sua concessionaria esta em gerar mais leads qualificados ou em converter melhor os leads que ja chegam?',
     leadEmail,
     getCredentials: getWhatsAppCredentials,
     recordOutgoing: recordOutgoingWhatsAppMessage,
@@ -200,7 +200,7 @@ async function executeAIAndReply(
     console.error('[AI-WPP] AI returned fallback; sending safe fallback to', phone, '| reason:', (result as { reason?: string }).reason ?? 'unknown');
   }
   const replyText = result.replyMessage?.trim()
-    || 'Oi! Tive uma instabilidade aqui para analisar sua mensagem agora, mas ja estou retomando. Me conta rapidinho qual e sua principal duvida ou desafio hoje?';
+    || 'Oi! Tudo bem? Sou a Lara, da AutoForce.\n\nMe conta rapidinho: hoje o maior desafio da sua concessionaria esta em gerar mais leads qualificados ou em converter melhor os leads que ja chegam?';
   if (!result.replyMessage?.trim()) {
     console.warn(`[AI-WPP] AI returned empty reply for ${phone}; source=${result.source} model=${result.model}; sending safe fallback`);
   }
