@@ -277,13 +277,18 @@ export class PipedriveWebhookController {
 
     console.log(`[pipedrive-webhook] events to create: ${eventsToCreate.length} — currentStage=${currentStage} previousStage=${previousStage} stageName="${currentStage != null ? stageNameCache.get(currentStage) : 'n/a'}"`);
 
-    if (eventsToCreate.length === 0) {
+    // 5. Always sync lead status from current deal state, even when no specific events detected
+    const newLeadStatus = resolveLeadStatus(dealStatus, currentStage);
+    const statusChanged = lead.status !== newLeadStatus;
+    const linkChanged =
+      lead.pipedriveDealId !== dealId ||
+      (personId != null && lead.pipedrivePersonId !== personId);
+
+    if (eventsToCreate.length === 0 && !statusChanged && !linkChanged) {
       res.status(200).json({ ok: true, skipped: true });
       return;
     }
 
-    // 5. Persist events + update lead atomically
-    const newLeadStatus = resolveLeadStatus(dealStatus, currentStage);
     console.log(`[pipedrive-webhook] updating lead ${lead.email}: ${lead.status} → ${newLeadStatus}`);
 
     await prisma.$transaction(async (tx) => {
