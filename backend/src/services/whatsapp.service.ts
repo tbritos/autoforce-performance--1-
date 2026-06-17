@@ -293,11 +293,16 @@ async function recordInboundMessage(message: any, senderName?: string | null): P
     },
   });
 
-  const { resumeWaitingWhatsAppReply } = await import('./automation-engine.service');
-  await resumeWaitingWhatsAppReply(lead.email, text ?? '', 'replied');
-
   const { scheduleAIReply } = await import('./ai-whatsapp-reply.service');
   scheduleAIReply(from);
+  console.log(`[WPP] inbound message recorded; AI reply scheduled phone=${from} lead=${lead.email} type=${type}`);
+
+  try {
+    const { resumeWaitingWhatsAppReply } = await import('./automation-engine.service');
+    await resumeWaitingWhatsAppReply(lead.email, text ?? '', 'replied');
+  } catch (err) {
+    console.error('[WPP] waiting automation resume failed after inbound message:', err);
+  }
 }
 
 async function recordStatus(status: any): Promise<void> {

@@ -22,6 +22,7 @@ export function scheduleAIReply(phone: string): void {
   const key = normalizePhone(phone);
   const existing = pendingTimers.get(key);
   if (existing) clearTimeout(existing);
+  console.log(`[AI-WPP] scheduled reply for ${key}`);
 
   const timer = setTimeout(() => {
     pendingTimers.delete(key);
@@ -47,7 +48,11 @@ function normalizePhone(phone: string): string {
 
 async function processAIReply(phone: string): Promise<void> {
   const lead = await findLeadByPhone(phone);
-  if (!lead) return;
+  if (!lead) {
+    console.warn(`[AI-WPP] no lead found for ${phone}; skipping AI reply`);
+    return;
+  }
+  console.log(`[AI-WPP] processing reply for ${phone} lead=${lead.email}`);
 
   if (lead.aiHandoff) {
     console.log(`[AI-WPP] aiHandoff=true for ${phone} (${lead.email}) — skipping AI reply`);
@@ -82,6 +87,7 @@ async function processAIReply(phone: string): Promise<void> {
     }
 
     await executeAIAndReply(lead, phone);
+    console.log(`[AI-WPP] finished reply flow for ${phone} lead=${lead.email}`);
   } finally {
     await prisma.lead
       .update({ where: { email: lead.email }, data: { aiProcessing: false, aiProcessingAt: null } })
@@ -173,7 +179,7 @@ async function executeAIAndReply(
 
   // Send text reply
   if (result.source === 'fallback') {
-    console.error('[AI-WPP] AI returned fallback — no reply sent to', phone, '| reason:', (result as { reason?: string }).reason ?? 'unknown');
+    console.error('[AI-WPP] AI returned fallback; sending safe fallback to', phone, '| reason:', (result as { reason?: string }).reason ?? 'unknown');
   }
   const replyText = result.replyMessage?.trim() || (
     result.source === 'fallback'
@@ -373,6 +379,7 @@ async function sendWhatsAppText(params: SendTextParams): Promise<void> {
     if (res.ok) {
       const data = await res.json() as { messages?: Array<{ id?: string }> };
       messageId = data.messages?.[0]?.id ?? null;
+      console.log(`[AI-WPP] WhatsApp reply sent to ${toE164} messageId=${messageId ?? 'none'}`);
     } else {
       const text = await res.text();
       console.error(`[AI-WPP] WhatsApp API error ${res.status}: ${text.slice(0, 300)}`);
