@@ -108,9 +108,6 @@ export default function AIAgentsView() {
   const provider     = String(agentDraft.defaultProvider || 'gemini');
   const modelOptions = provider === 'openai' ? OPENAI_MODELS : GEMINI_MODELS;
 
-  const asLines   = (v: unknown) => Array.isArray(v) ? v.join('\n') : '';
-  const fromLines = (v: string) => v.split('\n').map(s => s.trim()).filter(Boolean);
-
   const filteredTemplates = useMemo(() => {
     const q = templateQuery.toLowerCase().trim();
     if (!q) return templates;
@@ -147,11 +144,10 @@ export default function AIAgentsView() {
     if (!agent) return;
     setSaving(true);
     try {
-      const payload = {
-        ...agentDraft,
-        discoveryQuestions: fromLines(asLines(agentDraft.discoveryQuestions)),
-      };
-      const saved = await DataService.updateAIAgent(agent.id, payload);
+      const saved = await DataService.updateAIAgent(agent.id, {
+        defaultProvider: agentDraft.defaultProvider,
+        defaultModel: agentDraft.defaultModel,
+      });
       setAgent(saved);
       setAgentDraft(saved);
     } catch (e) {
@@ -402,19 +398,6 @@ export default function AIAgentsView() {
                   </select>
                 </Field>
               </div>
-
-              <Field label="Objetivo do agente">
-                <textarea rows={3} value={agentDraft.objective || ''}
-                  onChange={e => setAgentDraft(d => ({ ...d, objective: e.target.value }))}
-                  style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
-              </Field>
-
-              <Field label="Perguntas de qualificação" note="(1 por linha)">
-                <textarea rows={5} value={asLines(agentDraft.discoveryQuestions)}
-                  onChange={e => setAgentDraft(d => ({ ...d, discoveryQuestions: fromLines(e.target.value) }))}
-                  placeholder={'Qual o tamanho do seu time de vendas?\nVocê já usa algum CRM hoje?\nQuantos leads você recebe por mês?'}
-                  style={{ ...iStyle, resize: 'vertical', lineHeight: 1.5 }} />
-              </Field>
 
               <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--bg-subtle)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <CheckCircle size={14} color="#16a34a" />
