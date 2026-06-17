@@ -7,17 +7,21 @@ const ACTIVE_SYNC_PLATFORMS = [
   'GOOGLE_ANALYTICS',
   'GOOGLE_ADS',
   'RD_STATION',
+] as const satisfies readonly Platform[];
+
+const MANUAL_SYNC_PLATFORMS = [
+  ...ACTIVE_SYNC_PLATFORMS,
   'PIPEDRIVE',
 ] as const satisfies readonly Platform[];
 
 type ActiveSyncPlatform = (typeof ACTIVE_SYNC_PLATFORMS)[number];
+type ManualSyncPlatform = (typeof MANUAL_SYNC_PLATFORMS)[number];
 
 const SYNC_INTERVALS_MS: Record<ActiveSyncPlatform, number> = {
   META_ADS:         15 * 60 * 1000,
   GOOGLE_ANALYTICS: 30 * 60 * 1000,
   GOOGLE_ADS:       30 * 60 * 1000,
   RD_STATION:       15 * 60 * 1000,
-  PIPEDRIVE:        15 * 60 * 1000,
 };
 
 export interface SyncResult {
@@ -75,6 +79,10 @@ const SYNC_FNS: Record<ActiveSyncPlatform, () => Promise<SyncResult>> = {
   GOOGLE_ANALYTICS: syncGoogleAnalytics,
   GOOGLE_ADS: syncGoogleAds,
   RD_STATION: syncRdStation,
+};
+
+const MANUAL_SYNC_FNS: Record<ManualSyncPlatform, () => Promise<SyncResult>> = {
+  ...SYNC_FNS,
   PIPEDRIVE: syncPipedriveDeals,
 };
 
@@ -144,11 +152,11 @@ export function stopSyncScheduler(): void {
 
 export async function triggerSync(platform: Platform): Promise<SyncResult> {
   try {
-    if (!ACTIVE_SYNC_PLATFORMS.includes(platform as ActiveSyncPlatform)) {
+    if (!MANUAL_SYNC_PLATFORMS.includes(platform as ManualSyncPlatform)) {
       throw new Error(`Sync nao suportado para ${platform}`);
     }
-    const activePlatform = platform as ActiveSyncPlatform;
-    const result = await SYNC_FNS[activePlatform]();
+    const activePlatform = platform as ManualSyncPlatform;
+    const result = await MANUAL_SYNC_FNS[activePlatform]();
     await PlatformConnectionService.recordSyncSuccess(activePlatform);
     return result;
   } catch (err: unknown) {
