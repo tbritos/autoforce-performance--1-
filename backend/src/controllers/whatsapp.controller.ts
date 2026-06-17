@@ -39,6 +39,15 @@ export class WhatsAppController {
     }
   }
 
+  static async syncMeetingBookings(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { syncAppointmentScheduleBookings } = await import('../services/meeting-scheduler.service');
+      res.json(await syncAppointmentScheduleBookings());
+    } catch (err) {
+      next(err);
+    }
+  }
+
   static async getConversation(req: Request, res: Response, next: NextFunction) {
     try {
       res.json(await listWhatsAppConversationByLead(req.params.leadId));

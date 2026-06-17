@@ -108,7 +108,7 @@ function parseJsonSellerConfig(): SellerCalendar[] {
     .filter((seller): seller is SellerCalendar => Boolean(seller?.active));
 }
 
-async function getSellerCalendars(): Promise<SellerCalendar[]> {
+export async function getSellerCalendars(): Promise<SellerCalendar[]> {
   const fromJson = parseJsonSellerConfig();
   if (fromJson.length > 0) return dedupeSellers(fromJson);
 
@@ -134,6 +134,15 @@ async function getSellerCalendars(): Promise<SellerCalendar[]> {
     .filter((seller): seller is SellerCalendar => Boolean(seller));
 
   return dedupeSellers(fromTeam.length > 0 ? fromTeam : [parseSellerEntry('tallys.brito@autoforce.com')].filter(Boolean) as SellerCalendar[]);
+}
+
+export function getAppointmentBookingUrl(): string | null {
+  return (
+    process.env.MEETING_BOOKING_URL ||
+    process.env.GOOGLE_APPOINTMENT_SCHEDULE_URL ||
+    process.env.APPOINTMENT_SCHEDULE_URL ||
+    null
+  )?.trim() || null;
 }
 
 function dedupeSellers(sellers: SellerCalendar[]): SellerCalendar[] {
@@ -375,4 +384,100 @@ export async function bookMeeting(
     meetLink,
     slot,
   };
+}
+
+function normalizeText(value: string | null | undefined): string {
+  return String(value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function onlyDigits(value: string | null | undefined): string {
+  return String(value ?? '').replace(/\D/g, '');
+}
+
+function appointmentEventMatchesLead(event: any, lead: { email: string; name: string | null; phone: string | null }): boolean {
+  const haystack = normalizeText([
+    event.summary,
+    event.description,
+    event.location,
+    ...(event.attendees ?? []).map((attendee: { email?: string }) => attendee.email ?? ''),
+  ].join(' '));
+
+  if (!lead.email.includes('@autoforce.internal')) {
+    const email = normalizeText(lead.email);
+    if (email && haystack.includes(email)) return true;
+  }
+
+  const phone = onlyDigits(lead.phone);
+  if (phone.length >= 8 && onlyDigits(haystack).includes(phone.slice(-8))) return true;
+
+  const name = normalizeText(lead.name);
+  if (name.length >= 6 && haystack.includes(name)) return true;
+
+  return false;
+}
+
+export async function syncAppointmentScheduleBookings(): Promise<{ synced: number; checkedEvents: number; errors: number }> {
+  const auth = await getAuth();
+  const cal = google.calendar({ version: 'v3', auth: auth as any });
+  const sellers = await getSellerCalendars();
+  const now = new Date();
+  const timeMin = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const timeMax = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString();
+
+  const leads = await prisma.lead.findMany({
+    where: {
+      tags: { has: 'booking_link_sent' },
+      NOT: { status: LeadStatus.SCHEDULED },
+    },
+    select: { email: true, name: true, phone: true, tags: true },
+    take: 500,
+  });
+
+  if (leads.length === 0) return { synced: 0, checkedEvents: 0, errors: 0 };
+
+  let synced = 0;
+  let checkedEvents = 0;
+  let errors = 0;
+  const syncedLeadEmails = new Set<string>();
+
+  for (const seller of sellers) {
+    try {
+      const response = await cal.events.list({
+        calendarId: seller.calendarId,
+        timeMin,
+        timeMax,
+        singleEvents: true,
+        orderBy: 'startTime',
+        maxResults: 250,
+      });
+
+      for (const event of response.data.items ?? []) {
+        checkedEvents++;
+        const matchedLead = leads.find(lead => !syncedLeadEmails.has(lead.email) && appointmentEventMatchesLead(event, lead));
+        if (!matchedLead) continue;
+
+        await prisma.lead.update({
+          where: { email: matchedLead.email },
+          data: {
+            status: LeadStatus.SCHEDULED,
+            assignedTo: seller.email,
+            tags: Array.from(new Set([
+              ...matchedLead.tags.filter(t => !t.startsWith('__booking_link_sent')),
+              'reuniao_agendada',
+            ])).filter(t => t !== 'booking_link_sent'),
+          },
+        });
+        syncedLeadEmails.add(matchedLead.email);
+        synced++;
+      }
+    } catch (err) {
+      errors++;
+      console.error(`[scheduler] appointment sync error for ${seller.calendarId}:`, err);
+    }
+  }
+
+  return { synced, checkedEvents, errors };
 }

@@ -5,6 +5,7 @@ const router = Router();
 
 router.get('/phone-numbers', WhatsAppController.getPhoneNumbers);
 router.get('/meeting-slots', WhatsAppController.getMeetingSlots);
+router.post('/meeting-bookings/sync', WhatsAppController.syncMeetingBookings);
 router.get('/templates', WhatsAppController.getTemplates);
 router.post('/templates', WhatsAppController.createTemplate);
 router.delete('/templates/:templateName', WhatsAppController.deleteTemplate);

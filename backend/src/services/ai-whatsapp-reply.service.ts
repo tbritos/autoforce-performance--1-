@@ -382,8 +382,41 @@ async function sendWhatsAppText(params: SendTextParams): Promise<void> {
 
 async function handleOfferMeetingSlots(leadEmail: string, phone: string): Promise<void> {
   try {
-    const { getAvailableSlots } = await import('./meeting-scheduler.service');
+    const { getAppointmentBookingUrl, getAvailableSlots } = await import('./meeting-scheduler.service');
     const { recordOutgoingWhatsAppMessage, getWhatsAppCredentials } = await import('./whatsapp.service');
+
+    const bookingUrl = getAppointmentBookingUrl();
+    if (bookingUrl) {
+      const lead = await prisma.lead.findUnique({
+        where: { email: leadEmail },
+        select: { tags: true, email: true },
+      });
+
+      await prisma.lead.update({
+        where: { email: leadEmail },
+        data: {
+          tags: [
+            ...(lead?.tags ?? []).filter(t => !t.startsWith('__booking_link_sent')),
+            'booking_link_sent',
+            `__booking_link_sent:${new Date().toISOString()}`,
+          ],
+        },
+      });
+
+      await sendWhatsAppText({
+        to: phone,
+        text: [
+          'Perfeito. Para escolher o melhor horario, use este link da agenda:',
+          bookingUrl,
+          '',
+          'Quando abrir, preencha com seu melhor email para eu conseguir localizar e confirmar seu agendamento por aqui.',
+        ].join('\n'),
+        leadEmail,
+        getCredentials: getWhatsAppCredentials,
+        recordOutgoing: recordOutgoingWhatsAppMessage,
+      });
+      return;
+    }
 
     const slots = await getAvailableSlots();
     if (slots.length === 0) {

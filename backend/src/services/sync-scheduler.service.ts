@@ -118,6 +118,20 @@ export function startSyncScheduler(): void {
     }).catch(() => {});
   }, 60_000);
 
+  // Detect Google Appointment Schedule bookings created after the WhatsApp AI sends the booking link.
+  const bookingSyncMs = Number.parseInt(process.env.MEETING_BOOKING_SYNC_INTERVAL_MS ?? '', 10) || 5 * 60 * 1000;
+  setInterval(() => {
+    import('./meeting-scheduler.service').then(({ syncAppointmentScheduleBookings }) => {
+      syncAppointmentScheduleBookings()
+        .then(result => {
+          if (result.synced > 0) {
+            console.log(`[scheduler] appointment bookings synced=${result.synced} checked=${result.checkedEvents}`);
+          }
+        })
+        .catch(err => console.error('[scheduler] appointment booking sync error:', err));
+    }).catch(() => {});
+  }, bookingSyncMs);
+
   console.log('[sync] Scheduler started for:', Object.keys(SYNC_INTERVALS_MS).join(', '));
 }
 

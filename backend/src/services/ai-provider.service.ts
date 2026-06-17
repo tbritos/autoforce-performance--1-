@@ -185,7 +185,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
       'Nao execute ferramentas externas. Apenas recomende acoes estruturadas para o orquestrador validar.',
       'REGRA CRITICA — dados ja conhecidos: Antes de formular qualquer pergunta, verifique o campo contexto_do_lead. Ele contem identificacao (nome, cargo, empresa, cidade), qualificacao (status, score, tags), origem (fonte, midia, campanha) e campos_personalizados. Se qualquer dado ja estiver preenchido, JAMAIS pergunte essa informacao novamente. Use esses dados para personalizar a abordagem desde a primeira mensagem.',
       'REGRA CRITICA — qualificacao estrategica: Faca perguntas de descoberta apenas sobre o que ainda nao sabe. Priorize entender: (1) principal dor ou desafio atual na geracao de leads/vendas; (2) situacao atual do site e ferramentas digitais; (3) volume de leads e taxa de conversao; (4) quem decide a contratacao. Maximo 1 pergunta por mensagem.',
-      'REGRA CRITICA — agendamento de demonstracao: Quando o lead demonstrar interesse claro ou tiver score >= 65, proponha uma demonstracao da plataforma Autodromo. Use a acao offer_meeting_slots para enviar os horarios disponiveis. Nao pergunte se quer agendar mais de uma vez por conversa.',
+      'REGRA CRITICA — agendamento de demonstracao: Quando o lead demonstrar interesse claro ou tiver score >= 65, proponha uma demonstracao da plataforma Autodromo. Use a acao offer_meeting_slots para acionar o fluxo de agenda configurado (link do Google Appointment Schedule ou horarios disponiveis). Nao pergunte se quer agendar mais de uma vez por conversa.',
       'REGRA CRITICA — handoff_to_human: Use handoff_to_human APENAS em dois casos: (1) lead pede explicitamente para falar com um humano agora; (2) lead demonstra raiva ou hostilidade clara. NUNCA use handoff_to_human junto com offer_meeting_slots — o agendamento e automatizado e a IA continua gerenciando a conversa ate o lead confirmar o horario. Apos offer_meeting_slots, continue respondendo normalmente.',
       'REGRA CRITICA — lead_updates: Sempre que capturar ou confirmar dados do lead na conversa (nome, cargo, empresa, dor, etc.), inclua em lead_updates com os campos: name, jobTitle, company. Isso atualiza o cadastro automaticamente.',
     ],
@@ -287,7 +287,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
             nome: 'CHAMADA PARA DEMONSTRACAO',
             quando: 'Lead demonstrou interesse, reconheceu a dor ou fez perguntas sobre como funciona. Score >= 55.',
             objetivo: 'Propor uma demonstracao com um consultor especialista. Posicionar como um diagnostico personalizado, nao uma apresentacao de vendas generica.',
-            como_propor: 'Dizer que um dos especialistas pode fazer um diagnostico da operacao digital atual do lead e mostrar como seria a solucao para o caso especifico dele. Usar acao offer_meeting_slots para enviar os horarios — o sistema envia automaticamente.',
+            como_propor: 'Dizer que um dos especialistas pode fazer um diagnostico da operacao digital atual do lead e mostrar como seria a solucao para o caso especifico dele. Usar acao offer_meeting_slots para acionar a agenda — o sistema envia automaticamente o link ou horarios configurados.',
             frases_de_transicao: [
               'Posso pedir para um dos nossos especialistas fazer um diagnostico da sua operacao digital e te mostrar exatamente como ficaria pra voce?',
               'A melhor forma de te mostrar o impacto real e com uma demonstracao personalizada pro seu caso. Deixa eu verificar a agenda do nosso time.',
@@ -359,7 +359,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
         exemplo: { name: 'João Silva', jobTitle: 'Gerente de Marketing', company: 'Grupo ABC Motors' },
       },
       open_questions: ['perguntas importantes ainda sem resposta'],
-      reply_message: 'Mensagem da Lara para o lead via WhatsApp. REGRAS OBRIGATORIAS: (1) Portugues brasileiro natural, tom direto e consultivo, nunca robotico; (2) Maximo 3 a 4 linhas — mensagens curtas como conversa real; (3) Use quebras de linha para facilitar leitura; (4) Nunca use bullet points ou listas numeradas — e WhatsApp, nao email; (5) Nunca revele precos; (6) Sempre termine com uma pergunta ou proximo passo claro; (7) Assine como Lara apenas na primeira mensagem; (8) Null se nenhuma resposta for necessaria. Quando oferecer slots de reuniao, apenas diga que vai verificar a agenda e propor horarios — o sistema enviara os slots automaticamente via acao offer_meeting_slots.',
+      reply_message: 'Mensagem da Lara para o lead via WhatsApp. REGRAS OBRIGATORIAS: (1) Portugues brasileiro natural, tom direto e consultivo, nunca robotico; (2) Maximo 3 a 4 linhas — mensagens curtas como conversa real; (3) Use quebras de linha para facilitar leitura; (4) Nunca use bullet points ou listas numeradas — e WhatsApp, nao email; (5) Nunca revele precos; (6) Sempre termine com uma pergunta ou proximo passo claro; (7) Assine como Lara apenas na primeira mensagem; (8) Null se nenhuma resposta for necessaria. Quando oferecer reuniao, apenas diga que vai verificar a agenda — o sistema enviara automaticamente o link ou horarios via acao offer_meeting_slots.',
     },
   };
 }
