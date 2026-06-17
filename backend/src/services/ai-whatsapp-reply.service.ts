@@ -202,7 +202,7 @@ async function executeAIAndReply(
   const replyText = result.replyMessage?.trim()
     || 'Oi! Tive uma instabilidade aqui para analisar sua mensagem agora, mas ja estou retomando. Me conta rapidinho qual e sua principal duvida ou desafio hoje?';
   if (!result.replyMessage?.trim()) {
-    console.warn(`[AI-WPP] AI returned empty reply for ${phone}; sending safe fallback`);
+    console.warn(`[AI-WPP] AI returned empty reply for ${phone}; source=${result.source} model=${result.model}; sending safe fallback`);
   }
   if (replyText) {
     await sendWhatsAppText({

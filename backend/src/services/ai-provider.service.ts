@@ -740,6 +740,23 @@ function normalizeAIPrequalificationResult(
   promptSnapshot: unknown
 ): AIPrequalificationResult {
   const data = isRecord(raw) ? raw : {};
+  const replyMessage = firstStringValue(data, [
+    'reply_message',
+    'replyMessage',
+    'message',
+    'mensagem',
+    'resposta',
+    'whatsapp_reply',
+    'whatsappReply',
+  ]) ?? firstNestedStringValue(data, [
+    ['reply', 'message'],
+    ['reply', 'text'],
+    ['whatsapp', 'message'],
+    ['whatsapp', 'text'],
+    ['output', 'reply_message'],
+    ['output', 'replyMessage'],
+    ['output', 'message'],
+  ]);
   const fitRaw = String(data.fit ?? 'nurture').toLowerCase();
   const fit: AIPrequalificationResult['fit'] =
     fitRaw === 'qualified' || fitRaw === 'disqualified' ? fitRaw : 'nurture';
@@ -780,11 +797,38 @@ function normalizeAIPrequalificationResult(
     conversationState: String(data.conversation_state ?? data.conversationState ?? fit),
     leadUpdates: isRecord(data.lead_updates) ? data.lead_updates : {},
     openQuestions,
-    replyMessage: data.reply_message ? String(data.reply_message).trim().slice(0, 1024) : undefined,
+    replyMessage: replyMessage?.slice(0, 1024),
     promptSnapshot,
   };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function firstStringValue(data: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = data[key];
+    if (typeof value !== 'string') continue;
+    const text = value.trim();
+    if (text) return text;
+  }
+  return undefined;
+}
+
+function firstNestedStringValue(data: Record<string, unknown>, paths: string[][]): string | undefined {
+  for (const path of paths) {
+    let current: unknown = data;
+    for (const key of path) {
+      if (!isRecord(current)) {
+        current = undefined;
+        break;
+      }
+      current = current[key];
+    }
+    if (typeof current !== 'string') continue;
+    const text = current.trim();
+    if (text) return text;
+  }
+  return undefined;
 }
