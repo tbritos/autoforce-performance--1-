@@ -429,7 +429,10 @@ export async function syncAppointmentScheduleBookings(): Promise<{ synced: numbe
 
   const leads = await prisma.lead.findMany({
     where: {
-      tags: { has: 'booking_link_sent' },
+      OR: [
+        { tags: { has: 'link_agendamento_enviado' } },
+        { tags: { has: 'booking_link_sent' } },
+      ],
       NOT: { status: LeadStatus.SCHEDULED },
     },
     select: { email: true, name: true, phone: true, tags: true },
@@ -467,7 +470,7 @@ export async function syncAppointmentScheduleBookings(): Promise<{ synced: numbe
             tags: Array.from(new Set([
               ...matchedLead.tags.filter(t => !t.startsWith('__booking_link_sent')),
               'reuniao_agendada',
-            ])).filter(t => t !== 'booking_link_sent'),
+            ])).filter(t => t !== 'booking_link_sent' && t !== 'link_agendamento_enviado'),
           },
         });
         syncedLeadEmails.add(matchedLead.email);

@@ -332,7 +332,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
         'offer_meeting_slots',
         'confirm_meeting',
       ],
-      nota_sobre_tags: 'NAO use a acao apply_tag. O sistema de tags e gerenciado automaticamente. A unica tag criada pelo sistema e reuniao_agendada, quando o lead confirmar o agendamento.',
+      nota_sobre_tags: 'NAO use a acao apply_tag. O sistema de tags e gerenciado automaticamente. As tags de agendamento sao link_agendamento_enviado e reuniao_agendada.',
     },
     formato_obrigatorio_de_saida: {
       fit: 'qualified | nurture | disqualified',

@@ -397,7 +397,7 @@ async function handleOfferMeetingSlots(leadEmail: string, phone: string): Promis
         data: {
           tags: [
             ...(lead?.tags ?? []).filter(t => !t.startsWith('__booking_link_sent')),
-            'booking_link_sent',
+            'link_agendamento_enviado',
             `__booking_link_sent:${new Date().toISOString()}`,
           ],
         },
