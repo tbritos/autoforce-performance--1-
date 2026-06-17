@@ -24,6 +24,9 @@ export type AIPrequalificationResult = {
   reason?: string;
   conversationState: string;
   leadUpdates: Record<string, unknown>;
+  customFields?: Record<string, unknown>;
+  notesSummary?: string;
+  isHot?: boolean;
   openQuestions: string[];
   replyMessage?: string;
   promptSnapshot?: unknown;
@@ -202,6 +205,8 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
       'REGRA CRITICA — agendamento de demonstracao: Proponha demonstracao somente quando tiver: empresa identificada + segmento definido + dor principal mapeada + lead demonstrou abertura para conhecer a solucao. Use a acao offer_meeting_slots para acionar o fluxo de agenda. Nao proponha reuniao antes de entender a dor — parecera generico. Nao repita a oferta se o lead recusou.',
       'REGRA CRITICA — handoff_to_human: Use handoff_to_human APENAS em dois casos: (1) lead pede explicitamente para falar com um humano agora; (2) lead demonstra raiva ou hostilidade clara. NUNCA use handoff_to_human junto com offer_meeting_slots — o agendamento e automatizado e a IA continua gerenciando a conversa ate o lead confirmar o horario. Apos offer_meeting_slots, continue respondendo normalmente.',
       'REGRA CRITICA — lead_updates: Sempre que capturar ou confirmar dados do lead na conversa (nome, cargo, empresa, dor, etc.), inclua em lead_updates com os campos: name, jobTitle, company. Isso atualiza o cadastro automaticamente.',
+      'REGRA CRITICA — enriquecimento do lead: Quando descobrir informacoes estruturadas que nao sejam campos padrao, inclua em custom_fields com nomes snake_case em portugues. Exemplos: dor_principal, crm_atual, site_atual, numero_de_unidades, segmento, marca_representada, fornecedor_site, fornecedor_crm, responsavel_marketing.',
+      'REGRA CRITICA — notes_summary e lead quente: Sempre mantenha notes_summary com um resumo curto do que ja se sabe do lead. Marque is_hot=true apenas quando houver dor clara + fit automotivo + interesse comercial, pedido de reuniao ou urgencia evidente.',
       'REGRA CRITICA — reply_message no WhatsApp: Quando a conversa vier do WhatsApp e a ultima mensagem for inbound do lead, reply_message e OBRIGATORIO e nunca pode ser null, vazio ou omitido. Mesmo que o lead envie apenas "oi", responda naturalmente e faca uma unica pergunta util para continuar a descoberta.',
       'CONTRATO DE SAIDA: Sempre retorne um objeto JSON com estes campos no topo: fit, score, confidence, pain, persona, urgency, summary, decision_reason, recommended_next_step, recommended_actions, tags, conversation_state, lead_updates, open_questions, reply_message. Nao aninhe a resposta em output/data/result.',
     ],
@@ -413,9 +418,15 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
       conversation_state: 'estado atual da conversa',
       lead_updates: {
         descricao: 'Campos do lead para atualizar com informacoes capturadas na conversa. Use apenas os campos permitidos.',
-        campos_permitidos: 'name (string), jobTitle (string), company (string)',
+        campos_permitidos: 'name (string), jobTitle (string), company (string), city (string), state (string)',
         exemplo: { name: 'João Silva', jobTitle: 'Gerente de Marketing', company: 'Grupo ABC Motors' },
       },
+      custom_fields: {
+        descricao: 'Campos personalizados descobertos na conversa. Use snake_case em portugues. O sistema cria o campo se nao existir.',
+        exemplo: { dor_principal: 'demora no atendimento dos leads', crm_atual: 'Syonet', numero_de_unidades: 3 },
+      },
+      notes_summary: 'Resumo curto do lead para salvar no campo de anotacoes do sistema.',
+      is_hot: 'boolean. True somente se o lead demonstrar dor clara, fit automotivo e interesse comercial/urgencia.',
       open_questions: ['perguntas importantes ainda sem resposta'],
       reply_message: 'Mensagem da Lara para o lead via WhatsApp. REGRAS OBRIGATORIAS: (1) Portugues brasileiro natural, tom direto e consultivo, nunca robotico; (2) Maximo 3 a 4 linhas — mensagens curtas como conversa real; (3) Use quebras de linha para facilitar leitura; (4) Nunca use bullet points ou listas numeradas — e WhatsApp, nao email; (5) Nunca revele precos; (6) Sempre termine com uma pergunta ou proximo passo claro; (7) Assine como Lara apenas na primeira mensagem; (8) Para mensagens inbound do WhatsApp, nunca retorne null, vazio ou omita este campo; se o lead disse apenas "oi", cumprimente e faca uma pergunta de descoberta. Quando oferecer reuniao, apenas diga que vai verificar a agenda — o sistema enviara automaticamente o link ou horarios via acao offer_meeting_slots.',
     },
@@ -901,6 +912,9 @@ function normalizeAIPrequalificationResult(
     model,
     conversationState: String(data.conversation_state ?? data.conversationState ?? fit),
     leadUpdates: isRecord(data.lead_updates) ? data.lead_updates : {},
+    customFields: isRecord(data.custom_fields) ? data.custom_fields : (isRecord(data.customFields) ? data.customFields : undefined),
+    notesSummary: firstStringValue(data, ['notes_summary', 'notesSummary', 'resumo_lead', 'lead_summary']),
+    isHot: typeof data.is_hot === 'boolean' ? data.is_hot : (typeof data.isHot === 'boolean' ? data.isHot : undefined),
     openQuestions,
     replyMessage: replyMessage?.slice(0, 1024),
     promptSnapshot,

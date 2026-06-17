@@ -13,6 +13,8 @@ const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 type AIAction = { type: string; reason: string; payload?: Record<string, unknown> };
 
+const STANDARD_LEAD_UPDATE_FIELDS = ['name', 'jobTitle', 'company', 'city', 'state'] as const;
+
 export function isGeneratedWppEmail(email: string): boolean {
   return email.startsWith('wpp_') && email.endsWith('@autoforce.internal');
 }
@@ -120,6 +122,53 @@ function recoverAIReply(input: {
 
 function uniq(values: string[]): string[] {
   return Array.from(new Set(values.map(value => value.trim()).filter(Boolean)));
+}
+
+function toCustomFieldName(value: string): string {
+  return normalizeText(value)
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 60);
+}
+
+function toCustomFieldLabel(fieldName: string): string {
+  return fieldName
+    .split('_')
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function cleanCustomFieldValue(value: unknown): unknown {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed || undefined;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (Array.isArray(value)) {
+    const clean = value.map(item => String(item).trim()).filter(Boolean);
+    return clean.length > 0 ? clean.join(', ') : undefined;
+  }
+  return undefined;
+}
+
+function buildAINotesBlock(summary: string): string {
+  return [`[Resumo IA - WhatsApp]`, summary.trim()].join('\n');
+}
+
+function mergeAINotes(existingNotes: string | null, summary?: string): string | undefined {
+  if (!summary?.trim()) return undefined;
+  const block = buildAINotesBlock(summary);
+  if (!existingNotes?.trim()) return block;
+
+  const marker = '[Resumo IA - WhatsApp]';
+  const markerIndex = existingNotes.indexOf(marker);
+  if (markerIndex >= 0) {
+    const before = existingNotes.slice(0, markerIndex).trimEnd();
+    return before ? `${before}\n\n${block}` : block;
+  }
+
+  return `${existingNotes.trimEnd()}\n\n${block}`;
 }
 
 function deriveKnowledgeHints(input: {
@@ -370,13 +419,17 @@ async function executeAIAndReply(
   // If new contact, check if AI discovered the real email
   if (isNewContact) {
     let actionLeadEmail = lead.email;
+    const enrichmentLead = { ...lead, email: actionLeadEmail };
     const registerAction = result.recommendedActions?.find(a => a.type === 'register_lead');
     if (registerAction?.payload?.email) {
       const realEmail = String(registerAction.payload.email).trim().toLowerCase();
       const realName = registerAction.payload.name ? String(registerAction.payload.name).trim() : lead.name;
       await upgradeLeadEmail(lead.email, realEmail, realName);
       actionLeadEmail = realEmail;
+      enrichmentLead.email = realEmail;
     }
+    await enrichLeadFromAI(enrichmentLead, effectiveResult)
+      .catch(err => console.error('[AI-WPP] enrichLeadFromAI for new contact failed:', err));
     const newContactAllowedActions = actionsToApply.filter(action => action.type === 'offer_meeting_slots');
     if (newContactAllowedActions.length > 0) {
       await applyRecommendedActions(actionLeadEmail, phone, newContactAllowedActions, result.tags ?? [])
@@ -385,18 +438,8 @@ async function executeAIAndReply(
     return;
   }
 
-  // Known lead: apply lead_updates captured by AI (name, jobTitle, company)
-  const leadUpdates = result.leadUpdates ?? {};
-  const allowedUpdateFields: Record<string, unknown> = {};
-  for (const field of ['name', 'jobTitle', 'company'] as const) {
-    const val = leadUpdates[field];
-    if (val && typeof val === 'string' && val.trim()) {
-      allowedUpdateFields[field] = val.trim();
-    }
-  }
-  if (Object.keys(allowedUpdateFields).length > 0) {
-    await prisma.lead.update({ where: { email: lead.email }, data: allowedUpdateFields }).catch(() => {});
-  }
+  await enrichLeadFromAI(lead, effectiveResult)
+    .catch(err => console.error('[AI-WPP] enrichLeadFromAI failed:', err));
 
   // Known lead: apply actions and persist memory
   await applyRecommendedActions(lead.email, phone, actionsToApply, result.tags ?? [])
@@ -414,6 +457,102 @@ async function executeAIAndReply(
 }
 
 // ─── Upgrade generated email to real email ────────────────────────────────────
+
+async function enrichLeadFromAI(
+  lead: {
+    email: string;
+    notes: string | null;
+    customFields: unknown;
+    isHot: boolean;
+  },
+  result: {
+    score: number;
+    fit: string;
+    pain: string;
+    urgency: string;
+    summary: string;
+    leadUpdates: Record<string, unknown>;
+    customFields?: Record<string, unknown>;
+    notesSummary?: string;
+    isHot?: boolean;
+  },
+): Promise<void> {
+  const currentLead = await prisma.lead.findUnique({
+    where: { email: lead.email },
+    select: { notes: true, customFields: true, isHot: true },
+  });
+  if (!currentLead) return;
+
+  const standardUpdates: Record<string, string> = {};
+  for (const field of STANDARD_LEAD_UPDATE_FIELDS) {
+    const value = result.leadUpdates?.[field];
+    if (typeof value === 'string' && value.trim()) {
+      standardUpdates[field] = value.trim();
+    }
+  }
+
+  const customUpdates: Record<string, unknown> = {};
+  const customDefs: Array<{ name: string; label: string; fieldType?: string; sourceHint?: string }> = [];
+  for (const [rawKey, rawValue] of Object.entries(result.customFields ?? {})) {
+    const name = toCustomFieldName(rawKey);
+    const value = cleanCustomFieldValue(rawValue);
+    if (!name || value === undefined) continue;
+    customUpdates[name] = value;
+    customDefs.push({
+      name,
+      label: toCustomFieldLabel(name),
+      fieldType: typeof value === 'number' ? 'number' : typeof value === 'boolean' ? 'boolean' : 'text',
+      sourceHint: 'ai_whatsapp',
+    });
+  }
+
+  for (const field of customDefs) {
+    await (prisma as any).leadCustomFieldDef.upsert({
+      where: { name: field.name },
+      update: {},
+      create: {
+        name: field.name,
+        label: field.label,
+        fieldType: field.fieldType ?? 'text',
+        sourceHint: field.sourceHint ?? 'ai_whatsapp',
+      },
+    });
+  }
+
+  const currentCustomFields = currentLead.customFields && typeof currentLead.customFields === 'object' && !Array.isArray(currentLead.customFields)
+    ? currentLead.customFields as Record<string, unknown>
+    : {};
+
+  const notesSummary = result.notesSummary?.trim()
+    || result.summary?.trim()
+    || [
+      result.pain ? `Dor: ${result.pain}` : '',
+      result.urgency ? `Urgencia: ${result.urgency}` : '',
+      result.fit ? `Fit: ${result.fit}` : '',
+    ].filter(Boolean).join(' | ');
+
+  const nextNotes = mergeAINotes(currentLead.notes, notesSummary);
+  const shouldMarkHot = result.isHot === true
+    || result.score >= 70
+    || result.fit === 'qualified'
+    || Boolean(result.pain && ['alta', 'urgente'].includes(String(result.urgency).toLowerCase()));
+
+  const updateData: Record<string, unknown> = {
+    ...standardUpdates,
+    ...(Object.keys(customUpdates).length > 0
+      ? { customFields: { ...currentCustomFields, ...customUpdates } }
+      : {}),
+    ...(nextNotes ? { notes: nextNotes } : {}),
+    ...(shouldMarkHot && !currentLead.isHot ? { isHot: true } : {}),
+  };
+
+  if (Object.keys(updateData).length === 0) return;
+
+  await prisma.lead.update({
+    where: { email: lead.email },
+    data: updateData as any,
+  });
+}
 
 async function upgradeLeadEmail(generatedEmail: string, realEmail: string, name: string | null): Promise<void> {
   try {
