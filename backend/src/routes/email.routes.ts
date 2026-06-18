@@ -35,9 +35,9 @@ router.get('/sent/stats', async (_req: Request, res: Response) => {
   try {
     const [total, delivered, opened, clicked, bounced] = await Promise.all([
       prisma.emailSent.count(),
-      prisma.emailSent.count({ where: { status: { in: ['delivered', 'opened', 'clicked'] } } }),
-      prisma.emailSent.count({ where: { status: { in: ['opened', 'clicked'] } } }),
-      prisma.emailSent.count({ where: { status: 'clicked' } }),
+      prisma.emailSent.count({ where: { OR: [{ status: { in: ['delivered', 'opened', 'clicked'] } }, { openedAt: { not: null } }, { clickedAt: { not: null } }] } }),
+      prisma.emailSent.count({ where: { OR: [{ openedAt: { not: null } }, { clickedAt: { not: null } }] } }),
+      prisma.emailSent.count({ where: { clickedAt: { not: null } } }),
       prisma.emailSent.count({ where: { status: 'bounced' } }),
     ]);
 

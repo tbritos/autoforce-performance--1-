@@ -13,27 +13,26 @@ router.get('/', async (_req: Request, res: Response) => {
     const ids = templates.map(t => t.id);
     if (ids.length === 0) { res.json([]); return; }
 
-    // Aggregate stats per template in one query
-    const stats = await prisma.emailSent.groupBy({
-      by: ['templateId', 'status'],
+    const sends = await prisma.emailSent.findMany({
       where: { templateId: { in: ids } },
-      _count: { id: true },
+      select: { templateId: true, status: true, openedAt: true, clickedAt: true },
     });
 
-    const statsMap: Record<string, Record<string, number>> = {};
-    for (const row of stats) {
+    const statsMap: Record<string, { sent: number; delivered: number; opened: number; clicked: number; bounced: number }> = {};
+    for (const row of sends) {
       if (!row.templateId) continue;
-      statsMap[row.templateId] ??= {};
-      statsMap[row.templateId][row.status] = row._count.id;
+      statsMap[row.templateId] ??= { sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0 };
+      const s = statsMap[row.templateId];
+      s.sent += 1;
+      if (['delivered', 'opened', 'clicked'].includes(row.status) || row.openedAt || row.clickedAt) s.delivered += 1;
+      if (row.openedAt || row.clickedAt) s.opened += 1;
+      if (row.clickedAt) s.clicked += 1;
+      if (row.status === 'bounced') s.bounced += 1;
     }
 
     const result = templates.map(t => {
-      const s = statsMap[t.id] ?? {};
-      const sent      = Object.values(s).reduce((a, b) => a + b, 0);
-      const delivered = (s['delivered'] ?? 0) + (s['opened'] ?? 0) + (s['clicked'] ?? 0);
-      const opened    = (s['opened']    ?? 0) + (s['clicked'] ?? 0);
-      const clicked   = s['clicked']   ?? 0;
-      const bounced   = s['bounced']   ?? 0;
+      const s = statsMap[t.id] ?? { sent: 0, delivered: 0, opened: 0, clicked: 0, bounced: 0 };
+      const { sent, delivered, opened, clicked, bounced } = s;
       return {
         ...t,
         stats: {
@@ -71,13 +70,11 @@ router.get('/:id', async (req: Request, res: Response) => {
       },
     });
 
-    const s: Record<string, number> = {};
-    for (const send of sends) { s[send.status] = (s[send.status] ?? 0) + 1; }
     const sent      = sends.length;
-    const delivered = (s['delivered'] ?? 0) + (s['opened'] ?? 0) + (s['clicked'] ?? 0);
-    const opened    = (s['opened']    ?? 0) + (s['clicked'] ?? 0);
-    const clicked   = s['clicked']   ?? 0;
-    const bounced   = s['bounced']   ?? 0;
+    const delivered = sends.filter(send => ['delivered', 'opened', 'clicked'].includes(send.status) || send.openedAt || send.clickedAt).length;
+    const opened    = sends.filter(send => send.openedAt || send.clickedAt).length;
+    const clicked   = sends.filter(send => send.clickedAt).length;
+    const bounced   = sends.filter(send => send.status === 'bounced').length;
     const stats = {
       sent,
       delivered,

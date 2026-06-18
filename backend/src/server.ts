@@ -462,9 +462,9 @@ app.post('/api/resend-webhook', express.json(), async (req, res) => {
       }
     }
 
-    const event   = req.body as { type?: string; data?: { email_id?: string } };
+    const event   = req.body as { type?: string; data?: { email_id?: string; emailId?: string; id?: string; message_id?: string } };
     const type    = event?.type ?? '';
-    const emailId = event?.data?.email_id ?? '';
+    const emailId = event?.data?.email_id ?? event?.data?.emailId ?? event?.data?.id ?? event?.data?.message_id ?? '';
 
     if (!emailId) { res.json({ ok: true }); return; }
 
@@ -473,17 +473,47 @@ app.post('/api/resend-webhook', express.json(), async (req, res) => {
     const now = new Date();
     const updates: Record<string, unknown> = {};
 
+    const current = await db.emailSent.findUnique({
+      where: { resendId: emailId },
+      select: { id: true, status: true, openedAt: true, clickedAt: true },
+    });
+
+    if (!current) {
+      console.warn(`[resend-webhook] emailSent not found for resendId=${emailId} type=${type}`);
+      res.json({ ok: true, updated: 0 });
+      return;
+    }
+
+    const statusRank: Record<string, number> = {
+      failed: 0,
+      sent: 1,
+      delivered: 2,
+      opened: 3,
+      clicked: 4,
+      bounced: 5,
+      complained: 6,
+    };
+    const keepBestStatus = (next: string) => {
+      const currentRank = statusRank[current.status] ?? 0;
+      const nextRank = statusRank[next] ?? 0;
+      updates.status = nextRank >= currentRank ? next : current.status;
+    };
+
     switch (type) {
+      case 'email.sent':
+        keepBestStatus('sent');
+        break;
       case 'email.delivered':
-        updates.status = 'delivered';
+        keepBestStatus('delivered');
         break;
       case 'email.opened':
-        updates.status  = 'opened';
-        updates.openedAt = now;
+        keepBestStatus('opened');
+        updates.openedAt = current.openedAt ?? now;
         break;
       case 'email.clicked':
-        updates.status    = 'clicked';
-        updates.clickedAt = now;
+        keepBestStatus('clicked');
+        updates.openedAt = current.openedAt ?? now;
+        updates.clickedAt = current.clickedAt ?? now;
         break;
       case 'email.bounced':
         updates.status    = 'bounced';
@@ -498,8 +528,8 @@ app.post('/api/resend-webhook', express.json(), async (req, res) => {
         return;
     }
 
-    await db.emailSent.updateMany({
-      where: { resendId: emailId },
+    await db.emailSent.update({
+      where: { id: current.id },
       data:  { ...updates, updatedAt: now },
     });
 
