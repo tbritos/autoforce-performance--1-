@@ -50,6 +50,114 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
+type ResendWebhookData = Record<string, unknown>;
+
+const normalizeEmail = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const match = value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  return match?.[0]?.toLowerCase() ?? null;
+};
+
+const getString = (value: unknown): string | null =>
+  typeof value === 'string' && value.trim() ? value.trim() : null;
+
+const readAddress = (value: unknown): { email: string | null; name: string | null } => {
+  if (typeof value === 'string') {
+    const email = normalizeEmail(value);
+    const name = email ? value.replace(email, '').replace(/[<>"']/g, '').trim() || null : null;
+    return { email, name };
+  }
+
+  if (value && typeof value === 'object') {
+    const data = value as Record<string, unknown>;
+    return {
+      email: normalizeEmail(getString(data.email) ?? getString(data.address)),
+      name: getString(data.name),
+    };
+  }
+
+  return { email: null, name: null };
+};
+
+const readFirstAddress = (value: unknown): { email: string | null; name: string | null } => {
+  if (Array.isArray(value)) return readAddress(value[0]);
+  return readAddress(value);
+};
+
+async function recordResendReceivedEmail(db: any, data: ResendWebhookData, rawPayload: unknown) {
+  const from = readFirstAddress(data.from);
+  const to = readFirstAddress(data.to ?? data.recipients);
+  const fromEmail = from.email;
+
+  if (!fromEmail) {
+    console.warn('[resend-webhook] email.received ignored: missing sender email');
+    return { ok: true, received: 0, reason: 'missing_sender' };
+  }
+
+  const resendId =
+    getString(data.email_id) ??
+    getString(data.emailId) ??
+    getString(data.id) ??
+    getString(data.message_id);
+
+  const receivedAtRaw = getString(data.created_at) ?? getString(data.received_at);
+  const receivedAt = receivedAtRaw ? new Date(receivedAtRaw) : new Date();
+  const safeReceivedAt = Number.isNaN(receivedAt.getTime()) ? new Date() : receivedAt;
+
+  const existingLead = await db.lead.findUnique({
+    where: { email: fromEmail },
+    select: { email: true, name: true, tags: true },
+  });
+
+  const lead = existingLead
+    ? await db.lead.update({
+        where: { email: fromEmail },
+        data: {
+          name: existingLead.name ?? from.name ?? undefined,
+          tags: existingLead.tags.includes('email_recebido')
+            ? undefined
+            : { set: [...existingLead.tags, 'email_recebido'] },
+          lastSeenAt: safeReceivedAt,
+        },
+        select: { email: true },
+      })
+    : await db.lead.create({
+        data: {
+          email: fromEmail,
+          name: from.name,
+          firstSource: 'resend_inbound',
+          tags: ['email_recebido'],
+          lastSeenAt: safeReceivedAt,
+        },
+        select: { email: true },
+      });
+
+  const emailData = {
+    leadEmail: lead.email,
+    resendId,
+    fromEmail,
+    fromName: from.name,
+    toEmail: to.email,
+    subject: getString(data.subject),
+    text: getString(data.text) ?? getString(data.text_body),
+    html: getString(data.html) ?? getString(data.html_body),
+    rawData: rawPayload,
+    receivedAt: safeReceivedAt,
+  };
+
+  if (resendId) {
+    await db.emailReceived.upsert({
+      where: { resendId },
+      create: emailData,
+      update: { ...emailData, updatedAt: new Date() },
+    });
+  } else {
+    await db.emailReceived.create({ data: emailData });
+  }
+
+  return { ok: true, received: 1, leadEmail: lead.email };
+}
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -462,13 +570,24 @@ app.post('/api/resend-webhook', express.json(), async (req, res) => {
       }
     }
 
-    const event   = req.body as { type?: string; data?: { email_id?: string; emailId?: string; id?: string; message_id?: string } };
+    const event   = req.body as { type?: string; data?: ResendWebhookData };
     const type    = event?.type ?? '';
-    const emailId = event?.data?.email_id ?? event?.data?.emailId ?? event?.data?.id ?? event?.data?.message_id ?? '';
+    const { prisma: db } = await import('./config/database');
+
+    if (type === 'email.received') {
+      const result = await recordResendReceivedEmail(db, event.data ?? {}, req.body);
+      res.json(result);
+      return;
+    }
+
+    const emailId =
+      getString(event?.data?.email_id) ??
+      getString(event?.data?.emailId) ??
+      getString(event?.data?.id) ??
+      getString(event?.data?.message_id) ??
+      '';
 
     if (!emailId) { res.json({ ok: true }); return; }
-
-    const { prisma: db } = await import('./config/database');
 
     const now = new Date();
     const updates: Record<string, unknown> = {};

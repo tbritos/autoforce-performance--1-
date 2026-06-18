@@ -99,6 +99,7 @@ model Lead {
   aiMemories       AIConversationMemory[]
   aiInteractions   AIInteractionLog[]
   emailsSent       EmailSent[]
+  emailsReceived   EmailReceived[]
 
   @@index([status])
   @@index([firstSource])
@@ -844,6 +845,29 @@ model EmailSent {
   @@index([templateId])
   @@index([status])
   @@index([sentAt])
+}
+
+model EmailReceived {
+  id        String @id @default(cuid())
+  leadEmail String
+  lead      Lead   @relation(fields: [leadEmail], references: [email])
+
+  resendId  String? @unique
+  fromEmail String
+  fromName  String?
+  toEmail   String?
+  subject   String?
+  text      String? @db.Text
+  html      String? @db.Text
+  rawData   Json    @default("{}")
+
+  receivedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([leadEmail])
+  @@index([fromEmail])
+  @@index([receivedAt])
 }
 
 // ============================================================

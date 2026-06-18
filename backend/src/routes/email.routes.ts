@@ -30,6 +30,20 @@ router.get('/sent/lead/:leadEmail', async (req: Request, res: Response) => {
   }
 });
 
+// Emails recebidos via Resend Inbound por lead
+router.get('/received/lead/:leadEmail', async (req: Request, res: Response) => {
+  try {
+    const emails = await prisma.emailReceived.findMany({
+      where:   { leadEmail: req.params.leadEmail },
+      orderBy: { receivedAt: 'desc' },
+      take:    100,
+    });
+    res.json(emails);
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao buscar emails recebidos' });
+  }
+});
+
 // Métricas agregadas de emails do sistema (para dashboard)
 router.get('/sent/stats', async (_req: Request, res: Response) => {
   try {
