@@ -11,6 +11,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:seed-knowledge": "tsx prisma/seed-knowledge.ts",
     "prisma:clear": "tsx prisma/clear-fake-data.ts",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",

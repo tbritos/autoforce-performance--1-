@@ -255,6 +255,11 @@ function deriveKnowledgeHints(input: {
     categories.push('produto', 'case');
   }
 
+  if (/\b(ebook|nao recebi|nao chegou|spam|lixeira|financeiro|boleto|cobranca|nota fiscal|suporte|problema tecnico|contato|falar com alguem|falar com humano)\b/.test(text)) {
+    tags.push('suporte', 'contato', 'ebook', 'financeiro');
+    categories.push('suporte');
+  }
+
   return {
     categories: uniq(categories),
     tags: uniq(tags),
