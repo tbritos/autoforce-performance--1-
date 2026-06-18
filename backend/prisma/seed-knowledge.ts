@@ -369,19 +369,13 @@ Observação: Solicitar contexto antes de encaminhar agiliza o atendimento. Não
     content: `Contatos de Suporte AutoForce
 
 Suporte técnico (clientes ativos):
-[E-MAIL SUPORTE — ex: suporte@autoforce.com.br]
-WhatsApp: [NÚMERO SUPORTE]
+Cada cliente AutoForce tem um CS (Customer Success) responsável pela conta. Quando um cliente precisar de suporte técnico, orientar que ele entre em contato com o CS responsável pela conta dele.
+
+Script de resposta para clientes buscando suporte:
+"Para suporte técnico, o melhor caminho é falar diretamente com o CS responsável pela sua conta — ele já conhece a sua operação e vai conseguir te ajudar muito mais rápido. Você tem o contato dele?"
 
 Financeiro/Administrativo:
-[E-MAIL FINANCEIRO — ex: financeiro@autoforce.com.br]
-
-Comercial (novos clientes):
-[E-MAIL COMERCIAL]
-WhatsApp: [NÚMERO COMERCIAL]
-
-Website: autoforce.com.br
-
-[PREENCHER COM OS CONTATOS REAIS ANTES DE IR A PRODUÇÃO]
+WhatsApp: https://wa.me/558499575795
 
 Regra: redirecionar com eficiência e empatia. Nunca deixar o lead sem um próximo passo claro.`,
   },
