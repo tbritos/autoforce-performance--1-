@@ -8,6 +8,7 @@ const DEBOUNCE_MS = 5_000;
 const LOCK_TTL_MS = 120_000;
 const MAX_TRANSCRIPT_MSGS = 40;
 const DEFAULT_DISCOVERY_REPLY = 'Oi! Tudo bem? Sou a Lara, da AutoForce.\n\nMe conta rapidinho: hoje o maior desafio da sua concessionaria esta em gerar mais leads qualificados ou em converter melhor os leads que ja chegam?';
+const DISCOVERY_QUESTION = 'Hoje, qual e o maior gargalo: gerar mais leads qualificados ou converter melhor os leads que ja chegam?';
 
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -58,12 +59,29 @@ function normalizeText(value: string): string {
     .toLowerCase();
 }
 
-function detectLeadIntent(message: string): 'meeting_request' | 'greeting' | 'price_question' | 'company_answer' | 'generic' {
+type RecoveredIntent =
+  | 'meeting_request'
+  | 'greeting'
+  | 'price_question'
+  | 'agent_identity_question'
+  | 'company_lookup_question'
+  | 'company_answer'
+  | 'generic';
+
+function detectLeadIntent(message: string): RecoveredIntent {
   const text = normalizeText(message);
+  const trimmed = text.trim();
+  const isQuestion = message.includes('?') || /\b(qual|quem|como|voce sabe|sabe|me diz|me fala)\b/.test(trimmed);
+  if (/\b(qual (e|eh) (o )?seu nome|quem (e|eh) voce|com quem|voce (e|eh) quem|se apresenta)\b/.test(trimmed)) {
+    return 'agent_identity_question';
+  }
+  if (/\b(minha empresa|meu negocio|empresa que eu trabalho|qual (e|eh) minha empresa|sabe.*empresa)\b/.test(trimmed)) {
+    return 'company_lookup_question';
+  }
   if (/\b(preco|valor|quanto custa|orcamento|mensalidade|custa)\b/.test(text)) return 'price_question';
   if (/\b(reuniao|agenda|agendar|marcar|horario|demo|demonstracao|apresentacao|call)\b/.test(text)) return 'meeting_request';
   if (/^(oi|ola|bom dia|boa tarde|boa noite|e ai|eai)\b/.test(text.trim())) return 'greeting';
-  if (message.trim().split(/\s+/).length <= 4) return 'company_answer';
+  if (!isQuestion && message.trim().split(/\s+/).length <= 4) return 'company_answer';
   return 'generic';
 }
 
@@ -102,6 +120,24 @@ function recoverAIReply(input: {
       intent,
       actions,
       replyText: `Boa pergunta${greetingName}. O valor depende do contexto da operacao, como site atual, volume de leads e ferramentas que voces usam hoje.\n\nPara eu te direcionar melhor: hoje voces querem melhorar mais a geracao de leads ou o atendimento/conversao desses leads?`,
+    };
+  }
+
+  if (intent === 'agent_identity_question') {
+    return {
+      intent,
+      actions,
+      replyText: `Sou a Lara, assistente da AutoForce${greetingName ? `, ${name}` : ''}.\n\nEu te ajudo a entender o melhor caminho para gerar ou converter mais leads na operacao. ${DISCOVERY_QUESTION}`,
+    };
+  }
+
+  if (intent === 'company_lookup_question') {
+    return {
+      intent,
+      actions,
+      replyText: company
+        ? `Tenho aqui que a empresa e ${company}. Se estiver errado, me corrige por favor.\n\n${DISCOVERY_QUESTION}`
+        : `Ainda nao tenho certeza da sua empresa por aqui.\n\nQual e o nome dela? Assim eu consigo direcionar melhor o diagnostico.`,
     };
   }
 
