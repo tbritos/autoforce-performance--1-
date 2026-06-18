@@ -19,6 +19,7 @@ export type AIAgentRuntimeContext = {
     outputSchema: unknown;
     defaultProvider: string | null;
     defaultModel: string | null;
+    fallbackModels: string[];
   };
   memory: {
     summary: string | null;
@@ -167,6 +168,7 @@ export async function loadAIAgentContext(input: LoadContextInput): Promise<AIAge
       outputSchema: agent.outputSchema,
       defaultProvider: agent.defaultProvider,
       defaultModel: agent.defaultModel,
+      fallbackModels: agent.fallbackModels ?? [],
     },
     memory: memory ? {
       summary: memory.summary,

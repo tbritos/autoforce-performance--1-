@@ -394,6 +394,7 @@ export interface AIAgent {
   outputSchema: unknown;
   defaultProvider: AIProvider | string | null;
   defaultModel: string | null;
+  fallbackModels: string[];
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

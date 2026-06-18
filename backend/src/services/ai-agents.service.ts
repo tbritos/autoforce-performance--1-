@@ -58,6 +58,7 @@ export class AIAgentsService {
         outputSchema: optionalJson(input.outputSchema),
         defaultProvider: String(input.defaultProvider || '').trim() || null,
         defaultModel: String(input.defaultModel || '').trim() || null,
+        fallbackModels: toStringArray(input.fallbackModels),
         isActive: input.isActive !== false,
       },
     });
@@ -80,6 +81,7 @@ export class AIAgentsService {
     if (input.outputSchema !== undefined) data.outputSchema = optionalJson(input.outputSchema);
     if (input.defaultProvider !== undefined) data.defaultProvider = String(input.defaultProvider || '').trim() || null;
     if (input.defaultModel !== undefined) data.defaultModel = String(input.defaultModel || '').trim() || null;
+    if (input.fallbackModels !== undefined) data.fallbackModels = toStringArray(input.fallbackModels);
     if (input.isActive !== undefined) data.isActive = Boolean(input.isActive);
 
     return (prisma as any).aIAgent.update({ where: { id }, data });

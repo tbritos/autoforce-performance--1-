@@ -302,6 +302,7 @@ model AIAgent {
 
   defaultProvider String?
   defaultModel    String?
+  fallbackModels  String[] @default([])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -62,6 +62,7 @@ export type AIPrequalificationInput = {
   criteria: string;
   provider?: string;
   model?: string;
+  fallbackModels?: string[];
   agentContext?: AIAgentRuntimeContext;
 };
 
@@ -99,7 +100,9 @@ async function runGeminiPrequalification(input: AIPrequalificationInput): Promis
   if (!apiKey) return fallbackAIPrequalification(input, 'GEMINI_API_KEY nao configurada');
 
   const primaryModel = resolveModel('gemini', input.model, process.env.GEMINI_MODEL, 'gemini-2.5-flash');
-  const models = resolveModelCascade('gemini', primaryModel, process.env.GEMINI_FALLBACK_MODELS);
+  const agentFallbacks = input.fallbackModels ?? input.agentContext?.agent.fallbackModels ?? [];
+  const envFallbacks = process.env.GEMINI_FALLBACK_MODELS;
+  const models = resolveModelCascade('gemini', primaryModel, agentFallbacks.length > 0 ? agentFallbacks : envFallbacks);
   const prompt = compactPrequalificationPrompt(buildPrequalificationPrompt(input));
   const promptText = JSON.stringify(prompt);
   const maxAttempts = Math.max(1, Number(process.env.GEMINI_MAX_RETRIES ?? 3) || 3);
@@ -855,14 +858,13 @@ function resolveModel(
 function resolveModelCascade(
   provider: Exclude<AIProvider, 'fallback'>,
   primaryModel: string,
-  fallbackModelsEnv?: string
+  fallbackInput?: string | string[]
 ): string[] {
   const allowed = ALLOWED_MODELS[provider];
-  const fallbackModels = String(fallbackModelsEnv ?? '')
-    .split(',')
-    .map(model => model.trim())
-    .filter(model => model && allowed.has(model));
-
+  const candidates = Array.isArray(fallbackInput)
+    ? fallbackInput
+    : String(fallbackInput ?? '').split(',').map(m => m.trim());
+  const fallbackModels = candidates.filter(m => m && allowed.has(m));
   return Array.from(new Set([primaryModel, ...fallbackModels]));
 }
 

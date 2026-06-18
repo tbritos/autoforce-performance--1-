@@ -417,6 +417,7 @@ async function executeAIAndReply(
     criteria: '',
     provider: agentContext.agent.defaultProvider ?? undefined,
     model: agentContext.agent.defaultModel ?? undefined,
+    fallbackModels: agentContext.agent.fallbackModels,
     agentContext,
   });
 

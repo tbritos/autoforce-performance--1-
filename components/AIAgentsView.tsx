@@ -147,6 +147,7 @@ export default function AIAgentsView() {
       const saved = await DataService.updateAIAgent(agent.id, {
         defaultProvider: agentDraft.defaultProvider,
         defaultModel: agentDraft.defaultModel,
+        fallbackModels: agentDraft.fallbackModels ?? [],
       });
       setAgent(saved);
       setAgentDraft(saved);
@@ -384,26 +385,53 @@ export default function AIAgentsView() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <Field label="Provider">
                   <select value={provider}
-                    onChange={e => setAgentDraft(d => ({ ...d, defaultProvider: e.target.value, defaultModel: e.target.value === 'openai' ? 'gpt-4o-mini' : 'gemini-2.5-flash' }))}
+                    onChange={e => setAgentDraft(d => ({ ...d, defaultProvider: e.target.value, defaultModel: e.target.value === 'openai' ? 'gpt-4o-mini' : 'gemini-2.5-flash', fallbackModels: [] }))}
                     style={{ ...iStyle, cursor: 'pointer' }}>
                     <option value="gemini">Gemini</option>
                     <option value="openai">OpenAI</option>
                   </select>
                 </Field>
-                <Field label="Modelo">
+                <Field label="Modelo principal">
                   <select value={String(agentDraft.defaultModel || modelOptions[0])}
-                    onChange={e => setAgentDraft(d => ({ ...d, defaultModel: e.target.value }))}
+                    onChange={e => setAgentDraft(d => ({ ...d, defaultModel: e.target.value, fallbackModels: (d.fallbackModels ?? []).filter(m => m !== e.target.value) }))}
                     style={{ ...iStyle, cursor: 'pointer' }}>
                     {modelOptions.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                 </Field>
               </div>
 
-              <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--bg-subtle)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <CheckCircle size={14} color="#16a34a" />
-                <span style={{ fontSize: 13, color: 'var(--fg-secondary)' }}>
-                  Agente <strong>{agentDraft.name}</strong> ativo · rodando em <strong>{agentDraft.defaultProvider || 'gemini'} / {agentDraft.defaultModel || '—'}</strong>
-                </span>
+              <Field label="Modelos de fallback" note="(acionados em cascata se o principal falhar)">
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingTop: 2 }}>
+                  {modelOptions
+                    .filter(m => m !== String(agentDraft.defaultModel || modelOptions[0]))
+                    .map(m => {
+                      const checked = (agentDraft.fallbackModels ?? []).includes(m);
+                      return (
+                        <label key={m} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, border: `1px solid ${checked ? 'var(--accent)' : 'var(--border)'}`, background: checked ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'var(--bg-subtle)', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: checked ? 'var(--accent)' : 'var(--fg-secondary)', userSelect: 'none' }}>
+                          <input type="checkbox" checked={checked} style={{ display: 'none' }}
+                            onChange={e => setAgentDraft(d => {
+                              const current = d.fallbackModels ?? [];
+                              return { ...d, fallbackModels: e.target.checked ? [...current, m] : current.filter(x => x !== m) };
+                            })} />
+                          {m}
+                        </label>
+                      );
+                    })}
+                </div>
+              </Field>
+
+              <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--bg-subtle)', border: '1px solid var(--border)', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <CheckCircle size={14} color="#16a34a" style={{ marginTop: 2, flexShrink: 0 }} />
+                <div>
+                  <span style={{ fontSize: 13, color: 'var(--fg-secondary)' }}>
+                    Agente <strong>{agentDraft.name}</strong> ativo · principal: <strong>{agentDraft.defaultProvider || 'gemini'} / {agentDraft.defaultModel || '—'}</strong>
+                  </span>
+                  {(agentDraft.fallbackModels ?? []).length > 0 && (
+                    <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>
+                      Fallback: {(agentDraft.fallbackModels ?? []).join(' → ')}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           )}
