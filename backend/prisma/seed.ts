@@ -557,7 +557,7 @@ Script de resposta:
 "Pode ser que o e-mail tenha ido para a caixa de spam ou lixeira eletrônica — é bem comum isso acontecer. Dá uma olhada lá? Se não encontrar, me diz que te envio o link direto aqui no WhatsApp."
 
 Link do ebook para enviar pelo WhatsApp:
-[PREENCHER COM O LINK DO EBOOK — ex: https://autoforce.com.br/ebook-nome]
+https://www.canva.com/design/DAG7CfFrztc/-_itkuUcl8XbxTqxZtHppg/view?utm_content=DAG7CfFrztc&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=hfac51b1dd2
 
 Observação: Enviar o link diretamente no WhatsApp resolve na hora e evita dependência do e-mail. Não tentar qualificar durante o suporte — resolver a dúvida é o foco.`,
     },
@@ -572,15 +572,11 @@ Observação: Enviar o link diretamente no WhatsApp resolve na hora e evita depe
 Situação: lead ou cliente precisa falar com o setor financeiro ou administrativo da AutoForce.
 
 Script de resposta:
-"Claro! Para questões financeiras, o contato direto é:
-[E-MAIL FINANCEIRO — ex: financeiro@autoforce.com.br]
-ou pelo WhatsApp: [NÚMERO FINANCEIRO]
+"Claro! Para questões financeiras, fala direto com a equipe pelo WhatsApp: https://wa.me/558499575795 — é o contato do financeiro da AutoForce.
 
 Me diz brevemente o que aconteceu para eu já deixar um contexto pra eles? Assim você não precisa explicar tudo de novo."
 
-Observação: Solicitar contexto antes de encaminhar agiliza o atendimento. Não tentar qualificar — encaminhar com eficiência.
-
-[PREENCHER COM OS CONTATOS REAIS]`,
+Observação: Solicitar contexto antes de encaminhar agiliza o atendimento. Não tentar qualificar — encaminhar com eficiência.`,
     },
     {
       id: 'ki-suporte-contatos',
