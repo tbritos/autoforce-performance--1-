@@ -310,7 +310,7 @@ async function listKnowledge(
     });
   }
 
-  const scored = items.map((item: any) => {
+  const scored: Array<{ item: any; score: number }> = items.map((item: any) => {
     const itemTags = Array.isArray(item.tags) ? item.tags.map((tag: unknown) => String(tag).toLowerCase()) : [];
     const tagScore = cleanTags.reduce((total, tag) => total + (itemTags.includes(tag.toLowerCase()) ? 4 : 0), 0);
     const categoryScore = cleanCategories.includes(String(item.category)) ? 2 : 0;
@@ -319,7 +319,9 @@ async function listKnowledge(
   });
 
   return scored
-    .sort((a, b) => b.score - a.score || Number(a.item.priority ?? 100) - Number(b.item.priority ?? 100))
+    .sort((a: { item: any; score: number }, b: { item: any; score: number }) =>
+      b.score - a.score || Number(a.item.priority ?? 100) - Number(b.item.priority ?? 100)
+    )
     .slice(0, 6)
-    .map(entry => entry.item);
+    .map((entry: { item: any; score: number }) => entry.item);
 }

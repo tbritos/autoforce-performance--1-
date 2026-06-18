@@ -575,9 +575,15 @@ async function executeNode(
       });
 
       const waitFor = String(c.waitForEvent || 'opened');
+      const executionRow = waitFor === 'received' || waitFor === 'reply'
+        ? await prisma.automationExecution.findUnique({
+            where: { id: executionId },
+            select: { startedAt: true },
+          })
+        : null;
       const alreadyHappened = waitFor === 'received' || waitFor === 'reply'
         ? await prisma.emailReceived.findFirst({
-            where: { leadEmail, receivedAt: { gte: execution.startedAt } },
+            where: { leadEmail, receivedAt: { gte: executionRow?.startedAt ?? new Date() } },
             orderBy: { receivedAt: 'desc' },
           })
         : emailSent && (
