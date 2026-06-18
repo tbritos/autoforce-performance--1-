@@ -98,66 +98,78 @@ async function runGeminiPrequalification(input: AIPrequalificationInput): Promis
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return fallbackAIPrequalification(input, 'GEMINI_API_KEY nao configurada');
 
-  const model = resolveModel('gemini', input.model, process.env.GEMINI_MODEL, 'gemini-2.5-flash');
+  const primaryModel = resolveModel('gemini', input.model, process.env.GEMINI_MODEL, 'gemini-2.5-flash');
+  const models = resolveModelCascade('gemini', primaryModel, process.env.GEMINI_FALLBACK_MODELS);
   const prompt = compactPrequalificationPrompt(buildPrequalificationPrompt(input));
   const promptText = JSON.stringify(prompt);
   const maxAttempts = Math.max(1, Number(process.env.GEMINI_MAX_RETRIES ?? 3) || 3);
+  let lastReason = '';
 
-  try {
+  for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
+    const model = models[modelIndex];
     let response: Awaited<ReturnType<typeof fetch>> | null = null;
     let lastErrorText = '';
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-        {
-          method: 'POST',
-          headers: {
-            'x-goog-api-key': apiKey,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: promptText }],
-              },
-            ],
-            generationConfig: {
-              temperature: 0.2,
-              responseMimeType: 'application/json',
+    try {
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+          {
+            method: 'POST',
+            headers: {
+              'x-goog-api-key': apiKey,
+              'Content-Type': 'application/json',
             },
-          }),
+            body: JSON.stringify({
+              contents: [
+                {
+                  role: 'user',
+                  parts: [{ text: promptText }],
+                },
+              ],
+              generationConfig: {
+                temperature: 0.2,
+                responseMimeType: 'application/json',
+              },
+            }),
+          }
+        );
+
+        if (response.ok) break;
+
+        lastErrorText = await response.text().catch(() => '');
+        const retryable = AI_RETRYABLE_STATUS.has(response.status);
+        if (!retryable || attempt >= maxAttempts) {
+          throw new Error(`Gemini API ${response.status}: ${lastErrorText.slice(0, 300)}`);
         }
-      );
 
-      if (response.ok) break;
-
-      lastErrorText = await response.text().catch(() => '');
-      const retryable = AI_RETRYABLE_STATUS.has(response.status);
-      if (!retryable || attempt >= maxAttempts) {
-        throw new Error(`Gemini API ${response.status}: ${lastErrorText.slice(0, 300)}`);
+        const delayMs = 750 * attempt + Math.floor(Math.random() * 250);
+        console.warn(`[AI-Gemini] Retryable ${response.status}; model=${model}; retry ${attempt}/${maxAttempts} in ${delayMs}ms`);
+        await sleep(delayMs);
       }
 
-      const delayMs = 750 * attempt + Math.floor(Math.random() * 250);
-      console.warn(`[AI-Gemini] Retryable ${response.status}; retry ${attempt}/${maxAttempts} in ${delayMs}ms`);
-      await sleep(delayMs);
-    }
+      if (!response?.ok) {
+        throw new Error(`Gemini API unavailable: ${lastErrorText.slice(0, 300)}`);
+      }
 
-    if (!response?.ok) {
-      throw new Error(`Gemini API unavailable: ${lastErrorText.slice(0, 300)}`);
+      const payload = await response.json() as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      };
+      const content = payload.candidates?.[0]?.content?.parts?.map(part => part.text ?? '').join('') ?? '{}';
+      return normalizeAIPrequalificationResult(JSON.parse(content), 'gemini', model, prompt);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Falha ao chamar Gemini';
+      lastReason = reason;
+      const hasNextModel = modelIndex < models.length - 1;
+      console.error(`[AI-Gemini] Prequalification failed with model=${model}:`, reason);
+      if (hasNextModel) {
+        console.warn(`[AI-Gemini] Switching fallback model: ${model} -> ${models[modelIndex + 1]}`);
+        continue;
+      }
     }
-
-    const payload = await response.json() as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const content = payload.candidates?.[0]?.content?.parts?.map(part => part.text ?? '').join('') ?? '{}';
-    return normalizeAIPrequalificationResult(JSON.parse(content), 'gemini', model, prompt);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : 'Falha ao chamar Gemini';
-    console.error('[AI-Gemini] Prequalification failed:', reason);
-    return fallbackAIPrequalification(input, reason);
   }
+
+  return fallbackAIPrequalification(input, lastReason || 'Falha ao chamar Gemini');
 }
 
 async function runOpenAIPrequalification(input: AIPrequalificationInput): Promise<AIPrequalificationResult> {
@@ -838,6 +850,20 @@ function resolveModel(
   if (configured && allowed.has(configured)) return configured;
 
   return fallbackModel;
+}
+
+function resolveModelCascade(
+  provider: Exclude<AIProvider, 'fallback'>,
+  primaryModel: string,
+  fallbackModelsEnv?: string
+): string[] {
+  const allowed = ALLOWED_MODELS[provider];
+  const fallbackModels = String(fallbackModelsEnv ?? '')
+    .split(',')
+    .map(model => model.trim())
+    .filter(model => model && allowed.has(model));
+
+  return Array.from(new Set([primaryModel, ...fallbackModels]));
 }
 
 function fallbackAIPrequalification(
