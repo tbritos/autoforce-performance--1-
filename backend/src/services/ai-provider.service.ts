@@ -44,6 +44,9 @@ const ALLOWED_ACTION_TYPES = new Set([
   'confirm_meeting',
 ]);
 
+const AI_RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export type AIPrequalificationInput = {
   lead: {
     email: string;
@@ -98,34 +101,51 @@ async function runGeminiPrequalification(input: AIPrequalificationInput): Promis
   const model = resolveModel('gemini', input.model, process.env.GEMINI_MODEL, 'gemini-2.5-flash');
   const prompt = compactPrequalificationPrompt(buildPrequalificationPrompt(input));
   const promptText = JSON.stringify(prompt);
+  const maxAttempts = Math.max(1, Number(process.env.GEMINI_MAX_RETRIES ?? 3) || 3);
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-      {
-        method: 'POST',
-        headers: {
-          'x-goog-api-key': apiKey,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: promptText }],
-            },
-          ],
-          generationConfig: {
-            temperature: 0.2,
-            responseMimeType: 'application/json',
-          },
-        }),
-      }
-    );
+    let response: Awaited<ReturnType<typeof fetch>> | null = null;
+    let lastErrorText = '';
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Gemini API ${response.status}: ${text.slice(0, 300)}`);
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+        {
+          method: 'POST',
+          headers: {
+            'x-goog-api-key': apiKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: promptText }],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.2,
+              responseMimeType: 'application/json',
+            },
+          }),
+        }
+      );
+
+      if (response.ok) break;
+
+      lastErrorText = await response.text().catch(() => '');
+      const retryable = AI_RETRYABLE_STATUS.has(response.status);
+      if (!retryable || attempt >= maxAttempts) {
+        throw new Error(`Gemini API ${response.status}: ${lastErrorText.slice(0, 300)}`);
+      }
+
+      const delayMs = 750 * attempt + Math.floor(Math.random() * 250);
+      console.warn(`[AI-Gemini] Retryable ${response.status}; retry ${attempt}/${maxAttempts} in ${delayMs}ms`);
+      await sleep(delayMs);
+    }
+
+    if (!response?.ok) {
+      throw new Error(`Gemini API unavailable: ${lastErrorText.slice(0, 300)}`);
     }
 
     const payload = await response.json() as {
