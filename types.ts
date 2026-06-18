@@ -797,6 +797,20 @@ export interface EmailSent {
   createdAt: string;
 }
 
+export interface EmailReceived {
+  id: string;
+  leadEmail: string;
+  resendId: string | null;
+  fromEmail: string;
+  fromName: string | null;
+  toEmail: string | null;
+  subject: string | null;
+  text: string | null;
+  html: string | null;
+  receivedAt: string;
+  createdAt: string;
+}
+
 export interface EmailStats {
   total: number;
   delivered: number;

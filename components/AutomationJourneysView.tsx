@@ -153,7 +153,7 @@ const BLOCKS: Array<{
   { type: 'condition',        label: 'Condição',     description: 'Cargo, tag, score, dor, origem ou campo',        color: '#22C55E', icon: GitBranch },
   { type: 'wait',             label: 'Esperar',      description: 'Aguardar horas ou dias antes do próximo passo',  color: '#F59E0B', icon: Clock },
   { type: 'whatsapp_wait_reply', label: 'Esperar resposta', description: 'Aguardar resposta do lead no WhatsApp',    color: '#10B981', icon: MessageCircle },
-  { type: 'email_wait_event',  label: 'Evento de email', description: 'Aguardar abertura ou clique no email enviado', color: '#3B82F6', icon: MailOpen },
+  { type: 'email_wait_event',  label: 'Evento de email', description: 'Aguardar abertura, clique ou resposta do email', color: '#3B82F6', icon: MailOpen },
   { type: 'ai_prequalify',     label: 'IA',           description: 'Pre-qualificar conversa e atualizar o lead',      color: '#6366F1', icon: Bot },
   { type: 'internal_action',  label: 'Ação interna', description: 'Adicionar tag, score, etapa ou campo',           color: '#14B8A6', icon: Tags },
   { type: 'rd_conversion',    label: 'RD Station',   description: 'Criar conversão para entrar em fluxo de e-mail', color: '#8B5CF6', icon: Mail },
@@ -197,6 +197,7 @@ function nodeSubtitle(node: AutomationJourneyNode): { text: string; warn: boolea
         tag_added:      c.eventValue ? `Tag: ${c.eventValue}` : 'Tag aplicada',
         score_reached:  c.eventValue ? `Score ≥ ${c.eventValue}` : 'Score atingiu limite',
         status_changed: c.eventValue ? `Etapa → ${c.eventValue}` : 'Etapa mudou',
+        email_received: c.eventValue ? `Email recebido: ${c.eventValue}` : 'Email recebido',
       };
       return { text: labels[c.event] ?? c.event, warn: false };
     }
@@ -207,7 +208,9 @@ function nodeSubtitle(node: AutomationJourneyNode): { text: string; warn: boolea
       if (c.amount && c.unit) return { text: `Resposta por até ${c.amount} ${c.unit}`, warn: false };
       return { text: 'Definir prazo de resposta...', warn: false };
     case 'email_wait_event': {
-      const eventLabel = c.waitForEvent === 'clicked' ? 'clique' : 'abertura';
+      const eventLabel = c.waitForEvent === 'received' || c.waitForEvent === 'reply'
+        ? 'resposta'
+        : c.waitForEvent === 'clicked' ? 'clique' : 'abertura';
       if (c.timeoutAmount && c.timeoutUnit) return { text: `${eventLabel} por até ${c.timeoutAmount} ${c.timeoutUnit}`, warn: false };
       return { text: 'Definir condição de email...', warn: false };
     }
@@ -1927,8 +1930,8 @@ const AutomationJourneysView: React.FC = () => {
                 edge.sourceHandle === 'replied' ? 'Respondeu' :
                 edge.sourceHandle === 'no_reply' ? 'Não respondeu' :
                 edge.sourceHandle === 'failed' ? 'Falhou' :
-                edge.sourceHandle === 'event' ? 'Abriu/Clicou' :
-                edge.sourceHandle === 'timeout' ? 'Não abriu' :
+                edge.sourceHandle === 'event' ? (source.config?.waitForEvent === 'received' || source.config?.waitForEvent === 'reply' ? 'Respondeu' : 'Abriu/Clicou') :
+                edge.sourceHandle === 'timeout' ? (source.config?.waitForEvent === 'received' || source.config?.waitForEvent === 'reply' ? 'Não respondeu' : 'Não abriu') :
                 '';
               return (
                 <g key={edge.id}>
@@ -2070,8 +2073,8 @@ const AutomationJourneysView: React.FC = () => {
                         { handle: 'true' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Verdadeiro', color: 'var(--green-500)' },
                         { handle: 'false' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Falso', color: 'var(--red-500)' },
                       ] : emailWaitOutputs ? [
-                        { handle: 'event' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Abriu/Clicou', color: 'var(--green-500)' },
-                        { handle: 'timeout' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Não abriu', color: '#F59E0B' },
+                        { handle: 'event' as const, label: connectFrom && !connecting ? 'Ligar aqui' : (node.config?.waitForEvent === 'received' || node.config?.waitForEvent === 'reply' ? 'Respondeu' : 'Abriu/Clicou'), color: 'var(--green-500)' },
+                        { handle: 'timeout' as const, label: connectFrom && !connecting ? 'Ligar aqui' : (node.config?.waitForEvent === 'received' || node.config?.waitForEvent === 'reply' ? 'Não respondeu' : 'Não abriu'), color: '#F59E0B' },
                       ] : [
                         { handle: 'replied' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Respondeu', color: 'var(--green-500)' },
                         { handle: 'no_reply' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Não respondeu', color: '#F59E0B' },
@@ -2219,6 +2222,7 @@ const AutomationJourneysView: React.FC = () => {
                       { value: 'tag_added',       icon: Tags,       label: 'Tag aplicada',            description: 'Uma tag foi adicionada ao lead',             subField: 'tag' },
                       { value: 'score_reached',   icon: TrendingUp, label: 'Score atingiu limite',    description: 'Score chegou a um valor mínimo definido',    subField: 'score' },
                       { value: 'status_changed',  icon: ArrowRight, label: 'Etapa mudou',             description: 'Lead mudou para uma etapa específica',       subField: 'status' },
+                      { value: 'email_received',  icon: MailOpen,   label: 'Email recebido',          description: 'Lead respondeu ou enviou um email',          subField: 'email' },
                     ];
                     const selectedEvent = panelValues.config.event || '';
                     const activeOpt = triggerOptions.find(o => o.value === selectedEvent);
@@ -2305,6 +2309,23 @@ const AutomationJourneysView: React.FC = () => {
                               onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
                               onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
                             />
+                          </label>
+                        )}
+                        {activeOpt?.subField === 'email' && (
+                          <label style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>Texto esperado no email (opcional)</span>
+                            <input
+                              type="text"
+                              value={String(panelValues.config.eventValue ?? '')}
+                              onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, eventValue: e.target.value } } : prev)}
+                              placeholder="ex: 1, 2, 3, quero, sim"
+                              style={fieldInputStyle}
+                              onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
+                              onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
+                            />
+                            <span style={{ fontSize: 11, color: 'var(--fg-muted)', lineHeight: 1.4 }}>
+                              Deixe vazio para qualquer email recebido, ou separe termos por virgula para filtrar respostas como 1, 2 ou 3.
+                            </span>
                           </label>
                         )}
                       </div>
@@ -2457,6 +2478,7 @@ const AutomationJourneysView: React.FC = () => {
                     const eventOptions: SmartSelectOption[] = [
                       { value: 'opened', label: 'Abriu o email', description: 'Qualquer abertura já conta' },
                       { value: 'clicked', label: 'Clicou em link', description: 'Só conta se clicou num link' },
+                      { value: 'received', label: 'Recebeu resposta', description: 'Conta quando o lead responder por email' },
                     ];
                     const unitOptions: SmartSelectOption[] = [
                       { value: 'hours', label: 'Horas' },
@@ -2501,9 +2523,23 @@ const AutomationJourneysView: React.FC = () => {
                             />
                           </div>
                         </div>
+                        {(waitForEvent === 'received' || waitForEvent === 'reply') && (
+                          <label style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>Palavras esperadas (opcional)</span>
+                            <input
+                              type="text"
+                              value={String(panelValues.config.replyContains ?? panelValues.config.keywords ?? '')}
+                              onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, replyContains: e.target.value } } : prev)}
+                              placeholder="ex: 1, 2, 3, quero, sim"
+                              style={fieldInputStyle}
+                              onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-soft)'; }}
+                              onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
+                            />
+                          </label>
+                        )}
                         <div style={{ padding: '10px 14px', borderRadius: 8, background: 'var(--bg-subtle)', fontSize: 13, color: 'var(--fg-muted)', lineHeight: 1.45 }}>
                           {timeoutAmount && timeoutUnit
-                            ? <>Após enviar o email, aguarda até <strong style={{ color: 'var(--fg-primary)' }}>{timeoutAmount} {unitLabel}</strong>. Se o lead <strong style={{ color: 'var(--green-500)' }}>{waitForEvent === 'clicked' ? 'clicar num link' : 'abrir o email'}</strong>, segue por <strong style={{ color: 'var(--green-500)' }}>Abriu/Clicou</strong>; caso contrário, segue por <strong style={{ color: '#F59E0B' }}>Não abriu</strong>.</>
+                            ? <>Após enviar o email, aguarda até <strong style={{ color: 'var(--fg-primary)' }}>{timeoutAmount} {unitLabel}</strong>. Se o lead <strong style={{ color: 'var(--green-500)' }}>{waitForEvent === 'received' || waitForEvent === 'reply' ? 'responder o email' : waitForEvent === 'clicked' ? 'clicar num link' : 'abrir o email'}</strong>, segue pelo caminho de evento; caso contrário, segue pelo caminho de tempo esgotado.</>
                             : <>Defina o evento esperado e o tempo máximo de espera antes de continuar pelo caminho alternativo.</>}
                         </div>
                       </div>

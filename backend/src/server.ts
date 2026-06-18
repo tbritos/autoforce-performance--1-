@@ -155,6 +155,20 @@ async function recordResendReceivedEmail(db: any, data: ResendWebhookData, rawPa
     await db.emailReceived.create({ data: emailData });
   }
 
+  const text = emailData.text ?? '';
+  const subject = emailData.subject ?? '';
+  const { fireTrigger, resumeWaitingEmailReceived } = await import('./services/automation-engine.service');
+  fireTrigger('email_received', lead.email, {
+    subject,
+    text,
+    fromEmail,
+    fromName: from.name,
+    toEmail: to.email,
+    resendId,
+  }).catch(err => console.error('[resend-webhook] email_received trigger error:', err));
+  resumeWaitingEmailReceived(lead.email, text, subject)
+    .catch(err => console.error('[resend-webhook] email received resume error:', err));
+
   return { ok: true, received: 1, leadEmail: lead.email };
 }
 

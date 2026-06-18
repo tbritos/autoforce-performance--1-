@@ -10,7 +10,8 @@ export type TriggerEvent =
   | 'tag_added'
   | 'status_changed'
   | 'score_updated'
-  | 'conversion_received';
+  | 'conversion_received'
+  | 'email_received';
 
 export interface TriggerContext {
   tag?: string;
@@ -354,6 +355,62 @@ export async function resumeWaitingEmailEvent(
   return 1;
 }
 
+export async function resumeWaitingEmailReceived(
+  leadEmail: string,
+  replyText = '',
+  subject = ''
+): Promise<number> {
+  const executions = await prisma.automationExecution.findMany({
+    where: { leadEmail, status: 'waiting' },
+    include: { journey: true },
+    orderBy: { startedAt: 'desc' },
+    take: 20,
+  });
+
+  let resumed = 0;
+  for (const execution of executions) {
+    const nodes = (execution.journey.nodes as unknown as AutomationNode[]) ?? [];
+    const edges = (execution.journey.edges as unknown as AutomationEdge[]) ?? [];
+    const currentNode = nodes.find(n => n.id === execution.currentNodeId);
+    if (currentNode?.type !== 'email_wait_event') continue;
+
+    const waitFor = String(currentNode.config?.waitForEvent || 'opened');
+    if (waitFor !== 'received' && waitFor !== 'reply') continue;
+
+    const expected = String(currentNode.config?.replyContains ?? currentNode.config?.keywords ?? '').trim().toLowerCase();
+    const haystack = `${subject}\n${replyText}`.toLowerCase();
+    if (expected) {
+      const terms = expected.split(',').map(item => item.trim()).filter(Boolean);
+      if (terms.length > 0 && !terms.some(term => haystack.includes(term))) continue;
+    }
+
+    const outEdges = edges.filter(e => e.source === currentNode.id);
+    const nextEdge = pickNextEdge(outEdges, 'event');
+    if (!nextEdge) continue;
+
+    const guardKey = `${execution.journeyId}:${execution.leadEmail}`;
+    if (executingLeads.has(guardKey)) continue;
+
+    const claimed = await prisma.automationExecution.updateMany({
+      where: { id: execution.id, status: 'waiting' },
+      data: { status: 'running', resumeAt: null },
+    });
+    if (claimed.count === 0) continue;
+
+    executingLeads.add(guardKey);
+    await appendLog(execution.id, currentNode.id, 'email_wait_event', 'ok', `Email recebido: ${replyText.slice(0, 160)}`);
+
+    runExecution(execution.id, execution.journeyId, nodes, edges, execution.leadEmail, {}, nextEdge.target, guardKey).catch(err => {
+      console.error(`[automation] email received resume ${execution.id} crashed:`, err);
+      executingLeads.delete(guardKey);
+    });
+
+    resumed += 1;
+  }
+
+  return resumed;
+}
+
 async function runExecution(
   executionId: string,
   journeyId: string,           // FIX: passed directly — no DB fetch needed
@@ -518,9 +575,14 @@ async function executeNode(
       });
 
       const waitFor = String(c.waitForEvent || 'opened');
-      const alreadyHappened = emailSent && (
-        waitFor === 'clicked' ? !!emailSent.clickedAt : !!(emailSent.openedAt || emailSent.clickedAt)
-      );
+      const alreadyHappened = waitFor === 'received' || waitFor === 'reply'
+        ? await prisma.emailReceived.findFirst({
+            where: { leadEmail, receivedAt: { gte: execution.startedAt } },
+            orderBy: { receivedAt: 'desc' },
+          })
+        : emailSent && (
+            waitFor === 'clicked' ? !!emailSent.clickedAt : !!(emailSent.openedAt || emailSent.clickedAt)
+          );
 
       if (alreadyHappened) {
         await appendLog(executionId, node.id, 'email_wait_event', 'ok', `Evento já ocorreu: ${waitFor}`);
@@ -611,6 +673,15 @@ function matchesTrigger(
         config.eventValue !== context.conversionName
       ) return false;
       break;
+    case 'email_received': {
+      const expected = String(config.eventValue ?? config.replyContains ?? '').trim().toLowerCase();
+      if (expected) {
+        const haystack = `${String(context.subject ?? '')}\n${String(context.text ?? '')}`.toLowerCase();
+        const terms = expected.split(',').map(item => item.trim()).filter(Boolean);
+        if (terms.length > 0 && !terms.some(term => haystack.includes(term))) return false;
+      }
+      break;
+    }
   }
 
   return true;

@@ -6,9 +6,9 @@ import {
   RefreshCw, ChevronDown, Plus, Check, PenLine,
   Trash2, FileText, Download, Wrench, Activity,
   ExternalLink, GitBranch, Flame, LayoutList,
-  CheckCircle, XCircle, MessageCircle, Send, Bot, UserCheck, AlertCircle,
+  CheckCircle, XCircle, MessageCircle, Send, Bot, UserCheck, AlertCircle, Inbox,
 } from 'lucide-react';
-import { LeadProfile, LeadStatus, LeadCustomFieldDef, PipedriveDealEvent, LeadConversion, WhatsAppConversationMessage, EmailSent } from '../types';
+import { LeadProfile, LeadStatus, LeadCustomFieldDef, PipedriveDealEvent, LeadConversion, WhatsAppConversationMessage, EmailSent, EmailReceived } from '../types';
 import { DataService } from '../services/dataService';
 
 const isWppEmail = (email: string) => email.startsWith('wpp_') && email.endsWith('@autoforce.internal');
@@ -298,6 +298,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   const [wppSending, setWppSending]             = useState(false);
   const wppBottomRef = useRef<HTMLDivElement>(null);
   const [emailsSent, setEmailsSent]             = useState<EmailSent[] | null>(null);
+  const [emailsReceived, setEmailsReceived]     = useState<EmailReceived[] | null>(null);
   const [loadingEmails, setLoadingEmails]       = useState(false);
 
   // Edit form state
@@ -318,6 +319,8 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
       if (cancelled) return;
       setProfile(p);
       setWhatsAppMessages(null);
+      setEmailsSent(null);
+      setEmailsReceived(null);
       setPipedriveEvents(null);
       setPipedriveUrl(null);
       setAiHandoff(p.aiHandoff ?? false);
@@ -357,13 +360,18 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
 
   useEffect(() => {
     if (activeTab !== 'emails' || !profile?.email || loadingEmails) return;
-    if (emailsSent !== null) return;
+    if (emailsSent !== null && emailsReceived !== null) return;
     setLoadingEmails(true);
-    DataService.getLeadEmails(profile.email)
-      .then(setEmailsSent)
-      .catch(() => setEmailsSent([]))
+    Promise.all([
+      DataService.getLeadEmails(profile.email).catch(() => [] as EmailSent[]),
+      DataService.getLeadReceivedEmails(profile.email).catch(() => [] as EmailReceived[]),
+    ])
+      .then(([sent, received]) => {
+        setEmailsSent(sent);
+        setEmailsReceived(received);
+      })
       .finally(() => setLoadingEmails(false));
-  }, [activeTab, profile?.email, emailsSent, loadingEmails]);
+  }, [activeTab, profile?.email, emailsSent, emailsReceived, loadingEmails]);
 
   const handleHandoffToggle = async () => {
     if (!profile || handoffSaving) return;
@@ -1134,7 +1142,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                         </div>
                         <button
                           type="button"
-                          onClick={() => { setEmailsSent(null); }}
+                          onClick={() => { setEmailsSent(null); setEmailsReceived(null); }}
                           style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-muted)', fontSize: 12, cursor: 'pointer' }}
                         >
                           <RefreshCw size={12} /> Atualizar
@@ -1142,18 +1150,18 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                       </div>
 
                       {/* Métricas rápidas */}
-                      {emailsSent && emailsSent.length > 0 && (() => {
-                        const total     = emailsSent.length;
-                        const opened    = emailsSent.filter(e => ['opened','clicked'].includes(e.status)).length;
-                        const clicked   = emailsSent.filter(e => e.status === 'clicked').length;
-                        const bounced   = emailsSent.filter(e => e.status === 'bounced').length;
+                      {(emailsSent || emailsReceived) && ((emailsSent?.length ?? 0) + (emailsReceived?.length ?? 0)) > 0 && (() => {
+                        const totalSent     = emailsSent?.length ?? 0;
+                        const totalReceived = emailsReceived?.length ?? 0;
+                        const opened        = (emailsSent ?? []).filter(e => e.openedAt || e.clickedAt || ['opened','clicked'].includes(e.status)).length;
+                        const clicked       = (emailsSent ?? []).filter(e => e.clickedAt || e.status === 'clicked').length;
                         return (
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 16 }}>
                             {([
-                              { label: 'Enviados',  value: total,   color: '#6366f1' },
-                              { label: 'Abertos',   value: opened,  color: '#10b981' },
-                              { label: 'Clicados',  value: clicked, color: '#f59e0b' },
-                              { label: 'Bounced',   value: bounced, color: '#ef4444' },
+                              { label: 'Enviados',  value: totalSent,     color: '#6366f1' },
+                              { label: 'Recebidos', value: totalReceived, color: '#0f766e' },
+                              { label: 'Abertos',   value: opened,        color: '#10b981' },
+                              { label: 'Clicados',  value: clicked,       color: '#f59e0b' },
                             ] as { label: string; value: number; color: string }[]).map(stat => (
                               <div key={stat.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
                                 <div style={{ fontSize: 20, fontWeight: 800, color: stat.color }}>{stat.value}</div>
@@ -1170,7 +1178,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                           <RefreshCw size={18} style={{ animation: 'spin 1s linear infinite', marginBottom: 8 }} />
                           <div>Carregando emails...</div>
                         </div>
-                      ) : !emailsSent || emailsSent.length === 0 ? (
+                      ) : (!emailsSent || emailsSent.length === 0) && (!emailsReceived || emailsReceived.length === 0) ? (
                         <div style={{ textAlign: 'center', padding: 48, color: 'var(--fg-muted)' }}>
                           <Mail size={32} style={{ opacity: 0.3, marginBottom: 12 }} />
                           <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Nenhum email enviado</div>
@@ -1178,7 +1186,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                         </div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {emailsSent.map(email => {
+                          {[...((emailsSent ?? []).map(email => ({ kind: 'sent' as const, date: email.sentAt, email }))), ...((emailsReceived ?? []).map(email => ({ kind: 'received' as const, date: email.receivedAt, email })))].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(item => {
                             const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
                               sent:       { label: 'Enviado',    color: '#6366f1', bg: '#eef2ff' },
                               delivered:  { label: 'Entregue',   color: '#10b981', bg: '#d1fae5' },
@@ -1188,15 +1196,28 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                               complained: { label: 'Spam',       color: '#dc2626', bg: '#fee2e2' },
                               failed:     { label: 'Falhou',     color: '#9ca3af', bg: '#f3f4f6' },
                             };
-                            const s = statusConfig[email.status] ?? statusConfig['sent'];
-                            const sentDate = new Date(email.sentAt).toLocaleString('pt-BR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+                            const email = item.email;
+                            const isReceived = item.kind === 'received';
+                            const s = isReceived
+                              ? { label: 'Recebido', color: '#0f766e', bg: '#ccfbf1' }
+                              : statusConfig[(email as EmailSent).status] ?? statusConfig['sent'];
+                            const eventDate = new Date(item.date).toLocaleString('pt-BR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+                            const subject = email.subject || '(sem assunto)';
+                            const fromLabel = isReceived
+                              ? ((email as EmailReceived).fromName || (email as EmailReceived).fromEmail)
+                              : '';
+                            const preview = isReceived ? ((email as EmailReceived).text || '').trim() : '';
                             return (
-                              <div key={email.id} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px' }}>
+                              <div key={`${item.kind}-${email.id}`} style={{ background: 'var(--bg-card)', border: `1px solid ${isReceived ? '#99f6e4' : 'var(--border)'}`, borderRadius: 10, padding: '12px 14px' }}>
                                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
                                   <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email.subject}</div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {isReceived ? <Inbox size={13} style={{ color: '#0f766e', flexShrink: 0 }} /> : <Send size={13} style={{ color: '#6366f1', flexShrink: 0 }} />}
+                                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subject}</span>
+                                    </div>
                                     <div style={{ fontSize: 11, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                                      <span>{sentDate}</span>
+                                      <span>{eventDate}</span>
+                                      {fromLabel && <span>{isReceived ? 'de' : 'por'} {fromLabel}</span>}
                                       {email.fromName && <span>· de {email.fromName}</span>}
                                     </div>
                                   </div>
@@ -1204,10 +1225,10 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                     {s.label}
                                   </span>
                                 </div>
-                                {(email.openedAt || email.clickedAt) && (
+                                {!isReceived && (((email as EmailSent).openedAt || (email as EmailSent).clickedAt)) && (
                                   <div style={{ marginTop: 8, display: 'flex', gap: 12, fontSize: 11, color: 'var(--fg-muted)' }}>
-                                    {email.openedAt && <span>Aberto: {new Date(email.openedAt).toLocaleString('pt-BR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}</span>}
-                                    {email.clickedAt && <span>Clicado: {new Date(email.clickedAt).toLocaleString('pt-BR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}</span>}
+                                    {(email as EmailSent).openedAt && <span>Aberto: {new Date((email as EmailSent).openedAt!).toLocaleString('pt-BR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}</span>}
+                                    {(email as EmailSent).clickedAt && <span>Clicado: {new Date((email as EmailSent).clickedAt!).toLocaleString('pt-BR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}</span>}
                                   </div>
                                 )}
                               </div>
