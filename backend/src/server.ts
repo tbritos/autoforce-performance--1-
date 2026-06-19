@@ -182,8 +182,8 @@ app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 
 // Body parsing — antes do CORS para estar disponível no redirect do Google
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
 // Google Sign-In redirect — registrado ANTES do CORS pois o POST vem de accounts.google.com
