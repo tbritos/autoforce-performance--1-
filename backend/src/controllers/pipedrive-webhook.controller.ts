@@ -275,8 +275,6 @@ export class PipedriveWebhookController {
       }
     }
 
-    console.log(`[pipedrive-webhook] events to create: ${eventsToCreate.length} — currentStage=${currentStage} previousStage=${previousStage} stageName="${currentStage != null ? stageNameCache.get(currentStage) : 'n/a'}"`);
-
     // 5. Always sync lead status from current deal state, even when no specific events detected
     const newLeadStatus = resolveLeadStatus(dealStatus, currentStage);
     const statusChanged = lead.status !== newLeadStatus;
@@ -284,7 +282,14 @@ export class PipedriveWebhookController {
       lead.pipedriveDealId !== dealId ||
       (personId != null && lead.pipedrivePersonId !== personId);
 
-    if (eventsToCreate.length === 0 && !statusChanged && !linkChanged) {
+    // Determine revenue upsert BEFORE the early-return check so won deals are never skipped
+    const canalOrigemRaw = current[PIPEDRIVE_FIELDS.CANAL_ORIGEM];
+    const isInbound = Number(canalOrigemRaw) === 66;
+    const shouldUpsertRevenue = dealStatus === 'won' && isInbound;
+
+    console.log(`[pipedrive-webhook] events=${eventsToCreate.length} stage=${currentStage}->"${currentStage != null ? stageNameCache.get(currentStage) : 'n/a'}" statusChanged=${statusChanged} linkChanged=${linkChanged} canalOrigem=${canalOrigemRaw} isInbound=${isInbound} shouldUpsertRevenue=${shouldUpsertRevenue}`);
+
+    if (eventsToCreate.length === 0 && !statusChanged && !linkChanged && !shouldUpsertRevenue) {
       res.status(200).json({ ok: true, skipped: true });
       return;
     }
@@ -325,8 +330,7 @@ export class PipedriveWebhookController {
       }
 
       // If deal is won AND is inbound, create/update RevenueEntry
-      const isInbound = Number(current[PIPEDRIVE_FIELDS.CANAL_ORIGEM]) === 66;
-      if (dealStatus === 'won' && isInbound) {
+      if (shouldUpsertRevenue) {
         const wonAt      = current.won_time ? new Date(current.won_time as string) : occurredAt;
         const setupVal   = extractSetupValue(current[PIPEDRIVE_FIELDS.SETUP_VALUE]);
         const produtos   = resolveSetField(current[PIPEDRIVE_FIELDS.PRODUTO_VENDA],    PIPEDRIVE_OPTIONS.PRODUTO_VENDA);
