@@ -140,12 +140,12 @@ export class PipedriveWebhookController {
 
     console.log(`[pipedrive-webhook] meta:`, JSON.stringify(raw.meta));
 
-    // Pipedrive sends two formats:
-    // Legacy API: { event, current, previous, meta }
-    // Webhook UI: { data (= current deal), previous, meta: { action, object } }
-    const event    = raw.event   ?? (raw.meta?.action && raw.meta?.object ? `${raw.meta.action}.${raw.meta.object}` : null);
-    const current  = (raw.current ?? raw.data ?? null) as PipedriveDealPayload | null;
-    const previous = (raw.previous ?? null) as Partial<PipedriveDealPayload> | null;
+    // Pipedrive v2 webhooks: { data, previous, meta: { action:"change", entity:"deal" } }
+    // Pipedrive v1/API:     { event:"updated.deal", current, previous, meta }
+    const entityType = raw.meta?.entity ?? raw.meta?.object ?? null;
+    const event      = raw.event ?? (raw.meta?.action && entityType ? `${raw.meta.action}.${entityType}` : null);
+    const current    = (raw.current ?? raw.data ?? null) as PipedriveDealPayload | null;
+    const previous   = (raw.previous ?? null) as Partial<PipedriveDealPayload> | null;
 
     console.log(`[pipedrive-webhook] event="${event}" currentId="${current?.id}" status="${current?.status}"`);
 
@@ -220,7 +220,8 @@ export class PipedriveWebhookController {
 
     // 4. Build events to create
     const eventsToCreate: Array<Parameters<typeof prisma.pipedriveDealEvent.create>[0]['data']> = [];
-    const isAdded = event === 'added.deal';
+    // v1: event="added.deal"; v2: event="change.deal" but previous is null/empty
+    const isAdded = event === 'added.deal' || (event?.includes('deal') && (!previous || Object.keys(previous).length === 0));
 
     if (isAdded) {
       eventsToCreate.push({
