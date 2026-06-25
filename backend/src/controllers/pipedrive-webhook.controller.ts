@@ -136,18 +136,19 @@ export class PipedriveWebhookController {
       }
     }
 
-    const body = req.body as PipedriveWebhookBody;
+    const raw = req.body as any;
 
-    console.log(`[pipedrive-webhook] RAW body keys:`, Object.keys(body || {}));
-    console.log(`[pipedrive-webhook] RAW body.event="${(body as any).event}" body.current.id="${(body as any)?.current?.id}" body.data?.current?.id="${(body as any)?.data?.current?.id}"`);
+    // Pipedrive sends two formats:
+    // Legacy API: { event, current, previous, meta }
+    // Webhook UI: { data (= current deal), previous, meta: { action, object } }
+    const event    = raw.event   ?? (raw.meta?.action && raw.meta?.object ? `${raw.meta.action}.${raw.meta.object}` : null);
+    const current  = (raw.current ?? raw.data ?? null) as PipedriveDealPayload | null;
+    const previous = (raw.previous ?? null) as Partial<PipedriveDealPayload> | null;
 
-    // Pipedrive v1 sends current/previous at top level; guard against nested format
-    const event   = (body as any).event   ?? null;
-    const current = (body as any).current ?? (body as any).data?.current ?? null;
-    const previous = (body as any).previous ?? (body as any).data?.previous ?? null;
+    console.log(`[pipedrive-webhook] event="${event}" currentId="${current?.id}" status="${current?.status}"`);
 
     // Only handle deal events
-    if (!event || !current?.id || (!event.includes('deal'))) {
+    if (!event || !current?.id || !event.includes('deal')) {
       console.log(`[pipedrive-webhook] SKIPPED — event="${event}" currentId="${current?.id}"`);
       res.status(200).json({ ok: true, skipped: true });
       return;
