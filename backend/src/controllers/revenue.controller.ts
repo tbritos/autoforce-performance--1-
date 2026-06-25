@@ -65,6 +65,31 @@ export const deleteRevenueEntry = async (
   }
 };
 
+export const linkLead = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { id } = req.params;
+    const { leadEmail } = req.body as { leadEmail?: string };
+
+    const revenue = await prisma.revenueEntry.update({
+      where: { id },
+      data: { leadEmail: leadEmail || null },
+      include: { lead: { select: { name: true } } },
+    });
+
+    res.json({
+      id: revenue.id,
+      leadEmail: revenue.leadEmail ?? null,
+      leadName: revenue.lead?.name ?? null,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const searchLeads = async (
   req: Request,
   res: Response,

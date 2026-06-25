@@ -449,10 +449,8 @@ export const DataService = {
     }
   },
 
-  linkLeadToRevenue: async (revenueId: string, leadEmail: string): Promise<void> => {
-    if (USE_API) {
-      await apiClient.put(`/revenue/transactions/${revenueId}`, { leadEmail });
-    }
+  linkLeadToRevenue: async (revenueId: string, leadEmail: string): Promise<{ leadEmail: string; leadName: string | null }> => {
+    return await apiClient.patch(`/revenue/transactions/${revenueId}/lead`, { leadEmail });
   },
 
   deleteRevenueEntry: async (id: string): Promise<void> => {

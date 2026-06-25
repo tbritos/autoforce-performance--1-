@@ -23,7 +23,7 @@ const EntryDrawer: React.FC<{
   onDelete: (entry: RevenueEntry) => void;
   deleting: boolean;
   formatCurrency: (v: number) => string;
-  onLeadLinked: (entryId: string, leadEmail: string) => void;
+  onLeadLinked: (entryId: string, leadEmail: string, leadName: string | null) => void;
 }> = ({ entry, onClose, onDelete, deleting, formatCurrency, onLeadLinked }) => {
   const [visible, setVisible] = useState(false);
   const navigate = useNavigate();
@@ -51,10 +51,15 @@ const EntryDrawer: React.FC<{
 
   const handleLinkLead = async (leadEmail: string) => {
     setLinking(true);
-    await DataService.linkLeadToRevenue(entry.id, leadEmail);
-    setLinking(false);
-    setLinkMode(false);
-    onLeadLinked(entry.id, leadEmail);
+    try {
+      const result = await DataService.linkLeadToRevenue(entry.id, leadEmail);
+      onLeadLinked(entry.id, result.leadEmail, result.leadName);
+      setLinkMode(false);
+      setSearchQ('');
+      setSearchResults([]);
+    } finally {
+      setLinking(false);
+    }
   };
 
   useEffect(() => {
@@ -463,9 +468,9 @@ const RevenueTracker: React.FC = () => {
       {selectedEntry && (
         <EntryDrawer entry={selectedEntry} onClose={() => setSelectedEntry(null)}
           onDelete={handleDelete} deleting={deletingId === selectedEntry.id} formatCurrency={formatCurrency}
-          onLeadLinked={(entryId, leadEmail) => {
-            setHistory(prev => prev.map(e => e.id === entryId ? { ...e, leadEmail } : e));
-            setSelectedEntry(prev => prev?.id === entryId ? { ...prev, leadEmail } : prev);
+          onLeadLinked={(entryId, leadEmail, leadName) => {
+            setHistory(prev => prev.map(e => e.id === entryId ? { ...e, leadEmail, leadName } : e));
+            setSelectedEntry(prev => prev?.id === entryId ? { ...prev, leadEmail, leadName } : prev);
           }} />
       )}
 
