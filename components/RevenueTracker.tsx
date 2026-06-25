@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { RevenueEntry } from '../types';
 import { DataService } from '../services/dataService';
 import {
@@ -24,6 +25,7 @@ const EntryDrawer: React.FC<{
   formatCurrency: (v: number) => string;
 }> = ({ entry, onClose, onDelete, deleting, formatCurrency }) => {
   const [visible, setVisible] = useState(false);
+  const navigate = useNavigate();
   const initials = entry.businessName.slice(0, 2).toUpperCase();
 
   useEffect(() => {
@@ -150,6 +152,20 @@ const EntryDrawer: React.FC<{
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {entry.leadEmail && (
+            <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-3">
+              <p className="text-[9px] font-bold text-autoforce-grey uppercase tracking-widest mb-2">Cliente Vinculado</p>
+              <button
+                onClick={() => { handleClose(); navigate(`/leads/${encodeURIComponent(entry.leadEmail!)}`); }}
+                className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-xs font-semibold bg-autoforce-blue/10 text-autoforce-blue border border-autoforce-blue/20 hover:bg-autoforce-blue/20 transition group text-left"
+              >
+                <User size={13} className="flex-shrink-0" />
+                <span className="truncate">{entry.leadName || entry.leadEmail}</span>
+                <ChevronRight size={12} className="ml-auto opacity-50 group-hover:opacity-100 transition" />
+              </button>
             </div>
           )}
 
