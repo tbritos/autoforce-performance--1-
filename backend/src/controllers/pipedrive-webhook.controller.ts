@@ -201,7 +201,9 @@ export class PipedriveWebhookController {
       : new Date();
 
     // 3. Resolve stage names + grab domain (best-effort, requires Pipedrive credentials)
+    // For won deals, also fetch the full deal to get all custom fields (v2 webhooks only send changed fields)
     let pipedriveDomain = process.env.PIPEDRIVE_DOMAIN || '';
+    let fullDeal: Record<string, unknown> | null = null;
     try {
       const { PlatformConnectionService } = await import('../services/platform-connection.service');
       const tokens = await PlatformConnectionService.getTokens('PIPEDRIVE');
@@ -213,10 +215,35 @@ export class PipedriveWebhookController {
 
       if (token && pipedriveDomain) {
         await resolveStageNames([currentStage, previousStage], token, pipedriveDomain, authType);
+
+        // Fetch full deal to get all custom fields (webhook v2 only sends changed fields)
+        if (dealStatus === 'won') {
+          try {
+            const dealUrl = new URL(`https://${pipedriveDomain}.pipedrive.com/api/v1/deals/${dealId}`);
+            if (authType === 'api_token') dealUrl.searchParams.set('api_token', token);
+            const dealRes = await fetch(dealUrl.toString(), {
+              headers: authType === 'oauth' ? { Authorization: `Bearer ${token}` } : undefined,
+            });
+            if (dealRes.ok) {
+              const dealJson = await dealRes.json() as { success: boolean; data?: Record<string, unknown> };
+              if (dealJson.success && dealJson.data) {
+                fullDeal = dealJson.data;
+                console.log(`[pipedrive-webhook] fetched full deal custom fields:`, JSON.stringify(
+                  Object.fromEntries(Object.entries(fullDeal).filter(([k]) => /^[a-f0-9]{40}$/.test(k)))
+                ));
+              }
+            }
+          } catch {
+            // Non-fatal
+          }
+        }
       }
     } catch {
       // Non-fatal
     }
+
+    // For won deals, merge full deal data so custom fields are available
+    const dealData = (fullDeal ?? current) as PipedriveDealPayload;
 
     // 4. Build events to create
     const eventsToCreate: Array<Parameters<typeof prisma.pipedriveDealEvent.create>[0]['data']> = [];
@@ -300,7 +327,8 @@ export class PipedriveWebhookController {
       (personId != null && lead.pipedrivePersonId !== personId);
 
     // Determine revenue upsert BEFORE the early-return check so won deals are never skipped
-    const canalOrigemRaw = current[PIPEDRIVE_FIELDS.CANAL_ORIGEM];
+    // Use fullDeal data if available (v2 webhooks only send changed fields)
+    const canalOrigemRaw = dealData[PIPEDRIVE_FIELDS.CANAL_ORIGEM];
     const isInbound = Number(canalOrigemRaw) === 66;
     const shouldUpsertRevenue = dealStatus === 'won' && isInbound;
 
@@ -348,13 +376,13 @@ export class PipedriveWebhookController {
 
       // If deal is won AND is inbound, create/update RevenueEntry
       if (shouldUpsertRevenue) {
-        const wonAt      = current.won_time ? new Date(current.won_time as string) : occurredAt;
-        const setupVal   = extractSetupValue(current[PIPEDRIVE_FIELDS.SETUP_VALUE]);
-        const produtos   = resolveSetField(current[PIPEDRIVE_FIELDS.PRODUTO_VENDA],    PIPEDRIVE_OPTIONS.PRODUTO_VENDA);
-        const porqueComp = resolveSetField(current[PIPEDRIVE_FIELDS.PORQUE_COMPROU],   PIPEDRIVE_OPTIONS.PORQUE_COMPROU);
-        const fornecedor = resolveSetField(current[PIPEDRIVE_FIELDS.FORNECEDOR_ATUAL], PIPEDRIVE_OPTIONS.FORNECEDOR_ATUAL);
-        const vendedor   = resolveEnumField(current[PIPEDRIVE_FIELDS.VENDEDOR],        PIPEDRIVE_OPTIONS.VENDEDOR);
-        const contrato   = (current[PIPEDRIVE_FIELDS.CONTRACT_LINK] as string | null) ?? null;
+        const wonAt      = dealData.won_time ? new Date(dealData.won_time as string) : occurredAt;
+        const setupVal   = extractSetupValue(dealData[PIPEDRIVE_FIELDS.SETUP_VALUE]);
+        const produtos   = resolveSetField(dealData[PIPEDRIVE_FIELDS.PRODUTO_VENDA],    PIPEDRIVE_OPTIONS.PRODUTO_VENDA);
+        const porqueComp = resolveSetField(dealData[PIPEDRIVE_FIELDS.PORQUE_COMPROU],   PIPEDRIVE_OPTIONS.PORQUE_COMPROU);
+        const fornecedor = resolveSetField(dealData[PIPEDRIVE_FIELDS.FORNECEDOR_ATUAL], PIPEDRIVE_OPTIONS.FORNECEDOR_ATUAL);
+        const vendedor   = resolveEnumField(dealData[PIPEDRIVE_FIELDS.VENDEDOR],        PIPEDRIVE_OPTIONS.VENDEDOR);
+        const contrato   = (dealData[PIPEDRIVE_FIELDS.CONTRACT_LINK] as string | null) ?? null;
         const dealUrl    = pipedriveDomain ? `https://${pipedriveDomain}.pipedrive.com/deal/${dealId}` : null;
         const biz        = lead.company || lead.name || lead.email;
 
