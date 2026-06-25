@@ -138,6 +138,8 @@ export class PipedriveWebhookController {
 
     const raw = req.body as any;
 
+    console.log(`[pipedrive-webhook] meta:`, JSON.stringify(raw.meta));
+
     // Pipedrive sends two formats:
     // Legacy API: { event, current, previous, meta }
     // Webhook UI: { data (= current deal), previous, meta: { action, object } }
