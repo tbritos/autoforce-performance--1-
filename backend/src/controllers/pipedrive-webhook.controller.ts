@@ -244,77 +244,76 @@ export class PipedriveWebhookController {
     // For won deals, merge full deal data so custom fields are available
     const dealData = (fullDeal ?? current) as PipedriveDealPayload;
 
-    // 4. Build events to create
+    // 4. Build events to create (only when lead is linked)
     const eventsToCreate: Array<Parameters<typeof prisma.pipedriveDealEvent.create>[0]['data']> = [];
-    // v1: event="added.deal"; v2: event="change.deal" but previous is null/empty
-    const isAdded = event === 'added.deal' || (event?.includes('deal') && (!previous || Object.keys(previous).length === 0));
+    if (lead) {
+      // v1: event="added.deal"; v2: event="change.deal" but previous is null/empty
+      const isAdded = event === 'added.deal' || (event?.includes('deal') && (!previous || Object.keys(previous).length === 0));
 
-    if (isAdded) {
-      eventsToCreate.push({
-        id:           `${dealId}-created-${occurredAt.getTime()}`,
-        dealId,
-        leadEmail:    lead.email,
-        eventType:    'created',
-        toStageId:    currentStage,
-        toStageName:  currentStage != null ? (stageNameCache.get(currentStage) ?? null) : null,
-        toValue:      currentValue,
-        dealTitle,
-        dealStatus,
-        occurredAt,
-        source:       'webhook',
-      });
-    } else {
-      // Stage changed?
-      if (currentStage != null && previousStage != null && currentStage !== previousStage) {
+      if (isAdded) {
         eventsToCreate.push({
-          id:           `${dealId}-stage-${occurredAt.getTime()}`,
+          id:           `${dealId}-created-${occurredAt.getTime()}`,
           dealId,
           leadEmail:    lead.email,
-          eventType:    'stage_changed',
-          fromStageId:  previousStage,
-          fromStageName: stageNameCache.get(previousStage) ?? null,
+          eventType:    'created',
           toStageId:    currentStage,
-          toStageName:  stageNameCache.get(currentStage) ?? null,
+          toStageName:  currentStage != null ? (stageNameCache.get(currentStage) ?? null) : null,
+          toValue:      currentValue,
           dealTitle,
           dealStatus,
           occurredAt,
           source:       'webhook',
         });
-      }
+      } else {
+        if (currentStage != null && previousStage != null && currentStage !== previousStage) {
+          eventsToCreate.push({
+            id:           `${dealId}-stage-${occurredAt.getTime()}`,
+            dealId,
+            leadEmail:    lead.email,
+            eventType:    'stage_changed',
+            fromStageId:  previousStage,
+            fromStageName: stageNameCache.get(previousStage) ?? null,
+            toStageId:    currentStage,
+            toStageName:  stageNameCache.get(currentStage) ?? null,
+            dealTitle,
+            dealStatus,
+            occurredAt,
+            source:       'webhook',
+          });
+        }
 
-      // Status changed (won/lost/reopened)?
-      const prevStatus = previous?.status;
-      if (prevStatus !== undefined && prevStatus !== dealStatus) {
-        const eventType =
-          dealStatus === 'won'  ? 'won'  :
-          dealStatus === 'lost' ? 'lost' : 'reopened';
-        eventsToCreate.push({
-          id:         `${dealId}-status-${occurredAt.getTime()}`,
-          dealId,
-          leadEmail:  lead.email,
-          eventType,
-          toValue:    currentValue,
-          dealTitle,
-          dealStatus,
-          occurredAt,
-          source:     'webhook',
-        });
-      }
+        const prevStatus = previous?.status;
+        if (prevStatus !== undefined && prevStatus !== dealStatus) {
+          const eventType =
+            dealStatus === 'won'  ? 'won'  :
+            dealStatus === 'lost' ? 'lost' : 'reopened';
+          eventsToCreate.push({
+            id:         `${dealId}-status-${occurredAt.getTime()}`,
+            dealId,
+            leadEmail:  lead.email,
+            eventType,
+            toValue:    currentValue,
+            dealTitle,
+            dealStatus,
+            occurredAt,
+            source:     'webhook',
+          });
+        }
 
-      // Value changed?
-      if (currentValue != null && previousValue != null && currentValue !== previousValue) {
-        eventsToCreate.push({
-          id:         `${dealId}-value-${occurredAt.getTime()}`,
-          dealId,
-          leadEmail:  lead.email,
-          eventType:  'value_changed',
-          fromValue:  previousValue,
-          toValue:    currentValue,
-          dealTitle,
-          dealStatus,
-          occurredAt,
-          source:     'webhook',
-        });
+        if (currentValue != null && previousValue != null && currentValue !== previousValue) {
+          eventsToCreate.push({
+            id:         `${dealId}-value-${occurredAt.getTime()}`,
+            dealId,
+            leadEmail:  lead.email,
+            eventType:  'value_changed',
+            fromValue:  previousValue,
+            toValue:    currentValue,
+            dealTitle,
+            dealStatus,
+            occurredAt,
+            source:     'webhook',
+          });
+        }
       }
     }
 
