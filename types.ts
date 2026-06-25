@@ -639,6 +639,7 @@ export interface RevenueEntry {
   contractLink?: string | null;
   leadEmail?: string | null;
   leadName?: string | null;
+  leadId?: string | null;
 }
 
 export interface LandingPage {

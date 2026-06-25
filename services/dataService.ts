@@ -449,7 +449,7 @@ export const DataService = {
     }
   },
 
-  linkLeadToRevenue: async (revenueId: string, leadEmail: string): Promise<{ leadEmail: string; leadName: string | null }> => {
+  linkLeadToRevenue: async (revenueId: string, leadEmail: string): Promise<{ leadEmail: string; leadName: string | null; leadId: string | null }> => {
     return await apiClient.patch(`/revenue/transactions/${revenueId}/lead`, { leadEmail });
   },
 

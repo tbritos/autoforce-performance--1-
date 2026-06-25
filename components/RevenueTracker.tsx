@@ -23,7 +23,7 @@ const EntryDrawer: React.FC<{
   onDelete: (entry: RevenueEntry) => void;
   deleting: boolean;
   formatCurrency: (v: number) => string;
-  onLeadLinked: (entryId: string, leadEmail: string, leadName: string | null) => void;
+  onLeadLinked: (entryId: string, leadEmail: string, leadName: string | null, leadId: string | null) => void;
 }> = ({ entry, onClose, onDelete, deleting, formatCurrency, onLeadLinked }) => {
   const [visible, setVisible] = useState(false);
   const navigate = useNavigate();
@@ -53,7 +53,7 @@ const EntryDrawer: React.FC<{
     setLinking(true);
     try {
       const result = await DataService.linkLeadToRevenue(entry.id, leadEmail);
-      onLeadLinked(entry.id, result.leadEmail, result.leadName);
+      onLeadLinked(entry.id, result.leadEmail, result.leadName, result.leadId ?? null);
       setLinkMode(false);
       setSearchQ('');
       setSearchResults([]);
@@ -201,7 +201,7 @@ const EntryDrawer: React.FC<{
 
             {entry.leadEmail ? (
               <button
-                onClick={() => { handleClose(); navigate(`/leads/${encodeURIComponent(entry.leadEmail!)}`); }}
+                onClick={() => { handleClose(); navigate(`/leads/${entry.leadId ?? encodeURIComponent(entry.leadEmail!)}`); }}
                 className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-xs font-semibold bg-autoforce-blue/10 text-autoforce-blue border border-autoforce-blue/20 hover:bg-autoforce-blue/20 transition group text-left"
               >
                 <User size={13} className="flex-shrink-0" />
@@ -468,9 +468,9 @@ const RevenueTracker: React.FC = () => {
       {selectedEntry && (
         <EntryDrawer entry={selectedEntry} onClose={() => setSelectedEntry(null)}
           onDelete={handleDelete} deleting={deletingId === selectedEntry.id} formatCurrency={formatCurrency}
-          onLeadLinked={(entryId, leadEmail, leadName) => {
-            setHistory(prev => prev.map(e => e.id === entryId ? { ...e, leadEmail, leadName } : e));
-            setSelectedEntry(prev => prev?.id === entryId ? { ...prev, leadEmail, leadName } : prev);
+          onLeadLinked={(entryId, leadEmail, leadName, leadId) => {
+            setHistory(prev => prev.map(e => e.id === entryId ? { ...e, leadEmail, leadName, leadId } : e));
+            setSelectedEntry(prev => prev?.id === entryId ? { ...prev, leadEmail, leadName, leadId } : prev);
           }} />
       )}
 

@@ -30,7 +30,7 @@ export class RevenueService {
     const revenues = await prisma.revenueEntry.findMany({
       where,
       orderBy: { date: 'desc' },
-      include: { lead: { select: { name: true } } },
+      include: { lead: { select: { id: true, name: true } } },
     });
 
     return revenues.map(rev => ({
@@ -48,6 +48,7 @@ export class RevenueService {
       contractLink: rev.contractLink ?? null,
       leadEmail: rev.leadEmail ?? null,
       leadName: rev.lead?.name ?? null,
+      leadId: rev.lead?.id ?? null,
     }));
   }
 
@@ -63,7 +64,7 @@ export class RevenueService {
         product: normalizedProducts,
         leadEmail: data.leadEmail || null,
       },
-      include: { lead: { select: { name: true } } },
+      include: { lead: { select: { id: true, name: true } } },
     });
 
     return {
@@ -81,6 +82,7 @@ export class RevenueService {
       contractLink: revenue.contractLink ?? null,
       leadEmail: revenue.leadEmail ?? null,
       leadName: revenue.lead?.name ?? null,
+      leadId: revenue.lead?.id ?? null,
     };
   }
 
@@ -100,7 +102,7 @@ export class RevenueService {
         product: normalizedProducts,
         leadEmail: data.leadEmail !== undefined ? (data.leadEmail || null) : undefined,
       },
-      include: { lead: { select: { name: true } } },
+      include: { lead: { select: { id: true, name: true } } },
     });
 
     return {
@@ -118,6 +120,7 @@ export class RevenueService {
       contractLink: revenue.contractLink ?? null,
       leadEmail: revenue.leadEmail ?? null,
       leadName: revenue.lead?.name ?? null,
+      leadId: revenue.lead?.id ?? null,
     };
   }
 

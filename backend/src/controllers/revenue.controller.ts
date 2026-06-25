@@ -77,13 +77,14 @@ export const linkLead = async (
     const revenue = await prisma.revenueEntry.update({
       where: { id },
       data: { leadEmail: leadEmail || null },
-      include: { lead: { select: { name: true } } },
+      include: { lead: { select: { id: true, name: true } } },
     });
 
     res.json({
       id: revenue.id,
       leadEmail: revenue.leadEmail ?? null,
       leadName: revenue.lead?.name ?? null,
+      leadId: revenue.lead?.id ?? null,
     });
   } catch (error) {
     next(error);
