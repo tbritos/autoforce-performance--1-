@@ -356,7 +356,6 @@ export class PipedriveWebhookController {
             pipedriveDealId:   dealId,
             pipedrivePersonId: personId ?? undefined,
             status:            newLeadStatus!,
-            lastSeenAt:        new Date(),
             ...(newLeadStatus === 'CLIENT' && !lead.convertedAt ? { convertedAt: new Date() } : {}),
           },
         });
