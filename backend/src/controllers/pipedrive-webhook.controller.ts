@@ -163,35 +163,34 @@ export class PipedriveWebhookController {
       ));
     }
 
-    // 2. Find matching lead — email can be in person_email or nested in person_id.email
-    const email = primaryEmail(current.person_email ?? current.person_id?.email ?? []);
+    // 2. Extract deal fields and find matching lead (optional — won+inbound deals are processed even without one)
+    const email    = primaryEmail(current.person_email ?? current.person_id?.email ?? []);
     const personId = current.person_id?.value ? String(current.person_id.value) : null;
-
-    const dealId = String(current.id);
+    const dealId   = String(current.id);
+    const dealStatus = current.status ?? 'open';
 
     console.log(`[pipedrive-webhook] looking up lead — email="${email}" personId=${personId} dealId=${dealId}`);
 
     let lead = await prisma.lead.findFirst({ where: { pipedriveDealId: dealId } });
-
     if (!lead && email) {
       lead = await prisma.lead.findUnique({ where: { email: email.toLowerCase().trim() } });
     }
-
     if (!lead && personId) {
       lead = await prisma.lead.findFirst({ where: { pipedrivePersonId: personId } });
     }
 
-    // No matching lead — acknowledge and skip silently
-    if (!lead) {
-      console.log(`[pipedrive-webhook] lead NOT FOUND — dealId=${dealId} email="${email}" personId=${personId} — skipping`);
-      res.status(200).json({ ok: true, skipped: true });
-      return;
+    if (lead) {
+      console.log(`[pipedrive-webhook] lead found: ${lead.email} (current status: ${lead.status})`);
+    } else {
+      console.log(`[pipedrive-webhook] lead NOT FOUND — dealId=${dealId} email="${email}" personId=${personId}`);
+      // Only skip immediately for non-won deals; won deals continue to check isInbound
+      if (dealStatus !== 'won') {
+        res.status(200).json({ ok: true, skipped: true });
+        return;
+      }
     }
 
-    console.log(`[pipedrive-webhook] lead found: ${lead.email} (current status: ${lead.status})`);
-
     const dealTitle     = current.title ?? null;
-    const dealStatus    = current.status ?? 'open';
     const currentStage  = current.stage_id ?? null;
     const previousStage = previous?.stage_id ?? null;
     const currentValue  = current.value ?? null;
@@ -319,62 +318,64 @@ export class PipedriveWebhookController {
       }
     }
 
-    // 5. Always sync lead status from current deal state, even when no specific events detected
-    const newLeadStatus = resolveLeadStatus(dealStatus, currentStage);
-    const statusChanged = lead.status !== newLeadStatus;
-    const linkChanged =
-      lead.pipedriveDealId !== dealId ||
-      (personId != null && lead.pipedrivePersonId !== personId);
+    // 5. Determine lead status changes (only when lead exists)
+    const newLeadStatus  = lead ? resolveLeadStatus(dealStatus, currentStage) : null;
+    const statusChanged  = lead ? lead.status !== newLeadStatus : false;
+    const linkChanged    = lead
+      ? (lead.pipedriveDealId !== dealId || (personId != null && lead.pipedrivePersonId !== personId))
+      : false;
 
-    // Determine revenue upsert BEFORE the early-return check so won deals are never skipped
-    // Use fullDeal data if available (v2 webhooks only send changed fields)
-    const canalOrigemRaw = dealData[PIPEDRIVE_FIELDS.CANAL_ORIGEM];
-    const isInbound = Number(canalOrigemRaw) === 66;
+    // Determine revenue upsert — won+inbound deals always create RevenueEntry
+    const canalOrigemRaw    = dealData[PIPEDRIVE_FIELDS.CANAL_ORIGEM];
+    const isInbound         = Number(canalOrigemRaw) === 66;
     const shouldUpsertRevenue = dealStatus === 'won' && isInbound;
 
-    console.log(`[pipedrive-webhook] events=${eventsToCreate.length} stage=${currentStage}->"${currentStage != null ? stageNameCache.get(currentStage) : 'n/a'}" statusChanged=${statusChanged} linkChanged=${linkChanged} canalOrigem=${canalOrigemRaw} isInbound=${isInbound} shouldUpsertRevenue=${shouldUpsertRevenue}`);
+    console.log(`[pipedrive-webhook] events=${eventsToCreate.length} statusChanged=${statusChanged} linkChanged=${linkChanged} canalOrigem=${canalOrigemRaw} isInbound=${isInbound} shouldUpsertRevenue=${shouldUpsertRevenue} leadFound=${!!lead}`);
 
     if (eventsToCreate.length === 0 && !statusChanged && !linkChanged && !shouldUpsertRevenue) {
       res.status(200).json({ ok: true, skipped: true });
       return;
     }
 
-    console.log(`[pipedrive-webhook] updating lead ${lead.email}: ${lead.status} → ${newLeadStatus}`);
+    if (lead) console.log(`[pipedrive-webhook] updating lead ${lead.email}: ${lead.status} → ${newLeadStatus}`);
 
     await prisma.$transaction(async (tx) => {
-      for (const data of eventsToCreate) {
-        await tx.pipedriveDealEvent.upsert({
-          where: { id: data.id as string },
-          update: {},
-          create: data,
-        });
-      }
+      // Lead-dependent operations (only when lead is linked)
+      if (lead) {
+        for (const data of eventsToCreate) {
+          await tx.pipedriveDealEvent.upsert({
+            where: { id: data.id as string },
+            update: {},
+            create: data,
+          });
+        }
 
-      const prevStatus = lead.status;
-      await tx.lead.update({
-        where: { email: lead.email },
-        data: {
-          pipedriveDealId:   dealId,
-          pipedrivePersonId: personId ?? undefined,
-          status:            newLeadStatus,
-          lastSeenAt:        new Date(),
-          ...(newLeadStatus === 'CLIENT' && !lead.convertedAt ? { convertedAt: new Date() } : {}),
-        },
-      });
-
-      if (prevStatus !== newLeadStatus) {
-        await tx.leadStatusHistory.create({
+        const prevStatus = lead.status;
+        await tx.lead.update({
+          where: { email: lead.email },
           data: {
-            leadEmail:  lead.email,
-            fromStatus: prevStatus,
-            toStatus:   newLeadStatus,
-            changedBy:  null,
-            reason:     `Pipedrive deal #${dealId} — ${dealStatus} (webhook)`,
+            pipedriveDealId:   dealId,
+            pipedrivePersonId: personId ?? undefined,
+            status:            newLeadStatus!,
+            lastSeenAt:        new Date(),
+            ...(newLeadStatus === 'CLIENT' && !lead.convertedAt ? { convertedAt: new Date() } : {}),
           },
         });
+
+        if (prevStatus !== newLeadStatus) {
+          await tx.leadStatusHistory.create({
+            data: {
+              leadEmail:  lead.email,
+              fromStatus: prevStatus,
+              toStatus:   newLeadStatus!,
+              changedBy:  null,
+              reason:     `Pipedrive deal #${dealId} — ${dealStatus} (webhook)`,
+            },
+          });
+        }
       }
 
-      // If deal is won AND is inbound, create/update RevenueEntry
+      // RevenueEntry: created for any won+inbound deal, with or without a linked lead
       if (shouldUpsertRevenue) {
         const wonAt      = dealData.won_time ? new Date(dealData.won_time as string) : occurredAt;
         const setupVal   = extractSetupValue(dealData[PIPEDRIVE_FIELDS.SETUP_VALUE]);
@@ -384,7 +385,10 @@ export class PipedriveWebhookController {
         const vendedor   = resolveEnumField(dealData[PIPEDRIVE_FIELDS.VENDEDOR],        PIPEDRIVE_OPTIONS.VENDEDOR);
         const contrato   = (dealData[PIPEDRIVE_FIELDS.CONTRACT_LINK] as string | null) ?? null;
         const dealUrl    = pipedriveDomain ? `https://${pipedriveDomain}.pipedrive.com/deal/${dealId}` : null;
-        const biz        = lead.company || lead.name || lead.email;
+        const revenueEmail = lead?.email ?? email ?? null;
+        const biz        = lead?.company || lead?.name || dealTitle || revenueEmail || dealId;
+
+        console.log(`[pipedrive-webhook] creating RevenueEntry pipedrive-${dealId} leadEmail=${revenueEmail} biz="${biz}"`);
 
         await tx.revenueEntry.upsert({
           where: { id: `pipedrive-${dealId}` },
@@ -397,17 +401,18 @@ export class PipedriveWebhookController {
             whyBought:       porqueComp,
             currentSupplier: fornecedor,
             contractLink:    contrato,
+            ...(revenueEmail ? { leadEmail: revenueEmail } : {}),
             ...(dealUrl ? { dealUrl } : {}),
             updatedAt:       new Date(),
           },
           create: {
             id:              `pipedrive-${dealId}`,
-            leadEmail:       lead.email,
+            leadEmail:       revenueEmail,
             businessName:    biz,
             date:            wonAt,
             setupValue:      setupVal,
             mrrValue:        currentValue ?? 0,
-            origin:          sourceToOrigin(lead.firstSource),
+            origin:          lead ? sourceToOrigin(lead.firstSource) : 'Pipedrive',
             originType:      'INBOUND',
             product:         produtos,
             closedBy:        vendedor,
