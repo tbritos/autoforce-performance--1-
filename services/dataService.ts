@@ -440,6 +440,21 @@ export const DataService = {
     throw new Error("API Desligada");
   },
 
+  searchLeads: async (q: string): Promise<Array<{ email: string; name: string | null; company: string | null; phone: string | null }>> => {
+    if (!USE_API || q.length < 2) return [];
+    try {
+      return await apiClient.get(`/revenue/leads/search?q=${encodeURIComponent(q)}`);
+    } catch {
+      return [];
+    }
+  },
+
+  linkLeadToRevenue: async (revenueId: string, leadEmail: string): Promise<void> => {
+    if (USE_API) {
+      await apiClient.put(`/revenue/transactions/${revenueId}`, { leadEmail });
+    }
+  },
+
   deleteRevenueEntry: async (id: string): Promise<void> => {
     if (USE_API) {
       try {

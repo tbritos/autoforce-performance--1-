@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { RevenueEntry } from '../types';
@@ -8,7 +8,7 @@ import {
   DollarSign, Briefcase, Globe, Package, TrendingUp, Loader2, Filter,
   Calendar, Trash2, ExternalLink, Link, X, User, FileText, ShoppingBag,
   MessageSquare, ChevronRight, Search, Users, Trophy, CheckCircle,
-  ChevronDown,
+  ChevronDown, UserPlus,
 } from 'lucide-react';
 
 // FIX: validate external URLs to prevent javascript: and data: URI injection
@@ -23,10 +23,39 @@ const EntryDrawer: React.FC<{
   onDelete: (entry: RevenueEntry) => void;
   deleting: boolean;
   formatCurrency: (v: number) => string;
-}> = ({ entry, onClose, onDelete, deleting, formatCurrency }) => {
+  onLeadLinked: (entryId: string, leadEmail: string) => void;
+}> = ({ entry, onClose, onDelete, deleting, formatCurrency, onLeadLinked }) => {
   const [visible, setVisible] = useState(false);
   const navigate = useNavigate();
   const initials = entry.businessName.slice(0, 2).toUpperCase();
+
+  // Lead linking state
+  const [linkMode, setLinkMode] = useState(false);
+  const [searchQ, setSearchQ] = useState('');
+  const [searchResults, setSearchResults] = useState<Array<{ email: string; name: string | null; company: string | null }>>([]);
+  const [searching, setSearching] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSearch = useCallback((q: string) => {
+    setSearchQ(q);
+    if (searchRef.current) clearTimeout(searchRef.current);
+    if (q.length < 2) { setSearchResults([]); return; }
+    searchRef.current = setTimeout(async () => {
+      setSearching(true);
+      const results = await DataService.searchLeads(q);
+      setSearchResults(results);
+      setSearching(false);
+    }, 300);
+  }, []);
+
+  const handleLinkLead = async (leadEmail: string) => {
+    setLinking(true);
+    await DataService.linkLeadToRevenue(entry.id, leadEmail);
+    setLinking(false);
+    setLinkMode(false);
+    onLeadLinked(entry.id, leadEmail);
+  };
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -155,9 +184,17 @@ const EntryDrawer: React.FC<{
             </div>
           )}
 
-          {entry.leadEmail && (
-            <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-3">
-              <p className="text-[9px] font-bold text-autoforce-grey uppercase tracking-widest mb-2">Cliente Vinculado</p>
+          <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[9px] font-bold text-autoforce-grey uppercase tracking-widest">Cliente Vinculado</p>
+              {!entry.leadEmail && !linkMode && (
+                <button onClick={() => setLinkMode(true)} className="flex items-center gap-1 text-[10px] text-autoforce-blue hover:text-blue-300 transition">
+                  <UserPlus size={11} /> Vincular
+                </button>
+              )}
+            </div>
+
+            {entry.leadEmail ? (
               <button
                 onClick={() => { handleClose(); navigate(`/leads/${encodeURIComponent(entry.leadEmail!)}`); }}
                 className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-xs font-semibold bg-autoforce-blue/10 text-autoforce-blue border border-autoforce-blue/20 hover:bg-autoforce-blue/20 transition group text-left"
@@ -166,8 +203,49 @@ const EntryDrawer: React.FC<{
                 <span className="truncate">{entry.leadName || entry.leadEmail}</span>
                 <ChevronRight size={12} className="ml-auto opacity-50 group-hover:opacity-100 transition" />
               </button>
-            </div>
-          )}
+            ) : linkMode ? (
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-autoforce-grey" />
+                  <input
+                    autoFocus
+                    value={searchQ}
+                    onChange={e => handleSearch(e.target.value)}
+                    placeholder="Buscar por nome, email ou empresa..."
+                    className="w-full pl-7 pr-3 py-2 text-xs bg-autoforce-grey/10 border border-autoforce-grey/20 rounded-lg text-white placeholder-autoforce-grey focus:outline-none focus:border-autoforce-blue/50"
+                  />
+                </div>
+                {searching && <p className="text-[10px] text-autoforce-grey text-center py-1">Buscando...</p>}
+                {searchResults.length > 0 && (
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                    {searchResults.map(l => (
+                      <button
+                        key={l.email}
+                        onClick={() => handleLinkLead(l.email)}
+                        disabled={linking}
+                        className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs bg-autoforce-grey/10 hover:bg-autoforce-blue/15 border border-autoforce-grey/15 hover:border-autoforce-blue/30 transition text-left disabled:opacity-50"
+                      >
+                        <User size={11} className="text-autoforce-grey flex-shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-white font-medium truncate">{l.name || l.email}</p>
+                          {l.name && <p className="text-autoforce-grey text-[10px] truncate">{l.email}</p>}
+                        </div>
+                        {linking ? <Loader2 size={11} className="ml-auto animate-spin text-autoforce-blue" /> : <ChevronRight size={11} className="ml-auto text-autoforce-grey" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!searching && searchQ.length >= 2 && searchResults.length === 0 && (
+                  <p className="text-[10px] text-autoforce-grey text-center py-1">Nenhum lead encontrado</p>
+                )}
+                <button onClick={() => { setLinkMode(false); setSearchQ(''); setSearchResults([]); }} className="text-[10px] text-autoforce-grey hover:text-white transition">
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-autoforce-grey italic">Nenhum lead vinculado</p>
+            )}
+          </div>
 
           {(entry.dealUrl || entry.contractLink) && (
             <div className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-xl p-3">
@@ -384,7 +462,11 @@ const RevenueTracker: React.FC = () => {
 
       {selectedEntry && (
         <EntryDrawer entry={selectedEntry} onClose={() => setSelectedEntry(null)}
-          onDelete={handleDelete} deleting={deletingId === selectedEntry.id} formatCurrency={formatCurrency} />
+          onDelete={handleDelete} deleting={deletingId === selectedEntry.id} formatCurrency={formatCurrency}
+          onLeadLinked={(entryId, leadEmail) => {
+            setHistory(prev => prev.map(e => e.id === entryId ? { ...e, leadEmail } : e));
+            setSelectedEntry(prev => prev?.id === entryId ? { ...prev, leadEmail } : prev);
+          }} />
       )}
 
       {/* Header */}
