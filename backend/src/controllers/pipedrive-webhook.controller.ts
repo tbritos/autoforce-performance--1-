@@ -146,6 +146,11 @@ export class PipedriveWebhookController {
     }
 
     console.log(`[pipedrive-webhook] event=${event} dealId=${current.id} title="${current.title}" stage=${current.stage_id} status=${current.status}`);
+    if (current.status === 'won') {
+      console.log(`[pipedrive-webhook] WON deal payload (custom fields):`, JSON.stringify(
+        Object.fromEntries(Object.entries(current).filter(([k]) => /^[a-f0-9]{40}$/.test(k)))
+      ));
+    }
 
     // 2. Find matching lead — email can be in person_email or nested in person_id.email
     const email = primaryEmail(current.person_email ?? current.person_id?.email ?? []);
