@@ -1091,3 +1091,22 @@ model WebhookLead {
   @@index([lastConversionDate])
   @@map("RdLead")
 }
+
+// ============================================================
+// SEGMENTOS DINÂMICOS DE LEADS
+// Cada segmento define um conjunto de regras (JSON) que são
+// avaliadas em tempo real via Prisma where clauses.
+// ============================================================
+
+model Segment {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  color       String   @default("#6366f1")
+  rules       Json
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([createdAt])
+}

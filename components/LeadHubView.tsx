@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { Lead, LeadListResult, LeadStatus, FunnelCounts, LeadCustomFieldDef, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction } from '../types';
 import { DataService } from '../services/dataService';
+import { SegmentView } from './SegmentView';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -428,7 +429,7 @@ function writeCache(data: LeadListResult) {
 const LeadHubView: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [activeView, setActiveView] = useState<'leads' | 'webhooks'>('leads');
+  const [activeView, setActiveView] = useState<'leads' | 'webhooks' | 'segments'>('leads');
   const cached = readCache();
   const [result, setResult]         = useState<LeadListResult | null>(cached);
   const [funnel, setFunnel]         = useState<FunnelCounts | null>(null);
@@ -562,7 +563,8 @@ const LeadHubView: React.FC = () => {
 
       <div style={{ display: 'flex', gap: 6, borderBottom: '1px solid var(--border)' }}>
         {[
-          { id: 'leads', label: 'Leads' },
+          { id: 'leads',    label: 'Leads' },
+          { id: 'segments', label: 'Segmentos' },
           { id: 'webhooks', label: 'Webhooks de entrada' },
         ].map(item => {
           const active = activeView === item.id;
@@ -570,7 +572,7 @@ const LeadHubView: React.FC = () => {
             <button
               key={item.id}
               type="button"
-              onClick={() => setActiveView(item.id as 'leads' | 'webhooks')}
+              onClick={() => setActiveView(item.id as 'leads' | 'webhooks' | 'segments')}
               style={{
                 padding: '9px 12px',
                 border: 'none',
@@ -590,6 +592,8 @@ const LeadHubView: React.FC = () => {
 
       {activeView === 'webhooks' ? (
         <LeadWebhooksPanel />
+      ) : activeView === 'segments' ? (
+        <SegmentView />
       ) : (
       <>
       {/* Funnel bar */}
