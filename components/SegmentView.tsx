@@ -118,7 +118,9 @@ function FieldCombobox({ field, value, onChange }: { field: string; value: strin
   const [search, setSearch]   = useState('');
   const [options, setOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [rect, setRect]       = useState<DOMRect | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropRef    = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -131,20 +133,80 @@ function FieldCombobox({ field, value, onChange }: { field: string; value: strin
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (!triggerRef.current?.contains(t) && !dropRef.current?.contains(t)) setOpen(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  const filtered = options.filter(o => !search || o.toLowerCase().includes(search.toLowerCase()));
+  const handleOpen = () => {
+    if (triggerRef.current) setRect(triggerRef.current.getBoundingClientRect());
+    setOpen(v => !v);
+    setSearch('');
+  };
+
+  const filtered   = options.filter(o => !search || o.toLowerCase().includes(search.toLowerCase()));
   const showCustom = search.trim() && !options.some(o => o.toLowerCase() === search.toLowerCase());
 
+  const dropdown = open && rect ? createPortal(
+    <div ref={dropRef} style={{
+      position: 'fixed',
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: Math.max(rect.width, 220),
+      zIndex: 9999,
+      background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 10,
+      boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+      maxHeight: 260, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+    }}>
+      <div style={{ padding: '8px 10px', borderBottom: '1px solid #f0f0f0', flexShrink: 0 }}>
+        <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar..."
+          style={{ width: '100%', boxSizing: 'border-box', padding: '5px 8px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, color: '#111827', outline: 'none' }}
+        />
+      </div>
+      <div style={{ overflowY: 'auto', flex: 1 }}>
+        {loading && <div style={{ padding: 14, fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>Carregando...</div>}
+        {!loading && filtered.length === 0 && !showCustom && (
+          <div style={{ padding: 14, fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>
+            {search ? 'Nenhum resultado' : 'Sem valores cadastrados'}
+          </div>
+        )}
+        {filtered.map(opt => (
+          <button key={opt} type="button"
+            onClick={() => { onChange(opt); setOpen(false); }}
+            style={{
+              display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px',
+              border: 'none', cursor: 'pointer', fontSize: 13,
+              background: value === opt ? '#f0f4ff' : 'transparent',
+              color: value === opt ? '#6366f1' : '#111827',
+              fontWeight: value === opt ? 600 : 400,
+            }}
+            onMouseEnter={e => { if (value !== opt) e.currentTarget.style.background = '#f9fafb'; }}
+            onMouseLeave={e => { if (value !== opt) e.currentTarget.style.background = 'transparent'; }}
+          >
+            {opt}
+          </button>
+        ))}
+      </div>
+      {showCustom && (
+        <div style={{ borderTop: '1px solid #f0f0f0', padding: '6px 10px', flexShrink: 0 }}>
+          <button type="button"
+            onClick={() => { onChange(search.trim()); setOpen(false); }}
+            style={{ width: '100%', padding: '6px 8px', background: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: 6, fontSize: 12, color: '#6b7280', cursor: 'pointer', textAlign: 'left' }}
+          >
+            Usar &ldquo;{search.trim()}&rdquo;
+          </button>
+        </div>
+      )}
+    </div>,
+    document.body
+  ) : null;
+
   return (
-    <div ref={ref} style={{ position: 'relative', minWidth: 160 }}>
-      {/* trigger */}
-      <button type="button"
-        onClick={() => { setOpen(v => !v); setSearch(''); }}
+    <div style={{ position: 'relative', minWidth: 160 }}>
+      <button ref={triggerRef} type="button" onClick={handleOpen}
         style={{
           width: '100%', padding: '6px 10px', border: '1.5px solid #e5e7eb', borderRadius: 8,
           fontSize: 13, background: '#fff', cursor: 'pointer', textAlign: 'left',
@@ -159,64 +221,7 @@ function FieldCombobox({ field, value, onChange }: { field: string; value: strin
           <path d={open ? 'M1 5L5 1L9 5' : 'M1 1L5 5L9 1'} stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
-
-      {/* dropdown */}
-      {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 200,
-          background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 10,
-          boxShadow: '0 6px 24px rgba(0,0,0,0.13)', minWidth: 200, maxWidth: 300,
-          maxHeight: 260, display: 'flex', flexDirection: 'column', overflow: 'hidden',
-        }}>
-          {/* search */}
-          <div style={{ padding: '8px 10px', borderBottom: '1px solid #f0f0f0', flexShrink: 0 }}>
-            <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar..."
-              style={{ width: '100%', boxSizing: 'border-box', padding: '5px 8px', border: '1px solid #e5e7eb', borderRadius: 6, fontSize: 12, color: '#111827', outline: 'none' }}
-            />
-          </div>
-
-          {/* list */}
-          <div style={{ overflowY: 'auto', flex: 1 }}>
-            {loading && (
-              <div style={{ padding: 14, fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>Carregando...</div>
-            )}
-            {!loading && filtered.length === 0 && !showCustom && (
-              <div style={{ padding: 14, fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>
-                {search ? 'Nenhum resultado' : 'Sem valores cadastrados'}
-              </div>
-            )}
-            {filtered.map(opt => (
-              <button key={opt} type="button"
-                onClick={() => { onChange(opt); setOpen(false); }}
-                style={{
-                  display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px',
-                  border: 'none', cursor: 'pointer', fontSize: 13,
-                  background: value === opt ? '#f0f4ff' : 'transparent',
-                  color: value === opt ? '#6366f1' : '#111827',
-                  fontWeight: value === opt ? 600 : 400,
-                }}
-                onMouseEnter={e => { if (value !== opt) e.currentTarget.style.background = '#f9fafb'; }}
-                onMouseLeave={e => { if (value !== opt) e.currentTarget.style.background = 'transparent'; }}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-
-          {/* use custom value */}
-          {showCustom && (
-            <div style={{ borderTop: '1px solid #f0f0f0', padding: '6px 10px', flexShrink: 0 }}>
-              <button type="button"
-                onClick={() => { onChange(search.trim()); setOpen(false); }}
-                style={{ width: '100%', padding: '6px 8px', background: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: 6, fontSize: 12, color: '#6b7280', cursor: 'pointer', textAlign: 'left' }}
-              >
-                Usar &ldquo;{search.trim()}&rdquo;
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      {dropdown}
     </div>
   );
 }
