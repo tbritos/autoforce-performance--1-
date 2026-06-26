@@ -233,7 +233,7 @@ function SegmentBuilder({ segment, onClose, onSaved }: BuilderProps) {
         await DataService.createSegment({ name, description: description || null, color, rules });
       }
       onSaved();
-    } catch { setError('Erro ao salvar segmento'); }
+    } catch (e: any) { setError(e?.message || 'Erro ao salvar segmento'); }
     finally { setSaving(false); }
   };
 

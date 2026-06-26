@@ -1602,30 +1602,33 @@ export type SegmentType = {
   leadCount?: number;
 };
 
+async function segFetch(url: string, init?: RequestInit) {
+  const r = await fetch(url, init);
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    throw new Error(body?.error || `HTTP ${r.status} ${r.statusText}`);
+  }
+  return r;
+}
+
 export async function listSegments(): Promise<SegmentType[]> {
-  const r = await fetch(`${API_URL}/segments`);
-  if (!r.ok) throw new Error('Failed to list segments');
-  return r.json();
+  return (await segFetch(`${API_URL}/segments`)).json();
 }
 
 export async function createSegment(data: Omit<SegmentType,'id'|'createdAt'|'updatedAt'|'leadCount'>): Promise<SegmentType> {
-  const r = await fetch(`${API_URL}/segments`, {
+  return (await segFetch(`${API_URL}/segments`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
-  });
-  if (!r.ok) throw new Error('Failed to create segment');
-  return r.json();
+  })).json();
 }
 
 export async function updateSegment(id: string, data: Partial<Omit<SegmentType,'id'|'createdAt'|'updatedAt'>>): Promise<SegmentType> {
-  const r = await fetch(`${API_URL}/segments/${id}`, {
+  return (await segFetch(`${API_URL}/segments/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
-  });
-  if (!r.ok) throw new Error('Failed to update segment');
-  return r.json();
+  })).json();
 }
 
 export async function deleteSegment(id: string): Promise<void> {
@@ -1633,21 +1636,17 @@ export async function deleteSegment(id: string): Promise<void> {
 }
 
 export async function previewSegment(rules: SegmentRules): Promise<number> {
-  const r = await fetch(`${API_URL}/segments/preview`, {
+  const { count } = await (await segFetch(`${API_URL}/segments/preview`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(rules),
-  });
-  if (!r.ok) throw new Error('Failed to preview segment');
-  const { count } = await r.json();
+  })).json();
   return count;
 }
 
 export async function getSegmentLeads(id: string, page = 1, pageSize = 25) {
   const p = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-  const r = await fetch(`${API_URL}/segments/${id}/leads?${p}`);
-  if (!r.ok) throw new Error('Failed to get segment leads');
-  return r.json();
+  return (await segFetch(`${API_URL}/segments/${id}/leads?${p}`)).json();
 }
 
 
