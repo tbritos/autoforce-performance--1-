@@ -176,21 +176,34 @@ const STATUS_META_MAP: Record<string, { label: string; color: string }> = {
   LOST: { label: 'Perdido', color: 'var(--red-500)' }, DISQUALIFIED: { label: 'Desqualificado', color: 'var(--fg-subtle)' },
 };
 
-function leadInitials(name: string | null, email: string) {
-  if (name) return name.split(' ').filter(Boolean).map(n => n[0]).slice(0, 2).join('').toUpperCase();
+const AVATAR_PALETTE = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#a855f7','#ec4899','#14b8a6'];
+function avatarColor(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = seed.charCodeAt(i) + ((h << 5) - h);
+  return AVATAR_PALETTE[Math.abs(h) % AVATAR_PALETTE.length];
+}
+function isUrl(s: string): boolean {
+  return s.startsWith('http') || s.includes('://') || /^[a-z0-9.-]+\.[a-z]{2,}(\/|$)/i.test(s);
+}
+function resolvedName(name: string | null): string | null {
+  if (!name || isUrl(name)) return null;
+  return name;
+}
+function leadInitials(name: string | null, email: string): string {
+  const n = resolvedName(name);
+  if (n) return n.split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
   return email.substring(0, 2).toUpperCase();
 }
-
-function fmtEventDate(iso: string) {
+function fmtEventDate(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () => void }> = ({ config, onClose }) => {
   const navigate = useNavigate();
-  const [page, setPage]     = useState(1);
+  const [page, setPage]       = useState(1);
   const [loading, setLoading] = useState(false);
-  const [data, setData]     = useState<{ total: number; leads: DrillDownLead[] } | null>(null);
+  const [data, setData]       = useState<{ total: number; leads: DrillDownLead[] } | null>(null);
   const pageSize = 25;
 
   useEffect(() => { if (config) { setPage(1); setData(null); } }, [config]);
@@ -212,101 +225,141 @@ const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () =>
     <>
       {/* Overlay */}
       <div onClick={onClose} style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1100,
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100,
         animation: 'fadeIn .15s ease',
       }} />
+
       {/* Panel */}
       <div style={{
-        position: 'fixed', top: 0, right: 0, bottom: 0, width: 520,
-        background: 'var(--bg-card)', borderLeft: '1px solid var(--border)',
-        zIndex: 1101, display: 'flex', flexDirection: 'column',
-        boxShadow: '-8px 0 32px rgba(0,0,0,0.18)',
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: 500,
+        background: '#fff', zIndex: 1101, display: 'flex', flexDirection: 'column',
+        boxShadow: '-4px 0 40px rgba(0,0,0,0.22)',
         animation: 'slideInRight .2s ease',
+        fontFamily: 'inherit',
       }}>
         {/* Header */}
-        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexShrink: 0 }}>
+        <div style={{
+          padding: '18px 20px 14px', borderBottom: '1px solid #e5e7eb',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexShrink: 0, background: '#fff',
+        }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--fg-primary)' }}>{config.title}</h2>
+            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#111827', lineHeight: 1.3 }}>
+              {config.title}
+            </h2>
             {data && (
-              <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>
+              <p style={{ margin: '3px 0 0', fontSize: 12, color: '#6b7280', fontWeight: 500 }}>
                 {data.total.toLocaleString('pt-BR')} lead{data.total !== 1 ? 's' : ''}
               </p>
             )}
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-muted)', padding: 4, borderRadius: 6, display: 'flex' }}>
-            <X size={18} />
+          <button
+            onClick={onClose}
+            style={{
+              background: '#f3f4f6', border: 'none', cursor: 'pointer', color: '#6b7280',
+              width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', flexShrink: 0,
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#e5e7eb')}
+            onMouseLeave={e => (e.currentTarget.style.background = '#f3f4f6')}
+          >
+            <X size={16} />
           </button>
         </div>
 
         {/* List */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        <div style={{ flex: 1, overflowY: 'auto', background: '#f9fafb' }}>
           {loading ? (
-            Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 24px' }}>
-                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--bg-muted)' }} className="animate-pulse" />
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div style={{ height: 13, width: '55%', background: 'var(--bg-muted)', borderRadius: 4 }} className="animate-pulse" />
-                  <div style={{ height: 11, width: '35%', background: 'var(--bg-muted)', borderRadius: 4 }} className="animate-pulse" />
+            <div style={{ padding: 8 }}>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', background: '#fff', borderRadius: 10, marginBottom: 4 }}>
+                  <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#e5e7eb', flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ height: 13, width: '50%', background: '#e5e7eb', borderRadius: 4, marginBottom: 6 }} />
+                    <div style={{ height: 11, width: '35%', background: '#f3f4f6', borderRadius: 4 }} />
+                  </div>
                 </div>
-              </div>
-            ))
+              ))}
+            </div>
           ) : !data || data.leads.length === 0 ? (
-            <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>
+            <div style={{ padding: '60px 24px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
               Nenhum lead encontrado.
             </div>
-          ) : data.leads.map(lead => {
-            const meta = STATUS_META_MAP[lead.status] ?? { label: lead.status, color: 'var(--fg-subtle)' };
-            return (
-              <div key={lead.id}
-                onClick={() => { navigate(`/leads/${lead.id}`); onClose(); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 24px', cursor: 'pointer', transition: 'background .1s' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-muted)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-              >
-                {/* Avatar */}
-                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-                  {leadInitials(lead.name, lead.email)}
-                </div>
-                {/* Info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {lead.name ?? lead.email}
-                    </span>
-                    {lead.isHot && <Flame size={11} style={{ color: '#f97316', flexShrink: 0 }} />}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                    {lead.company && (
-                      <span style={{ fontSize: 11, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
-                        <Building2 size={10} /> {lead.company}
+          ) : (
+            <div style={{ padding: 8 }}>
+              {data.leads.map(lead => {
+                const meta     = STATUS_META_MAP[lead.status] ?? { label: lead.status, color: '#6b7280' };
+                const name     = resolvedName(lead.name);
+                const initials = leadInitials(lead.name, lead.email);
+                const color    = avatarColor(lead.email);
+
+                return (
+                  <div
+                    key={lead.id}
+                    onClick={() => { navigate(`/leads/${lead.id}`); onClose(); }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 14px', cursor: 'pointer', borderRadius: 10,
+                      marginBottom: 3, background: '#fff',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 1px 8px rgba(0,0,0,0.10)')}
+                    onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
+                  >
+                    <div style={{
+                      width: 38, height: 38, borderRadius: '50%', background: color,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0, letterSpacing: '0.5px',
+                    }}>
+                      {initials}
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {name ?? lead.email}
+                        </span>
+                        {lead.isHot && <Flame size={12} style={{ color: '#f97316', flexShrink: 0 }} />}
+                      </div>
+                      {(lead.company || (name && lead.email)) && (
+                        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 3 }}>
+                          {lead.company
+                            ? <><Building2 size={10} style={{ flexShrink: 0 }} />{lead.company}</>
+                            : lead.email
+                          }
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
+                      <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 700, color: meta.color, background: meta.color + '22', whiteSpace: 'nowrap' }}>
+                        {meta.label}
                       </span>
-                    )}
+                      <span style={{ fontSize: 10, color: '#9ca3af', whiteSpace: 'nowrap' }}>
+                        {fmtEventDate(lead.eventDate)}
+                      </span>
+                    </div>
                   </div>
-                </div>
-                {/* Right side */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: meta.color }}>
-                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: meta.color }} />
-                    {meta.label}
-                  </span>
-                  <span style={{ fontSize: 10, color: 'var(--fg-subtle)' }}>{fmtEventDate(lead.eventDate)}</span>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Pagination */}
         {data && data.total > pageSize && (
-          <div style={{ padding: '12px 24px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-            <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>Página {page} de {totalPages}</span>
-            <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{
+            padding: '12px 20px', borderTop: '1px solid #e5e7eb',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            flexShrink: 0, background: '#fff',
+          }}>
+            <span style={{ fontSize: 12, color: '#6b7280' }}>Página {page} de {totalPages}</span>
+            <div style={{ display: 'flex', gap: 6 }}>
               <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'none', cursor: page === 1 ? 'not-allowed' : 'pointer', color: 'var(--fg-muted)', opacity: page === 1 ? 0.4 : 1 }}>
+                style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid #e5e7eb', background: page === 1 ? '#f9fafb' : '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer', color: page === 1 ? '#d1d5db' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <ChevronLeft size={14} />
               </button>
               <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'none', cursor: page === totalPages ? 'not-allowed' : 'pointer', color: 'var(--fg-muted)', opacity: page === totalPages ? 0.4 : 1 }}>
+                style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid #e5e7eb', background: page === totalPages ? '#f9fafb' : '#fff', cursor: page === totalPages ? 'not-allowed' : 'pointer', color: page === totalPages ? '#d1d5db' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <ChevronRight size={14} />
               </button>
             </div>
