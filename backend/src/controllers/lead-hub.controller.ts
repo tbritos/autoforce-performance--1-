@@ -221,6 +221,38 @@ export class LeadHubController {
     }
   }
 
+  // GET /api/lead-hub/field-values?field=firstSource — distinct values for segment builder
+  static async getFieldValues(req: Request, res: Response, next: NextFunction) {
+    try {
+      const field = String(req.query.field ?? '');
+      let values: string[] = [];
+
+      if (field === 'tags') {
+        const rows = await prisma.$queryRaw<{ t: string }[]>`
+          SELECT DISTINCT unnest(tags) AS t FROM "Lead"
+          WHERE "deletedAt" IS NULL ORDER BY t LIMIT 300
+        `;
+        values = rows.map(r => r.t).filter(Boolean);
+      } else if (field === 'firstSource') {
+        const rows = await prisma.lead.findMany({ where: { deletedAt: null, firstSource: { not: null } }, select: { firstSource: true }, distinct: ['firstSource'], orderBy: { firstSource: 'asc' }, take: 300 });
+        values = rows.map(r => r.firstSource!).filter(Boolean);
+      } else if (field === 'firstMedium') {
+        const rows = await prisma.lead.findMany({ where: { deletedAt: null, firstMedium: { not: null } }, select: { firstMedium: true }, distinct: ['firstMedium'], orderBy: { firstMedium: 'asc' }, take: 300 });
+        values = rows.map(r => r.firstMedium!).filter(Boolean);
+      } else if (field === 'company') {
+        const rows = await prisma.lead.findMany({ where: { deletedAt: null, company: { not: null } }, select: { company: true }, distinct: ['company'], orderBy: { company: 'asc' }, take: 300 });
+        values = rows.map(r => r.company!).filter(Boolean);
+      } else if (field === 'assignedTo') {
+        const rows = await prisma.lead.findMany({ where: { deletedAt: null, assignedTo: { not: null } }, select: { assignedTo: true }, distinct: ['assignedTo'], orderBy: { assignedTo: 'asc' }, take: 300 });
+        values = rows.map(r => r.assignedTo!).filter(Boolean);
+      } else {
+        res.status(400).json({ error: 'campo inválido' }); return;
+      }
+
+      res.json({ values });
+    } catch (err) { next(err); }
+  }
+
   // POST /api/lead-hub/:email/tags  — body: { tag: string }
   static async addTag(req: Request, res: Response, next: NextFunction) {
     try {

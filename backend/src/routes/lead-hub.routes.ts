@@ -31,6 +31,7 @@ router.get('/tags', LeadHubController.getAllTags);
 router.get('/by-source', LeadHubController.bySource);
 router.get('/conversion-sources', LeadHubController.conversionSources);
 router.post('/migrate-webhook', LeadHubController.migrateWebhook);
+router.get('/field-values', LeadHubController.getFieldValues);
 router.get('/', LeadHubController.list);
 
 // ─── Lead profile ─────────────────────────────────────────────────────────────

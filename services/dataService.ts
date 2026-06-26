@@ -1602,6 +1602,11 @@ export type SegmentType = {
   leadCount?: number;
 };
 
+export async function fetchFieldValues(field: string): Promise<string[]> {
+  const { values } = await apiClient.get<{ values: string[] }>(`/lead-hub/field-values?field=${encodeURIComponent(field)}`);
+  return values;
+}
+
 export async function listSegments(): Promise<SegmentType[]> {
   return apiClient.get<SegmentType[]>('/segments');
 }
