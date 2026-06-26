@@ -164,6 +164,7 @@ const DashboardContent: React.FC<{
             end: end.toISOString().split('T')[0],
         };
     });
+    const navigate = useNavigate();
     const startDateRef = React.useRef<HTMLInputElement>(null);
     const endDateRef = React.useRef<HTMLInputElement>(null);
     // ── Quick-insights state ─────────────────────────────────────────────────
@@ -509,8 +510,21 @@ const DashboardContent: React.FC<{
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             {computedMetrics.map((metric) => {
                 const isAccent = metric.id === '3';
+                const kpiDrillDown: Record<string, () => void> = {
+                  '0': () => navigate(`/leads?from=${dateRange.start}&to=${dateRange.end}`),
+                  '1': () => navigate('/leads?status=MQL'),
+                  '2': () => navigate('/leads?status=MQL'),
+                  '3': () => navigate('/revenue'),
+                  '4': () => navigate('/revenue'),
+                };
+                const handleClick = kpiDrillDown[metric.id];
                 return (
-                <div key={metric.id} className={`ds-kpi${isAccent ? ' ds-kpi-accent' : ''}`}>
+                <div key={metric.id}
+                  className={`ds-kpi${isAccent ? ' ds-kpi-accent' : ''}`}
+                  onClick={handleClick}
+                  style={{ cursor: 'pointer' }}
+                  title="Ver contatos"
+                >
                   <div className="ds-kpi-row">
                     <div className="ds-kpi-label" style={{ gap: 5 }}>
                       <Award size={12} />
@@ -601,7 +615,12 @@ const DashboardContent: React.FC<{
                     ) : leadsBySource.slice(0, 6).map(item => {
                       const pct = totalFunnelLeads > 0 ? Math.round((item.count / totalFunnelLeads) * 100) : 0;
                       return (
-                        <div key={item.source} className="space-y-1">
+                        <div key={item.source} className="space-y-1"
+                          onClick={() => navigate(`/leads?source=${encodeURIComponent(item.source)}`)}
+                          style={{ cursor: 'pointer', borderRadius: 6, padding: '4px', margin: '-4px', transition: 'background .12s' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-muted)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                        >
                           <div className="flex items-center justify-between" style={{ fontSize: 12 }}>
                             <span style={{ color: 'var(--fg-muted)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.source}</span>
                             <span style={{ color: 'var(--fg-primary)', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
@@ -631,7 +650,13 @@ const DashboardContent: React.FC<{
                       const count = funnelCounts?.[stage.status] ?? 0;
                       const pct = totalFunnelLeads > 0 ? Math.round((count / totalFunnelLeads) * 100) : 0;
                       return (
-                        <div key={stage.status} className="flex items-center justify-between gap-2">
+                        <div key={stage.status}
+                          className="flex items-center justify-between gap-2"
+                          onClick={() => navigate(`/leads?status=${stage.status}`)}
+                          style={{ cursor: 'pointer', borderRadius: 6, padding: '2px 4px', margin: '0 -4px', transition: 'background .12s' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-muted)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                        >
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span style={{ width: 7, height: 7, borderRadius: '50%', background: stage.color, flexShrink: 0 }} />
                             <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{stage.label}</span>

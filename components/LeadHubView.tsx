@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search,
   Filter,
@@ -427,27 +427,30 @@ function writeCache(data: LeadListResult) {
 
 const LeadHubView: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [activeView, setActiveView] = useState<'leads' | 'webhooks'>('leads');
   const cached = readCache();
   const [result, setResult]         = useState<LeadListResult | null>(cached);
   const [funnel, setFunnel]         = useState<FunnelCounts | null>(null);
   const [loading, setLoading]       = useState(!cached);
   const [loadError, setLoadError]   = useState(false);
-  const [search, setSearch]         = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<LeadStatus | undefined>();
+  const [search, setSearch]         = useState(searchParams.get('search') ?? '');
+  const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get('search') ?? '');
+  const [statusFilter, setStatusFilter] = useState<LeadStatus | undefined>(
+    (searchParams.get('status') as LeadStatus) || undefined
+  );
   const [page, setPage]             = useState(1);
   const [showFieldManager, setShowFieldManager] = useState(false);
   const [showImport, setShowImport]             = useState(false);
   const [fieldDefs, setFieldDefs] = useState<LeadCustomFieldDef[]>([]);
   const [customFilterField, setCustomFilterField] = useState('');
   const [customFilterValue, setCustomFilterValue] = useState('');
-  const [tagFilter, setTagFilter]   = useState('');
-  const [isHotFilter, setIsHotFilter] = useState(false);
+  const [tagFilter, setTagFilter]   = useState(searchParams.get('tag') ?? '');
+  const [isHotFilter, setIsHotFilter] = useState(searchParams.get('hot') === '1');
   const [availableTags, setAvailableTags] = useState<string[]>([]);
-  const [dateFrom, setDateFrom]     = useState('');
-  const [dateTo, setDateTo]         = useState('');
-  const [conversionSource, setConversionSource] = useState('');
+  const [dateFrom, setDateFrom]     = useState(searchParams.get('from') ?? '');
+  const [dateTo, setDateTo]         = useState(searchParams.get('to') ?? '');
+  const [conversionSource, setConversionSource] = useState(searchParams.get('source') ?? '');
   const [conversionSources, setConversionSources] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<'lastSeenAt' | 'firstSeenAt' | 'conversionsCount' | 'name'>('lastSeenAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
