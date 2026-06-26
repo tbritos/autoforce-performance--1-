@@ -1143,6 +1143,39 @@ export const DataService = {
     return apiClient.get<{ source: string; count: number }[]>('/lead-hub/by-source');
   },
 
+  drillDownLeads: async (params: {
+    event?: string;
+    status?: string;
+    source?: string;
+    from?: string;
+    to?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{
+    total: number;
+    page: number;
+    pageSize: number;
+    leads: Array<{
+      id: string;
+      email: string;
+      name: string | null;
+      company: string | null;
+      status: string;
+      isHot: boolean;
+      eventDate: string;
+    }>;
+  }> => {
+    const qs = new URLSearchParams();
+    if (params.event)    qs.set('event',    params.event);
+    if (params.status)   qs.set('status',   params.status);
+    if (params.source)   qs.set('source',   params.source);
+    if (params.from)     qs.set('from',     params.from);
+    if (params.to)       qs.set('to',       params.to);
+    if (params.page)     qs.set('page',     String(params.page));
+    if (params.pageSize) qs.set('pageSize', String(params.pageSize));
+    return apiClient.get(`/lead-hub/drill-down?${qs.toString()}`);
+  },
+
   listCustomFieldDefs: async (): Promise<LeadCustomFieldDef[]> => {
     return apiClient.get<LeadCustomFieldDef[]>('/lead-hub/custom-fields');
   },

@@ -573,6 +573,106 @@ export class LeadHubService {
   }
 
   // ----------------------------------------------------------
+  // Query: drill-down leads for a dashboard card
+  // ----------------------------------------------------------
+  static async drillDownLeads(params: {
+    event?: string;   // 'leads_created' | 'became_mql' | 'became_sql' | 'became_scheduled' | 'became_client' | 'became_lost'
+    status?: string;  // current-status filter (Lead por Etapa)
+    source?: string;  // firstSource filter (Leads por Canal)
+    from?: string;
+    to?: string;
+    page?: number;
+    pageSize?: number;
+  }) {
+    const page     = Math.max(1, params.page ?? 1);
+    const pageSize = Math.min(50, Math.max(1, params.pageSize ?? 25));
+    const skip     = (page - 1) * pageSize;
+
+    const fromDate = params.from ? new Date(params.from + 'T00:00:00') : undefined;
+    const toDate   = params.to   ? new Date(params.to   + 'T23:59:59') : undefined;
+
+    const leadSelect = {
+      id: true, email: true, name: true, company: true,
+      status: true, firstSeenAt: true, lastSeenAt: true, isHot: true,
+    } as const;
+
+    // Case 1: leads created in period
+    if (params.event === 'leads_created') {
+      const where = {
+        deletedAt: null as null,
+        ...(fromDate || toDate ? { firstSeenAt: { gte: fromDate, lte: toDate } } : {}),
+      };
+      const [total, leads] = await Promise.all([
+        prisma.lead.count({ where }),
+        prisma.lead.findMany({ where, select: leadSelect, orderBy: { firstSeenAt: 'desc' }, skip, take: pageSize }),
+      ]);
+      return { total, page, pageSize, leads: leads.map(l => ({ ...l, eventDate: l.firstSeenAt })) };
+    }
+
+    // Case 2: leads that reached a status in the period (historical query)
+    const statusEventMap: Record<string, string> = {
+      became_mql:       'MQL',
+      became_sql:       'SQL',
+      became_scheduled: 'SCHEDULED',
+      became_demo:      'DEMO',
+      became_proposal:  'PROPOSAL',
+      became_client:    'CLIENT',
+      became_lost:      'LOST',
+    };
+    if (params.event && statusEventMap[params.event]) {
+      const toStatus = statusEventMap[params.event];
+      const histories = await prisma.leadStatusHistory.findMany({
+        where: {
+          toStatus: toStatus as any,
+          ...(fromDate || toDate ? { changedAt: { gte: fromDate, lte: toDate } } : {}),
+        },
+        select: { leadEmail: true, changedAt: true },
+        orderBy: { changedAt: 'desc' },
+      });
+      // Deduplicate by email, keep most recent event per lead
+      const seen = new Set<string>();
+      const unique: { leadEmail: string; changedAt: Date }[] = [];
+      for (const h of histories) {
+        if (!seen.has(h.leadEmail)) { seen.add(h.leadEmail); unique.push(h); }
+      }
+      const total  = unique.length;
+      const paged  = unique.slice(skip, skip + pageSize);
+      const emails = paged.map(h => h.leadEmail);
+      const leadsData = await prisma.lead.findMany({
+        where: { email: { in: emails }, deletedAt: null },
+        select: leadSelect,
+      });
+      const leadsMap = new Map(leadsData.map(l => [l.email, l]));
+      const leads = paged
+        .map(h => { const l = leadsMap.get(h.leadEmail); return l ? { ...l, eventDate: h.changedAt } : null; })
+        .filter((l): l is NonNullable<typeof l> => l !== null);
+      return { total, page, pageSize, leads };
+    }
+
+    // Case 3: current status filter (Lead por Etapa)
+    if (params.status) {
+      const where = { deletedAt: null as null, status: params.status as any };
+      const [total, leads] = await Promise.all([
+        prisma.lead.count({ where }),
+        prisma.lead.findMany({ where, select: leadSelect, orderBy: { lastSeenAt: 'desc' }, skip, take: pageSize }),
+      ]);
+      return { total, page, pageSize, leads: leads.map(l => ({ ...l, eventDate: l.lastSeenAt })) };
+    }
+
+    // Case 4: source filter (Leads por Canal)
+    if (params.source) {
+      const where = { deletedAt: null as null, firstSource: params.source };
+      const [total, leads] = await Promise.all([
+        prisma.lead.count({ where }),
+        prisma.lead.findMany({ where, select: leadSelect, orderBy: { firstSeenAt: 'desc' }, skip, take: pageSize }),
+      ]);
+      return { total, page, pageSize, leads: leads.map(l => ({ ...l, eventDate: l.firstSeenAt })) };
+    }
+
+    return { total: 0, page: 1, pageSize, leads: [] };
+  }
+
+  // ----------------------------------------------------------
   // Query: funnel counts by status
   // ----------------------------------------------------------
   static async getFunnelCounts() {

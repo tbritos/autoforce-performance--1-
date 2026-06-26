@@ -50,6 +50,9 @@ import {
   Workflow,
   Bot,
   MessageSquare,
+  X,
+  Flame,
+  Building2,
 } from 'lucide-react';
 import { FunnelChart, FunnelStep } from './components/Charts';
 
@@ -149,6 +152,172 @@ const FUNNEL_STAGES: { status: LeadStatus; label: string; color: string }[] = [
   { status: 'DISQUALIFIED', label: 'Desqualificado', color: 'var(--fg-subtle)' },
 ];
 
+// ─── DrillDown Drawer ─────────────────────────────────────────────────────────
+
+type DrillDownConfig = {
+  title: string;
+  event?: string;
+  status?: string;
+  source?: string;
+  from?: string;
+  to?: string;
+};
+
+type DrillDownLead = {
+  id: string; email: string; name: string | null; company: string | null;
+  status: string; isHot: boolean; eventDate: string;
+};
+
+const STATUS_META_MAP: Record<string, { label: string; color: string }> = {
+  LEAD: { label: 'Lead', color: 'var(--sl-400)' }, MQL: { label: 'MQL', color: 'var(--af-500)' },
+  SQL: { label: 'SQL', color: '#818cf8' }, SCHEDULED: { label: 'Agendado', color: '#f59e0b' },
+  DEMO: { label: 'Demo', color: '#f97316' }, PROPOSAL: { label: 'Proposta', color: '#a855f7' },
+  OPPORTUNITY: { label: 'Proposta', color: '#a855f7' }, CLIENT: { label: 'Cliente', color: 'var(--green-500)' },
+  LOST: { label: 'Perdido', color: 'var(--red-500)' }, DISQUALIFIED: { label: 'Desqualificado', color: 'var(--fg-subtle)' },
+};
+
+function leadInitials(name: string | null, email: string) {
+  if (name) return name.split(' ').filter(Boolean).map(n => n[0]).slice(0, 2).join('').toUpperCase();
+  return email.substring(0, 2).toUpperCase();
+}
+
+function fmtEventDate(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () => void }> = ({ config, onClose }) => {
+  const navigate = useNavigate();
+  const [page, setPage]     = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [data, setData]     = useState<{ total: number; leads: DrillDownLead[] } | null>(null);
+  const pageSize = 25;
+
+  useEffect(() => { if (config) { setPage(1); setData(null); } }, [config]);
+
+  useEffect(() => {
+    if (!config) return;
+    setLoading(true);
+    DataService.drillDownLeads({ ...config, page, pageSize })
+      .then(res => setData({ total: res.total, leads: res.leads }))
+      .catch(() => setData({ total: 0, leads: [] }))
+      .finally(() => setLoading(false));
+  }, [config, page]);
+
+  if (!config) return null;
+
+  const totalPages = data ? Math.ceil(data.total / pageSize) : 1;
+
+  return createPortal(
+    <>
+      {/* Overlay */}
+      <div onClick={onClose} style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1100,
+        animation: 'fadeIn .15s ease',
+      }} />
+      {/* Panel */}
+      <div style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: 520,
+        background: 'var(--bg-card)', borderLeft: '1px solid var(--border)',
+        zIndex: 1101, display: 'flex', flexDirection: 'column',
+        boxShadow: '-8px 0 32px rgba(0,0,0,0.18)',
+        animation: 'slideInRight .2s ease',
+      }}>
+        {/* Header */}
+        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexShrink: 0 }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--fg-primary)' }}>{config.title}</h2>
+            {data && (
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>
+                {data.total.toLocaleString('pt-BR')} lead{data.total !== 1 ? 's' : ''}
+              </p>
+            )}
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-muted)', padding: 4, borderRadius: 6, display: 'flex' }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* List */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+          {loading ? (
+            Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 24px' }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--bg-muted)' }} className="animate-pulse" />
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ height: 13, width: '55%', background: 'var(--bg-muted)', borderRadius: 4 }} className="animate-pulse" />
+                  <div style={{ height: 11, width: '35%', background: 'var(--bg-muted)', borderRadius: 4 }} className="animate-pulse" />
+                </div>
+              </div>
+            ))
+          ) : !data || data.leads.length === 0 ? (
+            <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>
+              Nenhum lead encontrado.
+            </div>
+          ) : data.leads.map(lead => {
+            const meta = STATUS_META_MAP[lead.status] ?? { label: lead.status, color: 'var(--fg-subtle)' };
+            return (
+              <div key={lead.id}
+                onClick={() => { navigate(`/leads/${lead.id}`); onClose(); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 24px', cursor: 'pointer', transition: 'background .1s' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-muted)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                {/* Avatar */}
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                  {leadInitials(lead.name, lead.email)}
+                </div>
+                {/* Info */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {lead.name ?? lead.email}
+                    </span>
+                    {lead.isHot && <Flame size={11} style={{ color: '#f97316', flexShrink: 0 }} />}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                    {lead.company && (
+                      <span style={{ fontSize: 11, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>
+                        <Building2 size={10} /> {lead.company}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {/* Right side */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: meta.color }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: meta.color }} />
+                    {meta.label}
+                  </span>
+                  <span style={{ fontSize: 10, color: 'var(--fg-subtle)' }}>{fmtEventDate(lead.eventDate)}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Pagination */}
+        {data && data.total > pageSize && (
+          <div style={{ padding: '12px 24px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+            <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>Página {page} de {totalPages}</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'none', cursor: page === 1 ? 'not-allowed' : 'pointer', color: 'var(--fg-muted)', opacity: page === 1 ? 0.4 : 1 }}>
+                <ChevronLeft size={14} />
+              </button>
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                style={{ padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'none', cursor: page === totalPages ? 'not-allowed' : 'pointer', color: 'var(--fg-muted)', opacity: page === totalPages ? 0.4 : 1 }}>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </>,
+    document.body,
+  );
+};
+
 // --- COMPONENTE DO CONTEÃšDO DO DASHBOARD (ExtraÃ­do para limpar o cÃ³digo) ---
 const DashboardContent: React.FC<{
     metrics: Metric[],
@@ -165,6 +334,7 @@ const DashboardContent: React.FC<{
         };
     });
     const navigate = useNavigate();
+    const [drillDown, setDrillDown] = useState<DrillDownConfig | null>(null);
     const startDateRef = React.useRef<HTMLInputElement>(null);
     const endDateRef = React.useRef<HTMLInputElement>(null);
     // ── Quick-insights state ─────────────────────────────────────────────────
@@ -510,20 +680,23 @@ const DashboardContent: React.FC<{
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             {computedMetrics.map((metric) => {
                 const isAccent = metric.id === '3';
-                const kpiDrillDown: Record<string, () => void> = {
-                  '0': () => navigate(`/leads?from=${dateRange.start}&to=${dateRange.end}`),
-                  '1': () => navigate('/leads?status=MQL'),
-                  '2': () => navigate('/leads?status=MQL'),
+                const kpiDrillDown: Record<string, DrillDownConfig | (() => void)> = {
+                  '0': { title: 'Total de Leads', event: 'leads_created', from: dateRange.start, to: dateRange.end },
+                  '1': { title: 'MQLs no período', event: 'became_mql', from: dateRange.start, to: dateRange.end },
+                  '2': { title: 'MQLs no período', event: 'became_mql', from: dateRange.start, to: dateRange.end },
                   '3': () => navigate('/revenue'),
                   '4': () => navigate('/revenue'),
                 };
-                const handleClick = kpiDrillDown[metric.id];
+                const drillConf = kpiDrillDown[metric.id];
+                const handleClick = typeof drillConf === 'function'
+                  ? drillConf
+                  : () => setDrillDown(drillConf as DrillDownConfig);
                 return (
                 <div key={metric.id}
                   className={`ds-kpi${isAccent ? ' ds-kpi-accent' : ''}`}
                   onClick={handleClick}
                   style={{ cursor: 'pointer' }}
-                  title="Ver contatos"
+                  title="Ver leads"
                 >
                   <div className="ds-kpi-row">
                     <div className="ds-kpi-label" style={{ gap: 5 }}>
@@ -616,7 +789,7 @@ const DashboardContent: React.FC<{
                       const pct = totalFunnelLeads > 0 ? Math.round((item.count / totalFunnelLeads) * 100) : 0;
                       return (
                         <div key={item.source} className="space-y-1"
-                          onClick={() => navigate(`/leads?source=${encodeURIComponent(item.source)}`)}
+                          onClick={() => setDrillDown({ title: `Canal: ${item.source}`, source: item.source })}
                           style={{ cursor: 'pointer', borderRadius: 6, padding: '4px', margin: '-4px', transition: 'background .12s' }}
                           onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-muted)')}
                           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
@@ -652,7 +825,7 @@ const DashboardContent: React.FC<{
                       return (
                         <div key={stage.status}
                           className="flex items-center justify-between gap-2"
-                          onClick={() => navigate(`/leads?status=${stage.status}`)}
+                          onClick={() => setDrillDown({ title: stage.label, status: stage.status })}
                           style={{ cursor: 'pointer', borderRadius: 6, padding: '2px 4px', margin: '0 -4px', transition: 'background .12s' }}
                           onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-muted)')}
                           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
@@ -738,6 +911,7 @@ const DashboardContent: React.FC<{
                 </div>
             </div>
         </div>
+        <DrillDownDrawer config={drillDown} onClose={() => setDrillDown(null)} />
     );
 };
 
