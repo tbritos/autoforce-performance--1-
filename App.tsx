@@ -166,7 +166,7 @@ type DrillDownConfig = {
 type DrillDownLead = {
   id: string; email: string; name: string | null; company: string | null;
   status: string; isHot: boolean; eventDate: string;
-  firstSource: string | null; firstMedium: string | null;
+  firstSource: string | null; firstMedium: string | null; utmSource: string | null;
 };
 
 const STATUS_META_MAP: Record<string, { label: string; color: string }> = {
@@ -362,7 +362,7 @@ const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () =>
                   ) : (
                     <span style={{ color: '#d1d5db', fontSize: 12 }}>—</span>
                   )}
-                  {lead.firstMedium && (
+                  {lead.utmSource && (
                     <span style={{
                       display: 'inline-block', padding: '2px 8px', borderRadius: 99,
                       fontSize: 10, fontWeight: 600,
@@ -370,7 +370,7 @@ const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () =>
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       maxWidth: '100%',
                     }}>
-                      {lead.firstMedium}
+                      {lead.utmSource}
                     </span>
                   )}
                 </div>

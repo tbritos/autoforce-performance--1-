@@ -576,9 +576,9 @@ export class LeadHubService {
   // Query: drill-down leads for a dashboard card
   // ----------------------------------------------------------
   static async drillDownLeads(params: {
-    event?: string;   // 'leads_created' | 'became_mql' | 'became_sql' | 'became_scheduled' | 'became_client' | 'became_lost'
-    status?: string;  // current-status filter (Lead por Etapa)
-    source?: string;  // firstSource filter (Leads por Canal)
+    event?: string;
+    status?: string;
+    source?: string;
     from?: string;
     to?: string;
     page?: number;
@@ -597,6 +597,21 @@ export class LeadHubService {
       firstSource: true, firstMedium: true,
     } as const;
 
+    // Fetch utmSource from first conversion for each lead in the page
+    const enrichUtmSource = async (rawLeads: Array<{ email: string; [key: string]: unknown }>) => {
+      if (!rawLeads.length) return rawLeads.map(l => ({ ...l, utmSource: null as string | null }));
+      const convs = await prisma.leadConversion.findMany({
+        where: { leadEmail: { in: rawLeads.map(l => l.email) } },
+        orderBy: { convertedAt: 'asc' },
+        select: { leadEmail: true, utmSource: true },
+      });
+      const utmMap = new Map<string, string | null>();
+      for (const c of convs) {
+        if (!utmMap.has(c.leadEmail)) utmMap.set(c.leadEmail, c.utmSource ?? null);
+      }
+      return rawLeads.map(l => ({ ...l, utmSource: utmMap.get(l.email) ?? null }));
+    };
+
     // Case 1: leads created in period
     if (params.event === 'leads_created') {
       const where = {
@@ -607,7 +622,8 @@ export class LeadHubService {
         prisma.lead.count({ where }),
         prisma.lead.findMany({ where, select: leadSelect, orderBy: { firstSeenAt: 'desc' }, skip, take: pageSize }),
       ]);
-      return { total, page, pageSize, leads: leads.map(l => ({ ...l, eventDate: l.firstSeenAt })) };
+      const enriched = await enrichUtmSource(leads.map(l => ({ ...l, eventDate: l.firstSeenAt })));
+      return { total, page, pageSize, leads: enriched };
     }
 
     // Case 2: leads that reached a status in the period (historical query)
@@ -630,7 +646,6 @@ export class LeadHubService {
         select: { leadEmail: true, changedAt: true },
         orderBy: { changedAt: 'desc' },
       });
-      // Deduplicate by email, keep most recent event per lead
       const seen = new Set<string>();
       const unique: { leadEmail: string; changedAt: Date }[] = [];
       for (const h of histories) {
@@ -644,10 +659,11 @@ export class LeadHubService {
         select: leadSelect,
       });
       const leadsMap = new Map(leadsData.map(l => [l.email, l]));
-      const leads = paged
+      const rawLeads = paged
         .map(h => { const l = leadsMap.get(h.leadEmail); return l ? { ...l, eventDate: h.changedAt } : null; })
         .filter((l): l is NonNullable<typeof l> => l !== null);
-      return { total, page, pageSize, leads };
+      const enriched = await enrichUtmSource(rawLeads);
+      return { total, page, pageSize, leads: enriched };
     }
 
     // Case 3: current status filter (Lead por Etapa)
@@ -657,7 +673,8 @@ export class LeadHubService {
         prisma.lead.count({ where }),
         prisma.lead.findMany({ where, select: leadSelect, orderBy: { lastSeenAt: 'desc' }, skip, take: pageSize }),
       ]);
-      return { total, page, pageSize, leads: leads.map(l => ({ ...l, eventDate: l.lastSeenAt })) };
+      const enriched = await enrichUtmSource(leads.map(l => ({ ...l, eventDate: l.lastSeenAt })));
+      return { total, page, pageSize, leads: enriched };
     }
 
     // Case 4: source filter (Leads por Canal)
@@ -667,7 +684,8 @@ export class LeadHubService {
         prisma.lead.count({ where }),
         prisma.lead.findMany({ where, select: leadSelect, orderBy: { firstSeenAt: 'desc' }, skip, take: pageSize }),
       ]);
-      return { total, page, pageSize, leads: leads.map(l => ({ ...l, eventDate: l.firstSeenAt })) };
+      const enriched = await enrichUtmSource(leads.map(l => ({ ...l, eventDate: l.firstSeenAt })));
+      return { total, page, pageSize, leads: enriched };
     }
 
     return { total: 0, page: 1, pageSize, leads: [] };
