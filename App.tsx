@@ -626,6 +626,7 @@ const DashboardContent: React.FC<{
     }, [leadStats, filteredRevenue, visits]);
     
     return (
+        <>
         <div style={{ padding: '24px 28px 64px', maxWidth: 1480, margin: '0 auto' }} className="space-y-6 animate-fade-in-up">
             <div className="flex justify-end items-start gap-4 flex-wrap">
                 <div className="flex items-center gap-3 ds-card" style={{ padding: '8px 14px' }}>
@@ -912,6 +913,7 @@ const DashboardContent: React.FC<{
             </div>
         </div>
         <DrillDownDrawer config={drillDown} onClose={() => setDrillDown(null)} />
+        </>
     );
 };
 
