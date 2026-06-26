@@ -246,8 +246,8 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({ steps, isLoading = fal
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 72, height: 14, background: 'var(--bg-muted)', borderRadius: 4 }} className="animate-pulse" />
-            <div style={{ flex: 1, height: 32, background: 'var(--bg-muted)', borderRadius: 20 }} className="animate-pulse" />
-            <div style={{ width: 60, height: 14, background: 'var(--bg-muted)', borderRadius: 4 }} className="animate-pulse" />
+            <div style={{ flex: 1, height: 28, background: 'var(--bg-muted)', borderRadius: 20 }} className="animate-pulse" />
+            <div style={{ width: 72, height: 14, background: 'var(--bg-muted)', borderRadius: 4 }} className="animate-pulse" />
           </div>
         ))}
       </div>
@@ -263,33 +263,52 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({ steps, isLoading = fal
     );
   }
 
-  const maxValue = Math.max(...steps.map(s => s.value), 1);
+  // Log scale so visitas (13k) doesn't dwarf leads (97) — each bar is visually distinct
+  const maxLog = Math.log10(Math.max(...steps.map(s => s.value), 1) + 1);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      {steps.map((step) => {
-        const pct = Math.max(4, Math.round((step.value / maxValue) * 100));
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {steps.map((step, i) => {
+        const pct     = Math.max(3, Math.round((Math.log10(step.value + 1) / maxLog) * 100));
+        const prev    = i > 0 ? steps[i - 1] : null;
+        const convRate = prev && prev.value > 0 ? (step.value / prev.value) * 100 : null;
+
         return (
           <div key={step.label} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* Label */}
             <div style={{ width: 80, fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)', textAlign: 'right', flexShrink: 0 }}>
               {step.label}
             </div>
+
+            {/* Bar */}
             <div style={{ flex: 1 }}>
-              <div style={{ width: '100%', height: 32, background: 'var(--bg-muted)', borderRadius: 9999, overflow: 'hidden' }}>
+              <div style={{ width: '100%', height: 28, background: 'var(--bg-muted)', borderRadius: 9999, overflow: 'hidden' }}>
                 <div style={{
                   width: `${pct}%`, height: '100%', borderRadius: 9999,
                   background: step.color,
-                  transition: 'width .6s ease',
+                  transition: 'width .7s ease',
                   opacity: 0.9,
                 }} />
               </div>
             </div>
-            <div style={{ width: 72, textAlign: 'right', fontSize: 13, fontWeight: 700, color: 'var(--fg-primary)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-              {step.value.toLocaleString('pt-BR')}
+
+            {/* Value + conversion rate */}
+            <div style={{ width: 96, textAlign: 'right', flexShrink: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                {step.value.toLocaleString('pt-BR')}
+              </div>
+              {convRate !== null && (
+                <div style={{ fontSize: 10, color: 'var(--fg-muted)', marginTop: 1, fontVariantNumeric: 'tabular-nums' }}>
+                  {convRate < 1 ? convRate.toFixed(2) : convRate.toFixed(1)}% do anterior
+                </div>
+              )}
             </div>
           </div>
         );
       })}
+      <div style={{ textAlign: 'right', fontSize: 10, color: 'var(--fg-subtle)', marginTop: 4, opacity: 0.7 }}>
+        escala logarítmica
+      </div>
     </div>
   );
 };
