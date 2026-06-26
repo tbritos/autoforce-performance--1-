@@ -165,7 +165,8 @@ type DrillDownConfig = {
 
 type DrillDownLead = {
   id: string; email: string; name: string | null; company: string | null;
-  status: string; isHot: boolean; eventDate: string; firstSource: string | null;
+  status: string; isHot: boolean; eventDate: string;
+  firstSource: string | null; firstMedium: string | null;
 };
 
 const STATUS_META_MAP: Record<string, { label: string; color: string }> = {
@@ -233,7 +234,7 @@ const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () =>
       <div style={{
         position: 'fixed', top: '50%', left: '50%',
         transform: 'translate(-50%, -50%)',
-        width: 'min(860px, 94vw)', maxHeight: '82vh',
+        width: 'min(1080px, 96vw)', maxHeight: '88vh',
         background: '#fff', borderRadius: 16,
         zIndex: 1101, display: 'flex', flexDirection: 'column',
         boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
@@ -269,11 +270,11 @@ const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () =>
         {/* Table header */}
         {!loading && data && data.leads.length > 0 && (
           <div style={{
-            display: 'grid', gridTemplateColumns: '2fr 1.2fr 1.2fr 1fr 0.9fr',
+            display: 'grid', gridTemplateColumns: '2fr 1.2fr 1.6fr 1fr 0.9fr',
             padding: '8px 24px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0',
             flexShrink: 0,
           }}>
-            {['Lead', 'Empresa', 'Origem', 'Status', 'Data'].map(col => (
+            {['Lead', 'Empresa', 'Origem / UTM Source', 'Status', 'Data'].map(col => (
               <span key={col} style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 {col}
               </span>
@@ -309,7 +310,7 @@ const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () =>
                 key={lead.id}
                 onClick={() => { navigate(`/leads/${lead.id}`); onClose(); }}
                 style={{
-                  display: 'grid', gridTemplateColumns: '2fr 1.2fr 1.2fr 1fr 0.9fr',
+                  display: 'grid', gridTemplateColumns: '2fr 1.2fr 1.6fr 1fr 0.9fr',
                   padding: '11px 24px', cursor: 'pointer', alignItems: 'center',
                   background: isEven ? '#fff' : '#fafafa',
                   borderBottom: '1px solid #f5f5f5',
@@ -346,8 +347,8 @@ const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () =>
                   {lead.company || <span style={{ color: '#d1d5db' }}>—</span>}
                 </div>
 
-                {/* Origem */}
-                <div style={{ paddingRight: 8 }}>
+                {/* Origem / UTM Source */}
+                <div style={{ paddingRight: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {lead.firstSource ? (
                     <span style={{
                       display: 'inline-block', padding: '2px 8px', borderRadius: 99,
@@ -360,6 +361,17 @@ const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () =>
                     </span>
                   ) : (
                     <span style={{ color: '#d1d5db', fontSize: 12 }}>—</span>
+                  )}
+                  {lead.firstMedium && (
+                    <span style={{
+                      display: 'inline-block', padding: '2px 8px', borderRadius: 99,
+                      fontSize: 10, fontWeight: 600,
+                      background: '#f5f3ff', color: '#7c3aed',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      maxWidth: '100%',
+                    }}>
+                      {lead.firstMedium}
+                    </span>
                   )}
                 </div>
 

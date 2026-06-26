@@ -594,7 +594,7 @@ export class LeadHubService {
     const leadSelect = {
       id: true, email: true, name: true, company: true,
       status: true, firstSeenAt: true, lastSeenAt: true, isHot: true,
-      firstSource: true,
+      firstSource: true, firstMedium: true,
     } as const;
 
     // Case 1: leads created in period
