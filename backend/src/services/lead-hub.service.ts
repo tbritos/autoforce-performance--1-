@@ -597,19 +597,25 @@ export class LeadHubService {
       firstSource: true, firstMedium: true,
     } as const;
 
-    // Fetch utmSource from first conversion for each lead in the page
-    const enrichUtmSource = async (rawLeads: Array<{ email: string; [key: string]: unknown }>) => {
-      if (!rawLeads.length) return rawLeads.map(l => ({ ...l, utmSource: null as string | null }));
-      const convs = await prisma.leadConversion.findMany({
+    // Enrich each lead with the conversion closest to (and before) its eventDate.
+    // This correctly maps "Formulário topo / RD Station" to the event that fired on that day,
+    // rather than showing the first-ever conversion which may be from a different channel.
+    const enrichConvSource = async (rawLeads: Array<{ email: string; eventDate: unknown; [key: string]: unknown }>) => {
+      if (!rawLeads.length) return rawLeads.map(l => ({ ...l, convSource: null as string | null, utmSource: null as string | null }));
+      const allConvs = await prisma.leadConversion.findMany({
         where: { leadEmail: { in: rawLeads.map(l => l.email) } },
-        orderBy: { convertedAt: 'asc' },
-        select: { leadEmail: true, utmSource: true },
+        select: { leadEmail: true, source: true, utmSource: true, convertedAt: true },
+        orderBy: { convertedAt: 'desc' },
       });
-      const utmMap = new Map<string, string | null>();
-      for (const c of convs) {
-        if (!utmMap.has(c.leadEmail)) utmMap.set(c.leadEmail, c.utmSource ?? null);
-      }
-      return rawLeads.map(l => ({ ...l, utmSource: utmMap.get(l.email) ?? null }));
+      return rawLeads.map(l => {
+        const eventDate = new Date(l.eventDate as string | Date);
+        const leadConvs = allConvs.filter(c => c.leadEmail === l.email);
+        if (!leadConvs.length) return { ...l, convSource: null, utmSource: null };
+        // Most recent conversion on or before eventDate; fallback to oldest overall
+        const candidates = leadConvs.filter(c => c.convertedAt <= eventDate);
+        const best = candidates.length > 0 ? candidates[0] : leadConvs[leadConvs.length - 1];
+        return { ...l, convSource: best.source ?? null, utmSource: best.utmSource ?? null };
+      });
     };
 
     // Case 1: leads created in period
@@ -622,7 +628,7 @@ export class LeadHubService {
         prisma.lead.count({ where }),
         prisma.lead.findMany({ where, select: leadSelect, orderBy: { firstSeenAt: 'desc' }, skip, take: pageSize }),
       ]);
-      const enriched = await enrichUtmSource(leads.map(l => ({ ...l, eventDate: l.firstSeenAt })));
+      const enriched = await enrichConvSource(leads.map(l => ({ ...l, eventDate: l.firstSeenAt })));
       return { total, page, pageSize, leads: enriched };
     }
 
@@ -662,7 +668,7 @@ export class LeadHubService {
       const rawLeads = paged
         .map(h => { const l = leadsMap.get(h.leadEmail); return l ? { ...l, eventDate: h.changedAt } : null; })
         .filter((l): l is NonNullable<typeof l> => l !== null);
-      const enriched = await enrichUtmSource(rawLeads);
+      const enriched = await enrichConvSource(rawLeads);
       return { total, page, pageSize, leads: enriched };
     }
 
@@ -673,7 +679,7 @@ export class LeadHubService {
         prisma.lead.count({ where }),
         prisma.lead.findMany({ where, select: leadSelect, orderBy: { lastSeenAt: 'desc' }, skip, take: pageSize }),
       ]);
-      const enriched = await enrichUtmSource(leads.map(l => ({ ...l, eventDate: l.lastSeenAt })));
+      const enriched = await enrichConvSource(leads.map(l => ({ ...l, eventDate: l.lastSeenAt })));
       return { total, page, pageSize, leads: enriched };
     }
 
@@ -684,7 +690,7 @@ export class LeadHubService {
         prisma.lead.count({ where }),
         prisma.lead.findMany({ where, select: leadSelect, orderBy: { firstSeenAt: 'desc' }, skip, take: pageSize }),
       ]);
-      const enriched = await enrichUtmSource(leads.map(l => ({ ...l, eventDate: l.firstSeenAt })));
+      const enriched = await enrichConvSource(leads.map(l => ({ ...l, eventDate: l.firstSeenAt })));
       return { total, page, pageSize, leads: enriched };
     }
 
