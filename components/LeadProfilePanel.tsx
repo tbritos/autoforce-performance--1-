@@ -303,7 +303,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
 
   // Edit form state
   const [form, setForm] = useState({
-    name: '', phone: '', company: '', jobTitle: '', city: '', state: '', assignedTo: '', score: '',
+    name: '', phone: '', company: '', jobTitle: '', city: '', state: '', assignedTo: '', score: '', pipedriveDealId: '',
   });
   const [customForm, setCustomForm] = useState<Record<string, unknown>>({});
 
@@ -330,6 +330,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
         name: p.name ?? '', phone: p.phone ?? '', company: p.company ?? '',
         jobTitle: p.jobTitle ?? '', city: p.city ?? '', state: p.state ?? '',
         assignedTo: p.assignedTo ?? '', score: p.score != null ? String(p.score) : '',
+        pipedriveDealId: p.pipedriveDealId ?? '',
       });
       setCustomForm((p.customFields as Record<string, unknown>) ?? {});
     }).catch(console.error).finally(() => { if (!cancelled) setLoading(false); });
@@ -429,6 +430,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
         state: form.state || undefined,
         assignedTo: form.assignedTo || undefined,
         score: form.score.trim() === '' ? null : Number(form.score),
+        pipedriveDealId: form.pipedriveDealId.trim() === '' ? null : form.pipedriveDealId.trim(),
       });
       // Save custom fields
       for (const [key, val] of Object.entries(customForm)) {
@@ -1284,27 +1286,44 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                   </div>
 
                   {/* Funil Pipedrive */}
-                  {profile.pipedriveDealId && (
+                  {(profile.pipedriveDealId || editMode) && (
                     <div style={cardStyle}>
                       <div style={cardHead}>
                         <span style={cardHeadTitle}><GitBranch size={13} /> Funil Pipedrive</span>
-                        <span style={{ fontSize: 12, color: 'var(--fg-subtle)', fontFamily: 'monospace' }}>#{profile.pipedriveDealId}</span>
+                        {!editMode && profile.pipedriveDealId && (
+                          <span style={{ fontSize: 12, color: 'var(--fg-subtle)', fontFamily: 'monospace' }}>#{profile.pipedriveDealId}</span>
+                        )}
                       </div>
                       <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-muted)' }}>
-                          {pipedriveEvents === null
-                            ? 'Carregando...'
-                            : `${pipedriveEvents.length} movimentação${pipedriveEvents.length !== 1 ? 'ões' : ''} registrada${pipedriveEvents.length !== 1 ? 's' : ''}.`}
-                        </p>
-                        {pipedriveUrl && (
-                          <a href={pipedriveUrl} target="_blank" rel="noopener noreferrer"
-                            style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>
-                            Abrir no Pipedrive <ExternalLink size={11} />
-                          </a>
+                        {editMode ? (
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontSize: 11, color: 'var(--fg-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>ID do negócio</span>
+                            <input
+                              type="text"
+                              value={form.pipedriveDealId}
+                              onChange={e => setForm(f => ({ ...f, pipedriveDealId: e.target.value }))}
+                              placeholder="ex: 12345"
+                              style={inputStyle}
+                            />
+                          </label>
+                        ) : (
+                          <>
+                            <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-muted)' }}>
+                              {pipedriveEvents === null
+                                ? 'Carregando...'
+                                : `${pipedriveEvents.length} movimentação${pipedriveEvents.length !== 1 ? 'ões' : ''} registrada${pipedriveEvents.length !== 1 ? 's' : ''}.`}
+                            </p>
+                            {pipedriveUrl && (
+                              <a href={pipedriveUrl} target="_blank" rel="noopener noreferrer"
+                                style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>
+                                Abrir no Pipedrive <ExternalLink size={11} />
+                              </a>
+                            )}
+                            <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)' }}>
+                              Veja os detalhes na aba <strong>Atividade</strong>.
+                            </p>
+                          </>
                         )}
-                        <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)' }}>
-                          Veja os detalhes na aba <strong>Atividade</strong>.
-                        </p>
                       </div>
                     </div>
                   )}

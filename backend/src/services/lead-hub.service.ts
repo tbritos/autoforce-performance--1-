@@ -90,6 +90,8 @@ export interface UpdateLeadProfileInput {
   assignedTo?: string | null;
   isHot?: boolean;
   score?: number | null;
+  pipedriveDealId?: string | null;
+  pipedrivePersonId?: string | null;
 }
 
 // ============================================================
@@ -442,6 +444,8 @@ export class LeadHubService {
       ...(input.assignedTo !== undefined ? { assignedTo: cleanString(input.assignedTo) } : {}),
       ...(input.isHot !== undefined ? { isHot: input.isHot } : {}),
       ...(input.score !== undefined ? { score: input.score ?? 0 } : {}),
+      ...(input.pipedriveDealId !== undefined ? { pipedriveDealId: cleanString(input.pipedriveDealId) } : {}),
+      ...(input.pipedrivePersonId !== undefined ? { pipedrivePersonId: cleanString(input.pipedrivePersonId) } : {}),
     };
 
     const updated = await prisma.lead.update({
