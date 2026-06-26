@@ -1602,51 +1602,29 @@ export type SegmentType = {
   leadCount?: number;
 };
 
-async function segFetch(url: string, init?: RequestInit) {
-  const r = await fetch(url, init);
-  if (!r.ok) {
-    const body = await r.json().catch(() => ({}));
-    throw new Error(body?.error || `HTTP ${r.status} ${r.statusText}`);
-  }
-  return r;
-}
-
 export async function listSegments(): Promise<SegmentType[]> {
-  return (await segFetch(`${API_URL}/segments`)).json();
+  return apiClient.get<SegmentType[]>('/segments');
 }
 
 export async function createSegment(data: Omit<SegmentType,'id'|'createdAt'|'updatedAt'|'leadCount'>): Promise<SegmentType> {
-  return (await segFetch(`${API_URL}/segments`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })).json();
+  return apiClient.post<SegmentType>('/segments', data);
 }
 
 export async function updateSegment(id: string, data: Partial<Omit<SegmentType,'id'|'createdAt'|'updatedAt'>>): Promise<SegmentType> {
-  return (await segFetch(`${API_URL}/segments/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })).json();
+  return apiClient.put<SegmentType>(`/segments/${id}`, data);
 }
 
 export async function deleteSegment(id: string): Promise<void> {
-  await fetch(`${API_URL}/segments/${id}`, { method: 'DELETE' });
+  return apiClient.delete<void>(`/segments/${id}`);
 }
 
 export async function previewSegment(rules: SegmentRules): Promise<number> {
-  const { count } = await (await segFetch(`${API_URL}/segments/preview`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(rules),
-  })).json();
+  const { count } = await apiClient.post<{ count: number }>('/segments/preview', rules);
   return count;
 }
 
 export async function getSegmentLeads(id: string, page = 1, pageSize = 25) {
-  const p = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-  return (await segFetch(`${API_URL}/segments/${id}/leads?${p}`)).json();
+  return apiClient.get<any>(`/segments/${id}/leads?page=${page}&pageSize=${pageSize}`);
 }
 
 
