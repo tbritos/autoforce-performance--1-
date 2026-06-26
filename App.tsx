@@ -165,7 +165,7 @@ type DrillDownConfig = {
 
 type DrillDownLead = {
   id: string; email: string; name: string | null; company: string | null;
-  status: string; isHot: boolean; eventDate: string;
+  status: string; isHot: boolean; eventDate: string; firstSource: string | null;
 };
 
 const STATUS_META_MAP: Record<string, { label: string; color: string }> = {
@@ -204,7 +204,7 @@ const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () =>
   const [page, setPage]       = useState(1);
   const [loading, setLoading] = useState(false);
   const [data, setData]       = useState<{ total: number; leads: DrillDownLead[] } | null>(null);
-  const pageSize = 25;
+  const pageSize = 20;
 
   useEffect(() => { if (config) { setPage(1); setData(null); } }, [config]);
 
@@ -223,43 +223,42 @@ const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () =>
 
   return createPortal(
     <>
-      {/* Overlay */}
-      <div onClick={onClose} style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100,
-        animation: 'fadeIn .15s ease',
-      }} />
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1100, animation: 'fadeIn .15s ease' }}
+      />
 
-      {/* Panel */}
+      {/* Modal */}
       <div style={{
-        position: 'fixed', top: 0, right: 0, bottom: 0, width: 500,
-        background: '#fff', zIndex: 1101, display: 'flex', flexDirection: 'column',
-        boxShadow: '-4px 0 40px rgba(0,0,0,0.22)',
-        animation: 'slideInRight .2s ease',
-        fontFamily: 'inherit',
+        position: 'fixed', top: '50%', left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: 'min(860px, 94vw)', maxHeight: '82vh',
+        background: '#fff', borderRadius: 16,
+        zIndex: 1101, display: 'flex', flexDirection: 'column',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+        animation: 'fadeIn .18s ease',
+        fontFamily: 'inherit', overflow: 'hidden',
       }}>
+
         {/* Header */}
         <div style={{
-          padding: '18px 20px 14px', borderBottom: '1px solid #e5e7eb',
+          padding: '20px 24px 16px',
+          borderBottom: '1px solid #f0f0f0',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          flexShrink: 0, background: '#fff',
+          flexShrink: 0,
         }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#111827', lineHeight: 1.3 }}>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#111827' }}>
               {config.title}
             </h2>
-            {data && (
-              <p style={{ margin: '3px 0 0', fontSize: 12, color: '#6b7280', fontWeight: 500 }}>
-                {data.total.toLocaleString('pt-BR')} lead{data.total !== 1 ? 's' : ''}
-              </p>
-            )}
+            <p style={{ margin: '3px 0 0', fontSize: 12, color: '#6b7280' }}>
+              {data ? `${data.total.toLocaleString('pt-BR')} lead${data.total !== 1 ? 's' : ''}` : '...'}
+            </p>
           </div>
           <button
             onClick={onClose}
-            style={{
-              background: '#f3f4f6', border: 'none', cursor: 'pointer', color: '#6b7280',
-              width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center',
-              justifyContent: 'center', flexShrink: 0,
-            }}
+            style={{ background: '#f3f4f6', border: 'none', cursor: 'pointer', color: '#6b7280', width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             onMouseEnter={e => (e.currentTarget.style.background = '#e5e7eb')}
             onMouseLeave={e => (e.currentTarget.style.background = '#f3f4f6')}
           >
@@ -267,17 +266,30 @@ const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () =>
           </button>
         </div>
 
-        {/* List */}
-        <div style={{ flex: 1, overflowY: 'auto', background: '#f9fafb' }}>
+        {/* Table header */}
+        {!loading && data && data.leads.length > 0 && (
+          <div style={{
+            display: 'grid', gridTemplateColumns: '2fr 1.2fr 1.2fr 1fr 0.9fr',
+            padding: '8px 24px', background: '#f9fafb', borderBottom: '1px solid #f0f0f0',
+            flexShrink: 0,
+          }}>
+            {['Lead', 'Empresa', 'Origem', 'Status', 'Data'].map(col => (
+              <span key={col} style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {col}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Rows */}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
           {loading ? (
-            <div style={{ padding: 8 }}>
+            <div style={{ padding: '8px 0' }}>
               {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', background: '#fff', borderRadius: 10, marginBottom: 4 }}>
-                  <div style={{ width: 38, height: 38, borderRadius: '50%', background: '#e5e7eb', flexShrink: 0 }} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ height: 13, width: '50%', background: '#e5e7eb', borderRadius: 4, marginBottom: 6 }} />
-                    <div style={{ height: 11, width: '35%', background: '#f3f4f6', borderRadius: 4 }} />
-                  </div>
+                <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1.2fr 1.2fr 1fr 0.9fr', padding: '12px 24px', gap: 12 }}>
+                  {[55, 40, 35, 28, 30].map((w, j) => (
+                    <div key={j} style={{ height: 13, width: `${w}%`, background: '#f0f0f0', borderRadius: 4 }} />
+                  ))}
                 </div>
               ))}
             </div>
@@ -285,86 +297,116 @@ const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () =>
             <div style={{ padding: '60px 24px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
               Nenhum lead encontrado.
             </div>
-          ) : (
-            <div style={{ padding: 8 }}>
-              {data.leads.map(lead => {
-                const meta     = STATUS_META_MAP[lead.status] ?? { label: lead.status, color: '#6b7280' };
-                const name     = resolvedName(lead.name);
-                const initials = leadInitials(lead.name, lead.email);
-                const color    = avatarColor(lead.email);
+          ) : data.leads.map((lead, idx) => {
+            const meta     = STATUS_META_MAP[lead.status] ?? { label: lead.status, color: '#6b7280' };
+            const name     = resolvedName(lead.name);
+            const initials = leadInitials(lead.name, lead.email);
+            const color    = avatarColor(lead.email);
+            const isEven   = idx % 2 === 0;
 
-                return (
-                  <div
-                    key={lead.id}
-                    onClick={() => { navigate(`/leads/${lead.id}`); onClose(); }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 12,
-                      padding: '10px 14px', cursor: 'pointer', borderRadius: 10,
-                      marginBottom: 3, background: '#fff',
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 1px 8px rgba(0,0,0,0.10)')}
-                    onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
-                  >
-                    <div style={{
-                      width: 38, height: 38, borderRadius: '50%', background: color,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0, letterSpacing: '0.5px',
-                    }}>
-                      {initials}
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {name ?? lead.email}
-                        </span>
-                        {lead.isHot && <Flame size={12} style={{ color: '#f97316', flexShrink: 0 }} />}
-                      </div>
-                      {(lead.company || (name && lead.email)) && (
-                        <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 3 }}>
-                          {lead.company
-                            ? <><Building2 size={10} style={{ flexShrink: 0 }} />{lead.company}</>
-                            : lead.email
-                          }
-                        </div>
-                      )}
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
-                      <span style={{ padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 700, color: meta.color, background: meta.color + '22', whiteSpace: 'nowrap' }}>
-                        {meta.label}
-                      </span>
-                      <span style={{ fontSize: 10, color: '#9ca3af', whiteSpace: 'nowrap' }}>
-                        {fmtEventDate(lead.eventDate)}
-                      </span>
-                    </div>
+            return (
+              <div
+                key={lead.id}
+                onClick={() => { navigate(`/leads/${lead.id}`); onClose(); }}
+                style={{
+                  display: 'grid', gridTemplateColumns: '2fr 1.2fr 1.2fr 1fr 0.9fr',
+                  padding: '11px 24px', cursor: 'pointer', alignItems: 'center',
+                  background: isEven ? '#fff' : '#fafafa',
+                  borderBottom: '1px solid #f5f5f5',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#f0f7ff')}
+                onMouseLeave={e => (e.currentTarget.style.background = isEven ? '#fff' : '#fafafa')}
+              >
+                {/* Lead: avatar + nome + email */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                  <div style={{
+                    width: 34, height: 34, borderRadius: '50%', background: color,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0,
+                  }}>
+                    {initials}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {name ?? lead.email}
+                      </span>
+                      {lead.isHot && <Flame size={11} style={{ color: '#f97316', flexShrink: 0 }} />}
+                    </div>
+                    {name && (
+                      <div style={{ fontSize: 11, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
+                        {lead.email}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Empresa */}
+                <div style={{ fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 8 }}>
+                  {lead.company || <span style={{ color: '#d1d5db' }}>—</span>}
+                </div>
+
+                {/* Origem */}
+                <div style={{ paddingRight: 8 }}>
+                  {lead.firstSource ? (
+                    <span style={{
+                      display: 'inline-block', padding: '2px 8px', borderRadius: 99,
+                      fontSize: 10, fontWeight: 600,
+                      background: '#f0f9ff', color: '#0369a1',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      maxWidth: '100%',
+                    }}>
+                      {lead.firstSource}
+                    </span>
+                  ) : (
+                    <span style={{ color: '#d1d5db', fontSize: 12 }}>—</span>
+                  )}
+                </div>
+
+                {/* Status */}
+                <div>
+                  <span style={{
+                    display: 'inline-block', padding: '2px 8px', borderRadius: 99,
+                    fontSize: 10, fontWeight: 700,
+                    color: meta.color, background: meta.color + '1f',
+                  }}>
+                    {meta.label}
+                  </span>
+                </div>
+
+                {/* Data */}
+                <div style={{ fontSize: 11, color: '#9ca3af', whiteSpace: 'nowrap' }}>
+                  {fmtEventDate(lead.eventDate)}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        {/* Pagination */}
-        {data && data.total > pageSize && (
-          <div style={{
-            padding: '12px 20px', borderTop: '1px solid #e5e7eb',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            flexShrink: 0, background: '#fff',
-          }}>
-            <span style={{ fontSize: 12, color: '#6b7280' }}>Página {page} de {totalPages}</span>
+        {/* Footer / Pagination */}
+        <div style={{
+          padding: '12px 24px', borderTop: '1px solid #f0f0f0',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexShrink: 0, background: '#fff',
+        }}>
+          <span style={{ fontSize: 12, color: '#9ca3af' }}>
+            {data && data.total > pageSize
+              ? `Página ${page} de ${totalPages} · ${data.total.toLocaleString('pt-BR')} leads`
+              : data ? `${data.total.toLocaleString('pt-BR')} leads` : ''}
+          </span>
+          {data && data.total > pageSize && (
             <div style={{ display: 'flex', gap: 6 }}>
               <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid #e5e7eb', background: page === 1 ? '#f9fafb' : '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer', color: page === 1 ? '#d1d5db' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer', color: page === 1 ? '#d1d5db' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <ChevronLeft size={14} />
               </button>
               <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid #e5e7eb', background: page === totalPages ? '#f9fafb' : '#fff', cursor: page === totalPages ? 'not-allowed' : 'pointer', color: page === totalPages ? '#d1d5db' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid #e5e7eb', background: '#fff', cursor: page === totalPages ? 'not-allowed' : 'pointer', color: page === totalPages ? '#d1d5db' : '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <ChevronRight size={14} />
               </button>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </>,
     document.body,
