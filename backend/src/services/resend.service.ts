@@ -25,6 +25,33 @@ export interface SendEmailInput {
   skipRecord?: boolean;
 }
 
+export interface ReceivedEmailContent {
+  id: string;
+  from: string;
+  to: string[];
+  subject: string;
+  text: string | null;
+  html: string | null;
+  createdAt: string;
+}
+
+export async function getReceivedEmailContent(id: string): Promise<ReceivedEmailContent> {
+  const result = await getResend().emails.receiving.get(id);
+  if (result.error || !result.data) {
+    throw new Error(result.error?.message ?? 'Conteúdo do email recebido não encontrado');
+  }
+
+  return {
+    id: result.data.id,
+    from: result.data.from,
+    to: result.data.to,
+    subject: result.data.subject,
+    text: result.data.text,
+    html: result.data.html,
+    createdAt: result.data.created_at,
+  };
+}
+
 export async function sendEmail(input: SendEmailInput): Promise<void> {
   const fromName  = input.fromName  || process.env.RESEND_FROM_NAME  || 'AutoForce';
   const fromEmail = input.fromEmail || process.env.RESEND_FROM_EMAIL || 'noreply@updates.autoforce.com';

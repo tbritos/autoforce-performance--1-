@@ -86,8 +86,33 @@ const readFirstAddress = (value: unknown): { email: string | null; name: string 
 };
 
 async function recordResendReceivedEmail(db: any, data: ResendWebhookData, rawPayload: unknown) {
-  const from = readFirstAddress(data.from);
-  const to = readFirstAddress(data.to ?? data.recipients);
+  const resendId =
+    getString(data.email_id) ??
+    getString(data.emailId) ??
+    getString(data.id) ??
+    getString(data.message_id);
+
+  let retrieved: {
+    from: string;
+    to: string[];
+    subject: string;
+    text: string | null;
+    html: string | null;
+    createdAt: string;
+  } | null = null;
+
+  if (resendId) {
+    try {
+      const { getReceivedEmailContent } = await import('./services/resend.service');
+      retrieved = await getReceivedEmailContent(resendId);
+    } catch (error) {
+      // Ainda registra os metadados do webhook; um replay pode completar o corpo depois.
+      console.error(`[resend-webhook] could not retrieve inbound content id=${resendId}:`, error);
+    }
+  }
+
+  const from = readFirstAddress(retrieved?.from ?? data.from);
+  const to = readFirstAddress(retrieved?.to ?? data.to ?? data.recipients);
   const fromEmail = from.email;
 
   if (!fromEmail) {
@@ -95,13 +120,7 @@ async function recordResendReceivedEmail(db: any, data: ResendWebhookData, rawPa
     return { ok: true, received: 0, reason: 'missing_sender' };
   }
 
-  const resendId =
-    getString(data.email_id) ??
-    getString(data.emailId) ??
-    getString(data.id) ??
-    getString(data.message_id);
-
-  const receivedAtRaw = getString(data.created_at) ?? getString(data.received_at);
+  const receivedAtRaw = retrieved?.createdAt ?? getString(data.created_at) ?? getString(data.received_at);
   const receivedAt = receivedAtRaw ? new Date(receivedAtRaw) : new Date();
   const safeReceivedAt = Number.isNaN(receivedAt.getTime()) ? new Date() : receivedAt;
 
@@ -139,9 +158,9 @@ async function recordResendReceivedEmail(db: any, data: ResendWebhookData, rawPa
     fromEmail,
     fromName: from.name,
     toEmail: to.email,
-    subject: getString(data.subject),
-    text: getString(data.text) ?? getString(data.text_body),
-    html: getString(data.html) ?? getString(data.html_body),
+    subject: retrieved?.subject ?? getString(data.subject),
+    text: retrieved?.text ?? getString(data.text) ?? getString(data.text_body),
+    html: retrieved?.html ?? getString(data.html) ?? getString(data.html_body),
     rawData: rawPayload,
     receivedAt: safeReceivedAt,
   };
