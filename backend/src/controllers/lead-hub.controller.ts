@@ -408,7 +408,7 @@ export class LeadHubController {
           if (Object.keys(cfPatch).length > 0) {
             const leadCf = await prisma.lead.findUnique({ where: { email }, select: { customFields: true } });
             const current = (leadCf?.customFields as Record<string, unknown>) ?? {};
-            await prisma.lead.update({ where: { email }, data: { customFields: { ...current, ...cfPatch } } });
+            await prisma.lead.update({ where: { email }, data: { customFields: { ...current, ...cfPatch } as any } });
           }
 
           if (existing) updated++; else created++;
