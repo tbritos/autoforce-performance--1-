@@ -392,10 +392,10 @@ const LinkRow: React.FC<{
             <Star size={13} fill={link.isFavorite ? 'currentColor' : 'none'} />
           </button>
           <div className="min-w-0">
-            <p className="text-white text-xs font-medium truncate max-w-48">
+            <p className="text-white text-xs font-medium truncate" title={link.title ?? link.utmCampaign}>
               {link.title ?? link.utmCampaign}
             </p>
-            <p className="text-autoforce-grey text-xs truncate max-w-48 font-mono">
+            <p className="text-autoforce-grey text-xs truncate font-mono" title={trackingUrl ?? link.destinationUrl}>
               {trackingUrl ?? link.destinationUrl}
             </p>
           </div>
@@ -403,7 +403,7 @@ const LinkRow: React.FC<{
       </td>
       <td className="px-4 py-3 text-xs text-autoforce-lightGrey">{SOURCE_LABELS[link.utmSource] ?? link.utmSource}</td>
       <td className="px-4 py-3 text-xs text-autoforce-lightGrey">{MEDIUM_LABELS[link.utmMedium] ?? link.utmMedium}</td>
-      <td className="px-4 py-3 text-xs text-autoforce-lightGrey font-mono truncate max-w-32">{link.utmCampaign}</td>
+      <td className="px-4 py-3 text-xs text-autoforce-lightGrey font-mono max-w-0 w-48"><p className="truncate" title={link.utmCampaign}>{link.utmCampaign}</p></td>
       <td className="px-4 py-3">
         <span className={`text-xs font-medium ${link.clicks > 0 ? 'text-blue-400' : 'text-autoforce-lightGrey'}`}>
           {link.clicks}
@@ -620,7 +620,16 @@ const UTMTrackerView: React.FC = () => {
 
         {/* Table */}
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm table-fixed">
+            <colgroup>
+              <col className="w-[38%]" />
+              <col className="w-[10%]" />
+              <col className="w-[9%]" />
+              <col className="w-[18%]" />
+              <col className="w-[7%]" />
+              <col className="w-[10%]" />
+              <col className="w-[8%]" />
+            </colgroup>
             <thead>
               <tr className="border-b border-autoforce-grey/10">
                 {['Link', 'Origem', 'Mídia', 'Campanha', 'Cliques', 'Data', ''].map(h => (
