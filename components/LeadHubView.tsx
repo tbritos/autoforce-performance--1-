@@ -187,6 +187,7 @@ const CsvImportModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({
   const [mapping, setMapping]     = useState<Record<string, string>>({});
   const [result, setResult]       = useState<{ total: number; created: number; updated: number; errors: number; errorDetails: { row: number; email: string; error: string }[] } | null>(null);
   const [dragOver, setDragOver]   = useState(false);
+  const [importProgress, setImportProgress] = useState({ done: 0, total: 0 });
   const [customFieldDefs, setCustomFieldDefs] = useState<LeadCustomFieldDef[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -229,9 +230,27 @@ const CsvImportModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({
       }
       return out;
     });
+
+    const CHUNK = 500;
+    const chunks: Record<string, string>[][] = [];
+    for (let i = 0; i < mappedRows.length; i += CHUNK) chunks.push(mappedRows.slice(i, i + CHUNK));
+
+    setImportProgress({ done: 0, total: mappedRows.length });
+
+    const totals = { total: 0, created: 0, updated: 0, errors: 0, errorDetails: [] as { row: number; email: string; error: string }[] };
+    let offset = 0;
     try {
-      const res = await DataService.importLeads(mappedRows);
-      setResult(res);
+      for (const chunk of chunks) {
+        const res = await DataService.importLeads(chunk);
+        totals.total   += res.total;
+        totals.created += res.created;
+        totals.updated += res.updated;
+        totals.errors  += res.errors;
+        totals.errorDetails.push(...res.errorDetails.map(e => ({ ...e, row: e.row + offset })));
+        offset += chunk.length;
+        setImportProgress({ done: offset, total: mappedRows.length });
+      }
+      setResult(totals);
       setStep('done');
     } catch (err) {
       alert('Erro na importação: ' + (err instanceof Error ? err.message : String(err)));
@@ -374,7 +393,14 @@ const CsvImportModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({
           {step === 'importing' && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '32px 0' }}>
               <RefreshCw size={32} style={{ color: 'var(--accent)', animation: 'spin 1s linear infinite' }} />
-              <p style={{ margin: 0, fontSize: 14, color: 'var(--fg-muted)' }}>Importando {allRows.length} leads...</p>
+              <p style={{ margin: 0, fontSize: 14, color: 'var(--fg-muted)' }}>
+                Importando {importProgress.done.toLocaleString('pt-BR')} / {importProgress.total.toLocaleString('pt-BR')} leads...
+              </p>
+              {importProgress.total > 0 && (
+                <div style={{ width: '100%', maxWidth: 320, height: 6, background: 'var(--border)', borderRadius: 99 }}>
+                  <div style={{ height: '100%', borderRadius: 99, background: 'var(--accent)', width: `${Math.round((importProgress.done / importProgress.total) * 100)}%`, transition: 'width .3s' }} />
+                </div>
+              )}
             </div>
           )}
 
