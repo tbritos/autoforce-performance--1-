@@ -585,7 +585,7 @@ app.post('/api/resend-webhook', express.json(), async (req, res) => {
       }
     }
 
-    const event   = req.body as { type?: string; data?: ResendWebhookData };
+    const event   = req.body as { type?: string; created_at?: string; data?: ResendWebhookData };
     const type    = event?.type ?? '';
     const { prisma: db } = await import('./config/database');
 
@@ -604,12 +604,19 @@ app.post('/api/resend-webhook', express.json(), async (req, res) => {
 
     if (!emailId) { res.json({ ok: true }); return; }
 
-    const now = new Date();
+    const clickData = event?.data?.click && typeof event.data.click === 'object'
+      ? event.data.click as Record<string, unknown>
+      : null;
+    const occurredAtRaw =
+      (type === 'email.clicked' ? getString(clickData?.timestamp) : null) ??
+      getString(event.created_at);
+    const occurredAtCandidate = occurredAtRaw ? new Date(occurredAtRaw) : new Date();
+    const now = Number.isNaN(occurredAtCandidate.getTime()) ? new Date() : occurredAtCandidate;
     const updates: Record<string, unknown> = {};
 
     const current = await db.emailSent.findUnique({
       where: { resendId: emailId },
-      select: { id: true, status: true, openedAt: true, clickedAt: true },
+      select: { id: true, status: true, deliveredAt: true, openedAt: true, clickedAt: true, clickedUrl: true },
     });
 
     if (!current) {
@@ -639,6 +646,7 @@ app.post('/api/resend-webhook', express.json(), async (req, res) => {
         break;
       case 'email.delivered':
         keepBestStatus('delivered');
+        updates.deliveredAt = current.deliveredAt ?? now;
         break;
       case 'email.opened':
         keepBestStatus('opened');
@@ -648,6 +656,13 @@ app.post('/api/resend-webhook', express.json(), async (req, res) => {
         keepBestStatus('clicked');
         updates.openedAt = current.openedAt ?? now;
         updates.clickedAt = current.clickedAt ?? now;
+        updates.clickedUrl =
+          getString(event?.data?.click) ??
+          getString(event?.data?.link) ??
+          getString(event?.data?.url) ??
+          getString(clickData?.link) ??
+          getString(clickData?.url) ??
+          current.clickedUrl;
         break;
       case 'email.bounced':
         updates.status    = 'bounced';

@@ -58,6 +58,7 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
         fromEmail,
         toEmail:               input.toEmail,
         status,
+        htmlBody:              input.html,
         automationExecutionId: input.automationExecutionId ?? null,
         automationNodeId:      input.automationNodeId      ?? null,
         sentAt:                new Date(),

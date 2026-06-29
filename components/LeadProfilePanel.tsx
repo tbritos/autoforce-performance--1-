@@ -7,6 +7,7 @@ import {
   Trash2, FileText, Download, Wrench, Activity,
   ExternalLink, GitBranch, Flame, LayoutList,
   CheckCircle, XCircle, MessageCircle, Send, Bot, UserCheck, AlertCircle, Inbox,
+  Eye, MousePointerClick, Clock,
 } from 'lucide-react';
 import { LeadProfile, LeadStatus, LeadCustomFieldDef, PipedriveDealEvent, LeadConversion, WhatsAppConversationMessage, EmailSent, EmailReceived } from '../types';
 import { DataService } from '../services/dataService';
@@ -265,6 +266,94 @@ const ConversionDetailModal: React.FC<{ conversion: LeadConversion; onClose: () 
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
+type SelectedEmail =
+  | { kind: 'sent'; email: EmailSent }
+  | { kind: 'received'; email: EmailReceived };
+
+const EmailDetailModal: React.FC<{ item: SelectedEmail; onClose: () => void }> = ({ item, onClose }) => {
+  const isReceived = item.kind === 'received';
+  const email = item.email;
+  const sent = isReceived ? null : email as EmailSent;
+  const received = isReceived ? email as EmailReceived : null;
+  const fullDate = (value: string | null | undefined) =>
+    value
+      ? new Date(value).toLocaleString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      : 'Ainda não registrado';
+  const timeline = sent ? [
+    { label: 'Enviado', date: sent.sentAt, color: '#6366f1', icon: <Send size={14} /> },
+    { label: 'Entregue', date: sent.deliveredAt, color: '#10b981', icon: <CheckCircle size={14} /> },
+    { label: 'Aberto', date: sent.openedAt, color: '#0ea5e9', icon: <Eye size={14} /> },
+    { label: 'Clicado', date: sent.clickedAt, color: '#f59e0b', icon: <MousePointerClick size={14} /> },
+  ] : [];
+  const html = sent?.htmlBody ?? received?.html ?? null;
+  const text = received?.text?.trim() ?? '';
+
+  return ReactDOM.createPortal(
+    <div
+      onClick={event => { if (event.target === event.currentTarget) onClose(); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(15,23,42,.62)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+    >
+      <div role="dialog" aria-modal="true" aria-label={`Detalhes do email ${email.subject || ''}`} style={{ width: '100%', maxWidth: 860, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', borderRadius: 16, border: '1px solid var(--border)', background: 'var(--bg-surface)', boxShadow: '0 24px 70px rgba(0,0,0,.35)' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ width: 36, height: 36, flexShrink: 0, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', color: isReceived ? '#0f766e' : '#6366f1', background: isReceived ? '#ccfbf1' : '#eef2ff' }}>
+            {isReceived ? <Inbox size={17} /> : <Send size={17} />}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ color: 'var(--fg-primary)', fontSize: 15, fontWeight: 750, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email.subject || '(sem assunto)'}</div>
+            <div style={{ marginTop: 4, color: 'var(--fg-muted)', fontSize: 12 }}>
+              {isReceived
+                ? `De ${received?.fromName || received?.fromEmail} para ${received?.toEmail || 'AutoForce'}`
+                : `De ${sent?.fromName || sent?.fromEmail || 'AutoForce'} para ${sent?.toEmail}`}
+            </div>
+          </div>
+          <button type="button" aria-label="Fechar detalhes" onClick={onClose} style={{ padding: 5, border: 0, background: 'transparent', color: 'var(--fg-muted)', cursor: 'pointer', display: 'flex' }}><X size={19} /></button>
+        </div>
+
+        <div style={{ padding: 20, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+          {sent ? (
+            <div>
+              <div style={{ marginBottom: 9, color: 'var(--fg-muted)', fontSize: 11, fontWeight: 750, textTransform: 'uppercase', letterSpacing: '.05em' }}>Métricas deste envio</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+                {timeline.map((event, index) => (
+                  <div key={event.label} style={{ minWidth: 0, padding: '12px 14px', borderLeft: index ? '1px solid var(--border)' : undefined, background: event.date ? 'var(--bg-card)' : 'var(--bg-muted)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: event.date ? event.color : 'var(--fg-subtle)', fontSize: 12, fontWeight: 700 }}>{event.icon}{event.label}</div>
+                    <div style={{ marginTop: 6, color: event.date ? 'var(--fg-primary)' : 'var(--fg-subtle)', fontSize: 11, lineHeight: 1.4 }}>{fullDate(event.date)}</div>
+                  </div>
+                ))}
+              </div>
+              {sent.clickedUrl && (
+                <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 9, background: '#fffbeb', border: '1px solid #fde68a', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                  <MousePointerClick size={14} style={{ color: '#d97706', flexShrink: 0, marginTop: 1 }} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 11, color: '#92400e', fontWeight: 700 }}>Link clicado</div>
+                    <a href={safeUrl(sent.clickedUrl)} target="_blank" rel="noopener noreferrer" style={{ display: 'block', marginTop: 2, color: '#b45309', fontSize: 12, wordBreak: 'break-all' }}>{sent.clickedUrl}</a>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: 'var(--fg-muted)', fontSize: 12 }}>
+              <Clock size={14} /> Recebido em {fullDate(received?.receivedAt)}
+            </div>
+          )}
+
+          <div>
+            <div style={{ marginBottom: 9, color: 'var(--fg-muted)', fontSize: 11, fontWeight: 750, textTransform: 'uppercase', letterSpacing: '.05em' }}>Visualização do email</div>
+            {html ? (
+              <iframe title="Conteúdo do email" sandbox="" srcDoc={html} style={{ width: '100%', height: 430, display: 'block', border: '1px solid var(--border)', borderRadius: 10, background: '#fff' }} />
+            ) : text ? (
+              <div style={{ minHeight: 180, padding: 18, whiteSpace: 'pre-wrap', lineHeight: 1.6, color: 'var(--fg-primary)', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10 }}>{text}</div>
+            ) : (
+              <div style={{ padding: 30, textAlign: 'center', color: 'var(--fg-subtle)', background: 'var(--bg-muted)', border: '1px solid var(--border)', borderRadius: 10 }}>O conteúdo deste email antigo não foi armazenado.</div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 interface Props {
   email?: string;
   leadId?: string;
@@ -300,6 +389,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   const [emailsSent, setEmailsSent]             = useState<EmailSent[] | null>(null);
   const [emailsReceived, setEmailsReceived]     = useState<EmailReceived[] | null>(null);
   const [loadingEmails, setLoadingEmails]       = useState(false);
+  const [selectedEmail, setSelectedEmail]       = useState<SelectedEmail | null>(null);
 
   // Edit form state
   const [form, setForm] = useState({
@@ -1210,7 +1300,19 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                               : '';
                             const preview = isReceived ? ((email as EmailReceived).text || '').trim() : '';
                             return (
-                              <div key={`${item.kind}-${email.id}`} style={{ background: 'var(--bg-card)', border: `1px solid ${isReceived ? '#99f6e4' : 'var(--border)'}`, borderRadius: 10, padding: '12px 14px' }}>
+                              <div
+                                key={`${item.kind}-${email.id}`}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => setSelectedEmail({ kind: item.kind, email } as SelectedEmail)}
+                                onKeyDown={event => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault();
+                                    setSelectedEmail({ kind: item.kind, email } as SelectedEmail);
+                                  }
+                                }}
+                                style={{ background: 'var(--bg-card)', border: `1px solid ${isReceived ? '#99f6e4' : 'var(--border)'}`, borderRadius: 10, padding: '12px 14px', cursor: 'pointer' }}
+                              >
                                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
                                   <div style={{ flex: 1, minWidth: 0 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1226,6 +1328,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                   <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 'var(--r-full)', color: s.color, background: s.bg }}>
                                     {s.label}
                                   </span>
+                                  <ExternalLink size={13} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
                                 </div>
                                 {!isReceived && (((email as EmailSent).openedAt || (email as EmailSent).clickedAt)) && (
                                   <div style={{ marginTop: 8, display: 'flex', gap: 12, fontSize: 11, color: 'var(--fg-muted)' }}>
@@ -1361,6 +1464,9 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
       </div>
       {selectedConversion && (
         <ConversionDetailModal conversion={selectedConversion} onClose={() => setSelectedConversion(null)} />
+      )}
+      {selectedEmail && (
+        <EmailDetailModal item={selectedEmail} onClose={() => setSelectedEmail(null)} />
       )}
     </>
     );

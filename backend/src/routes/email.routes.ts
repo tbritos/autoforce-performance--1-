@@ -23,8 +23,13 @@ router.get('/sent/lead/:leadEmail', async (req: Request, res: Response) => {
       where:   { leadEmail: req.params.leadEmail },
       orderBy: { sentAt: 'desc' },
       take:    100,
+      include: { template: { select: { body: true } } },
     });
-    res.json(emails);
+    res.json(emails.map(({ template, ...email }) => ({
+      ...email,
+      // Registros anteriores à captura do HTML ainda podem usar o template.
+      htmlBody: email.htmlBody ?? template?.body ?? null,
+    })));
   } catch (err) {
     res.status(500).json({ error: 'Erro ao buscar emails' });
   }

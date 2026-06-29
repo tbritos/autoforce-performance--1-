@@ -790,8 +790,11 @@ export interface EmailSent {
   fromEmail: string | null;
   toEmail: string;
   status: 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'complained' | 'failed';
+  htmlBody: string | null;
+  deliveredAt: string | null;
   openedAt: string | null;
   clickedAt: string | null;
+  clickedUrl: string | null;
   bouncedAt: string | null;
   complainedAt: string | null;
   automationExecutionId: string | null;

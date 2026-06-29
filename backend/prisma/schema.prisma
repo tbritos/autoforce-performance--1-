@@ -832,8 +832,11 @@ model EmailSent {
   fromEmail     String?
   toEmail       String
   status        String   @default("sent")
+  htmlBody      String?  @db.Text
+  deliveredAt   DateTime?
   openedAt      DateTime?
   clickedAt     DateTime?
+  clickedUrl    String?  @db.Text
   bouncedAt     DateTime?
   complainedAt  DateTime?
   automationExecutionId String?
