@@ -423,7 +423,7 @@ const LinkRow: React.FC<{
             {copied === link.id ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
           </button>
           <a
-            href={link.fullUrl}
+            href={copyUrl}
             target="_blank"
             rel="noopener noreferrer"
             title="Abrir link com UTMs"
