@@ -335,6 +335,10 @@ export class LeadHubController {
         return;
       }
 
+      // Carrega nomes de campos customizados uma vez antes do loop
+      const customFieldDefs = await prisma.leadCustomFieldDef.findMany({ select: { name: true } });
+      const cfNames = new Set(customFieldDefs.map((d: { name: string }) => d.name));
+
       let created = 0, updated = 0, errors = 0;
       const errorDetails: { row: number; email: string; error: string }[] = [];
 
@@ -392,6 +396,19 @@ export class LeadHubController {
             for (const tag of tags) {
               await LeadHubService.addTag(email, tag).catch(() => {});
             }
+          }
+
+          // Aplica campos customizados cujos nomes aparecem no CSV
+          const cfPatch: Record<string, unknown> = {};
+          for (const [key, val] of Object.entries(row)) {
+            if (cfNames.has(key) && val !== undefined && val !== '') {
+              cfPatch[key] = val;
+            }
+          }
+          if (Object.keys(cfPatch).length > 0) {
+            const leadCf = await prisma.lead.findUnique({ where: { email }, select: { customFields: true } });
+            const current = (leadCf?.customFields as Record<string, unknown>) ?? {};
+            await prisma.lead.update({ where: { email }, data: { customFields: { ...current, ...cfPatch } } });
           }
 
           if (existing) updated++; else created++;

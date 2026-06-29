@@ -187,7 +187,17 @@ const CsvImportModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({
   const [mapping, setMapping]     = useState<Record<string, string>>({});
   const [result, setResult]       = useState<{ total: number; created: number; updated: number; errors: number; errorDetails: { row: number; email: string; error: string }[] } | null>(null);
   const [dragOver, setDragOver]   = useState(false);
+  const [customFieldDefs, setCustomFieldDefs] = useState<LeadCustomFieldDef[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    DataService.listCustomFieldDefs().then(setCustomFieldDefs).catch(() => {});
+  }, []);
+
+  const allImportColumns = [
+    ...IMPORT_COLUMNS,
+    ...customFieldDefs.map((cf: LeadCustomFieldDef) => ({ key: cf.name, label: `${cf.label} (campo personalizado)`, required: false })),
+  ];
 
   const handleFile = (file: File) => {
     const reader = new FileReader();
@@ -281,6 +291,9 @@ const CsvImportModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({
               <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-muted)' }}>
                 Formatos aceitos: .csv com separador vírgula ou ponto-e-vírgula
               </p>
+              <p style={{ margin: '12px 0 0', fontSize: 12, color: 'var(--fg-muted)', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', display: 'inline-block' }}>
+                Limite: <strong>5.000 leads por importação.</strong> Para bases maiores, divida o CSV em lotes de até 5.000 linhas.
+              </p>
               <input ref={fileRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }}
                 onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
             </div>
@@ -316,13 +329,23 @@ const CsvImportModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({
                       style={{ fontSize: 12, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', outline: 'none', width: '100%' }}
                     >
                       <option value="">— Ignorar —</option>
-                      {IMPORT_COLUMNS.map(c => (
+                      {allImportColumns.map(c => (
                         <option key={c.key} value={c.key}>{c.label}</option>
                       ))}
                     </select>
                   </div>
                 ))}
               </div>
+
+              {allRows.length > 5000 && (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 14px', background: 'var(--red-50)', border: '1px solid var(--red-100)', borderRadius: 10 }}>
+                  <AlertCircle size={15} style={{ color: 'var(--red-500)', flexShrink: 0, marginTop: 1 }} />
+                  <span style={{ fontSize: 12, color: 'var(--red-600)' }}>
+                    Este arquivo tem <strong>{allRows.length.toLocaleString('pt-BR')} linhas</strong>, mas o limite por importação é de <strong>5.000 leads</strong>.
+                    Divida o CSV em lotes de até 5.000 linhas e importe um de cada vez.
+                  </span>
+                </div>
+              )}
 
               {!hasEmailMapping && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--red-50)', border: '1px solid var(--red-100)', borderRadius: 10 }}>
