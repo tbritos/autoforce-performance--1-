@@ -456,6 +456,132 @@ const CsvImportModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({
   );
 };
 
+// ─── New Lead Modal ───────────────────────────────────────────────────────────
+
+const NEW_LEAD_FIELDS: Array<{ key: keyof NewLeadForm; label: string; required?: boolean }> = [
+  { key: 'email',    label: 'Email *', required: true },
+  { key: 'name',      label: 'Nome' },
+  { key: 'phone',     label: 'Telefone' },
+  { key: 'company',   label: 'Empresa' },
+  { key: 'jobTitle',  label: 'Cargo' },
+  { key: 'city',      label: 'Cidade' },
+  { key: 'state',     label: 'Estado' },
+  { key: 'tags',      label: 'Tags (separadas por vírgula)' },
+  { key: 'source',    label: 'Origem' },
+];
+
+type NewLeadForm = {
+  email: string; name: string; phone: string; company: string;
+  jobTitle: string; city: string; state: string; tags: string; source: string;
+};
+
+const EMPTY_NEW_LEAD: NewLeadForm = {
+  email: '', name: '', phone: '', company: '', jobTitle: '', city: '', state: '', tags: '', source: '',
+};
+
+const NewLeadModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ onClose, onDone }) => {
+  const [form, setForm]       = useState<NewLeadForm>(EMPTY_NEW_LEAD);
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+
+  const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim());
+
+  const handleSubmit = async () => {
+    if (!isValidEmail) { setError('Informe um email válido.'); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const row: Record<string, string> = {};
+      for (const { key } of NEW_LEAD_FIELDS) {
+        if (form[key].trim()) row[key] = form[key].trim();
+      }
+      const res = await DataService.importLeads([row]);
+      if (res.errors > 0) {
+        setError(res.errorDetails[0]?.error ?? 'Não foi possível salvar o lead.');
+        return;
+      }
+      onDone();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const overlayStyle: React.CSSProperties = {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 1000,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+  };
+  const boxStyle: React.CSSProperties = {
+    background: 'var(--bg-surface)', borderRadius: 16, border: '1px solid var(--border)',
+    boxShadow: 'var(--shadow-md)', width: '100%', maxWidth: 480, maxHeight: '90vh',
+    overflow: 'auto', display: 'flex', flexDirection: 'column',
+  };
+  const headerStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: '18px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0,
+  };
+  const inputStyle: React.CSSProperties = {
+    fontSize: 13, padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)',
+    background: 'var(--bg-subtle)', color: 'var(--fg-primary)', outline: 'none', width: '100%',
+  };
+
+  return ReactDOM.createPortal(
+    <div style={overlayStyle} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={boxStyle}>
+        <div style={headerStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Plus size={17} style={{ color: 'var(--accent)' }} />
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--fg-primary)' }}>Novo Lead</h2>
+          </div>
+          <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-subtle)', display: 'flex' }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {NEW_LEAD_FIELDS.map(({ key, label, required }) => (
+            <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>{label}</label>
+              <input
+                type={key === 'email' ? 'email' : 'text'}
+                value={form[key]}
+                onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                style={inputStyle}
+                autoFocus={key === 'email'}
+                required={required}
+              />
+            </div>
+          ))}
+
+          {error && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--red-50)', border: '1px solid var(--red-100)', borderRadius: 10 }}>
+              <AlertCircle size={15} style={{ color: 'var(--red-500)', flexShrink: 0 }} />
+              <span style={{ fontSize: 12, color: 'var(--red-600)' }}>{error}</span>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 4 }}>
+            <button type="button" onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer' }}>
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!isValidEmail || saving}
+              style={{ padding: '9px 22px', borderRadius: 8, border: 'none', background: (isValidEmail && !saving) ? 'var(--accent)' : 'var(--bg-muted)', color: (isValidEmail && !saving) ? 'white' : 'var(--fg-subtle)', fontSize: 13, fontWeight: 700, cursor: (isValidEmail && !saving) ? 'pointer' : 'not-allowed' }}
+            >
+              {saving ? 'Salvando...' : 'Salvar lead'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 // ─── Main view ────────────────────────────────────────────────────────────────
 
 const CACHE_KEY = 'lead-hub-result-v1';
@@ -492,6 +618,7 @@ const LeadHubView: React.FC = () => {
   const [page, setPage]             = useState(1);
   const [showFieldManager, setShowFieldManager] = useState(false);
   const [showImport, setShowImport]             = useState(false);
+  const [showNewLead, setShowNewLead]           = useState(false);
   const [fieldDefs, setFieldDefs] = useState<LeadCustomFieldDef[]>([]);
   const [customFilterField, setCustomFilterField] = useState('');
   const [customFilterValue, setCustomFilterValue] = useState('');
@@ -597,6 +724,9 @@ const LeadHubView: React.FC = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button type="button" onClick={() => setShowFieldManager(true)} style={btnStyle} title="Gerenciar campos personalizados">
             <Settings2 size={13} /> Campos
+          </button>
+          <button type="button" onClick={() => setShowNewLead(true)} style={btnStyle} title="Adicionar um lead manualmente">
+            <Plus size={13} /> Novo Lead
           </button>
           <button type="button" onClick={() => setShowImport(true)} style={btnStyle} title="Importar leads via CSV">
             <Upload size={13} /> Importar
@@ -827,6 +957,9 @@ const LeadHubView: React.FC = () => {
     )}
     {showImport && (
       <CsvImportModal onClose={() => setShowImport(false)} onDone={load} />
+    )}
+    {showNewLead && (
+      <NewLeadModal onClose={() => setShowNewLead(false)} onDone={load} />
     )}
 
     </>
