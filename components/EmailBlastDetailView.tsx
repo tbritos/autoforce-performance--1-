@@ -13,9 +13,11 @@ type AudienceType = 'tag' | 'segment' | 'individual';
 
 interface BlastStats {
   sent: number; delivered: number; opened: number;
-  clicked: number; bounced: number;
+  clicked: number; bounced: number; failed: number;
   openRate: number; clickRate: number; bounceRate: number;
 }
+
+type SendsFilter = 'all' | 'opened' | 'clicked' | 'bounced' | 'failed';
 
 interface SendRecord {
   id: string;
@@ -102,20 +104,26 @@ const EmailBlastDetailView: React.FC = () => {
   const [error, setError]     = useState<string | null>(null);
   const [showSends, setShowSends] = useState(true);
   const [sendsPage, setSendsPage] = useState(1);
+  const [sendsFilter, setSendsFilter] = useState<SendsFilter>('all');
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const data = await apiClient.get<EmailBlast>(`/email-blasts/${id}?page=${sendsPage}&pageSize=${SENDS_PAGE_SIZE}`);
+      const data = await apiClient.get<EmailBlast>(`/email-blasts/${id}?page=${sendsPage}&pageSize=${SENDS_PAGE_SIZE}&filter=${sendsFilter}`);
       setBlast(data);
     } catch {
       setError('Erro ao carregar disparo');
     } finally {
       setLoading(false);
     }
-  }, [id, sendsPage]);
+  }, [id, sendsPage, sendsFilter]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleFilterChange = (next: SendsFilter) => {
+    setSendsFilter(next);
+    setSendsPage(1);
+  };
 
   // Atualiza sozinho enquanto o disparo estiver em andamento
   useEffect(() => {
@@ -241,6 +249,26 @@ const EmailBlastDetailView: React.FC = () => {
           {showSends ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
         </button>
 
+        {showSends && st.sent > 0 && (
+          <div style={{ display: 'flex', gap: 6, padding: '0 20px 14px', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
+            {([
+              { key: 'all',     label: 'Todos',    count: st.sent },
+              { key: 'opened',  label: 'Abertos',  count: st.opened },
+              { key: 'clicked', label: 'Clicados', count: st.clicked },
+              { key: 'bounced', label: 'Bounced',  count: st.bounced },
+              { key: 'failed',  label: 'Falhou',   count: st.failed },
+            ] as { key: SendsFilter; label: string; count: number }[]).map(f => (
+              <button key={f.key} type="button" onClick={() => handleFilterChange(f.key)}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 20, border: `1px solid ${sendsFilter === f.key ? 'var(--accent)' : 'var(--border)'}`, background: sendsFilter === f.key ? 'var(--accent-soft)' : 'transparent', color: sendsFilter === f.key ? 'var(--accent)' : 'var(--fg-secondary)', fontSize: 12, fontWeight: sendsFilter === f.key ? 700 : 400, cursor: 'pointer' }}>
+                {f.label}
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '1px 5px', borderRadius: 10, background: sendsFilter === f.key ? 'var(--accent)' : 'var(--bg-muted)', color: sendsFilter === f.key ? '#fff' : 'var(--fg-muted)' }}>
+                  {f.count.toLocaleString('pt-BR')}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {showSends && (
           hasSends ? (
             <div style={{ overflowX: 'auto' }}>
@@ -286,7 +314,7 @@ const EmailBlastDetailView: React.FC = () => {
             </div>
           ) : (
             <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>
-              Nenhum envio registrado ainda.
+              {sendsFilter === 'all' ? 'Nenhum envio registrado ainda.' : 'Nenhum lead nesse filtro.'}
             </div>
           )
         )}
