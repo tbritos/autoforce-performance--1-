@@ -106,7 +106,8 @@ export class FunnelService {
     }
 
     // Build lead WHERE — prefer tag-based; fall back to UTM filters for legacy funnels
-    const where: Prisma.LeadWhereInput = { deletedAt: null };
+    // Leads desqualificados (bot/inoperantes) nao contam em nenhum dashboard.
+    const where: Prisma.LeadWhereInput = { deletedAt: null, status: { not: 'DISQUALIFIED' } };
     if (startDate || endDate) {
       where.firstSeenAt = {
         ...(startDate ? { gte: new Date(startDate).toISOString() } : {}),

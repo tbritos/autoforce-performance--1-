@@ -1,6 +1,7 @@
 import { prisma } from '../config/database';
 import { LeadStatus, Prisma } from '@prisma/client';
 import { normalizePhoneE164 } from '../utils/phone';
+import { isLikelyBotLead } from './lead-spam-detection.service';
 
 // ============================================================
 // Helpers
@@ -226,12 +227,23 @@ export class LeadHubService {
 
     try {
       // Step 2: upsert lead with first-touch data from conversion
-      const lead = await LeadHubService.upsertLead(input.leadData, {
+      let lead = await LeadHubService.upsertLead(input.leadData, {
         source: input.conversionData.utmSource,
         medium: input.conversionData.utmMedium,
         campaign: input.conversionData.utmCampaign,
         landingPage: input.conversionData.landingPage,
       });
+
+      // Bots genericos de spam preenchem todos os campos com strings aleatorias —
+      // ficam com status DISQUALIFIED e nao contam como lead ativo em lugar nenhum.
+      const botDetected = isLikelyBotLead({
+        name: input.leadData.name,
+        company: input.leadData.company,
+        email: input.leadData.email,
+      });
+      if (botDetected && lead.status !== 'DISQUALIFIED') {
+        lead = await prisma.lead.update({ where: { email }, data: { status: 'DISQUALIFIED' } });
+      }
 
       // Step 3: record the conversion touchpoint
       const conversion = await LeadHubService.recordConversion({
@@ -560,7 +572,7 @@ export class LeadHubService {
   static async getLeadStats(start: Date, end: Date) {
     const [leads, mqls, sqls] = await Promise.all([
       prisma.lead.count({
-        where: { deletedAt: null, firstSeenAt: { gte: start, lte: end } },
+        where: { deletedAt: null, status: { not: 'DISQUALIFIED' }, firstSeenAt: { gte: start, lte: end } },
       }),
       prisma.leadStatusHistory.count({
         where: { toStatus: 'MQL', changedAt: { gte: start, lte: end } },
@@ -703,7 +715,7 @@ export class LeadHubService {
   static async getFunnelCounts() {
     const counts = await prisma.lead.groupBy({
       by: ['status'],
-      where: { deletedAt: null },
+      where: { deletedAt: null, status: { not: 'DISQUALIFIED' } },
       _count: { _all: true },
     });
 

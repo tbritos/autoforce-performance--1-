@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../config/database';
 import { LeadHubService, normalizeEmail } from './lead-hub.service';
 import { LeadClassificationRulesService } from './lead-classification-rules.service';
+import { isLikelyBotLead } from './lead-spam-detection.service';
 
 type FieldMappings = Record<string, string>;
 type AnyRecord = Record<string, any>;
@@ -464,6 +465,12 @@ export class LeadWebhooksService {
       const firstSource = cleanString(normalized.conversion.utmSource) || source.defaultSource || source.name;
       const campaignName = cleanString(normalized.conversion.campaignName) || source.defaultCampaign || undefined;
 
+      const botDetected = isLikelyBotLead({
+        name: cleanString(normalized.lead.name),
+        company: cleanString(normalized.lead.company),
+        email,
+      });
+
       const lead = await LeadHubService.upsertLead(
         {
           email,
@@ -507,6 +514,7 @@ export class LeadWebhooksService {
           tags: Array.from(new Set([...lead.tags, ...tags])),
           customFields: nextCustomFields as Prisma.JsonObject,
           lastSeenAt: new Date(),
+          ...(botDetected ? { status: 'DISQUALIFIED' as const } : {}),
         },
       });
 
@@ -530,7 +538,9 @@ export class LeadWebhooksService {
         },
       });
 
-      const rules = await LeadClassificationRulesService.executeForLead(updatedLead.email, 'webhook_received', {
+      // Leads suspeitos de bot nao passam por regras de classificacao (algumas podem
+      // criar negocio no Pipedrive) — ficam apenas com status DISQUALIFIED.
+      const rules = botDetected ? [] : await LeadClassificationRulesService.executeForLead(updatedLead.email, 'webhook_received', {
         webhookSourceId: source.id,
         webhookSourceName: source.name,
         normalized,
@@ -557,32 +567,37 @@ export class LeadWebhooksService {
             tagsApplied: tags,
             rules: rulesResult,
             leadAction,
+            botDetected,
           } as Prisma.JsonObject,
           processedAt: new Date(),
         },
       });
 
-      // Fire automation triggers (fire-and-forget)
-      import('./automation-engine.service').then(({ fireTrigger }) => {
-        const conversionName = cleanString(normalized.conversion.formName) || source.name;
-        if (leadAction === 'created') {
-          fireTrigger('lead_created', updatedLead.email, {
+      // Leads suspeitos de bot ficam com status DISQUALIFIED e nunca entram em
+      // automacao (nenhum fluxo ativo, nenhum negocio criado no Pipedrive).
+      if (!botDetected) {
+        // Fire automation triggers (fire-and-forget)
+        import('./automation-engine.service').then(({ fireTrigger }) => {
+          const conversionName = cleanString(normalized.conversion.formName) || source.name;
+          if (leadAction === 'created') {
+            fireTrigger('lead_created', updatedLead.email, {
+              conversionName,
+              source: firstSource,
+              webhookSourceId: source.id,
+              webhookSourceName: source.name,
+            });
+          }
+          fireTrigger('conversion_received', updatedLead.email, {
             conversionName,
-            source: firstSource,
             webhookSourceId: source.id,
             webhookSourceName: source.name,
+            source: firstSource,
           });
-        }
-        fireTrigger('conversion_received', updatedLead.email, {
-          conversionName,
-          webhookSourceId: source.id,
-          webhookSourceName: source.name,
-          source: firstSource,
-        });
-        for (const tag of newTags) {
-          fireTrigger('tag_added', updatedLead.email, { tag });
-        }
-      }).catch(() => {});
+          for (const tag of newTags) {
+            fireTrigger('tag_added', updatedLead.email, { tag });
+          }
+        }).catch(() => {});
+      }
 
       return {
         ok: true,

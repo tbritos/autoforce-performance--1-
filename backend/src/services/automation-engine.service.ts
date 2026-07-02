@@ -86,6 +86,11 @@ export async function fireTrigger(
   context: TriggerContext = {}
 ): Promise<void> {
   try {
+    // Leads desqualificados (bot ou desqualificados manualmente) sao inoperantes:
+    // nunca entram em nenhuma automacao ativa.
+    const lead = await prisma.lead.findUnique({ where: { email: leadEmail }, select: { status: true } });
+    if (lead?.status === 'DISQUALIFIED') return;
+
     const journeys = await prisma.automationJourney.findMany({
       where: { isActive: true },
     });
