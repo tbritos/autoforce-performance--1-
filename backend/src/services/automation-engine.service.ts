@@ -1155,12 +1155,13 @@ async function executePipedriveAction(
 
   switch (actionType) {
     case 'create_deal': {
-      const titleField   = String(config.titleField ?? 'company');
+      const titleField   = String(config.titleField ?? 'companyName');
       const pipeline     = String(config.pipeline ?? 'novo_cliente');
       const noteTemplate = String(config.noteTemplate ?? config.note ?? '');
 
-      const titleValue = titleField === 'company' ? (lead.company ?? lead.name ?? lead.id)
-                       : titleField === 'name'    ? (lead.name ?? lead.id)
+      // Mesmas chaves usadas em OUR_LEAD_FIELDS no frontend (ex: 'companyName' -> lead.company)
+      const titleValue = titleField === 'companyName' ? (lead.company ?? lead.name ?? lead.id)
+                       : titleField === 'name'         ? (lead.name ?? lead.id)
                        : null;
 
       const fullLead = noteTemplate
