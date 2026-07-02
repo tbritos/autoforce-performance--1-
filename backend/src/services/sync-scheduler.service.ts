@@ -133,6 +133,14 @@ export function startSyncScheduler(): void {
     }).catch(() => {});
   }, 60_000);
 
+  // Retoma disparos de email travados em "sending" sem progresso ha alguns minutos
+  // (hang de rede, nao so reinicio do processo)
+  setInterval(() => {
+    import('../routes/email-blasts.routes').then(({ recoverStaleBlasts }) => {
+      recoverStaleBlasts().catch(err => console.error('[email-blasts] watchdog error:', err));
+    }).catch(() => {});
+  }, 90_000);
+
   // Detect Google Appointment Schedule bookings created after the WhatsApp AI sends the booking link.
   const bookingSyncMs = Number.parseInt(process.env.MEETING_BOOKING_SYNC_INTERVAL_MS ?? '', 10) || 5 * 60 * 1000;
   setInterval(() => {

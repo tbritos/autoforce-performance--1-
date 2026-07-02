@@ -1,6 +1,15 @@
 import { Resend } from 'resend';
 import { prisma } from '../config/database';
 
+const SEND_TIMEOUT_MS = 20_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`Timeout (${ms / 1000}s): ${label}`)), ms)),
+  ]);
+}
+
 let _resend: Resend | null = null;
 
 function getResend(): Resend {
@@ -63,12 +72,11 @@ export async function sendEmail(input: SendEmailInput): Promise<boolean> {
 
   try {
     const client = getResend();
-    const result = await client.emails.send({
-      from,
-      to: [input.toEmail],
-      subject: input.subject,
-      html: input.html,
-    });
+    const result = await withTimeout(
+      client.emails.send({ from, to: [input.toEmail], subject: input.subject, html: input.html }),
+      SEND_TIMEOUT_MS,
+      `sendEmail ${input.toEmail}`
+    );
     resendId = (result.data as { id?: string } | null)?.id ?? null;
     status   = resendId ? 'sent' : 'failed';
   } catch (err) {

@@ -5,6 +5,10 @@ import { SegmentService, SegmentRules } from '../services/segment.service';
 
 const router = Router();
 
+// Trava em memoria contra execucao concorrente do mesmo disparo (ex: clique duplo,
+// ou o watchdog tentando retomar um disparo que este mesmo processo ja esta enviando).
+const activeBlasts = new Set<string>();
+
 type AudienceLead = { email: string; name: string | null; company: string | null; phone: string | null; jobTitle: string | null };
 
 const LEAD_SELECT = { email: true, name: true, company: true, phone: true, jobTitle: true } as const;
@@ -51,6 +55,8 @@ async function sendBlastNow(blastId: string, opts: { resume?: boolean } = {}): P
   // Cancelado so bloqueia disparo automatico (agendamento/recuperacao); um resume
   // explicito (botao "Reenviar falhas") pode retomar um disparo cancelado de proposito.
   if (blast.status === 'cancelled' && !opts.resume) return;
+  if (activeBlasts.has(blastId)) return;
+  activeBlasts.add(blastId);
 
   if (blast.status !== 'sending') {
     await prisma.emailBlast.update({ where: { id: blastId }, data: { status: 'sending' } });
@@ -118,6 +124,8 @@ async function sendBlastNow(blastId: string, opts: { resume?: boolean } = {}): P
   } catch (err) {
     console.error(`[email-blasts] envio ${blastId} falhou:`, err);
     await prisma.emailBlast.update({ where: { id: blastId }, data: { status: 'failed' } });
+  } finally {
+    activeBlasts.delete(blastId);
   }
 }
 
@@ -138,6 +146,24 @@ export async function recoverStuckBlasts(): Promise<void> {
   const stuck = await prisma.emailBlast.findMany({ where: { status: 'sending' }, select: { id: true } });
   for (const { id } of stuck) {
     console.log(`[email-blasts] retomando disparo travado ${id}`);
+    sendBlastNow(id, { resume: true }).catch(err => console.error(`[email-blasts] resume ${id} falhou:`, err));
+  }
+}
+
+const STALE_SENDING_MS = 3 * 60 * 1000; // 3 min sem progresso = considerado travado (ex: hang de rede)
+
+// Chamado periodicamente: pega disparos em "sending" sem nenhuma atualizacao recente
+// (sentCount/failedCount parou de mudar) e retoma, mesmo sem reinicio do processo —
+// cobre travamentos por hang de rede, nao so por deploy.
+export async function recoverStaleBlasts(): Promise<void> {
+  const cutoff = new Date(Date.now() - STALE_SENDING_MS);
+  const stale = await prisma.emailBlast.findMany({
+    where: { status: 'sending', updatedAt: { lte: cutoff } },
+    select: { id: true },
+  });
+  for (const { id } of stale) {
+    if (activeBlasts.has(id)) continue;
+    console.log(`[email-blasts] disparo ${id} sem progresso ha mais de ${STALE_SENDING_MS / 60000}min — retomando`);
     sendBlastNow(id, { resume: true }).catch(err => console.error(`[email-blasts] resume ${id} falhou:`, err));
   }
 }
