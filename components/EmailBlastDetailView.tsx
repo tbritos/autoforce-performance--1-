@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, RefreshCw, Send, Package, Mail, MousePointerClick, X,
   TrendingUp, ChevronDown, ChevronUp, Tag, Layers, Users, XCircle,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { apiClient } from '../services/apiClient';
 
@@ -45,7 +46,12 @@ interface EmailBlast {
   createdAt: string;
   stats: BlastStats;
   sends: SendRecord[];
+  sendsTotal: number;
+  page: number;
+  pageSize: number;
 }
+
+const SENDS_PAGE_SIZE = 25;
 
 const STATUS_CFG: Record<BlastStatus, { label: string; color: string; dot: string }> = {
   draft:     { label: 'Rascunho', color: '#6b7280', dot: '#9ca3af' },
@@ -95,18 +101,19 @@ const EmailBlastDetailView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
   const [showSends, setShowSends] = useState(true);
+  const [sendsPage, setSendsPage] = useState(1);
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const data = await apiClient.get<EmailBlast>(`/email-blasts/${id}`);
+      const data = await apiClient.get<EmailBlast>(`/email-blasts/${id}?page=${sendsPage}&pageSize=${SENDS_PAGE_SIZE}`);
       setBlast(data);
     } catch {
       setError('Erro ao carregar disparo');
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, sendsPage]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -149,7 +156,8 @@ const EmailBlastDetailView: React.FC = () => {
 
   const s  = STATUS_CFG[blast.status] ?? STATUS_CFG.draft;
   const st = blast.stats;
-  const hasSends = blast.sends && blast.sends.length > 0;
+  const hasSends = blast.sendsTotal > 0;
+  const totalPages = Math.max(1, Math.ceil(blast.sendsTotal / SENDS_PAGE_SIZE));
   const deliveryRate = st.sent > 0 ? Number((st.delivered / st.sent * 100).toFixed(1)) : 0;
   const AudienceIcon = AUDIENCE_ICON[blast.audienceType];
 
@@ -224,9 +232,9 @@ const EmailBlastDetailView: React.FC = () => {
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '14px 20px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
           <span style={{ fontSize: 14, fontWeight: 700 }}>
             Leads que receberam
-            {hasSends && (
+            {blast.sendsTotal > 0 && (
               <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 500, color: 'var(--fg-muted)' }}>
-                ({blast.sends.length} registro{blast.sends.length !== 1 ? 's' : ''})
+                ({blast.sendsTotal.toLocaleString('pt-BR')} registro{blast.sendsTotal !== 1 ? 's' : ''})
               </span>
             )}
           </span>
@@ -281,6 +289,25 @@ const EmailBlastDetailView: React.FC = () => {
               Nenhum envio registrado ainda.
             </div>
           )
+        )}
+
+        {showSends && hasSends && totalPages > 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderTop: '1px solid var(--border)' }}>
+            <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+              {((sendsPage - 1) * SENDS_PAGE_SIZE) + 1}–{Math.min(sendsPage * SENDS_PAGE_SIZE, blast.sendsTotal)} de {blast.sendsTotal.toLocaleString('pt-BR')}
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button type="button" onClick={() => setSendsPage(p => Math.max(1, p - 1))} disabled={sendsPage === 1}
+                style={{ padding: 6, borderRadius: 6, border: '1px solid var(--border)', color: 'var(--fg-muted)', background: 'transparent', cursor: 'pointer', opacity: sendsPage === 1 ? 0.4 : 1 }}>
+                <ChevronLeft size={14} />
+              </button>
+              <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>Página {sendsPage} de {totalPages}</span>
+              <button type="button" onClick={() => setSendsPage(p => Math.min(totalPages, p + 1))} disabled={sendsPage === totalPages}
+                style={{ padding: 6, borderRadius: 6, border: '1px solid var(--border)', color: 'var(--fg-muted)', background: 'transparent', cursor: 'pointer', opacity: sendsPage === totalPages ? 0.4 : 1 }}>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>

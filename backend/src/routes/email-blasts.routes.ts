@@ -167,7 +167,7 @@ router.get('/audience-preview', async (req: Request, res: Response) => {
   }
 });
 
-// GET /:id — detalhe do disparo com metricas e lista completa de envios
+// GET /:id?page=&pageSize= — detalhe do disparo com metricas (sobre o total) e envios paginados
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const blast = await prisma.emailBlast.findUnique({
@@ -176,21 +176,30 @@ router.get('/:id', async (req: Request, res: Response) => {
     });
     if (!blast) { res.status(404).json({ error: 'Disparo não encontrado' }); return; }
 
-    const sends = await prisma.emailSent.findMany({
-      where: { blastId: blast.id },
-      orderBy: { sentAt: 'desc' },
-      select: {
-        id: true, leadEmail: true, toEmail: true, status: true,
-        openedAt: true, clickedAt: true, clickedUrl: true, bouncedAt: true, sentAt: true,
-        lead: { select: { name: true } },
-      },
-    });
+    const page     = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 25));
 
-    const sent      = sends.length;
-    const delivered = sends.filter(send => ['delivered', 'opened', 'clicked'].includes(send.status) || send.openedAt || send.clickedAt).length;
-    const opened    = sends.filter(send => send.openedAt || send.clickedAt).length;
-    const clicked   = sends.filter(send => send.clickedAt).length;
-    const bounced   = sends.filter(send => send.status === 'bounced').length;
+    const baseWhere = { blastId: blast.id };
+    const [sendsTotal, sends, sent, delivered, opened, clicked, bounced] = await Promise.all([
+      prisma.emailSent.count({ where: baseWhere }),
+      prisma.emailSent.findMany({
+        where: baseWhere,
+        orderBy: { sentAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: {
+          id: true, leadEmail: true, toEmail: true, status: true,
+          openedAt: true, clickedAt: true, clickedUrl: true, bouncedAt: true, sentAt: true,
+          lead: { select: { name: true } },
+        },
+      }),
+      prisma.emailSent.count({ where: baseWhere }),
+      prisma.emailSent.count({ where: { ...baseWhere, OR: [{ status: { in: ['delivered', 'opened', 'clicked'] } }, { openedAt: { not: null } }, { clickedAt: { not: null } }] } }),
+      prisma.emailSent.count({ where: { ...baseWhere, OR: [{ openedAt: { not: null } }, { clickedAt: { not: null } }] } }),
+      prisma.emailSent.count({ where: { ...baseWhere, clickedAt: { not: null } } }),
+      prisma.emailSent.count({ where: { ...baseWhere, status: 'bounced' } }),
+    ]);
+
     const stats = {
       sent, delivered, opened, clicked, bounced,
       openRate:   delivered > 0 ? Number((opened  / delivered * 100).toFixed(1)) : 0,
@@ -198,7 +207,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       bounceRate: sent      > 0 ? Number((bounced / sent      * 100).toFixed(1)) : 0,
     };
 
-    res.json({ ...blast, sends, stats });
+    res.json({ ...blast, sends, sendsTotal, page, pageSize, stats });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Erro ao buscar disparo' });
   }
