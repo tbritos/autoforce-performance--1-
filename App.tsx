@@ -19,6 +19,7 @@ import EmailTemplatesView from './components/EmailTemplatesView';
 import EmailEditorView from './components/EmailEditorView';
 import EmailTemplateDetailView from './components/EmailTemplateDetailView';
 import EmailBlastsView from './components/EmailBlastsView';
+import EmailBlastDetailView from './components/EmailBlastDetailView';
 import WhatsAppTemplateNewView from './components/WhatsAppTemplateNewView';
 import { DataService } from './services/dataService';
 import { User, Metric, LandingPage, DailyLeadEntry, RevenueEntry, FunnelCounts, LeadStatus } from './types';
@@ -1528,6 +1529,7 @@ const AppContent: React.FC = () => {
             <Route path="/emails/:id" element={<EmailTemplateDetailView />} />
             <Route path="/emails/:id/edit" element={<EmailEditorView />} />
             <Route path="/disparos" element={<EmailBlastsView />} />
+            <Route path="/disparos/:id" element={<EmailBlastDetailView />} />
             <Route path="/whatsapp/template/new" element={<WhatsAppTemplateNewView />} />
             <Route path="/email-templates" element={<Navigate to="/emails" replace />} />
 

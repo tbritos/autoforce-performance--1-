@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   Plus, Send, Tag, Users, Layers, Calendar, Search, X,
   RefreshCw, AlertCircle, CheckCircle, Trash2, Mail, Clock,
@@ -350,6 +351,7 @@ const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ 
 // ─── Main view ────────────────────────────────────────────────────────────────
 
 const EmailBlastsView: React.FC = () => {
+  const navigate = useNavigate();
   const [blasts, setBlasts]   = useState<EmailBlast[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -437,7 +439,10 @@ const EmailBlastsView: React.FC = () => {
           const AudienceIcon = AUDIENCE_ICON[blast.audienceType];
           return (
             <div key={blast.id}
-              style={{ display: 'grid', gridTemplateColumns: '1fr 160px 200px 160px 90px', padding: '14px 20px', borderBottom: idx < blasts.length - 1 ? '1px solid var(--border)' : 'none', alignItems: 'center' }}>
+              onClick={() => navigate(`/disparos/${blast.id}`)}
+              style={{ display: 'grid', gridTemplateColumns: '1fr 160px 200px 160px 90px', padding: '14px 20px', borderBottom: idx < blasts.length - 1 ? '1px solid var(--border)' : 'none', alignItems: 'center', cursor: 'pointer' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-muted)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{blast.name}</div>
                 <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -465,7 +470,7 @@ const EmailBlastsView: React.FC = () => {
                 {blast.status === 'draft' && '—'}
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }} onClick={e => e.stopPropagation()}>
                 {blast.status === 'draft' && (
                   <button onClick={async () => { await apiClient.post(`/email-blasts/${blast.id}/send`, {}); await load(); }}
                     style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--accent)' }} title="Enviar agora">

@@ -130,6 +130,43 @@ router.get('/audience-preview', async (req: Request, res: Response) => {
   }
 });
 
+// GET /:id — detalhe do disparo com metricas e lista completa de envios
+router.get('/:id', async (req: Request, res: Response) => {
+  try {
+    const blast = await prisma.emailBlast.findUnique({
+      where: { id: req.params.id },
+      include: { template: { select: { name: true, subject: true, fromName: true, fromEmail: true } } },
+    });
+    if (!blast) { res.status(404).json({ error: 'Disparo não encontrado' }); return; }
+
+    const sends = await prisma.emailSent.findMany({
+      where: { blastId: blast.id },
+      orderBy: { sentAt: 'desc' },
+      select: {
+        id: true, leadEmail: true, toEmail: true, status: true,
+        openedAt: true, clickedAt: true, clickedUrl: true, bouncedAt: true, sentAt: true,
+        lead: { select: { name: true } },
+      },
+    });
+
+    const sent      = sends.length;
+    const delivered = sends.filter(send => ['delivered', 'opened', 'clicked'].includes(send.status) || send.openedAt || send.clickedAt).length;
+    const opened    = sends.filter(send => send.openedAt || send.clickedAt).length;
+    const clicked   = sends.filter(send => send.clickedAt).length;
+    const bounced   = sends.filter(send => send.status === 'bounced').length;
+    const stats = {
+      sent, delivered, opened, clicked, bounced,
+      openRate:   delivered > 0 ? Number((opened  / delivered * 100).toFixed(1)) : 0,
+      clickRate:  delivered > 0 ? Number((clicked / delivered * 100).toFixed(1)) : 0,
+      bounceRate: sent      > 0 ? Number((bounced / sent      * 100).toFixed(1)) : 0,
+    };
+
+    res.json({ ...blast, sends, stats });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Erro ao buscar disparo' });
+  }
+});
+
 // POST / — cria um disparo (rascunho, agendado, ou dispara na hora se sendNow=true)
 router.post('/', async (req: Request, res: Response) => {
   try {
