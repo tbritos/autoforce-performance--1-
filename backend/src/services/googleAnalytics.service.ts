@@ -1,5 +1,6 @@
+import https from 'https';
 import { google } from 'googleapis';
-import { LandingPage } from '../types/dashboard.types'; 
+import { LandingPage } from '../types/dashboard.types';
 
 function parsePropertyIds(value?: string | null): string[] {
   return String(value || '')
@@ -158,50 +159,93 @@ function isTransientGA4Error(error: any): boolean {
   return TRANSIENT_ERROR_PATTERN.test(error?.message || '') || TRANSIENT_ERROR_PATTERN.test(error?.cause?.message || '');
 }
 
-async function runReportWithRetry(client: any, params: any, retries = 2): Promise<any> {
+async function getGA4AccessToken(): Promise<string> {
+  try {
+    const { OAuthService } = await import('./oauth.service');
+    const token = await OAuthService.getValidToken('GOOGLE_ANALYTICS');
+    if (token) return token;
+  } catch {
+    // Fallback to service account credentials from .env
+  }
+
+  const credentialsPath = process.env.GA4_CREDENTIALS_PATH;
+  const credentialsJson = process.env.GA4_CREDENTIALS_JSON;
+
+  if (!credentialsPath && !credentialsJson) {
+    throw new Error('Google Analytics não conectado. Configure no painel de Conexões.');
+  }
+
+  const auth = credentialsJson
+    ? new google.auth.GoogleAuth({
+        credentials: JSON.parse(credentialsJson),
+        scopes: ['https://www.googleapis.com/auth/analytics.readonly'],
+      })
+    : new google.auth.GoogleAuth({
+        keyFile: credentialsPath,
+        scopes: ['https://www.googleapis.com/auth/analytics.readonly'],
+      });
+
+  const client = await auth.getClient();
+  const tokenResponse = await client.getAccessToken();
+  const accessToken = typeof tokenResponse === 'string' ? tokenResponse : tokenResponse?.token;
+  if (!accessToken) throw new Error('Não foi possível obter token de acesso do Google Analytics.');
+  return accessToken;
+}
+
+// Chama a API REST do GA4 via https puro (em vez do fetch/undici usado pelo
+// client googleapis), que na Railway vinha derrubando a conexão no meio da
+// resposta ("Premature close") de forma consistente.
+function postGA4Report(propertyId: string, accessToken: string, requestBody: any): Promise<{ data: any }> {
+  const payload = JSON.stringify(requestBody);
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: 'analyticsdata.googleapis.com',
+        path: `/v1beta/properties/${propertyId}:runReport`,
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+        },
+      },
+      res => {
+        const chunks: Buffer[] = [];
+        res.on('data', chunk => chunks.push(chunk));
+        res.on('end', () => {
+          const raw = Buffer.concat(chunks).toString('utf8');
+          let parsed: any;
+          try {
+            parsed = raw ? JSON.parse(raw) : {};
+          } catch (err: any) {
+            reject(new Error(`Resposta inválida da API do GA4: ${err.message}`));
+            return;
+          }
+          if ((res.statusCode || 0) >= 400) {
+            reject(new Error(parsed?.error?.message || `GA4 API respondeu com status ${res.statusCode}`));
+            return;
+          }
+          resolve({ data: parsed });
+        });
+      }
+    );
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+async function runReportWithRetry(propertyId: string, requestBody: any, retries = 2): Promise<{ data: any }> {
   for (let attempt = 0; ; attempt++) {
     try {
-      return await client.properties.runReport(params);
+      const accessToken = await getGA4AccessToken();
+      return await postGA4Report(propertyId, accessToken, requestBody);
     } catch (error: any) {
       if (attempt >= retries || !isTransientGA4Error(error)) throw error;
       await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
     }
   }
-}
-
-export async function initializeGA4Client(): Promise<any> {
-  let auth: any;
-
-  // Try PlatformConnection OAuth token first
-  try {
-    const { OAuthService } = await import('./oauth.service');
-    const token = await OAuthService.getValidToken('GOOGLE_ANALYTICS');
-    auth = new google.auth.OAuth2();
-    auth.setCredentials({ access_token: token });
-  } catch {
-    // Fallback to service account credentials from .env
-    const credentialsPath = process.env.GA4_CREDENTIALS_PATH;
-    const credentialsJson = process.env.GA4_CREDENTIALS_JSON;
-
-    if (!credentialsPath && !credentialsJson) {
-      throw new Error('Google Analytics não conectado. Configure no painel de Conexões.');
-    }
-
-    if (credentialsJson) {
-      const parsed = JSON.parse(credentialsJson);
-      auth = new google.auth.GoogleAuth({
-        credentials: parsed,
-        scopes: ['https://www.googleapis.com/auth/analytics.readonly'],
-      });
-    } else {
-      auth = new google.auth.GoogleAuth({
-        keyFile: credentialsPath,
-        scopes: ['https://www.googleapis.com/auth/analytics.readonly'],
-      });
-    }
-  }
-
-  return google.analyticsdata({ version: 'v1beta', auth });
 }
 
 export async function getLandingPagesFromGA4(
@@ -215,7 +259,6 @@ export async function getLandingPagesFromGA4(
   if (!resolvedPropertyId) throw new Error('GA4_PROPERTY_IDS nao configurado');
 
   try {
-    const client = await initializeGA4Client();
     const lpHost = hostName?.trim();
 
     let start = startDate;
@@ -231,41 +274,38 @@ export async function getLandingPagesFromGA4(
 
     console.log(`🔍 Buscando GA4 de ${start} até ${end} (${lpHost ?? `property/${resolvedPropertyId}`})...`);
 
-    const response = await runReportWithRetry(client, {
-      property: `properties/${resolvedPropertyId}`,
-      requestBody: {
-        dateRanges: [{ startDate: start, endDate: end }],
-        dimensions: [
-          { name: 'hostName' },
-          { name: 'pagePath' },
-          { name: 'pageTitle' },
-        ],
-        metrics: [
-          { name: 'screenPageViews' },
-          { name: 'activeUsers' },
-          { name: 'conversions' },
-          // AQUI ESTAVA O ERRO: Mudamos de volta para 'averageSessionDuration'
-          { name: 'averageSessionDuration' }, 
-          { name: 'bounceRate' },       
-          { name: 'eventCount' }        
-        ],
-        dimensionFilter: lpHost
-          ? {
-              filter: {
-                fieldName: 'hostName',
-                stringFilter: {
-                  matchType: 'EXACT',
-                  value: lpHost,
-                },
+    const response = await runReportWithRetry(resolvedPropertyId, {
+      dateRanges: [{ startDate: start, endDate: end }],
+      dimensions: [
+        { name: 'hostName' },
+        { name: 'pagePath' },
+        { name: 'pageTitle' },
+      ],
+      metrics: [
+        { name: 'screenPageViews' },
+        { name: 'activeUsers' },
+        { name: 'conversions' },
+        // AQUI ESTAVA O ERRO: Mudamos de volta para 'averageSessionDuration'
+        { name: 'averageSessionDuration' },
+        { name: 'bounceRate' },
+        { name: 'eventCount' }
+      ],
+      dimensionFilter: lpHost
+        ? {
+            filter: {
+              fieldName: 'hostName',
+              stringFilter: {
+                matchType: 'EXACT',
+                value: lpHost,
               },
-            }
-          : undefined,
-        orderBys: [
-          { metric: { metricName: 'activeUsers' }, desc: true },
-          { metric: { metricName: 'eventCount' }, desc: true }
-        ],
-        limit: 200, 
-      },
+            },
+          }
+        : undefined,
+      orderBys: [
+        { metric: { metricName: 'activeUsers' }, desc: true },
+        { metric: { metricName: 'eventCount' }, desc: true }
+      ],
+      limit: 200,
     });
 
     const rows = response.data.rows || [];
@@ -323,7 +363,6 @@ export async function getGA4SourceTotals(
   source?: string
 ): Promise<{ views: number; users: number; totalClicks: number; pages: number; errors: string[] }> {
   const configs = await getGA4SourceConfigs(source, undefined);
-  const client = await initializeGA4Client();
 
   let start = startDate;
   let end = endDate;
@@ -337,16 +376,13 @@ export async function getGA4SourceTotals(
 
   const propertyIds = Array.from(new Set(configs.flatMap(config => config.propertyIds)));
   const jobs = propertyIds.map(async propertyId => {
-      const response = await runReportWithRetry(client, {
-        property: `properties/${propertyId}`,
-        requestBody: {
-          dateRanges: [{ startDate: start, endDate: end }],
-          metrics: [
-            { name: 'screenPageViews' },
-            { name: 'activeUsers' },
-            { name: 'eventCount' },
-          ],
-        },
+      const response = await runReportWithRetry(propertyId, {
+        dateRanges: [{ startDate: start, endDate: end }],
+        metrics: [
+          { name: 'screenPageViews' },
+          { name: 'activeUsers' },
+          { name: 'eventCount' },
+        ],
       });
 
       const metrics = response.data.rows?.[0]?.metricValues || [];
@@ -394,7 +430,6 @@ export async function getGA4PageTotals(
   if (!normalizedPaths.length) return getGA4SourceTotals(startDate, endDate, 'all');
 
   const configs = await getGA4SourceConfigs('all', undefined);
-  const client = await initializeGA4Client();
 
   let start = startDate;
   let end = endDate;
@@ -410,21 +445,18 @@ export async function getGA4PageTotals(
   const propertyIds = Array.from(new Set(configs.flatMap(config => config.propertyIds)));
 
   const jobs = propertyIds.map(async propertyId => {
-    const response = await runReportWithRetry(client, {
-      property: `properties/${propertyId}`,
-      requestBody: {
-        dateRanges: [{ startDate: start, endDate: end }],
-        dimensions: [
-          { name: 'hostName' },
-          { name: 'pagePath' },
-        ],
-        metrics: [
-          { name: 'screenPageViews' },
-          { name: 'activeUsers' },
-          { name: 'eventCount' },
-        ],
-        limit: 10000,
-      },
+    const response = await runReportWithRetry(propertyId, {
+      dateRanges: [{ startDate: start, endDate: end }],
+      dimensions: [
+        { name: 'hostName' },
+        { name: 'pagePath' },
+      ],
+      metrics: [
+        { name: 'screenPageViews' },
+        { name: 'activeUsers' },
+        { name: 'eventCount' },
+      ],
+      limit: 10000,
     });
 
     return (response.data.rows || []).reduce(
