@@ -53,7 +53,7 @@ export async function getReceivedEmailContent(id: string): Promise<ReceivedEmail
   };
 }
 
-export async function sendEmail(input: SendEmailInput): Promise<void> {
+export async function sendEmail(input: SendEmailInput): Promise<boolean> {
   const fromName  = input.fromName  || process.env.RESEND_FROM_NAME  || 'AutoForce';
   const fromEmail = input.fromEmail || process.env.RESEND_FROM_EMAIL || 'noreply@updates.autoforce.com';
   const from      = `${fromName} <${fromEmail}>`;
@@ -94,6 +94,8 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
       },
     });
   }
+
+  return status === 'sent';
 }
 
 export function renderTemplate(

@@ -829,7 +829,7 @@ model EmailBlast {
   audienceType  String // tag | segment | individual
   audienceValue String        @db.Text // tag name | segment id | JSON array de emails
   audienceCount Int           @default(0)
-  // status: draft | scheduled | sending | sent | failed
+  // status: draft | scheduled | sending | sent | failed | cancelled
   status        String        @default("draft")
   scheduledAt   DateTime?
   sentCount     Int           @default(0)

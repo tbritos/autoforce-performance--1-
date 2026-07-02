@@ -2,11 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, RefreshCw, Send, Package, Mail, MousePointerClick, X,
-  TrendingUp, ChevronDown, ChevronUp, Tag, Layers, Users,
+  TrendingUp, ChevronDown, ChevronUp, Tag, Layers, Users, XCircle,
 } from 'lucide-react';
 import { apiClient } from '../services/apiClient';
 
-type BlastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
+type BlastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed' | 'cancelled';
 type SendStatus  = 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'failed';
 type AudienceType = 'tag' | 'segment' | 'individual';
 
@@ -53,6 +53,7 @@ const STATUS_CFG: Record<BlastStatus, { label: string; color: string; dot: strin
   sending:   { label: 'Enviando', color: '#2563eb', dot: '#3b82f6' },
   sent:      { label: 'Enviado',  color: '#059669', dot: '#10b981' },
   failed:    { label: 'Falhou',   color: '#dc2626', dot: '#ef4444' },
+  cancelled: { label: 'Cancelado', color: '#6b7280', dot: '#9ca3af' },
 };
 
 const SEND_STATUS_CFG: Record<SendStatus, { label: string; bg: string; color: string }> = {
@@ -116,6 +117,17 @@ const EmailBlastDetailView: React.FC = () => {
     return () => clearInterval(t);
   }, [blast?.status, load]);
 
+  const handleCancel = async () => {
+    if (!blast) return;
+    if (!window.confirm(`Cancelar o disparo "${blast.name}"? Os envios já feitos não são desfeitos, apenas os que faltam deixam de ser enviados.`)) return;
+    try {
+      await apiClient.post(`/email-blasts/${blast.id}/cancel`, {});
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao cancelar disparo');
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 10, color: 'var(--fg-muted)' }}>
@@ -163,6 +175,12 @@ const EmailBlastDetailView: React.FC = () => {
           </div>
           <div style={{ fontSize: 13, color: 'var(--fg-muted)' }}>{blast.template.subject}</div>
         </div>
+        {(blast.status === 'sending' || blast.status === 'scheduled') && (
+          <button onClick={handleCancel}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: 8, border: '1px solid #fca5a5', background: 'transparent', color: '#dc2626', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+            <XCircle size={13} /> Cancelar disparo
+          </button>
+        )}
       </div>
 
       {/* Stats grid */}

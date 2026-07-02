@@ -36,7 +36,7 @@ import aiAgentsRoutes from './routes/ai-agents.routes';
 import whatsappRoutes from './routes/whatsapp.routes';
 import pipedriveRoutes from './routes/pipedrive.routes';
 import emailTemplatesRoutes from './routes/email-templates.routes';
-import emailBlastsRoutes from './routes/email-blasts.routes';
+import emailBlastsRoutes, { recoverStuckBlasts } from './routes/email-blasts.routes';
 import segmentRoutes from './routes/segment.routes';
 
 dotenv.config();
@@ -833,5 +833,6 @@ app.listen(PORT, () => {
 startSyncScheduler();
 startupConnectionCheck().catch(err => console.error('[connections] startup check failed:', err));
 recoverStuckExecutions().catch(err => console.error('[automation] startup recovery failed:', err));
+recoverStuckBlasts().catch(err => console.error('[email-blasts] startup recovery failed:', err));
 
 export default app;

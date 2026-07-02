@@ -41,28 +41,51 @@ async function resolveAudienceLeads(audienceType: string, audienceValue: string)
 }
 
 // Envia o disparo em segundo plano, em lotes pequenos para respeitar limites do Resend.
-async function sendBlastNow(blastId: string): Promise<void> {
+// opts.resume=true retoma um disparo que ficou travado em "sending" (ex: reinicio do
+// processo/deploy no meio do envio) — recalcula quem ja recebeu de verdade a partir do
+// EmailSent (nunca confia no sentCount salvo) e so envia para quem falta.
+async function sendBlastNow(blastId: string, opts: { resume?: boolean } = {}): Promise<void> {
   const blast = await prisma.emailBlast.findUnique({ where: { id: blastId }, include: { template: true } });
-  if (!blast || blast.status === 'sending' || blast.status === 'sent') return;
+  if (!blast) return;
+  if (!opts.resume && (blast.status === 'sending' || blast.status === 'sent')) return;
+  if (blast.status === 'cancelled') return;
 
-  await prisma.emailBlast.update({ where: { id: blastId }, data: { status: 'sending' } });
+  if (blast.status !== 'sending') {
+    await prisma.emailBlast.update({ where: { id: blastId }, data: { status: 'sending' } });
+  }
 
   try {
     const { sendEmail, renderTemplate } = await import('../services/resend.service');
-    const leads = await resolveAudienceLeads(blast.audienceType, blast.audienceValue);
+    let leads = await resolveAudienceLeads(blast.audienceType, blast.audienceValue);
+
+    // Verdade sempre vem do EmailSent — nunca confiar em sentCount/failedCount salvos,
+    // que podem estar desatualizados apos um reinicio. "failed" e o unico status que
+    // significa que o Resend nunca aceitou o envio; os outros (sent/delivered/opened/
+    // clicked/bounced/complained) sao atualizados por webhook depois do envio real e
+    // contam como "ja recebeu" para nao duplicar em uma retomada.
+    const existingSends = await prisma.emailSent.findMany({
+      where: { blastId: blast.id },
+      select: { leadEmail: true, status: true },
+    });
+    const alreadySent = new Set(existingSends.filter(s => s.status !== 'failed').map(s => s.leadEmail));
+    leads = leads.filter(lead => !alreadySent.has(lead.email));
+
+    let sentCount = existingSends.filter(s => s.status !== 'failed').length;
+    let failedCount = existingSends.filter(s => s.status === 'failed').length;
 
     const BATCH_SIZE = 5;
     const BATCH_DELAY_MS = 300;
-    let sentCount = 0;
-    let failedCount = 0;
 
     for (let i = 0; i < leads.length; i += BATCH_SIZE) {
+      const current = await prisma.emailBlast.findUnique({ where: { id: blastId }, select: { status: true } });
+      if (current?.status === 'cancelled') return;
+
       const batch = leads.slice(i, i + BATCH_SIZE);
-      await Promise.all(batch.map(async lead => {
+      const results = await Promise.all(batch.map(async lead => {
+        const subject = renderTemplate(blast.template.subject, lead);
+        const html = renderTemplate(blast.template.body, lead);
         try {
-          const subject = renderTemplate(blast.template.subject, lead);
-          const html = renderTemplate(blast.template.body, lead);
-          await sendEmail({
+          return await sendEmail({
             leadEmail: lead.email,
             toEmail: lead.email,
             subject,
@@ -72,20 +95,24 @@ async function sendBlastNow(blastId: string): Promise<void> {
             templateId: blast.templateId,
             blastId: blast.id,
           });
-          sentCount += 1;
         } catch {
-          failedCount += 1;
+          return false;
         }
       }));
+      sentCount   += results.filter(Boolean).length;
+      failedCount += results.filter(ok => !ok).length;
 
       await prisma.emailBlast.update({ where: { id: blastId }, data: { sentCount, failedCount } });
       if (i + BATCH_SIZE < leads.length) await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
     }
 
-    await prisma.emailBlast.update({
-      where: { id: blastId },
-      data: { status: 'sent', sentAt: new Date(), sentCount, failedCount },
-    });
+    const finalState = await prisma.emailBlast.findUnique({ where: { id: blastId }, select: { status: true } });
+    if (finalState?.status !== 'cancelled') {
+      await prisma.emailBlast.update({
+        where: { id: blastId },
+        data: { status: 'sent', sentAt: new Date(), sentCount, failedCount },
+      });
+    }
   } catch (err) {
     console.error(`[email-blasts] envio ${blastId} falhou:`, err);
     await prisma.emailBlast.update({ where: { id: blastId }, data: { status: 'failed' } });
@@ -100,6 +127,16 @@ export async function processDueScheduledBlasts(): Promise<void> {
   });
   for (const { id } of due) {
     await sendBlastNow(id).catch(err => console.error(`[email-blasts] scheduled ${id} falhou:`, err));
+  }
+}
+
+// Chamado uma vez na inicializacao do servidor: retoma disparos que ficaram travados
+// em "sending" por causa de um reinicio/deploy no meio do envio.
+export async function recoverStuckBlasts(): Promise<void> {
+  const stuck = await prisma.emailBlast.findMany({ where: { status: 'sending' }, select: { id: true } });
+  for (const { id } of stuck) {
+    console.log(`[email-blasts] retomando disparo travado ${id}`);
+    sendBlastNow(id, { resume: true }).catch(err => console.error(`[email-blasts] resume ${id} falhou:`, err));
   }
 }
 
@@ -223,13 +260,31 @@ router.post('/:id/send', async (req: Request, res: Response) => {
   }
 });
 
-// DELETE /:id — cancela um disparo que ainda não foi enviado
+// POST /:id/cancel — interrompe um disparo em andamento (ou cancela um agendamento)
+// Os lotes ja enviados nao sao desfeitos; apenas os que faltam deixam de ser processados.
+router.post('/:id/cancel', async (req: Request, res: Response) => {
+  try {
+    const blast = await prisma.emailBlast.findUnique({ where: { id: req.params.id } });
+    if (!blast) { res.status(404).json({ error: 'Disparo não encontrado' }); return; }
+    if (blast.status === 'sent' || blast.status === 'cancelled') {
+      res.status(409).json({ error: 'Este disparo não pode mais ser cancelado' });
+      return;
+    }
+
+    await prisma.emailBlast.update({ where: { id: req.params.id }, data: { status: 'cancelled' } });
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ error: 'Erro ao cancelar disparo' });
+  }
+});
+
+// DELETE /:id — exclui um disparo que ainda não foi enviado (ou já cancelado)
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const blast = await prisma.emailBlast.findUnique({ where: { id: req.params.id } });
     if (!blast) { res.status(404).json({ error: 'Disparo não encontrado' }); return; }
     if (blast.status === 'sending' || blast.status === 'sent') {
-      res.status(409).json({ error: 'Não é possível excluir um disparo já enviado ou em andamento' });
+      res.status(409).json({ error: 'Não é possível excluir um disparo já enviado ou em andamento — cancele primeiro' });
       return;
     }
 

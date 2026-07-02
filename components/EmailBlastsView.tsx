@@ -3,13 +3,13 @@ import ReactDOM from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Send, Tag, Users, Layers, Calendar, Search, X,
-  RefreshCw, AlertCircle, CheckCircle, Trash2, Mail, Clock,
+  RefreshCw, AlertCircle, CheckCircle, Trash2, Mail, Clock, XCircle,
 } from 'lucide-react';
 import { apiClient } from '../services/apiClient';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type BlastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
+type BlastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed' | 'cancelled';
 type AudienceType = 'tag' | 'segment' | 'individual';
 
 interface EmailBlast {
@@ -53,6 +53,7 @@ const STATUS_CFG: Record<BlastStatus, { label: string; color: string; dot: strin
   sending:   { label: 'Enviando', color: '#2563eb', dot: '#3b82f6' },
   sent:      { label: 'Enviado',  color: '#059669', dot: '#10b981' },
   failed:    { label: 'Falhou',   color: '#dc2626', dot: '#ef4444' },
+  cancelled: { label: 'Cancelado', color: '#6b7280', dot: '#9ca3af' },
 };
 
 const AUDIENCE_ICON: Record<AudienceType, React.ElementType> = {
@@ -388,6 +389,16 @@ const EmailBlastsView: React.FC = () => {
     }
   };
 
+  const handleCancel = async (id: string, name: string) => {
+    if (!window.confirm(`Cancelar o disparo "${name}"? Os envios já feitos não são desfeitos, apenas os que faltam deixam de ser enviados.`)) return;
+    try {
+      await apiClient.post(`/email-blasts/${id}/cancel`, {});
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao cancelar disparo');
+    }
+  };
+
   const audienceLabel = (b: EmailBlast) => {
     if (b.audienceType === 'tag') return `Tag: ${b.audienceValue}`;
     if (b.audienceType === 'individual') {
@@ -477,7 +488,12 @@ const EmailBlastsView: React.FC = () => {
                     <Send size={13} />
                   </button>
                 )}
-                {(blast.status === 'draft' || blast.status === 'scheduled') && (
+                {(blast.status === 'sending' || blast.status === 'scheduled') && (
+                  <button onClick={() => handleCancel(blast.id, blast.name)} style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#dc2626' }} title="Cancelar">
+                    <XCircle size={13} />
+                  </button>
+                )}
+                {(blast.status === 'draft' || blast.status === 'cancelled' || blast.status === 'failed') && (
                   <button onClick={() => handleDelete(blast.id, blast.name)} style={{ width: 30, height: 30, borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#ef4444' }} title="Excluir">
                     <Trash2 size={13} />
                   </button>
