@@ -51,6 +51,7 @@ interface EmailBlast {
   sendsTotal: number;
   page: number;
   pageSize: number;
+  pendingCount: number;
 }
 
 const SENDS_PAGE_SIZE = 25;
@@ -145,7 +146,7 @@ const EmailBlastDetailView: React.FC = () => {
 
   const handleRetryFailed = async () => {
     if (!blast) return;
-    if (!window.confirm(`Reenviar apenas para quem falhou (${blast.stats.failed.toLocaleString('pt-BR')} leads)? Quem já recebeu com sucesso não é reenviado.`)) return;
+    if (!window.confirm(`Reenviar para quem ainda falta (${blast.pendingCount.toLocaleString('pt-BR')} leads)? Quem já recebeu com sucesso não é reenviado.`)) return;
     try {
       await apiClient.post(`/email-blasts/${blast.id}/retry-failed`, {});
       await load();
@@ -203,10 +204,10 @@ const EmailBlastDetailView: React.FC = () => {
           <div style={{ fontSize: 13, color: 'var(--fg-muted)' }}>{blast.template.subject}</div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-          {(blast.status === 'sent' || blast.status === 'failed') && blast.stats.failed > 0 && (
+          {(blast.status === 'sent' || blast.status === 'failed' || blast.status === 'cancelled') && blast.pendingCount > 0 && (
             <button onClick={handleRetryFailed}
               style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--accent)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-              <RefreshCw size={13} /> Reenviar falhas ({blast.stats.failed.toLocaleString('pt-BR')})
+              <RefreshCw size={13} /> {blast.status === 'cancelled' ? 'Retomar disparo' : 'Reenviar falhas'} ({blast.pendingCount.toLocaleString('pt-BR')})
             </button>
           )}
           {(blast.status === 'sending' || blast.status === 'scheduled') && (

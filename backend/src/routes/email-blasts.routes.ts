@@ -48,7 +48,9 @@ async function sendBlastNow(blastId: string, opts: { resume?: boolean } = {}): P
   const blast = await prisma.emailBlast.findUnique({ where: { id: blastId }, include: { template: true } });
   if (!blast) return;
   if (!opts.resume && (blast.status === 'sending' || blast.status === 'sent')) return;
-  if (blast.status === 'cancelled') return;
+  // Cancelado so bloqueia disparo automatico (agendamento/recuperacao); um resume
+  // explicito (botao "Reenviar falhas") pode retomar um disparo cancelado de proposito.
+  if (blast.status === 'cancelled' && !opts.resume) return;
 
   if (blast.status !== 'sending') {
     await prisma.emailBlast.update({ where: { id: blastId }, data: { status: 'sending' } });
@@ -191,7 +193,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     const baseWhere = { blastId: blast.id };
     const sendsWhere: Prisma.EmailSentWhereInput = { ...baseWhere, ...(SENDS_FILTERS[filter] ?? {}) };
 
-    const [sendsTotal, sends, sent, delivered, opened, clicked, bounced, failed] = await Promise.all([
+    const [sendsTotal, sends, sent, delivered, opened, clicked, bounced, failed, successfulLeads] = await Promise.all([
       prisma.emailSent.count({ where: sendsWhere }),
       prisma.emailSent.findMany({
         where: sendsWhere,
@@ -210,6 +212,9 @@ router.get('/:id', async (req: Request, res: Response) => {
       prisma.emailSent.count({ where: { ...baseWhere, clickedAt: { not: null } } }),
       prisma.emailSent.count({ where: { ...baseWhere, status: 'bounced' } }),
       prisma.emailSent.count({ where: { ...baseWhere, status: 'failed' } }),
+      // Leads distintos com pelo menos um envio bem sucedido (nao "failed") — usado para
+      // saber quantos ainda faltam ser enviados (inclui os nunca tentados, ex: apos cancelar).
+      prisma.emailSent.groupBy({ by: ['leadEmail'], where: { ...baseWhere, status: { not: 'failed' } } }),
     ]);
 
     const stats = {
@@ -218,8 +223,9 @@ router.get('/:id', async (req: Request, res: Response) => {
       clickRate:  delivered > 0 ? Number((clicked / delivered * 100).toFixed(1)) : 0,
       bounceRate: sent      > 0 ? Number((bounced / sent      * 100).toFixed(1)) : 0,
     };
+    const pendingCount = Math.max(0, blast.audienceCount - successfulLeads.length);
 
-    res.json({ ...blast, sends, sendsTotal, page, pageSize, filter, stats });
+    res.json({ ...blast, sends, sendsTotal, page, pageSize, filter, stats, pendingCount });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Erro ao buscar disparo' });
   }
@@ -281,20 +287,24 @@ router.post('/:id/send', async (req: Request, res: Response) => {
   }
 });
 
-// POST /:id/retry-failed — reenvia só para quem falhou (nao duplica quem ja recebeu de verdade)
+// POST /:id/retry-failed — reenvia so para quem falta (falhou ou nunca foi tentado, ex:
+// apos um cancelamento) — nao duplica quem ja recebeu de verdade
 router.post('/:id/retry-failed', async (req: Request, res: Response) => {
   try {
     const blast = await prisma.emailBlast.findUnique({ where: { id: req.params.id } });
     if (!blast) { res.status(404).json({ error: 'Disparo não encontrado' }); return; }
     if (blast.status === 'sending') { res.status(409).json({ error: 'Este disparo já está em andamento' }); return; }
-    if (blast.status === 'cancelled') { res.status(409).json({ error: 'Este disparo foi cancelado' }); return; }
     if (blast.status === 'draft' || blast.status === 'scheduled') { res.status(409).json({ error: 'Este disparo ainda não foi enviado' }); return; }
 
-    const failedCount = await prisma.emailSent.count({ where: { blastId: blast.id, status: 'failed' } });
-    if (failedCount === 0) { res.status(409).json({ error: 'Não há envios com falha para reenviar' }); return; }
+    const successfulLeads = await prisma.emailSent.groupBy({
+      by: ['leadEmail'],
+      where: { blastId: blast.id, status: { not: 'failed' } },
+    });
+    const pendingCount = Math.max(0, blast.audienceCount - successfulLeads.length);
+    if (pendingCount === 0) { res.status(409).json({ error: 'Não há envios pendentes para reenviar' }); return; }
 
     sendBlastNow(blast.id, { resume: true }).catch(err => console.error(`[email-blasts] retry ${blast.id} falhou:`, err));
-    res.json({ ok: true, retrying: failedCount });
+    res.json({ ok: true, retrying: pendingCount });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Erro ao reenviar falhas' });
   }
