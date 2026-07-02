@@ -18,6 +18,7 @@ import AIAgentsView from './components/AIAgentsView';
 import EmailTemplatesView from './components/EmailTemplatesView';
 import EmailEditorView from './components/EmailEditorView';
 import EmailTemplateDetailView from './components/EmailTemplateDetailView';
+import EmailBlastsView from './components/EmailBlastsView';
 import WhatsAppTemplateNewView from './components/WhatsAppTemplateNewView';
 import { DataService } from './services/dataService';
 import { User, Metric, LandingPage, DailyLeadEntry, RevenueEntry, FunnelCounts, LeadStatus } from './types';
@@ -53,6 +54,7 @@ import {
   X,
   Flame,
   Building2,
+  Send,
 } from 'lucide-react';
 import { FunnelChart, FunnelStep } from './components/Charts';
 
@@ -1263,6 +1265,7 @@ const AppContent: React.FC = () => {
         { label: 'Campanhas',       path: '/campaigns',   icon: Megaphone },
         { label: 'Analytics (GA4)', path: '/analytics',   icon: BarChart3 },
         { label: 'E-mails',          path: '/emails',      icon: Mail },
+        { label: 'Disparos',         path: '/disparos',    icon: Send },
       ],
     },
     {
@@ -1524,6 +1527,7 @@ const AppContent: React.FC = () => {
             <Route path="/emails/new" element={<EmailEditorView />} />
             <Route path="/emails/:id" element={<EmailTemplateDetailView />} />
             <Route path="/emails/:id/edit" element={<EmailEditorView />} />
+            <Route path="/disparos" element={<EmailBlastsView />} />
             <Route path="/whatsapp/template/new" element={<WhatsAppTemplateNewView />} />
             <Route path="/email-templates" element={<Navigate to="/emails" replace />} />
 

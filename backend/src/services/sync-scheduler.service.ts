@@ -126,6 +126,13 @@ export function startSyncScheduler(): void {
     }).catch(() => {});
   }, 60_000);
 
+  // Dispara disparos de email agendados (EmailBlast) cujo horario ja chegou
+  setInterval(() => {
+    import('../routes/email-blasts.routes').then(({ processDueScheduledBlasts }) => {
+      processDueScheduledBlasts().catch(err => console.error('[email-blasts] scheduler error:', err));
+    }).catch(() => {});
+  }, 60_000);
+
   // Detect Google Appointment Schedule bookings created after the WhatsApp AI sends the booking link.
   const bookingSyncMs = Number.parseInt(process.env.MEETING_BOOKING_SYNC_INTERVAL_MS ?? '', 10) || 5 * 60 * 1000;
   setInterval(() => {

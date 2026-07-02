@@ -809,10 +809,39 @@ model EmailTemplate {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  sends EmailSent[]
+  sends  EmailSent[]
+  blasts EmailBlast[]
 
   @@index([status])
   @@index([isActive])
+  @@index([createdAt])
+}
+
+// ============================================================
+// DISPAROS AVULSOS (fora de automacao) — segmento / tag / individual
+// ============================================================
+
+model EmailBlast {
+  id            String        @id @default(cuid())
+  name          String
+  templateId    String
+  template      EmailTemplate @relation(fields: [templateId], references: [id])
+  audienceType  String // tag | segment | individual
+  audienceValue String        @db.Text // tag name | segment id | JSON array de emails
+  audienceCount Int           @default(0)
+  // status: draft | scheduled | sending | sent | failed
+  status        String        @default("draft")
+  scheduledAt   DateTime?
+  sentCount     Int           @default(0)
+  failedCount   Int           @default(0)
+  sentAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  sends EmailSent[]
+
+  @@index([status])
+  @@index([scheduledAt])
   @@index([createdAt])
 }
 
@@ -826,6 +855,8 @@ model EmailSent {
   lead          Lead           @relation(fields: [leadEmail], references: [email])
   templateId    String?
   template      EmailTemplate? @relation(fields: [templateId], references: [id])
+  blastId       String?
+  blast         EmailBlast?    @relation(fields: [blastId], references: [id])
   resendId      String?        @unique
   subject       String
   fromName      String?
@@ -847,6 +878,7 @@ model EmailSent {
 
   @@index([leadEmail])
   @@index([templateId])
+  @@index([blastId])
   @@index([status])
   @@index([sentAt])
 }

@@ -20,6 +20,7 @@ export interface SendEmailInput {
   fromName?: string;
   fromEmail?: string;
   templateId?: string;
+  blastId?: string;
   automationExecutionId?: string;
   automationNodeId?: string;
   skipRecord?: boolean;
@@ -79,6 +80,7 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
       data: {
         leadEmail:             input.leadEmail,
         templateId:            input.templateId            ?? null,
+        blastId:               input.blastId               ?? null,
         resendId,
         subject:               input.subject,
         fromName,

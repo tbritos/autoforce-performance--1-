@@ -36,6 +36,7 @@ import aiAgentsRoutes from './routes/ai-agents.routes';
 import whatsappRoutes from './routes/whatsapp.routes';
 import pipedriveRoutes from './routes/pipedrive.routes';
 import emailTemplatesRoutes from './routes/email-templates.routes';
+import emailBlastsRoutes from './routes/email-blasts.routes';
 import segmentRoutes from './routes/segment.routes';
 
 dotenv.config();
@@ -816,6 +817,7 @@ app.use('/api/funnels', funnelRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/pipedrive', pipedriveRoutes);
 app.use('/api/email-templates', emailTemplatesRoutes);
+app.use('/api/email-blasts', emailBlastsRoutes);
 app.use('/api/segments', segmentRoutes);
 
 // Error handling middleware (deve ser o último)
