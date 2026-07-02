@@ -152,6 +152,23 @@ async function getGA4SourceConfigs(source?: string | null, hostName?: string | n
   return configs;
 }
 
+const TRANSIENT_ERROR_PATTERN = /premature close|fetch failed|econnreset|etimedout|socket hang up|eai_again/i;
+
+function isTransientGA4Error(error: any): boolean {
+  return TRANSIENT_ERROR_PATTERN.test(error?.message || '') || TRANSIENT_ERROR_PATTERN.test(error?.cause?.message || '');
+}
+
+async function runReportWithRetry(client: any, params: any, retries = 2): Promise<any> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await client.properties.runReport(params);
+    } catch (error: any) {
+      if (attempt >= retries || !isTransientGA4Error(error)) throw error;
+      await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+  }
+}
+
 export async function initializeGA4Client(): Promise<any> {
   let auth: any;
 
@@ -214,7 +231,7 @@ export async function getLandingPagesFromGA4(
 
     console.log(`🔍 Buscando GA4 de ${start} até ${end} (${lpHost ?? `property/${resolvedPropertyId}`})...`);
 
-    const response = await client.properties.runReport({
+    const response = await runReportWithRetry(client, {
       property: `properties/${resolvedPropertyId}`,
       requestBody: {
         dateRanges: [{ startDate: start, endDate: end }],
@@ -320,7 +337,7 @@ export async function getGA4SourceTotals(
 
   const propertyIds = Array.from(new Set(configs.flatMap(config => config.propertyIds)));
   const jobs = propertyIds.map(async propertyId => {
-      const response = await client.properties.runReport({
+      const response = await runReportWithRetry(client, {
         property: `properties/${propertyId}`,
         requestBody: {
           dateRanges: [{ startDate: start, endDate: end }],
@@ -393,7 +410,7 @@ export async function getGA4PageTotals(
   const propertyIds = Array.from(new Set(configs.flatMap(config => config.propertyIds)));
 
   const jobs = propertyIds.map(async propertyId => {
-    const response = await client.properties.runReport({
+    const response = await runReportWithRetry(client, {
       property: `properties/${propertyId}`,
       requestBody: {
         dateRanges: [{ startDate: start, endDate: end }],
