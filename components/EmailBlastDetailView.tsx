@@ -143,6 +143,17 @@ const EmailBlastDetailView: React.FC = () => {
     }
   };
 
+  const handleRetryFailed = async () => {
+    if (!blast) return;
+    if (!window.confirm(`Reenviar apenas para quem falhou (${blast.stats.failed.toLocaleString('pt-BR')} leads)? Quem já recebeu com sucesso não é reenviado.`)) return;
+    try {
+      await apiClient.post(`/email-blasts/${blast.id}/retry-failed`, {});
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao reenviar falhas');
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: 10, color: 'var(--fg-muted)' }}>
@@ -191,12 +202,20 @@ const EmailBlastDetailView: React.FC = () => {
           </div>
           <div style={{ fontSize: 13, color: 'var(--fg-muted)' }}>{blast.template.subject}</div>
         </div>
-        {(blast.status === 'sending' || blast.status === 'scheduled') && (
-          <button onClick={handleCancel}
-            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: 8, border: '1px solid #fca5a5', background: 'transparent', color: '#dc2626', fontSize: 13, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
-            <XCircle size={13} /> Cancelar disparo
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+          {(blast.status === 'sent' || blast.status === 'failed') && blast.stats.failed > 0 && (
+            <button onClick={handleRetryFailed}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--accent)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              <RefreshCw size={13} /> Reenviar falhas ({blast.stats.failed.toLocaleString('pt-BR')})
+            </button>
+          )}
+          {(blast.status === 'sending' || blast.status === 'scheduled') && (
+            <button onClick={handleCancel}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: 8, border: '1px solid #fca5a5', background: 'transparent', color: '#dc2626', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              <XCircle size={13} /> Cancelar disparo
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Stats grid */}

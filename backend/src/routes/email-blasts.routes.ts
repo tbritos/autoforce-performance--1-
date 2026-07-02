@@ -281,6 +281,25 @@ router.post('/:id/send', async (req: Request, res: Response) => {
   }
 });
 
+// POST /:id/retry-failed — reenvia só para quem falhou (nao duplica quem ja recebeu de verdade)
+router.post('/:id/retry-failed', async (req: Request, res: Response) => {
+  try {
+    const blast = await prisma.emailBlast.findUnique({ where: { id: req.params.id } });
+    if (!blast) { res.status(404).json({ error: 'Disparo não encontrado' }); return; }
+    if (blast.status === 'sending') { res.status(409).json({ error: 'Este disparo já está em andamento' }); return; }
+    if (blast.status === 'cancelled') { res.status(409).json({ error: 'Este disparo foi cancelado' }); return; }
+    if (blast.status === 'draft' || blast.status === 'scheduled') { res.status(409).json({ error: 'Este disparo ainda não foi enviado' }); return; }
+
+    const failedCount = await prisma.emailSent.count({ where: { blastId: blast.id, status: 'failed' } });
+    if (failedCount === 0) { res.status(409).json({ error: 'Não há envios com falha para reenviar' }); return; }
+
+    sendBlastNow(blast.id, { resume: true }).catch(err => console.error(`[email-blasts] retry ${blast.id} falhou:`, err));
+    res.json({ ok: true, retrying: failedCount });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Erro ao reenviar falhas' });
+  }
+});
+
 // POST /:id/cancel — interrompe um disparo em andamento (ou cancela um agendamento)
 // Os lotes ja enviados nao sao desfeitos; apenas os que faltam deixam de ser processados.
 router.post('/:id/cancel', async (req: Request, res: Response) => {
