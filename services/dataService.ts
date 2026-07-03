@@ -1424,6 +1424,10 @@ export const DataService = {
     return apiClient.post(`/automation-journeys/${encodeURIComponent(journeyId)}/test`, { email, ...(startNodeId ? { startNodeId } : {}) });
   },
 
+  reprocessSegmentTrigger: async (journeyId: string): Promise<{ ok: boolean; cleared: number }> => {
+    return apiClient.post(`/automation-journeys/${encodeURIComponent(journeyId)}/reprocess-segment`, {});
+  },
+
   listAIAgents: async (): Promise<AIAgent[]> => {
     return apiClient.get<AIAgent[]>('/ai-agents');
   },

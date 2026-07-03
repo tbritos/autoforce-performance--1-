@@ -73,4 +73,17 @@ export class AutomationJourneysController {
       next(error);
     }
   }
+
+  // Limpa o rastreamento de "Entrou em segmento" desta journey — o proximo ciclo do
+  // avaliador (ate 2 min) trata todo mundo que bate com o segmento agora como entrada
+  // nova e dispara de novo. Util apos corrigir um bug num bloco da automacao.
+  static async reprocessSegment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { resetSegmentTriggerForJourney } = await import('../services/segment-trigger.service');
+      const cleared = await resetSegmentTriggerForJourney(req.params.id);
+      res.json({ ok: true, cleared });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

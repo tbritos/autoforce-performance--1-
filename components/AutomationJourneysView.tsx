@@ -1824,6 +1824,29 @@ const AutomationJourneysView: React.FC = () => {
             <Play size={11} style={{ fill: 'currentColor' }} />
             Testar
           </button>
+          {selected.id && selected.nodes.find(n => n.type === 'trigger')?.config?.event === 'segment_entered' && (
+            <button
+              type="button"
+              onClick={async () => {
+                if (!window.confirm('Reprocessar esta automação? Todos os leads que satisfazem as regras do segmento hoje serão tratados como entrada nova no próximo ciclo (até 2 minutos).')) return;
+                try {
+                  const result = await DataService.reprocessSegmentTrigger(selected.id!);
+                  alert(`Rastreamento limpo (${result.cleared} registro(s)). Os leads que ainda batem com o segmento vão disparar de novo em até 2 minutos.`);
+                } catch (err) {
+                  alert(err instanceof Error ? err.message : 'Erro ao reprocessar');
+                }
+              }}
+              title="Limpar o controle de quem já entrou no segmento e reprocessar todo mundo que bate hoje"
+              style={{
+                display: 'inline-flex', gap: 6, alignItems: 'center', height: 34, padding: '0 14px',
+                border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-surface)',
+                color: 'var(--fg-primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              <RefreshCw size={11} />
+              Reprocessar
+            </button>
+          )}
           {selected.id && (
             <button
               type="button"

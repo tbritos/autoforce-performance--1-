@@ -82,6 +82,52 @@ export async function recoverStuckExecutions(): Promise<void> {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+type JourneyRecord = {
+  id: string;
+  nodes: unknown;
+  edges: unknown;
+};
+
+// Inicia uma execucao para UMA journey especifica (ja sabendo que o trigger bate).
+// Extraido de fireTrigger para ser reutilizavel por chamadores que ja sabem qual
+// journey querem disparar (ex: o avaliador de segmento), sem re-escanear todas as
+// journeys ativas e arriscar disparo duplicado quando varias usam o mesmo gatilho.
+async function startExecutionForJourney(
+  journey: JourneyRecord,
+  triggerNode: AutomationNode,
+  leadEmail: string,
+  context: TriggerContext
+): Promise<void> {
+  const guardKey = `${journey.id}:${leadEmail}`;
+  if (executingLeads.has(guardKey)) return;
+
+  // FIX: set guard IMMEDIATELY before any await to close the TOCTOU window
+  executingLeads.add(guardKey);
+
+  try {
+    const nodes = (journey.nodes as unknown as AutomationNode[]) ?? [];
+    const execution = await prisma.automationExecution.create({
+      data: {
+        journeyId: journey.id,
+        leadEmail,
+        status: 'running',
+        currentNodeId: triggerNode.id,
+        log: [],
+      },
+    });
+
+    const edges = (journey.edges as unknown as AutomationEdge[]) ?? [];
+    runExecution(execution.id, journey.id, nodes, edges, leadEmail, context, undefined, guardKey).catch(err => {
+      console.error(`[automation] execution ${execution.id} crashed:`, err);
+      executingLeads.delete(guardKey);
+    });
+  } catch (err) {
+    // If execution creation fails, always release the guard
+    executingLeads.delete(guardKey);
+    console.error(`[automation] fireTrigger create execution error:`, err);
+  }
+}
+
 export async function fireTrigger(
   event: TriggerEvent,
   leadEmail: string,
@@ -105,37 +151,35 @@ export async function fireTrigger(
       const c = (triggerNode.config ?? {}) as Record<string, string>;
       if (!matchesTrigger(c.event, event, c, context)) continue;
 
-      const guardKey = `${journey.id}:${leadEmail}`;
-      if (executingLeads.has(guardKey)) continue;
-
-      // FIX: set guard IMMEDIATELY before any await to close the TOCTOU window
-      executingLeads.add(guardKey);
-
-      try {
-        const execution = await prisma.automationExecution.create({
-          data: {
-            journeyId: journey.id,
-            leadEmail,
-            status: 'running',
-            currentNodeId: triggerNode.id,
-            log: [],
-          },
-        });
-
-        const edges = (journey.edges as unknown as AutomationEdge[]) ?? [];
-        // Pass journeyId directly — avoids a DB round-trip inside runExecution
-        runExecution(execution.id, journey.id, nodes, edges, leadEmail, context, undefined, guardKey).catch(err => {
-          console.error(`[automation] execution ${execution.id} crashed:`, err);
-          executingLeads.delete(guardKey);
-        });
-      } catch (err) {
-        // If execution creation fails, always release the guard
-        executingLeads.delete(guardKey);
-        console.error(`[automation] fireTrigger create execution error:`, err);
-      }
+      await startExecutionForJourney(journey, triggerNode, leadEmail, context);
     }
   } catch (err) {
     console.error('[automation] fireTrigger error:', err);
+  }
+}
+
+// Dispara o gatilho para UMA journey especifica, sem escanear as demais — usado pelo
+// avaliador de segmento, que ja sabe exatamente qual journey/segmento esta processando
+// e precisa evitar que um lead ja conhecido por outra journey dispare esta de novo.
+export async function fireTriggerForJourney(
+  journeyId: string,
+  leadEmail: string,
+  context: TriggerContext = {}
+): Promise<void> {
+  try {
+    const lead = await prisma.lead.findUnique({ where: { email: leadEmail }, select: { status: true } });
+    if (lead?.status === 'DISQUALIFIED') return;
+
+    const journey = await prisma.automationJourney.findUnique({ where: { id: journeyId } });
+    if (!journey || !journey.isActive) return;
+
+    const nodes = (journey.nodes as unknown as AutomationNode[]) ?? [];
+    const triggerNode = nodes.find(n => n.type === 'trigger');
+    if (!triggerNode) return;
+
+    await startExecutionForJourney(journey, triggerNode, leadEmail, context);
+  } catch (err) {
+    console.error('[automation] fireTriggerForJourney error:', err);
   }
 }
 
