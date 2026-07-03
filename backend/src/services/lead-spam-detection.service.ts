@@ -15,8 +15,11 @@ function looksLikeRandomGibberish(value: string): boolean {
   if (!/^[A-Za-z]+$/.test(trimmed)) return false;
   if (!/[a-z]/.test(trimmed) || !/[A-Z]/.test(trimmed)) return false;
 
+  // Limiar em 0.25 (nao 0.2): o exemplo real "iODibwXkamvjrgGVVkSG" tem proporcao de
+  // vogais EXATAMENTE 0.20 e escapava do filtro por causa do "<" estrito. Nomes/palavras
+  // reais ficam folgadamente acima de 0.25, entao a margem extra nao gera falso positivo.
   const vowels = (trimmed.match(/[aeiouAEIOU]/g) || []).length;
-  return vowels / trimmed.length < 0.2;
+  return vowels / trimmed.length < 0.25;
 }
 
 function hasSuspiciousSmsGatewayEmail(email: string): boolean {
