@@ -164,12 +164,16 @@ const BLOCKS: Array<{
 ];
 
 const LEAD_STATUS_OPTIONS = [
-  { value: 'Novo', label: 'Novo' },
-  { value: 'MQL', label: 'MQL' },
-  { value: 'SQL', label: 'SQL' },
-  { value: 'Oportunidade', label: 'Oportunidade' },
-  { value: 'Cliente', label: 'Cliente' },
-  { value: 'Inativo', label: 'Inativo' },
+  { value: 'LEAD',         label: 'Lead' },
+  { value: 'MQL',          label: 'MQL' },
+  { value: 'SQL',          label: 'SQL' },
+  { value: 'SCHEDULED',    label: 'Agendado' },
+  { value: 'DEMO',         label: 'Demo' },
+  { value: 'PROPOSAL',     label: 'Proposta' },
+  { value: 'OPPORTUNITY',  label: 'Oportunidade' },
+  { value: 'CLIENT',       label: 'Cliente' },
+  { value: 'LOST',         label: 'Perdido' },
+  { value: 'DISQUALIFIED', label: 'Desqualificado' },
 ];
 
 const defaultNodes = (): AutomationJourneyNode[] => [
