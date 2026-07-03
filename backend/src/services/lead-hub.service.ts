@@ -715,7 +715,7 @@ export class LeadHubService {
   static async getFunnelCounts() {
     const counts = await prisma.lead.groupBy({
       by: ['status'],
-      where: { deletedAt: null, status: { not: 'DISQUALIFIED' } },
+      where: { deletedAt: null },
       _count: { _all: true },
     });
 

@@ -546,8 +546,12 @@ const DashboardContent: React.FC<{
       };
     }, [leadStats, revenueHistory, dateRange.start, dateRange.end]);
 
+    // Desqualificado (bot/inoperante) nao entra no total usado pras porcentagens do
+    // dashboard, mas continua contado normalmente na barra do Banco de Leads.
     const totalFunnelLeads = useMemo(
-      () => (funnelCounts ? Object.values(funnelCounts).reduce((a, b) => a + b, 0) : 0),
+      () => (funnelCounts
+        ? Object.entries(funnelCounts).reduce((a, [status, count]) => status === 'DISQUALIFIED' ? a : a + count, 0)
+        : 0),
       [funnelCounts]
     );
 
