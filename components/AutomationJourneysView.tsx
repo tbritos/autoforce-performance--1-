@@ -44,6 +44,8 @@ import {
   AutomationJourneyNode,
   AutomationJourneyStatus,
   AutomationNodeType,
+  ExitConditions,
+  ExitConditionRule,
   AIAgent,
   WhatsAppTemplate,
   WhatsAppPhoneNumber,
@@ -175,6 +177,37 @@ const LEAD_STATUS_OPTIONS = [
   { value: 'LOST',         label: 'Perdido' },
   { value: 'DISQUALIFIED', label: 'Desqualificado' },
 ];
+
+// IMPORTANTE: os values abaixo (field e operator) tem que bater exatamente com o
+// que evaluateCondition() em automation-engine.service.ts entende — nao sao so
+// labels, sao os literais salvos e comparados no backend. Usado tanto pelo bloco
+// de Condição quanto pela Condição de saída da automação.
+const CONDITION_FIELD_OPTIONS: SmartSelectOption[] = [
+  { value: 'tag',      label: 'Tag',     description: 'Verifica se o lead tem uma tag' },
+  { value: 'score',    label: 'Score',   description: 'Verifica o score do lead' },
+  { value: 'status',   label: 'Etapa',   description: 'Verifica a etapa atual do lead' },
+  { value: 'jobTitle', label: 'Cargo',   description: 'Verifica o cargo do lead' },
+  { value: 'company',  label: 'Empresa', description: 'Verifica o nome da empresa' },
+  { value: 'source',   label: 'Origem',  description: 'Verifica de onde veio o lead' },
+];
+
+const CONDITION_OPERATORS_BY_FIELD: Record<string, SmartSelectOption[]> = {
+  tag:    [{ value: 'has_tag', label: 'possui a tag' }, { value: 'not_has_tag', label: 'não possui a tag' }],
+  score:  [{ value: '>=', label: 'maior ou igual a' }, { value: '<=', label: 'menor ou igual a' }, { value: '=', label: 'igual a' }],
+  status: [{ value: '=', label: 'é' }, { value: '!=', label: 'não é' }],
+};
+
+const CONDITION_DEFAULT_OPERATORS: SmartSelectOption[] = [
+  { value: 'contains',     label: 'contém' },
+  { value: '=',            label: 'igual a' },
+  { value: 'not_contains', label: 'não contém' },
+];
+
+const conditionOperatorLabel = (field: string, operator: string): string =>
+  (CONDITION_OPERATORS_BY_FIELD[field] ?? CONDITION_DEFAULT_OPERATORS).find(o => o.value === operator)?.label ?? operator;
+
+const conditionFieldLabel = (field: string): string =>
+  CONDITION_FIELD_OPTIONS.find(f => f.value === field)?.label ?? field;
 
 const defaultNodes = (): AutomationJourneyNode[] => [
   {
@@ -634,6 +667,129 @@ function SegmentSelector({ value, onChange }: { value: string; onChange: (v: str
       placeholder="Selecionar segmento..."
       loading={loading}
     />
+  );
+}
+
+// ── Exit Conditions Modal — condicao de saida global da automacao ────────────
+
+function ExitConditionsModal({
+  initial,
+  onCancel,
+  onSave,
+}: {
+  initial: ExitConditions;
+  onCancel: () => void;
+  onSave: (next: ExitConditions) => void;
+}) {
+  const [logic, setLogic] = useState<'AND' | 'OR'>(initial.logic ?? 'AND');
+  const [rows, setRows] = useState<ExitConditionRule[]>(
+    initial.conditions?.length ? initial.conditions : [{ field: '', operator: '', value: '' }]
+  );
+
+  const fieldLabelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' };
+  const fieldInputStyle: React.CSSProperties = { width: '100%', height: 42, padding: '0 12px', boxSizing: 'border-box', border: '1.5px solid var(--border)', borderRadius: 10, background: 'var(--bg-surface)', color: 'var(--fg-primary)', fontSize: 14, outline: 'none' };
+
+  const updateRow = (idx: number, changes: Partial<ExitConditionRule>) => {
+    setRows(prev => prev.map((row, i) => i === idx ? { ...row, ...changes } : row));
+  };
+  const addRow = () => setRows(prev => [...prev, { field: '', operator: '', value: '' }]);
+  const removeRow = (idx: number) => setRows(prev => prev.filter((_, i) => i !== idx));
+
+  const handleSave = () => {
+    const validRows = rows.filter(r => r.field && r.operator && String(r.value ?? '').trim());
+    onSave({ logic, conditions: validRows });
+  };
+
+  return (
+    <>
+      <div onClick={onCancel} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000 }} />
+      <div style={{
+        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+        width: 560, maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
+        background: 'var(--bg-surface)', borderRadius: 16,
+        border: '1px solid var(--border)', boxShadow: 'var(--shadow-xl)', zIndex: 1001,
+        padding: 28, display: 'flex', flexDirection: 'column', gap: 18,
+      }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: 'var(--fg-primary)' }}>Condição de saída</h2>
+          <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--fg-muted)' }}>
+            Enquanto o lead estiver em qualquer ponto deste fluxo, se passar a bater com essa condição, ele sai automaticamente — não continua pelos blocos restantes.
+          </p>
+        </div>
+
+        {rows.length > 1 && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={fieldLabelStyle}>Combinar condições com</span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {(['AND', 'OR'] as const).map(l => (
+                <button key={l} type="button" onClick={() => setLogic(l)}
+                  style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${logic === l ? 'var(--accent)' : 'var(--border)'}`, background: logic === l ? 'var(--accent-soft)' : 'transparent', color: logic === l ? 'var(--accent)' : 'var(--fg-muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  {l === 'AND' ? 'E (todas)' : 'OU (qualquer uma)'}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {rows.map((row, idx) => {
+            const operators = CONDITION_OPERATORS_BY_FIELD[row.field] ?? CONDITION_DEFAULT_OPERATORS;
+            return (
+              <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 12, border: '1px solid var(--border)', borderRadius: 10, position: 'relative' }}>
+                {rows.length > 1 && (
+                  <button type="button" onClick={() => removeRow(idx)} style={{ position: 'absolute', top: 8, right: 8, border: 'none', background: 'transparent', color: 'var(--fg-subtle)', cursor: 'pointer' }}>
+                    <X size={14} />
+                  </button>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <span style={fieldLabelStyle}>Campo</span>
+                    <SmartSelect value={row.field} options={CONDITION_FIELD_OPTIONS} onChange={v => updateRow(idx, { field: v, operator: '', value: '' })} placeholder="Selecionar campo..." />
+                  </div>
+                  {row.field && (
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <span style={fieldLabelStyle}>Condição</span>
+                      <SmartSelect value={row.operator} options={operators} onChange={v => updateRow(idx, { operator: v })} placeholder="Selecionar condição..." />
+                    </div>
+                  )}
+                </div>
+                {row.field && (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <span style={fieldLabelStyle}>Valor</span>
+                    {row.field === 'tag' ? (
+                      <TagSelector value={row.value} onChange={v => updateRow(idx, { value: v })} />
+                    ) : row.field === 'status' ? (
+                      <SmartSelect value={row.value} options={LEAD_STATUS_OPTIONS} onChange={v => updateRow(idx, { value: v })} placeholder="Selecionar etapa..." />
+                    ) : (
+                      <input
+                        type={row.field === 'score' ? 'number' : 'text'}
+                        value={row.value}
+                        onChange={e => updateRow(idx, { value: e.target.value })}
+                        placeholder={row.field === 'score' ? 'ex: 50' : 'ex: CEO, acelerador...'}
+                        style={fieldInputStyle}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <button type="button" onClick={addRow} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 6, border: 'none', background: 'transparent', color: 'var(--accent)', fontSize: 13, fontWeight: 700, cursor: 'pointer', padding: 0 }}>
+          <Plus size={14} /> Adicionar condição
+        </button>
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onCancel} className="ds-btn" style={{ height: 38, padding: '0 16px', fontSize: 13 }}>
+            Cancelar
+          </button>
+          <button type="button" onClick={handleSave} className="ds-btn" style={{ height: 38, padding: '0 20px', fontSize: 13, fontWeight: 700, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8 }}>
+            Salvar
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -1152,6 +1308,7 @@ const AutomationJourneysView: React.FC = () => {
   const [testError, setTestError] = useState('');
   const [testStartNodeId, setTestStartNodeId] = useState<string | null>(null);
   const [aiAgents, setAiAgents] = useState<AIAgent[]>([]);
+  const [exitConditionsModalOpen, setExitConditionsModalOpen] = useState(false);
 
   useEffect(() => {
     if (!modalNodeId) { setPanelValues(null); return; }
@@ -1276,6 +1433,7 @@ const AutomationJourneysView: React.FC = () => {
         edges: selected.edges,
         triggerType: selected.triggerType,
         isActive: selected.status === 'ACTIVE',
+        exitConditions: selected.exitConditions ?? null,
       };
       const saved = selected.id
         ? await DataService.updateAutomationJourney(selected.id, payload)
@@ -1823,6 +1981,23 @@ const AutomationJourneysView: React.FC = () => {
           >
             <Play size={11} style={{ fill: 'currentColor' }} />
             Testar
+          </button>
+          <button
+            type="button"
+            onClick={() => setExitConditionsModalOpen(true)}
+            title="Definir quando um lead deve sair do fluxo automaticamente"
+            style={{
+              display: 'inline-flex', gap: 6, alignItems: 'center', height: 34, padding: '0 14px',
+              border: `1px solid ${selected.exitConditions?.conditions?.length ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 8,
+              background: selected.exitConditions?.conditions?.length ? 'var(--accent-soft)' : 'var(--bg-surface)',
+              color: selected.exitConditions?.conditions?.length ? 'var(--accent)' : 'var(--fg-primary)', fontSize: 13, fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            <XCircle size={11} />
+            {selected.exitConditions?.conditions?.length
+              ? `Saída: ${conditionFieldLabel(selected.exitConditions.conditions[0].field)} ${conditionOperatorLabel(selected.exitConditions.conditions[0].field, selected.exitConditions.conditions[0].operator)} ${selected.exitConditions.conditions[0].value}${selected.exitConditions.conditions.length > 1 ? ` (+${selected.exitConditions.conditions.length - 1})` : ''}`
+              : 'Condição de saída'}
           </button>
           {selected.id && selected.nodes.find(n => n.type === 'trigger')?.config?.event === 'segment_entered' && (
             <button
@@ -2406,32 +2581,12 @@ const AutomationJourneysView: React.FC = () => {
 
                   {/* ── CONDITION ── */}
                   {panelNode.type === 'condition' && (() => {
-                    const conditionFieldOptions: SmartSelectOption[] = [
-                      { value: 'tag',         label: 'Tag',     description: 'Verifica se o lead tem uma tag' },
-                      { value: 'score',       label: 'Score',   description: 'Verifica o score do lead' },
-                      { value: 'status',      label: 'Etapa',   description: 'Verifica a etapa atual do lead' },
-                      { value: 'jobTitle',    label: 'Cargo',   description: 'Verifica o cargo do lead' },
-                      { value: 'companyName', label: 'Empresa', description: 'Verifica o nome da empresa' },
-                      { value: 'origin',      label: 'Origem',  description: 'Verifica de onde veio o lead' },
-                    ];
-
-                    const operatorsByField: Record<string, SmartSelectOption[]> = {
-                      tag:    [{ value: 'has', label: 'possui a tag' }, { value: 'not_has', label: 'não possui a tag' }],
-                      score:  [{ value: 'gte', label: 'maior ou igual a' }, { value: 'lte', label: 'menor ou igual a' }, { value: 'eq', label: 'igual a' }],
-                      status: [{ value: 'is', label: 'é' }, { value: 'is_not', label: 'não é' }],
-                    };
-                    const defaultOperators: SmartSelectOption[] = [
-                      { value: 'contains',     label: 'contém' },
-                      { value: 'equals',       label: 'igual a' },
-                      { value: 'not_contains', label: 'não contém' },
-                    ];
-
                     const field = panelValues.config.field ?? '';
-                    const operators = operatorsByField[field] ?? defaultOperators;
+                    const operators = CONDITION_OPERATORS_BY_FIELD[field] ?? CONDITION_DEFAULT_OPERATORS;
 
                     return (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                        {panelSelectField('field', 'Campo a verificar', conditionFieldOptions, 'Selecionar campo...')}
+                        {panelSelectField('field', 'Campo a verificar', CONDITION_FIELD_OPTIONS, 'Selecionar campo...')}
                         {field && panelSelectField('operator', 'Condição', operators, 'Selecionar condição...')}
                         {field === 'tag' && panelTagField('value', 'Qual tag?')}
                         {field === 'status' && panelSelectField('value', 'Qual etapa?', LEAD_STATUS_OPTIONS, 'Selecionar etapa...')}
@@ -3239,6 +3394,18 @@ const AutomationJourneysView: React.FC = () => {
             </div>
           </div>
         </>,
+        document.body
+      )}
+
+      {exitConditionsModalOpen && createPortal(
+        <ExitConditionsModal
+          initial={selected.exitConditions ?? { logic: 'AND', conditions: [] }}
+          onCancel={() => setExitConditionsModalOpen(false)}
+          onSave={next => {
+            updateSelected({ exitConditions: next.conditions.length ? next : null });
+            setExitConditionsModalOpen(false);
+          }}
+        />,
         document.body
       )}
     </div>

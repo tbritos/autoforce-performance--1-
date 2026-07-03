@@ -326,6 +326,17 @@ export interface AutomationJourneyEdge {
   targetHandle?: string | null;
 }
 
+export interface ExitConditionRule {
+  field: string;
+  operator: string;
+  value: string;
+}
+
+export interface ExitConditions {
+  logic: 'AND' | 'OR';
+  conditions: ExitConditionRule[];
+}
+
 export interface AutomationJourney {
   id: string;
   name: string;
@@ -335,6 +346,7 @@ export interface AutomationJourney {
   edges: AutomationJourneyEdge[];
   triggerType: string | null;
   isActive: boolean;
+  exitConditions?: ExitConditions | null;
   createdAt: string;
   updatedAt: string;
   _count?: {

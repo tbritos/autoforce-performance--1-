@@ -15,6 +15,17 @@ export interface JourneyEdge {
   target: string;
 }
 
+export interface ExitConditionRule {
+  field: string;
+  operator: string;
+  value: string;
+}
+
+export interface ExitConditions {
+  logic: 'AND' | 'OR';
+  conditions: ExitConditionRule[];
+}
+
 export interface AutomationJourneyInput {
   name: string;
   description?: string | null;
@@ -23,6 +34,7 @@ export interface AutomationJourneyInput {
   edges?: JourneyEdge[];
   triggerType?: string | null;
   isActive?: boolean;
+  exitConditions?: ExitConditions | null;
 }
 
 const validStatus = (status?: string) => {
@@ -54,6 +66,7 @@ export class AutomationJourneysService {
         triggerType: input.triggerType || null,
         nodes: input.nodes ?? [],
         edges: input.edges ?? [],
+        exitConditions: input.exitConditions ?? null,
       },
     });
   }
@@ -71,6 +84,7 @@ export class AutomationJourneysService {
     if (input.triggerType !== undefined) data.triggerType = input.triggerType || null;
     if (input.nodes !== undefined) data.nodes = input.nodes;
     if (input.edges !== undefined) data.edges = input.edges;
+    if (input.exitConditions !== undefined) data.exitConditions = input.exitConditions;
 
     return (prisma as any).automationJourney.update({ where: { id }, data });
   }

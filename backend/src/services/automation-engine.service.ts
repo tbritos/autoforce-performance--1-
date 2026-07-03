@@ -86,6 +86,7 @@ type JourneyRecord = {
   id: string;
   nodes: unknown;
   edges: unknown;
+  exitConditions?: unknown;
 };
 
 // Inicia uma execucao para UMA journey especifica (ja sabendo que o trigger bate).
@@ -117,7 +118,7 @@ async function startExecutionForJourney(
     });
 
     const edges = (journey.edges as unknown as AutomationEdge[]) ?? [];
-    runExecution(execution.id, journey.id, nodes, edges, leadEmail, context, undefined, guardKey).catch(err => {
+    runExecution(execution.id, journey.id, nodes, edges, leadEmail, context, undefined, guardKey, journey.exitConditions).catch(err => {
       console.error(`[automation] execution ${execution.id} crashed:`, err);
       executingLeads.delete(guardKey);
     });
@@ -221,7 +222,7 @@ export async function testJourneyForLead(
     },
   });
 
-  runExecution(execution.id, journeyId, nodes, edges, leadEmail, { _test: true }, startNodeId, guardKey).catch(err => {
+  runExecution(execution.id, journeyId, nodes, edges, leadEmail, { _test: true }, startNodeId, guardKey, journey.exitConditions).catch(err => {
     console.error(`[automation] test execution ${execution.id} failed:`, err);
     executingLeads.delete(guardKey);
   });
@@ -251,6 +252,12 @@ export async function resumeWaitingExecutions(): Promise<void> {
       data: { status: 'running', resumeAt: null },
     });
     if (claimed.count === 0) continue; // another process already claimed it
+
+    if (await shouldExitJourney(execution.journey.exitConditions, execution.leadEmail)) {
+      await exitExecution(execution.id, execution.currentNodeId ?? undefined);
+      executingLeads.delete(guardKey); // libera o guard — execucao encerrada, nao fica "presa"
+      continue;
+    }
 
     const nodes = (execution.journey.nodes as unknown as AutomationNode[]) ?? [];
     const edges = (execution.journey.edges as unknown as AutomationEdge[]) ?? [];
@@ -319,6 +326,11 @@ export async function resumeWaitingWhatsAppReply(
     const currentNode = nodes.find(n => n.id === execution.currentNodeId);
     if (currentNode?.type !== 'whatsapp_wait_reply') continue;
 
+    if (await shouldExitJourney(execution.journey.exitConditions, execution.leadEmail)) {
+      await exitExecution(execution.id, currentNode.id);
+      continue;
+    }
+
     if (handle === 'replied') {
       const keywords = String(currentNode.config?.keywords ?? '').split(',').map(item => item.trim().toLowerCase()).filter(Boolean);
       const normalizedReply = replyText.toLowerCase();
@@ -378,6 +390,11 @@ export async function resumeWaitingEmailEvent(
   const currentNode = nodes.find(n => n.id === execution.currentNodeId);
   if (currentNode?.type !== 'email_wait_event') return 0;
 
+  if (await shouldExitJourney(execution.journey.exitConditions, execution.leadEmail)) {
+    await exitExecution(execution.id, currentNode.id);
+    return 0;
+  }
+
   const waitFor = String(currentNode.config?.waitForEvent || 'opened');
   // If node waits for 'clicked', only 'clicked' event qualifies; 'opened' qualifies for either
   if (waitFor === 'clicked' && eventType !== 'clicked') return 0;
@@ -425,6 +442,11 @@ export async function resumeWaitingEmailReceived(
     const currentNode = nodes.find(n => n.id === execution.currentNodeId);
     if (currentNode?.type !== 'email_wait_event') continue;
 
+    if (await shouldExitJourney(execution.journey.exitConditions, execution.leadEmail)) {
+      await exitExecution(execution.id, currentNode.id);
+      continue;
+    }
+
     const waitFor = String(currentNode.config?.waitForEvent || 'opened');
     if (waitFor !== 'received' && waitFor !== 'reply') continue;
 
@@ -470,7 +492,8 @@ async function runExecution(
   leadEmail: string,
   context: TriggerContext,
   startNodeId?: string,
-  guardKey?: string             // FIX: passed from caller who already set the guard
+  guardKey?: string,            // FIX: passed from caller who already set the guard
+  exitConditions?: unknown
 ): Promise<void> {
   // Derive guardKey if not passed (safety fallback)
   const key = guardKey ?? `${journeyId}:${leadEmail}`;
@@ -493,6 +516,11 @@ async function runExecution(
     while (currentNodeId) {
       if (visited.has(currentNodeId)) break;
       visited.add(currentNodeId);
+
+      if (await shouldExitJourney(exitConditions, leadEmail)) {
+        await exitExecution(executionId, currentNodeId);
+        return;
+      }
 
       const node = nodes.find(n => n.id === currentNodeId);
       if (!node) break;
@@ -812,6 +840,40 @@ function evaluateCondition(
     }
     default:             return false;
   }
+}
+
+// ─── Exit conditions (saida global do fluxo) ─────────────────────────────────
+
+type ExitConditionRule = { field?: string; operator?: string; value?: string };
+type ExitConditions = { logic?: string; conditions?: ExitConditionRule[] };
+
+const LEAD_RECORD_SELECT = {
+  status: true, score: true, tags: true, isHot: true, firstSource: true,
+  company: true, jobTitle: true, phone: true, name: true, assignedTo: true,
+} as const;
+
+function evaluateExitConditions(lead: LeadRecord, exit: ExitConditions | null | undefined): boolean {
+  if (!exit?.conditions?.length) return false;
+  const results = exit.conditions.map(c => evaluateCondition(lead, c as Record<string, string>));
+  return exit.logic === 'OR' ? results.some(Boolean) : results.every(Boolean);
+}
+
+async function shouldExitJourney(exit: unknown, leadEmail: string): Promise<boolean> {
+  const parsed = exit as ExitConditions | null;
+  if (!parsed?.conditions?.length) return false;
+  const lead = await prisma.lead.findUnique({ where: { email: leadEmail }, select: LEAD_RECORD_SELECT });
+  if (!lead) return false;
+  return evaluateExitConditions(lead, parsed);
+}
+
+async function exitExecution(executionId: string, nodeId: string | undefined): Promise<void> {
+  if (nodeId) {
+    await appendLog(executionId, nodeId, 'exit_condition', 'ok', 'Saiu do fluxo: condição de saída atingida').catch(() => {});
+  }
+  await prisma.automationExecution.update({
+    where: { id: executionId },
+    data: { status: 'completed', completedAt: new Date() },
+  }).catch(() => {});
 }
 
 async function appendLog(

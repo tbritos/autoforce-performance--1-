@@ -239,6 +239,11 @@ model AutomationJourney {
   nodes Json @default("[]")
   edges Json @default("[]")
 
+  // Condicao de saida global: enquanto o lead estiver em qualquer ponto do fluxo,
+  // se passar a bater com isso, a execucao e encerrada (sem passar pelos blocos restantes).
+  // Formato: { logic: 'AND' | 'OR', conditions: [{ field, operator, value }] }
+  exitConditions Json?
+
   triggerType String?
   isActive    Boolean @default(false)
 
