@@ -1143,5 +1143,22 @@ model Segment {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  triggerMemberships SegmentTriggerMembership[]
+
   @@index([createdAt])
+}
+
+// Rastreia quem satisfaz as regras de um segmento usado como gatilho de automacao
+// ("Entrou em segmento"). Segmentos sao dinamicos (regras, nao lista fixa), entao
+// precisamos guardar o ultimo estado conhecido para detectar quem "entrou" agora.
+model SegmentTriggerMembership {
+  id        String   @id @default(cuid())
+  segmentId String
+  segment   Segment  @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  leadEmail String
+  createdAt DateTime @default(now())
+
+  @@unique([segmentId, leadEmail])
+  @@index([segmentId])
+  @@index([leadEmail])
 }

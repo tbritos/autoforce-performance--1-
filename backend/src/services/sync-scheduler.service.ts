@@ -141,6 +141,14 @@ export function startSyncScheduler(): void {
     }).catch(() => {});
   }, 90_000);
 
+  // Avalia gatilhos de automacao do tipo "Entrou em segmento" (segmentos sao dinamicos,
+  // nao tem evento nativo — precisa comparar quem bate nas regras periodicamente)
+  setInterval(() => {
+    import('./segment-trigger.service').then(({ evaluateSegmentTriggers }) => {
+      evaluateSegmentTriggers().catch(err => console.error('[segment-trigger] scheduler error:', err));
+    }).catch(() => {});
+  }, 120_000);
+
   // Detect Google Appointment Schedule bookings created after the WhatsApp AI sends the booking link.
   const bookingSyncMs = Number.parseInt(process.env.MEETING_BOOKING_SYNC_INTERVAL_MS ?? '', 10) || 5 * 60 * 1000;
   setInterval(() => {

@@ -33,8 +33,9 @@ import {
   XCircle,
   Loader2,
   Hourglass,
+  Layers,
 } from 'lucide-react';
-import { DataService } from '../services/dataService';
+import { DataService, listSegments, SegmentType } from '../services/dataService';
 import {
   AutomationExecution,
   AutomationExecutionStats,
@@ -198,6 +199,7 @@ function nodeSubtitle(node: AutomationJourneyNode): { text: string; warn: boolea
         score_reached:  c.eventValue ? `Score ≥ ${c.eventValue}` : 'Score atingiu limite',
         status_changed: c.eventValue ? `Etapa → ${c.eventValue}` : 'Etapa mudou',
         email_received: c.eventValue ? `Email recebido: ${c.eventValue}` : 'Email recebido',
+        segment_entered: 'Entrou em segmento',
       };
       return { text: labels[c.event] ?? c.event, warn: false };
     }
@@ -596,6 +598,36 @@ function WebhookSourceSelector({ value, onChange }: { value: string; onChange: (
       options={options}
       onChange={onChange}
       placeholder="Selecionar conversão..."
+      loading={loading}
+    />
+  );
+}
+
+// ── Segment Selector (async, fetches dynamic segments from API) ──────────────
+
+function SegmentSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [segments, setSegments] = useState<SegmentType[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    listSegments()
+      .then(s => setSegments(s))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const options: SmartSelectOption[] = segments.map(s => ({
+    value: s.id,
+    label: s.name,
+    description: `${(s.leadCount ?? 0).toLocaleString('pt-BR')} leads`,
+  }));
+
+  return (
+    <SmartSelect
+      value={value}
+      options={options}
+      onChange={onChange}
+      placeholder="Selecionar segmento..."
       loading={loading}
     />
   );
@@ -2223,6 +2255,7 @@ const AutomationJourneysView: React.FC = () => {
                       { value: 'score_reached',   icon: TrendingUp, label: 'Score atingiu limite',    description: 'Score chegou a um valor mínimo definido',    subField: 'score' },
                       { value: 'status_changed',  icon: ArrowRight, label: 'Etapa mudou',             description: 'Lead mudou para uma etapa específica',       subField: 'status' },
                       { value: 'email_received',  icon: MailOpen,   label: 'Email recebido',          description: 'Lead respondeu ou enviou um email',          subField: 'email' },
+                      { value: 'segment_entered', icon: Layers,     label: 'Entrou em segmento',      description: 'Lead passou a satisfazer as regras de um segmento', subField: 'segment' },
                     ];
                     const selectedEvent = panelValues.config.event || '';
                     const activeOpt = triggerOptions.find(o => o.value === selectedEvent);
@@ -2327,6 +2360,18 @@ const AutomationJourneysView: React.FC = () => {
                               Deixe vazio para qualquer email recebido, ou separe termos por virgula para filtrar respostas como 1, 2 ou 3.
                             </span>
                           </label>
+                        )}
+                        {activeOpt?.subField === 'segment' && (
+                          <div style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>Qual segmento?</span>
+                            <SegmentSelector
+                              value={String(panelValues.config.eventValue ?? '')}
+                              onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, eventValue: v } } : prev)}
+                            />
+                            <span style={{ fontSize: 11, color: 'var(--fg-muted)', lineHeight: 1.4 }}>
+                              Segmentos são dinâmicos — a checagem de quem entrou roda a cada 2 minutos, então pode levar até esse tempo para disparar.
+                            </span>
+                          </div>
                         )}
                       </div>
                     );

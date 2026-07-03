@@ -11,7 +11,8 @@ export type TriggerEvent =
   | 'status_changed'
   | 'score_updated'
   | 'conversion_received'
-  | 'email_received';
+  | 'email_received'
+  | 'segment_entered';
 
 export interface TriggerContext {
   tag?: string;
@@ -19,6 +20,7 @@ export interface TriggerContext {
   fromStatus?: string;
   score?: number;
   conversionName?: string;
+  segmentId?: string;
   [key: string]: unknown;
 }
 
@@ -693,6 +695,9 @@ function matchesTrigger(
       }
       break;
     }
+    case 'segment_entered':
+      if (config.eventValue && config.eventValue !== context.segmentId) return false;
+      break;
   }
 
   return true;
