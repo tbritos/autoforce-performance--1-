@@ -136,10 +136,15 @@ export class FunnelService {
       if (funnel.leadTags.length > 0) {
         where.tags = { hasSome: funnel.leadTags };
       } else {
+        // firstCampaign/firstLandingPage are stored as the RAW value captured at conversion
+        // time (full URL with utm_id/fbclid/etc. query string, or the exact utm_campaign text) —
+        // no two visits share the exact same string, so an exact match effectively never hits.
+        // `contains` matches the meaningful part (e.g. the page path, or the campaign name)
+        // regardless of the tracking noise around it.
         if (funnel.filterSource)      where.firstSource      = funnel.filterSource;
         if (funnel.filterMedium)      where.firstMedium      = funnel.filterMedium;
-        if (funnel.filterCampaign)    where.firstCampaign    = funnel.filterCampaign;
-        if (funnel.filterLandingPage) where.firstLandingPage = funnel.filterLandingPage;
+        if (funnel.filterCampaign)    where.firstCampaign    = { contains: funnel.filterCampaign,    mode: 'insensitive' };
+        if (funnel.filterLandingPage) where.firstLandingPage = { contains: funnel.filterLandingPage, mode: 'insensitive' };
       }
     }
 

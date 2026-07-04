@@ -684,7 +684,8 @@ const FunnelCreatePage: React.FC<{
                   <select value={form.filterCampaign} onChange={e => setForm(f => ({ ...f, filterCampaign: e.target.value }))}
                     style={{ ...iStyle, cursor: 'pointer' }}>
                     <option value="">Todas as campanhas (UTM)</option>
-                    {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {/* value = nome da campanha, nao o ID: o lead grava o texto do utm_campaign, nao o ID numerico do Meta/Google Ads */}
+                    {campaigns.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                   </select>
                   <select value={form.filterLandingPage} onChange={e => setForm(f => ({ ...f, filterLandingPage: e.target.value }))}
                     style={{ ...iStyle, cursor: 'pointer' }}>
