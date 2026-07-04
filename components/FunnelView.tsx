@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Pencil, Trash2, RefreshCw, Download, Calendar,
@@ -134,6 +135,41 @@ function convRate(n: number, d: number): string {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+const TooltipInfo: React.FC<{ text: string; position?: 'top' | 'bottom' }> = ({ text, position = 'bottom' }) => {
+  const [show, setShow]     = useState(false);
+  const [coords, setCoords] = useState({ x: 0, y: 0 });
+  const iconRef = useRef<HTMLSpanElement>(null);
+
+  const handleMouseEnter = () => {
+    if (iconRef.current) {
+      const r = iconRef.current.getBoundingClientRect();
+      setCoords({ x: r.left + r.width / 2, y: position === 'top' ? r.top : r.bottom });
+    }
+    setShow(true);
+  };
+
+  return (
+    <span ref={iconRef} className="inline-flex items-center" onMouseEnter={handleMouseEnter} onMouseLeave={() => setShow(false)}>
+      <Info size={11} style={{ color: 'var(--fg-subtle)', cursor: 'help', flexShrink: 0 }} />
+      {show && createPortal(
+        <span style={{
+          position: 'fixed', zIndex: 9999, width: 260, borderRadius: 12,
+          padding: '10px 12px', fontSize: 12, lineHeight: 1.5, pointerEvents: 'none',
+          background: 'var(--bg-surface)', border: '1px solid var(--border)',
+          color: 'var(--fg-muted)', boxShadow: '0 8px 24px rgba(0,0,0,0.22)',
+          left: coords.x, transform: 'translateX(-50%)',
+          ...(position === 'top'
+            ? { bottom: window.innerHeight - coords.y + 8 }
+            : { top: coords.y + 8 }),
+        }}>
+          {text}
+        </span>,
+        document.body
+      )}
+    </span>
+  );
+};
 
 const KpiTile: React.FC<{
   label: string; value: string; sub?: string;
@@ -1256,7 +1292,10 @@ const FunnelView: React.FC = () => {
           {/* Funnel stages visualization */}
           <div className="ds-card">
             <div className="ds-card-head">
-              <span className="ttl"><Layers size={14} className="ico" /> Funil de Conversão</span>
+              <span className="ttl" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Layers size={14} className="ico" /> Funil de Conversão
+                <TooltipInfo text="Quantos leads do período JÁ CHEGARAM em cada etapa em algum momento — mesmo que hoje estejam em outro status ou tenham sido marcados como Perdido depois. Por isso os números não batem com a Distribuição por Status, que mostra o status atual." />
+              </span>
             </div>
             <div style={{ padding: '16px 20px 20px' }}>
               {statsLoading ? (
@@ -1344,7 +1383,10 @@ const FunnelView: React.FC = () => {
           {fc && !statsLoading && (
             <div className="ds-card">
               <div className="ds-card-head">
-                <span className="ttl"><Users size={14} className="ico" /> Distribuição por Status (CRM)</span>
+                <span className="ttl" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Users size={14} className="ico" /> Distribuição por Status (CRM)
+                  <TooltipInfo text="Status ATUAL de cada lead do período — uma foto de agora. Um lead que passou por MQL/SQL e depois foi Perdido aparece só em 'Perdido' aqui, mesmo já tendo contado nessas etapas no Funil de Conversão acima." />
+                </span>
               </div>
               <div style={{ padding: '14px 18px 18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 10 }}>
                 {([
