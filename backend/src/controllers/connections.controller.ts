@@ -14,7 +14,10 @@ function parsePlatform(raw: string): Platform | null {
 
 const OAUTH_ENV_REQUIREMENTS: Record<(typeof VALID_PLATFORMS)[number], string[]> = {
   META_ADS:          ['META_APP_ID', 'META_APP_SECRET', 'APP_URL'],
-  GOOGLE_ADS:        ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_ADS_DEVELOPER_TOKEN', 'APP_URL'],
+  // GOOGLE_ADS_DEVELOPER_TOKEN is intentionally NOT required here — it's only needed to
+  // call the Ads API (checked in testPlatformConnection below), not to complete the OAuth
+  // handshake itself. Requiring it here would block "Conectar" while a token is pending approval.
+  GOOGLE_ADS:        ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'APP_URL'],
   GOOGLE_ANALYTICS:  ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'APP_URL'],
   GOOGLE_CALENDAR:   ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'APP_URL'],
   RD_STATION:        ['RD_STATION_CLIENT_ID', 'RD_STATION_CLIENT_SECRET', 'APP_URL'],
