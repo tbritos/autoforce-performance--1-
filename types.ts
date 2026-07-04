@@ -21,6 +21,7 @@ export interface Lead {
   firstCampaign: string | null;
   firstSeenAt: string | null;
   lastSeenAt: string | null;
+  lastConversionSource: string | null;
   _count: { conversions: number };
 }
 

@@ -3714,7 +3714,14 @@ const LeadRow: React.FC<{
       {lead.company ?? '—'}
     </td>
     <td><StatusBadge status={lead.status} /></td>
-    <td style={{ color: 'var(--fg-muted)', fontSize: 12 }}>{lead.firstSource ?? '—'}</td>
+    <td style={{ fontSize: 12 }}>
+      <div style={{ color: 'var(--fg-muted)' }}>{lead.firstSource ?? '—'}</div>
+      {lead.lastConversionSource && lead.lastConversionSource !== lead.firstSource && (
+        <div style={{ color: 'var(--fg-subtle)', fontSize: 11, marginTop: 1 }} title="Conversão mais recente — não é necessariamente a origem do lead">
+          Última: {lead.lastConversionSource}
+        </div>
+      )}
+    </td>
     <td className="num" style={{ color: 'var(--fg-muted)', fontSize: 12 }}>{lead._count.conversions}</td>
     <td style={{ color: 'var(--fg-muted)', fontSize: 12, whiteSpace: 'nowrap' }}>{formatDate(lead.lastSeenAt)}</td>
     <td style={{ textAlign: 'center' }}>

@@ -380,8 +380,30 @@ export class LeadHubService {
       }),
     ]);
 
+    // Most recent conversion source per lead — shown alongside (never instead of) firstSource,
+    // since firstSource is the immutable "how this lead originally arrived" signal used for
+    // attribution everywhere else (funis, exports). A later, unrelated conversion (e.g. an
+    // existing customer downloading an ebook) should be visible without overwriting that meaning.
+    const emails = leads.map(l => l.email);
+    const lastConversions = emails.length > 0
+      ? await prisma.leadConversion.findMany({
+          where: { leadEmail: { in: emails } },
+          orderBy: { convertedAt: 'desc' },
+          select: { leadEmail: true, source: true },
+        })
+      : [];
+    const lastConversionByEmail = new Map<string, string>();
+    for (const c of lastConversions) {
+      if (!lastConversionByEmail.has(c.leadEmail) && c.source) {
+        lastConversionByEmail.set(c.leadEmail, c.source);
+      }
+    }
+
     return {
-      leads,
+      leads: leads.map(l => ({
+        ...l,
+        lastConversionSource: lastConversionByEmail.get(l.email) ?? null,
+      })),
       total,
       page,
       pageSize,
