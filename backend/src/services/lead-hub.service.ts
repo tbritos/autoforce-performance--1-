@@ -380,28 +380,30 @@ export class LeadHubService {
       }),
     ]);
 
-    // Most recent conversion source per lead — shown alongside (never instead of) firstSource,
-    // since firstSource is the immutable "how this lead originally arrived" signal used for
-    // attribution everywhere else (funis, exports). A later, unrelated conversion (e.g. an
-    // existing customer downloading an ebook) should be visible without overwriting that meaning.
+    // First and last conversion name per lead (LeadConversion.source — e.g. "Ebook Máquina de
+    // Vendas", the readable webhook/campaign source name) shown as "Primeira"/"Última" in the
+    // UI. This is distinct from Lead.firstSource (a plain UTM channel like "Meta"), which stays
+    // as the fallback for leads with no tracked LeadConversion row at all.
     const emails = leads.map(l => l.email);
-    const lastConversions = emails.length > 0
+    const allConversions = emails.length > 0
       ? await prisma.leadConversion.findMany({
           where: { leadEmail: { in: emails } },
-          orderBy: { convertedAt: 'desc' },
+          orderBy: { convertedAt: 'asc' },
           select: { leadEmail: true, source: true },
         })
       : [];
+    const firstConversionByEmail = new Map<string, string>();
     const lastConversionByEmail = new Map<string, string>();
-    for (const c of lastConversions) {
-      if (!lastConversionByEmail.has(c.leadEmail) && c.source) {
-        lastConversionByEmail.set(c.leadEmail, c.source);
-      }
+    for (const c of allConversions) {
+      if (!c.source) continue;
+      if (!firstConversionByEmail.has(c.leadEmail)) firstConversionByEmail.set(c.leadEmail, c.source);
+      lastConversionByEmail.set(c.leadEmail, c.source); // overwritten each time -> ends up as the last one (list is sorted asc)
     }
 
     return {
       leads: leads.map(l => ({
         ...l,
+        firstConversionSource: firstConversionByEmail.get(l.email) ?? null,
         lastConversionSource: lastConversionByEmail.get(l.email) ?? null,
       })),
       total,
