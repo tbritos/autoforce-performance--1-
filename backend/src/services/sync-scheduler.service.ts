@@ -163,7 +163,16 @@ export function startSyncScheduler(): void {
     }).catch(() => {});
   }, bookingSyncMs);
 
-  console.log('[sync] Scheduler started for:', Object.keys(SYNC_INTERVALS_MS).join(', '));
+  // WhatsApp webhook health check every 30 minutes — catches Meta silently
+  // dropping/changing the webhook subscription (no data sync, so it's not in ACTIVE_SYNC_PLATFORMS)
+  import('./whatsapp-webhook-health.service').then(({ runWhatsAppWebhookHealthCheck }) => {
+    runWhatsAppWebhookHealthCheck().catch(err => console.error('[whatsapp-health] check error:', err));
+    setInterval(() => {
+      runWhatsAppWebhookHealthCheck().catch(err => console.error('[whatsapp-health] check error:', err));
+    }, 30 * 60 * 1000);
+  }).catch(() => {});
+
+  console.log('[sync] Scheduler started for:', Object.keys(SYNC_INTERVALS_MS).join(', '), '+ whatsapp-health');
 }
 
 export function stopSyncScheduler(): void {
