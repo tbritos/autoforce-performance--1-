@@ -134,6 +134,12 @@ function convRate(n: number, d: number): string {
   return `${((n / d) * 100).toFixed(1)}%`;
 }
 
+function fmtDelta(v: number): string {
+  if (v === 0) return '0';
+  const sign = v > 0 ? '+' : '-';
+  return `${sign}${fmtNum(Math.abs(v))}`;
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 const TooltipInfo: React.FC<{ text: string; position?: 'top' | 'bottom' }> = ({ text, position = 'bottom' }) => {
@@ -1124,7 +1130,6 @@ const FunnelView: React.FC = () => {
     { key: 'proposal',    label: 'Propostas',   count: totalProposal,          color: '#a855f7', icon: CheckCircle,       stageKey: 'PROPOSAL' as CumulativeStageKey },
     { key: 'clients',     label: 'Vendas',      count: totalClients,           color: '#22c55e', icon: DollarSign,        stageKey: 'CLIENT' as CumulativeStageKey },
   ];
-  const maxCount = Math.max(...funnelStages.map(s => s.count), 1);
 
 
   // ── CSV export ─────────────────────────────────────────────────────────────
@@ -1327,53 +1332,110 @@ const FunnelView: React.FC = () => {
                   )}
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {funnelStages.map((stage, i) => {
-                    const prev = i > 0 ? funnelStages[i - 1] : null;
-                    const pct  = Math.max(2, Math.round((stage.count / maxCount) * 100));
-                    const rate = prev ? convRate(stage.count, prev.count) : null;
-                    const Icon = stage.icon;
-                    const clickable = !!stage.stageKey && stage.count > 0;
-                    return (
-                      <div key={stage.key}>
-                        {rate && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0 4px 144px' }}>
-                            <ArrowDown size={11} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
-                            <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>
-                              Taxa: <span style={{ fontWeight: 600, color: 'var(--fg-primary)' }}>{rate}</span>
-                            </span>
-                          </div>
-                        )}
-                        <div
-                          onClick={clickable ? () => setDrillStage(stage.stageKey!) : undefined}
-                          title={clickable ? `Ver leads que chegaram em ${stage.label}` : undefined}
-                          style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: clickable ? 'pointer' : 'default', borderRadius: 8, padding: '3px 4px', margin: '-3px -4px', transition: 'background .12s' }}
-                          onMouseEnter={clickable ? e => (e.currentTarget.style.background = 'var(--bg-hover)') : undefined}
-                          onMouseLeave={clickable ? e => (e.currentTarget.style.background = 'transparent') : undefined}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: 136, flexShrink: 0 }}>
-                            <div style={{ width: 26, height: 26, borderRadius: 6, background: `${stage.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                              <Icon size={13} style={{ color: stage.color }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {(() => {
+                    // "% do pico" — every stage relative to the single biggest stage shown.
+                    const peak = Math.max(...funnelStages.map(s => s.count), 1);
+
+                    // Bar WIDTH uses a tiered local scale instead of one global max: a big drop
+                    // between consecutive stages (e.g. Leads → MQL) starts a new tier, so a long
+                    // tail of similar-magnitude stages (MQL..Vendas, all in the low hundreds)
+                    // stays visually readable instead of rendering as near-invisible slivers next
+                    // to a much bigger top-of-funnel number.
+                    const tierStarts: number[] = [0];
+                    funnelStages.forEach((s, idx) => {
+                      if (idx === 0) return;
+                      const prevCount = funnelStages[idx - 1].count;
+                      const ratio = prevCount > 0 ? s.count / prevCount : 1;
+                      if (ratio < 0.3) tierStarts.push(idx);
+                    });
+                    const tierMaxes: number[] = new Array(funnelStages.length).fill(1);
+                    tierStarts.forEach((start, i) => {
+                      const end = i + 1 < tierStarts.length ? tierStarts[i + 1] : funnelStages.length;
+                      const tMax = Math.max(...funnelStages.slice(start, end).map(s => s.count), 1);
+                      for (let j = start; j < end; j++) tierMaxes[j] = tMax;
+                    });
+
+                    // The first one or two stages (traffic → leads) render as a funnel taper —
+                    // a trapezoid narrowing into a full triangle — everything after is a plain bar.
+                    const trapezoidIndex = showUsersStage ? 0 : -1;
+                    const triangleIndex  = showUsersStage ? 1 : 0;
+
+                    return funnelStages.map((stage, i) => {
+                      const prev      = i > 0 ? funnelStages[i - 1] : null;
+                      const pctOfPeakNum = (stage.count / peak) * 100;
+                      // Below 10% show one decimal — MQL/SQL/Demo/etc. are often all within a point
+                      // of each other (e.g. 2.5% vs 2.4%) and would be indistinguishable rounded to an integer.
+                      const pctOfPeak = pctOfPeakNum < 10 ? pctOfPeakNum.toFixed(1) : Math.round(pctOfPeakNum).toString();
+                      const widthPct  = Math.max(4, Math.round((stage.count / tierMaxes[i]) * 100));
+                      const rate      = prev ? convRate(stage.count, prev.count) : null;
+                      const delta     = prev ? stage.count - prev.count : null;
+                      const rateNum   = prev && prev.count > 0 ? (stage.count / prev.count) * 100 : null;
+                      const rateColor = rateNum === null ? 'var(--fg-muted)' : rateNum >= 70 ? '#22c55e' : rateNum >= 30 ? '#f59e0b' : '#ef4444';
+                      const Icon      = stage.icon;
+                      const clickable = !!stage.stageKey && stage.count > 0;
+                      const clipPath  = i === trapezoidIndex
+                        ? 'polygon(0% 0%, 100% 0%, 85% 100%, 0% 100%)'
+                        : i === triangleIndex
+                          ? 'polygon(0% 0%, 100% 0%, 50% 100%)'
+                          : undefined;
+
+                      return (
+                        <div key={stage.key}>
+                          {rate && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '5px 0' }}>
+                              <div style={{ width: 152, flexShrink: 0 }} />
+                              <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+                                <span style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                                  padding: '3px 10px', borderRadius: 999, background: 'var(--bg-muted)', fontSize: 11,
+                                }}>
+                                  <ArrowDown size={10} style={{ color: 'var(--fg-subtle)', flexShrink: 0 }} />
+                                  <span style={{ fontWeight: 700, color: rateColor }}>{rate}</span>
+                                  <span style={{ color: 'var(--fg-subtle)' }}>convertem</span>
+                                  <span style={{ color: 'var(--fg-subtle)' }}>·</span>
+                                  <span style={{ color: 'var(--fg-muted)' }}>{fmtDelta(delta!)}</span>
+                                </span>
+                              </div>
+                              <div style={{ width: 64, flexShrink: 0 }} />
                             </div>
-                            <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--fg-secondary)' }}>{stage.label}</span>
-                          </div>
-                          <div style={{ flex: 1, height: 32, background: 'var(--bg-muted)', borderRadius: 8, overflow: 'hidden' }}>
-                            <div style={{
-                              height: '100%', width: `${pct}%`,
-                              background: stage.color, borderRadius: 8,
-                              display: 'flex', alignItems: 'center', paddingLeft: 10,
-                              transition: 'width .7s ease',
-                            }}>
-                              {pct > 12 && <span style={{ fontSize: 11, fontWeight: 700, color: 'white' }}>{fmtNum(stage.count)}</span>}
+                          )}
+                          <div
+                            onClick={clickable ? () => setDrillStage(stage.stageKey!) : undefined}
+                            title={clickable ? `Ver leads que chegaram em ${stage.label}` : undefined}
+                            style={{ display: 'flex', alignItems: 'center', gap: 14, cursor: clickable ? 'pointer' : 'default', borderRadius: 10, padding: '4px 6px', margin: '-4px -6px', transition: 'background .12s' }}
+                            onMouseEnter={clickable ? e => (e.currentTarget.style.background = 'var(--bg-hover)') : undefined}
+                            onMouseLeave={clickable ? e => (e.currentTarget.style.background = 'transparent') : undefined}
+                          >
+                            <div style={{ width: 152, flexShrink: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ width: 30, height: 30, borderRadius: 9, background: stage.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  <Icon size={14} color="white" />
+                                </div>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-primary)' }}>{stage.label}</span>
+                              </div>
+                              <p style={{ margin: '2px 0 0 38px', fontSize: 11, color: 'var(--fg-subtle)' }}>{pctOfPeak}% do pico</p>
                             </div>
-                          </div>
-                          <div style={{ width: 60, textAlign: 'right', flexShrink: 0 }}>
-                            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-primary)', fontVariantNumeric: 'tabular-nums' }}>{fmtNum(stage.count)}</span>
+
+                            <div style={{ flex: 1, height: 44, position: 'relative' }}>
+                              <div style={{
+                                position: 'absolute', inset: 0, width: `${widthPct}%`,
+                                background: stage.color, clipPath, borderRadius: clipPath ? 0 : 9,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                transition: 'width .7s ease',
+                              }}>
+                                {widthPct > 15 && <span style={{ fontSize: 13, fontWeight: 700, color: 'white' }}>{fmtNum(stage.count)}</span>}
+                              </div>
+                            </div>
+
+                            <div style={{ width: 64, textAlign: 'right', flexShrink: 0 }}>
+                              <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--fg-primary)', fontVariantNumeric: 'tabular-nums' }}>{fmtNum(stage.count)}</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    });
+                  })()}
                 </div>
               )}
             </div>
