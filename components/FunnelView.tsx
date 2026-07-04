@@ -1374,8 +1374,10 @@ const FunnelView: React.FC = () => {
                       const rateColor = rateNum === null ? 'var(--fg-muted)' : rateNum >= 70 ? '#22c55e' : rateNum >= 30 ? '#f59e0b' : '#ef4444';
                       const Icon      = stage.icon;
                       const clickable = !!stage.stageKey && stage.count > 0;
+                      // Symmetric tapers (inset equally from both sides) — bars are centered,
+                      // so each stage narrows toward the same central axis as the one below it.
                       const clipPath  = i === trapezoidIndex
-                        ? 'polygon(0% 0%, 100% 0%, 85% 100%, 0% 100%)'
+                        ? 'polygon(0% 0%, 100% 0%, 92.5% 100%, 7.5% 100%)'
                         : i === triangleIndex
                           ? 'polygon(0% 0%, 100% 0%, 50% 100%)'
                           : undefined;
@@ -1419,7 +1421,8 @@ const FunnelView: React.FC = () => {
 
                             <div style={{ flex: 1, height: 44, position: 'relative' }}>
                               <div style={{
-                                position: 'absolute', inset: 0, width: `${widthPct}%`,
+                                position: 'absolute', top: 0, bottom: 0, left: '50%',
+                                width: `${widthPct}%`, transform: 'translateX(-50%)',
                                 background: stage.color, clipPath, borderRadius: clipPath ? 0 : 9,
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                                 transition: 'width .7s ease',
