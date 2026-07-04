@@ -11,6 +11,9 @@ router.post('/',   FunnelController.create);
 // GET  /api/funnels/stats  — computed stats with optional UTM filters
 router.get('/stats', FunnelController.stats);
 
+// GET  /api/funnels/stats/leads  — drill-down: leads that reached a given stage
+router.get('/stats/leads', FunnelController.statsLeads);
+
 // PATCH  /api/funnels/:id  — update a funnel
 // DELETE /api/funnels/:id  — soft-delete a funnel
 router.patch('/:id',  FunnelController.update);

@@ -1,4 +1,4 @@
-import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, EmailSent, EmailReceived, EmailStats, MetaCampaign, GoogleAdsCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, LeadConversion, WebhookLead, PlatformConnection, ConnectionRequirement, Lead, LeadListResult, LeadProfile, LeadCustomFieldDef, FunnelCounts, LeadStatus, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction, AutomationJourney, AutomationJourneyNode, AutomationJourneyEdge, AutomationJourneyStatus, ExitConditions, AIAgent, AIKnowledgeItem, AIInteractionLog, AIConversationMemory, UTMLink, UTMLinkListResult, UTMTemplate, UTMCampaignPicker, UTMDestination, FunnelDef, FunnelStats, WhatsAppTemplate, PipedriveStage } from '../types';
+import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, EmailSent, EmailReceived, EmailStats, MetaCampaign, GoogleAdsCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, LeadConversion, WebhookLead, PlatformConnection, ConnectionRequirement, Lead, LeadListResult, LeadProfile, LeadCustomFieldDef, FunnelCounts, LeadStatus, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction, AutomationJourney, AutomationJourneyNode, AutomationJourneyEdge, AutomationJourneyStatus, ExitConditions, AIAgent, AIKnowledgeItem, AIInteractionLog, AIConversationMemory, UTMLink, UTMLinkListResult, UTMTemplate, UTMCampaignPicker, UTMDestination, FunnelDef, FunnelStats, CumulativeStageKey, FunnelStageLeadsResult, WhatsAppTemplate, PipedriveStage } from '../types';
 import { apiClient } from './apiClient';
 
 // ============================================================================
@@ -1528,6 +1528,21 @@ export const DataService = {
     if (endDate)   params.set('endDate',   endDate);
     const qs = params.toString() ? `?${params.toString()}` : '';
     return apiClient.get<FunnelStats>(`/funnels/stats${qs}`);
+  },
+
+  getFunnelStageLeads: async (
+    funnelId: string | null,
+    stage: CumulativeStageKey,
+    startDate?: string,
+    endDate?: string,
+    page = 1,
+    pageSize = 25,
+  ): Promise<FunnelStageLeadsResult> => {
+    const params = new URLSearchParams({ stage, page: String(page), pageSize: String(pageSize) });
+    if (funnelId)  params.set('funnelId',  funnelId);
+    if (startDate) params.set('startDate', startDate);
+    if (endDate)   params.set('endDate',   endDate);
+    return apiClient.get<FunnelStageLeadsResult>(`/funnels/stats/leads?${params.toString()}`);
   },
 
   // --- UTM Tracker ---

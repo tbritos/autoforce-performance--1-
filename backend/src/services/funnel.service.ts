@@ -1,5 +1,5 @@
 import { prisma } from '../config/database';
-import { Prisma } from '@prisma/client';
+import { Prisma, LeadStatus } from '@prisma/client';
 import { getGA4PageTotals } from './googleAnalytics.service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -29,6 +29,26 @@ export type UpdateFunnelInput = Partial<CreateFunnelInput> & {
   sortOrder?: number;
   isActive?:  boolean;
 };
+
+// Ordinal rank of each forward funnel stage — used to compute, per lead, the highest
+// stage it ever reached (current status ⊔ every status recorded in LeadStatusHistory).
+// Without this, a lead that reached SQL and was later marked LOST vanishes from the
+// SQL/MQL counts entirely (LOST isn't summed into any cumulative stage), which silently
+// undercounts every stage in proportion to its loss rate. OPPORTUNITY is legacy (migrated
+// to PROPOSAL) but old history rows may still reference it, so it shares PROPOSAL's rank.
+const STAGE_ORDER: Partial<Record<LeadStatus, number>> = {
+  LEAD: 1, MQL: 2, SQL: 3, SCHEDULED: 4, DEMO: 5, PROPOSAL: 6, OPPORTUNITY: 6, CLIENT: 7,
+};
+
+export type CumulativeStageKey = 'LEAD' | 'MQL' | 'SQL' | 'SCHEDULED' | 'DEMO' | 'PROPOSAL' | 'CLIENT';
+
+const CUMULATIVE_STAGES: CumulativeStageKey[] = ['LEAD', 'MQL', 'SQL', 'SCHEDULED', 'DEMO', 'PROPOSAL', 'CLIENT'];
+
+interface ResolvedScope {
+  where:            Prisma.LeadWhereInput;
+  impressionPages:  string[];
+  campaignIds:      string[];
+}
 
 // ─── FunnelService ────────────────────────────────────────────────────────────
 
@@ -84,10 +104,9 @@ export class FunnelService {
     return prisma.funnel.update({ where: { id }, data: { isActive: false } });
   }
 
-  // ── Stats for a specific funnel (or unified when funnelId is null) ─────────
+  // ── Shared scope resolution (funnel config + Lead WHERE) for stats and drill-down ──
 
-  static async getStats(funnelId: string | null, startDate?: string, endDate?: string) {
-    // Resolve funnel config
+  private static async resolveScope(funnelId: string | null, startDate?: string, endDate?: string): Promise<ResolvedScope> {
     let funnel: {
       leadTags: string[]; impressionPages: string[]; campaignIds: string[];
       filterSource: string | null; filterMedium: string | null;
@@ -105,7 +124,6 @@ export class FunnelService {
       if (!funnel) throw new Error(`Funnel ${funnelId} not found`);
     }
 
-    // Build lead WHERE — prefer tag-based; fall back to UTM filters for legacy funnels
     // Leads desqualificados (bot/inoperantes) nao contam em nenhum dashboard.
     const where: Prisma.LeadWhereInput = { deletedAt: null, status: { not: 'DISQUALIFIED' } };
     if (startDate || endDate) {
@@ -125,15 +143,45 @@ export class FunnelService {
       }
     }
 
-    // Parallel: leads, live GA4 totals, campaign ad spend
-    const pages       = funnel?.impressionPages ?? [];
-    const campaignIds = funnel?.campaignIds     ?? [];
-    const adsWhere    = campaignIds.length > 0 ? { campaignId: { in: campaignIds } } : undefined;
+    return {
+      where,
+      impressionPages: funnel?.impressionPages ?? [],
+      campaignIds:     funnel?.campaignIds     ?? [],
+    };
+  }
 
-    const [statusRows, leadEmails, ga4Agg, adsAgg] = await Promise.all([
+  // For each lead, the highest funnel-stage rank it ever reached: its current status
+  // combined with every status ever recorded for it in LeadStatusHistory.
+  private static async computePeakRanks(leads: Array<{ email: string; status: LeadStatus }>): Promise<Map<string, number>> {
+    const peak = new Map<string, number>();
+    for (const lead of leads) peak.set(lead.email, STAGE_ORDER[lead.status] ?? 0);
+
+    if (leads.length > 0) {
+      const history = await prisma.leadStatusHistory.findMany({
+        where: { leadEmail: { in: leads.map(l => l.email) } },
+        select: { leadEmail: true, toStatus: true },
+      });
+      for (const h of history) {
+        const rank = STAGE_ORDER[h.toStatus];
+        if (rank === undefined) continue;
+        if (rank > (peak.get(h.leadEmail) ?? 0)) peak.set(h.leadEmail, rank);
+      }
+    }
+
+    return peak;
+  }
+
+  // ── Stats for a specific funnel (or unified when funnelId is null) ─────────
+
+  static async getStats(funnelId: string | null, startDate?: string, endDate?: string) {
+    const { where, impressionPages, campaignIds } = await this.resolveScope(funnelId, startDate, endDate);
+
+    const adsWhere = campaignIds.length > 0 ? { campaignId: { in: campaignIds } } : undefined;
+
+    const [statusRows, leads, ga4Agg, adsAgg] = await Promise.all([
       prisma.lead.groupBy({ by: ['status'], where, _count: { id: true } }),
-      prisma.lead.findMany({ where, select: { email: true } }),
-      getGA4PageTotals(startDate, endDate, pages),
+      prisma.lead.findMany({ where, select: { email: true, status: true } }),
+      getGA4PageTotals(startDate, endDate, impressionPages),
       adsWhere
         ? prisma.campaignMetrics.aggregate({
             where: adsWhere,
@@ -142,7 +190,7 @@ export class FunnelService {
         : Promise.resolve({ _sum: { spend: 0, impressions: 0, clicks: 0 } }),
     ]);
 
-    // Status counts
+    // Current-status snapshot — used for the "Distribuição por Status" breakdown
     const counts: Record<string, number> = {
       LEAD: 0, MQL: 0, SQL: 0,
       SCHEDULED: 0, DEMO: 0, PROPOSAL: 0,
@@ -150,8 +198,20 @@ export class FunnelService {
     };
     for (const row of statusRows) counts[row.status] = row._count.id;
 
+    // Cumulative "ever reached" counts — used for the funnel bars (fixes leads that
+    // were later marked LOST disappearing from the stages they actually passed through)
+    const peakRanks = await this.computePeakRanks(leads);
+    const everReachedCounts: Record<CumulativeStageKey, number> = {
+      LEAD: 0, MQL: 0, SQL: 0, SCHEDULED: 0, DEMO: 0, PROPOSAL: 0, CLIENT: 0,
+    };
+    for (const rank of peakRanks.values()) {
+      for (const stage of CUMULATIVE_STAGES) {
+        if (rank >= STAGE_ORDER[stage]!) everReachedCounts[stage]++;
+      }
+    }
+
     // MRR
-    const emails = leadEmails.map(l => l.email);
+    const emails = leads.map(l => l.email);
     const mrrAgg = emails.length > 0
       ? await prisma.revenueEntry.aggregate({
           where: { leadEmail: { in: emails } },
@@ -160,16 +220,62 @@ export class FunnelService {
       : { _sum: { mrrValue: 0 } };
 
     return {
-      funnelCounts:   counts,
-      totalLeads:     emails.length,
-      mrr:            mrrAgg._sum.mrrValue    || 0,
-      impressions:    ga4Agg.views            || 0,
-      gaClicks:       ga4Agg.totalClicks      || 0,
-      gaUsers:        ga4Agg.users            || 0,
-      adSpend:        adsAgg._sum.spend       || 0,
-      adImpressions:  adsAgg._sum.impressions || 0,
-      adClicks:       adsAgg._sum.clicks      || 0,
-      gaErrors:       ga4Agg.errors,
+      funnelCounts:      counts,
+      everReachedCounts,
+      totalLeads:        emails.length,
+      mrr:               mrrAgg._sum.mrrValue    || 0,
+      impressions:       ga4Agg.views            || 0,
+      gaClicks:          ga4Agg.totalClicks      || 0,
+      gaUsers:           ga4Agg.users            || 0,
+      adSpend:           adsAgg._sum.spend       || 0,
+      adImpressions:     adsAgg._sum.impressions || 0,
+      adClicks:          adsAgg._sum.clicks      || 0,
+      gaErrors:          ga4Agg.errors,
+    };
+  }
+
+  // ── Drill-down: leads that ever reached (peak) at least the given stage ────
+
+  static async getLeadsForStage(
+    funnelId: string | null,
+    stage: CumulativeStageKey,
+    startDate?: string,
+    endDate?: string,
+    page = 1,
+    pageSize = 25,
+  ): Promise<{
+    total: number;
+    page: number;
+    pageSize: number;
+    leads: Array<{
+      id: string; email: string; name: string | null; company: string | null;
+      phone: string | null; status: LeadStatus; score: number; firstSeenAt: Date;
+    }>;
+  }> {
+    const targetRank = STAGE_ORDER[stage];
+    if (targetRank === undefined) throw new Error(`Etapa inválida para drill-down: ${stage}`);
+
+    const { where } = await this.resolveScope(funnelId, startDate, endDate);
+
+    const leads = await prisma.lead.findMany({
+      where,
+      select: { id: true, email: true, name: true, company: true, phone: true, status: true, score: true, firstSeenAt: true },
+    });
+
+    const peakRanks = await this.computePeakRanks(leads);
+    const matching = leads
+      .filter(l => (peakRanks.get(l.email) ?? 0) >= targetRank)
+      .sort((a, b) => b.firstSeenAt.getTime() - a.firstSeenAt.getTime());
+
+    const safePage = Math.max(1, page);
+    const safeSize = Math.min(100, Math.max(1, pageSize));
+    const skip     = (safePage - 1) * safeSize;
+
+    return {
+      total:    matching.length,
+      page:     safePage,
+      pageSize: safeSize,
+      leads:    matching.slice(skip, skip + safeSize),
     };
   }
 }

@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { FunnelService } from '../services/funnel.service';
+import { FunnelService, CumulativeStageKey } from '../services/funnel.service';
+
+const VALID_STAGES: CumulativeStageKey[] = ['LEAD', 'MQL', 'SQL', 'SCHEDULED', 'DEMO', 'PROPOSAL', 'CLIENT'];
 
 export class FunnelController {
 
@@ -40,6 +42,25 @@ export class FunnelController {
       const startDate = (req.query.startDate as string) || undefined;
       const endDate   = (req.query.endDate   as string) || undefined;
       res.json(await FunnelService.getStats(funnelId, startDate, endDate));
+    } catch (err) { next(err); }
+  }
+
+  // GET /api/funnels/stats/leads?funnelId=X&stage=SQL&startDate=&endDate=&page=&pageSize=
+  static async statsLeads(req: Request, res: Response, next: NextFunction) {
+    try {
+      const funnelId  = (req.query.funnelId  as string) || null;
+      const stage     = req.query.stage as string;
+      const startDate = (req.query.startDate as string) || undefined;
+      const endDate   = (req.query.endDate   as string) || undefined;
+      const page      = req.query.page     ? Number(req.query.page)     : 1;
+      const pageSize  = req.query.pageSize ? Number(req.query.pageSize) : 25;
+
+      if (!VALID_STAGES.includes(stage as CumulativeStageKey)) {
+        res.status(400).json({ error: `stage inválido. Use um de: ${VALID_STAGES.join(', ')}` });
+        return;
+      }
+
+      res.json(await FunnelService.getLeadsForStage(funnelId, stage as CumulativeStageKey, startDate, endDate, page, pageSize));
     } catch (err) { next(err); }
   }
 }

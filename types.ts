@@ -499,17 +499,40 @@ export interface FunnelDef {
   updatedAt:        string;
 }
 
+export type CumulativeStageKey = 'LEAD' | 'MQL' | 'SQL' | 'SCHEDULED' | 'DEMO' | 'PROPOSAL' | 'CLIENT';
+
+export type FunnelCumulativeCounts = Record<CumulativeStageKey, number>;
+
 export interface FunnelStats {
-  funnelCounts:  FunnelCounts;
-  totalLeads:    number;
-  mrr:           number;
-  impressions:   number;
-  gaClicks:      number;
-  gaUsers:       number;
-  gaErrors?:     string[];
-  adSpend:       number;
-  adImpressions: number;
-  adClicks:      number;
+  funnelCounts:      FunnelCounts;
+  everReachedCounts: FunnelCumulativeCounts;
+  totalLeads:        number;
+  mrr:               number;
+  impressions:       number;
+  gaClicks:          number;
+  gaUsers:           number;
+  gaErrors?:         string[];
+  adSpend:           number;
+  adImpressions:     number;
+  adClicks:          number;
+}
+
+export interface FunnelStageLead {
+  id:          string;
+  email:       string;
+  name:        string | null;
+  company:     string | null;
+  phone:       string | null;
+  status:      LeadStatus;
+  score:       number;
+  firstSeenAt: string;
+}
+
+export interface FunnelStageLeadsResult {
+  total:    number;
+  page:     number;
+  pageSize: number;
+  leads:    FunnelStageLead[];
 }
 
 // ─── UTM Tracker ──────────────────────────────────────────────────────────────

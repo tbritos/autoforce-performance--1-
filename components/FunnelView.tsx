@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Plus, Pencil, Trash2, RefreshCw, Download, Calendar,
   TrendingUp, DollarSign, Users, CheckCircle, Eye,
@@ -9,6 +10,7 @@ import { FunnelStage } from '../types';
 import { DataService } from '../services/dataService';
 import {
   FunnelDef, FunnelStats, MetaCampaign, GoogleAdsCampaign,
+  CumulativeStageKey, FunnelStageLeadsResult,
 } from '../types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -82,9 +84,30 @@ const STAGE_TEMPLATES: Record<string, FunnelStage[]> = {
 const getStageCount = (source: string, stats: FunnelStats | null): number => {
   if (!stats) return 0;
   if (source === 'ga4_users') return stats.gaUsers ?? 0;
-  const status = source.replace('crm_', '') as keyof typeof stats.funnelCounts;
-  return (stats.funnelCounts?.[status] as number) ?? 0;
+  // LOST is a current-status snapshot (once lost, it stays lost) — no "ever reached" ambiguity.
+  if (source === 'crm_LOST') return stats.funnelCounts?.LOST ?? 0;
+  // Forward stages use the cumulative "ever reached" count — the current-status snapshot
+  // (funnelCounts) would silently drop leads that advanced past this stage and were later lost.
+  const status = source.replace('crm_', '') as CumulativeStageKey;
+  return stats.everReachedCounts?.[status] ?? 0;
 };
+
+const STAGE_KEY_LABEL: Record<CumulativeStageKey, string> = {
+  LEAD: 'Leads', MQL: 'MQLs', SQL: 'SQLs', SCHEDULED: 'Agendamentos',
+  DEMO: 'Demos', PROPOSAL: 'Propostas', CLIENT: 'Vendas',
+};
+
+const STAGE_STATUS_META: Record<string, { label: string; color: string }> = {
+  LEAD: { label: 'Lead', color: '#64748b' }, MQL: { label: 'MQL', color: '#6366f1' },
+  SQL: { label: 'SQL', color: '#818cf8' }, SCHEDULED: { label: 'Agendado', color: '#f59e0b' },
+  DEMO: { label: 'Demo', color: '#f97316' }, PROPOSAL: { label: 'Proposta', color: '#a855f7' },
+  OPPORTUNITY: { label: 'Proposta', color: '#a855f7' }, CLIENT: { label: 'Cliente', color: '#22c55e' },
+  LOST: { label: 'Perdido', color: '#ef4444' }, DISQUALIFIED: { label: 'Desqualificado', color: '#94a3b8' },
+};
+
+function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
 
 const emptyForm = (): FunnelFormState => ({
   name: '', description: '', color: '#3b82f6',
@@ -241,13 +264,14 @@ const SelectPicker: React.FC<{
   onChange:    (values: string[]) => void;
   allowNew?:   boolean;
   chipColor?:  string;
-}> = ({ label, placeholder, options, values, onChange, allowNew = true, chipColor = 'var(--accent)' }) => {
+  labelFor?:   (value: string) => string;
+}> = ({ label, placeholder, options, values, onChange, allowNew = true, chipColor = 'var(--accent)', labelFor = (v: string) => v }) => {
   const [search, setSearch]   = React.useState('');
   const [open,   setOpen]     = React.useState(false);
   const containerRef           = React.useRef<HTMLDivElement>(null);
 
   const filtered = options.filter(
-    o => o.toLowerCase().includes(search.toLowerCase()) && !values.includes(o)
+    o => labelFor(o).toLowerCase().includes(search.toLowerCase()) && !values.includes(o)
   );
   const canCreate = allowNew && search.trim() && !options.includes(search.trim()) && !values.includes(search.trim());
 
@@ -291,7 +315,7 @@ const SelectPicker: React.FC<{
               background: `${chipColor}18`, border: `1px solid ${chipColor}44`,
               fontSize: 11, color: chipColor, fontWeight: 500, maxWidth: '100%',
             }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>{v}</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>{labelFor(v)}</span>
               <button type="button" onClick={() => remove(v)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: chipColor, padding: 0, lineHeight: 1, display: 'flex', flexShrink: 0 }}>
                 <X size={10} />
@@ -347,7 +371,7 @@ const SelectPicker: React.FC<{
                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-muted)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'none')}
               >
-                {opt}
+                {labelFor(opt)}
               </button>
             ))}
           </div>
@@ -385,6 +409,8 @@ const FunnelCreatePage: React.FC<{
   const [previewStats, setPreviewStats] = useState<FunnelStats | null>(null);
   const [campaigns, setCampaigns] = useState<{ id: string; name: string }[]>([]);
   const [pages, setPages]         = useState<string[]>([]);
+  const [allTags, setAllTags]     = useState<string[]>([]);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   useEffect(() => { setForm({ ...initial }); }, [initial]);
 
@@ -393,6 +419,7 @@ const FunnelCreatePage: React.FC<{
     const start = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     DataService.getFunnelStats(null, start, end).then(setPreviewStats).catch(() => {});
     DataService.getLandingPagesGA().then(ps => setPages(ps.map(p => p.path))).catch(() => {});
+    DataService.getAllLeadTags().then(setAllTags).catch(() => {});
     Promise.all([
       DataService.getMetaCampaigns(start, end).catch(() => []),
       DataService.getGoogleAdsCampaigns(start, end).catch(() => []),
@@ -403,6 +430,17 @@ const FunnelCreatePage: React.FC<{
       ]);
     });
   }, []);
+
+  const campaignLabel = (id: string) => campaigns.find(c => c.id === id)?.name ?? id;
+
+  const reorderStage = (from: number, to: number) => {
+    setForm(f => {
+      const next = [...f.stagesConfig];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return { ...f, stagesConfig: next };
+    });
+  };
 
   const selectDataMode = (mode: DataMode) => {
     setDataMode(mode);
@@ -494,11 +532,35 @@ const FunnelCreatePage: React.FC<{
             </div>
             <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
 
-              {/* Nome */}
+              {/* Nome + cor */}
+              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>Nome do funil</p>
+                  <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                    placeholder="Funil de aquisição — Site" style={iStyle} />
+                </div>
+                <div>
+                  <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>Cor</p>
+                  <div style={{ display: 'flex', gap: 5, padding: '8px 0' }}>
+                    {PALETTE.map(c => (
+                      <button key={c} type="button" onClick={() => setForm(f => ({ ...f, color: c }))}
+                        title={c}
+                        style={{
+                          width: 22, height: 22, borderRadius: '50%', background: c, cursor: 'pointer',
+                          border: form.color === c ? '2px solid var(--fg-primary)' : '2px solid transparent',
+                          padding: 0, outline: form.color === c ? '2px solid var(--bg-surface)' : 'none', outlineOffset: -4,
+                        }} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Descrição */}
               <div>
-                <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>Nome do funil</p>
-                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder="Funil de aquisição — Site" style={iStyle} />
+                <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>Descrição <span style={{ fontWeight: 400, color: 'var(--fg-subtle)' }}>(opcional)</span></p>
+                <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="Pra que serve esse funil, o que ele mede..." rows={2}
+                  style={{ ...iStyle, resize: 'vertical', fontFamily: 'inherit' }} />
               </div>
 
               {/* Fonte de dados */}
@@ -534,18 +596,57 @@ const FunnelCreatePage: React.FC<{
                 </div>
               </div>
 
-              {/* Filtrar por */}
+              {/* Escopo de leads */}
               <div>
-                <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>Filtrar por</p>
+                <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>Tags de lead</p>
+                <p style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--fg-subtle)' }}>
+                  Define quais leads pertencem a este funil — um lead entra se tiver qualquer uma dessas tags. Se vazio, cai no filtro de campanha/página abaixo.
+                </p>
+                <SelectPicker
+                  label="" placeholder="Buscar ou criar tag..."
+                  options={allTags} values={form.leadTags}
+                  onChange={v => setForm(f => ({ ...f, leadTags: v }))}
+                  chipColor="#3b82f6"
+                />
+              </div>
+
+              {/* Atribuição */}
+              <div>
+                <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>Páginas de captura</p>
+                <p style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--fg-subtle)' }}>Páginas do GA4 cujo tráfego conta como "Usuários" deste funil.</p>
+                <SelectPicker
+                  label="" placeholder="Buscar página..."
+                  options={pages} values={form.impressionPages}
+                  onChange={v => setForm(f => ({ ...f, impressionPages: v }))}
+                  allowNew={false} chipColor="#94a3b8"
+                />
+              </div>
+
+              <div>
+                <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>Campanhas vinculadas</p>
+                <p style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--fg-subtle)' }}>Campanhas do Meta/Google Ads cujo investimento conta neste funil (KPI de Investimento/CPL/ROI).</p>
+                <SelectPicker
+                  label="" placeholder="Buscar campanha..."
+                  options={campaigns.map(c => c.id)} values={form.campaignIds}
+                  onChange={v => setForm(f => ({ ...f, campaignIds: v }))}
+                  allowNew={false} chipColor="#f59e0b" labelFor={campaignLabel}
+                />
+              </div>
+
+              {/* Filtro legado (fallback quando não há tags) */}
+              <div>
+                <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>
+                  Filtro por UTM <span style={{ fontWeight: 400, color: 'var(--fg-subtle)' }}>(usado só se não houver tags acima)</span>
+                </p>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   <select value={form.filterCampaign} onChange={e => setForm(f => ({ ...f, filterCampaign: e.target.value }))}
                     style={{ ...iStyle, cursor: 'pointer' }}>
-                    <option value="">Todas as campanhas</option>
+                    <option value="">Todas as campanhas (UTM)</option>
                     {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                   <select value={form.filterLandingPage} onChange={e => setForm(f => ({ ...f, filterLandingPage: e.target.value }))}
                     style={{ ...iStyle, cursor: 'pointer' }}>
-                    <option value="">Todas as páginas</option>
+                    <option value="">Todas as páginas (UTM)</option>
                     {pages.map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
@@ -583,17 +684,25 @@ const FunnelCreatePage: React.FC<{
 
               {/* Stage list */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-                {form.stagesConfig.map((stage) => {
+                {form.stagesConfig.map((stage, i) => {
                   const src = STAGE_SOURCES.find(s => s.value === stage.source);
                   const StageIcon = src?.icon ?? Users;
                   const stageColor = src?.color ?? '#3b82f6';
                   return (
-                    <div key={stage.id} style={{
-                      display: 'grid', gridTemplateColumns: '24px 34px 1fr auto 34px',
-                      gap: 8, alignItems: 'center',
-                      padding: '8px 10px',
-                      background: 'var(--bg-subtle)', borderRadius: 10, border: '1px solid var(--border)',
-                    }}>
+                    <div key={stage.id}
+                      draggable
+                      onDragStart={() => setDragIndex(i)}
+                      onDragOver={e => e.preventDefault()}
+                      onDrop={() => { if (dragIndex !== null && dragIndex !== i) reorderStage(dragIndex, i); setDragIndex(null); }}
+                      onDragEnd={() => setDragIndex(null)}
+                      style={{
+                        display: 'grid', gridTemplateColumns: '24px 34px 1fr auto 34px',
+                        gap: 8, alignItems: 'center',
+                        padding: '8px 10px',
+                        background: 'var(--bg-subtle)', borderRadius: 10,
+                        border: dragIndex === i ? '1px dashed var(--accent)' : '1px solid var(--border)',
+                        opacity: dragIndex === i ? 0.4 : 1,
+                      }}>
                       {/* Grip handle */}
                       <div style={{ display: 'flex', justifyContent: 'center', cursor: 'grab' }}>
                         <GripVertical size={14} style={{ color: 'var(--fg-subtle)' }} />
@@ -704,6 +813,122 @@ const FunnelCreatePage: React.FC<{
   );
 };
 
+// ─── Stage drill-down modal ────────────────────────────────────────────────────
+
+const StageDrillDownModal: React.FC<{
+  funnelId:  string | null;
+  stage:     CumulativeStageKey;
+  label:     string;
+  startDate: string;
+  endDate:   string;
+  onClose:   () => void;
+}> = ({ funnelId, stage, label, startDate, endDate, onClose }) => {
+  const navigate = useNavigate();
+  const [page, setPage]       = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [data, setData]       = useState<FunnelStageLeadsResult | null>(null);
+  const pageSize = 20;
+
+  useEffect(() => { setPage(1); }, [funnelId, stage, startDate, endDate]);
+
+  useEffect(() => {
+    setLoading(true);
+    DataService.getFunnelStageLeads(funnelId, stage, startDate, endDate, page, pageSize)
+      .then(setData)
+      .catch(() => setData({ total: 0, page: 1, pageSize, leads: [] }))
+      .finally(() => setLoading(false));
+  }, [funnelId, stage, startDate, endDate, page]);
+
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / pageSize)) : 1;
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ width: 'min(760px, 100%)', maxHeight: '82vh', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}
+      >
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--fg-primary)' }}>{label}</p>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>
+              {data ? `${data.total.toLocaleString('pt-BR')} lead${data.total !== 1 ? 's' : ''} que chegaram nesta etapa` : 'Carregando...'}
+            </p>
+          </div>
+          <button type="button" onClick={onClose}
+            style={{ background: 'var(--bg-muted)', border: 'none', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--fg-muted)', flexShrink: 0 }}>
+            <X size={15} />
+          </button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {loading ? (
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} style={{ height: 36, background: 'var(--bg-muted)', borderRadius: 8 }} className="animate-pulse" />
+              ))}
+            </div>
+          ) : !data || data.leads.length === 0 ? (
+            <div style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--fg-subtle)', fontSize: 13 }}>
+              Nenhum lead encontrado.
+            </div>
+          ) : (
+            <div>
+              {data.leads.map((lead, i) => {
+                const meta = STAGE_STATUS_META[lead.status] ?? { label: lead.status, color: 'var(--fg-muted)' };
+                return (
+                  <div
+                    key={lead.id}
+                    onClick={() => { navigate(`/leads/${lead.id}`); onClose(); }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12, padding: '10px 20px',
+                      cursor: 'pointer', borderBottom: '1px solid var(--border)',
+                      background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)')}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {lead.name || lead.email}
+                      </p>
+                      <p style={{ margin: '1px 0 0', fontSize: 11, color: 'var(--fg-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {lead.company ? `${lead.company} · ` : ''}{lead.email}
+                      </p>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 999, background: `${meta.color}18`, color: meta.color, flexShrink: 0 }}>
+                      {meta.label}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--fg-subtle)', width: 78, textAlign: 'right', flexShrink: 0 }}>
+                      {fmtDate(lead.firstSeenAt)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {data && data.total > pageSize && (
+          <div style={{ padding: '10px 20px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+            <button type="button" disabled={page <= 1} onClick={() => setPage(p => p - 1)}
+              style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', fontSize: 12, color: 'var(--fg-muted)', cursor: page <= 1 ? 'default' : 'pointer', opacity: page <= 1 ? 0.5 : 1 }}>
+              Anterior
+            </button>
+            <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>Página {page} de {totalPages}</span>
+            <button type="button" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}
+              style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid var(--border)', background: 'transparent', fontSize: 12, color: 'var(--fg-muted)', cursor: page >= totalPages ? 'default' : 'pointer', opacity: page >= totalPages ? 0.5 : 1 }}>
+              Próxima
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ─── Main View ────────────────────────────────────────────────────────────────
 
 const FunnelView: React.FC = () => {
@@ -720,6 +945,7 @@ const FunnelView: React.FC = () => {
   const [metaCampaigns, setMeta]      = useState<MetaCampaign[]>([]);
   const [googleCampaigns, setGoogle]  = useState<GoogleAdsCampaign[]>([]);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [drillStage, setDrillStage]   = useState<CumulativeStageKey | null>(null);
 
   // ── Date range ─────────────────────────────────────────────────────────────
   const [dateRange, setDateRange]     = useState('30days');
@@ -818,16 +1044,18 @@ const FunnelView: React.FC = () => {
     googleCampaigns.reduce((s, c) => s + (c.spend || 0), 0),
   [metaCampaigns, googleCampaigns]);
 
-  const fc = stats?.funnelCounts;
+  const fc  = stats?.funnelCounts;
+  const erc = stats?.everReachedCounts;
 
-  // Cumulative counts — each stage includes all leads that reached it or beyond
+  // Cumulative "ever reached" counts — computed on the backend from LeadStatusHistory so
+  // leads that advanced past a stage and were later marked LOST still count at that stage.
   const totalLeads      = stats?.totalLeads ?? 0;
-  const totalMQL        = fc ? (fc.MQL || 0) + (fc.SQL || 0) + (fc.SCHEDULED || 0) + (fc.DEMO || 0) + (fc.PROPOSAL || 0) + (fc.CLIENT || 0) : 0;
-  const totalSQL        = fc ? (fc.SQL || 0) + (fc.SCHEDULED || 0) + (fc.DEMO || 0) + (fc.PROPOSAL || 0) + (fc.CLIENT || 0) : 0;
-  const totalScheduled  = fc ? (fc.SCHEDULED || 0) + (fc.DEMO || 0) + (fc.PROPOSAL || 0) + (fc.CLIENT || 0) : 0;
-  const totalDemo       = fc ? (fc.DEMO || 0) + (fc.PROPOSAL || 0) + (fc.CLIENT || 0) : 0;
-  const totalProposal   = fc ? (fc.PROPOSAL || 0) + (fc.CLIENT || 0) : 0;
-  const totalClients    = fc ? (fc.CLIENT || 0) : 0;
+  const totalMQL        = erc?.MQL       ?? 0;
+  const totalSQL        = erc?.SQL       ?? 0;
+  const totalScheduled  = erc?.SCHEDULED ?? 0;
+  const totalDemo       = erc?.DEMO      ?? 0;
+  const totalProposal   = erc?.PROPOSAL  ?? 0;
+  const totalClients    = erc?.CLIENT    ?? 0;
 
   // ── Active funnel meta (must come before funnelAdSpend) ───────────────────
   const activeFunnel = funnels.find(f => f.id === selectedId) ?? null;
@@ -847,15 +1075,18 @@ const FunnelView: React.FC = () => {
 
   const showUsersStage = selectedId === UNIFIED_ID || (activeFunnel?.impressionPages ?? []).length > 0;
 
-  const funnelStages = [
+  const funnelStages: Array<{
+    key: string; label: string; count: number; color: string;
+    icon: React.ElementType; stageKey?: CumulativeStageKey;
+  }> = [
     ...(showUsersStage ? [{ key: 'users', label: 'Usuários', count: stats?.gaUsers ?? 0, color: '#cbd5e1', icon: Eye }] : []),
-    { key: 'leads',       label: 'Leads',       count: totalLeads,             color: '#3b82f6', icon: Users },
-    { key: 'mql',         label: 'MQLs',        count: totalMQL,               color: '#6366f1', icon: TrendingUp },
-    { key: 'sql',         label: 'SQLs',        count: totalSQL,               color: '#818cf8', icon: Filter },
-    { key: 'scheduled',   label: 'Agendamentos',count: totalScheduled,         color: '#f59e0b', icon: Calendar },
-    { key: 'demo',        label: 'Demos',       count: totalDemo,              color: '#f97316', icon: MousePointerClick },
-    { key: 'proposal',    label: 'Propostas',   count: totalProposal,          color: '#a855f7', icon: CheckCircle },
-    { key: 'clients',     label: 'Vendas',      count: totalClients,           color: '#22c55e', icon: DollarSign },
+    { key: 'leads',       label: 'Leads',       count: totalLeads,             color: '#3b82f6', icon: Users,             stageKey: 'LEAD' as CumulativeStageKey },
+    { key: 'mql',         label: 'MQLs',        count: totalMQL,               color: '#6366f1', icon: TrendingUp,        stageKey: 'MQL' as CumulativeStageKey },
+    { key: 'sql',         label: 'SQLs',        count: totalSQL,               color: '#818cf8', icon: Filter,            stageKey: 'SQL' as CumulativeStageKey },
+    { key: 'scheduled',   label: 'Agendamentos',count: totalScheduled,         color: '#f59e0b', icon: Calendar,          stageKey: 'SCHEDULED' as CumulativeStageKey },
+    { key: 'demo',        label: 'Demos',       count: totalDemo,              color: '#f97316', icon: MousePointerClick, stageKey: 'DEMO' as CumulativeStageKey },
+    { key: 'proposal',    label: 'Propostas',   count: totalProposal,          color: '#a855f7', icon: CheckCircle,       stageKey: 'PROPOSAL' as CumulativeStageKey },
+    { key: 'clients',     label: 'Vendas',      count: totalClients,           color: '#22c55e', icon: DollarSign,        stageKey: 'CLIENT' as CumulativeStageKey },
   ];
   const maxCount = Math.max(...funnelStages.map(s => s.count), 1);
 
@@ -906,6 +1137,17 @@ const FunnelView: React.FC = () => {
           onSave={handleSave}
           onClose={() => setShowForm(false)}
           saving={formSaving}
+        />
+      )}
+
+      {drillStage && (
+        <StageDrillDownModal
+          funnelId={selectedId === UNIFIED_ID ? null : selectedId}
+          stage={drillStage}
+          label={STAGE_KEY_LABEL[drillStage]}
+          startDate={startDate}
+          endDate={endDate}
+          onClose={() => setDrillStage(null)}
         />
       )}
 
@@ -1052,6 +1294,7 @@ const FunnelView: React.FC = () => {
                     const pct  = Math.max(2, Math.round((stage.count / maxCount) * 100));
                     const rate = prev ? convRate(stage.count, prev.count) : null;
                     const Icon = stage.icon;
+                    const clickable = !!stage.stageKey && stage.count > 0;
                     return (
                       <div key={stage.key}>
                         {rate && (
@@ -1062,7 +1305,13 @@ const FunnelView: React.FC = () => {
                             </span>
                           </div>
                         )}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div
+                          onClick={clickable ? () => setDrillStage(stage.stageKey!) : undefined}
+                          title={clickable ? `Ver leads que chegaram em ${stage.label}` : undefined}
+                          style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: clickable ? 'pointer' : 'default', borderRadius: 8, padding: '3px 4px', margin: '-3px -4px', transition: 'background .12s' }}
+                          onMouseEnter={clickable ? e => (e.currentTarget.style.background = 'var(--bg-hover)') : undefined}
+                          onMouseLeave={clickable ? e => (e.currentTarget.style.background = 'transparent') : undefined}
+                        >
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: 136, flexShrink: 0 }}>
                             <div style={{ width: 26, height: 26, borderRadius: 6, background: `${stage.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                               <Icon size={13} style={{ color: stage.color }} />
