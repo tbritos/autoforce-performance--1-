@@ -808,7 +808,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                 { key: 'city', label: 'Cidade' }, { key: 'state', label: 'Estado' },
                                 { key: 'assignedTo', label: 'Responsável' }, { key: 'score', label: 'Score', type: 'number' },
                               ] as { key: keyof typeof form; label: string; type?: string }[]).map(({ key, label, type }) => (
-                                <label key={key} style={{ display: 'block' }}>
+                                <label key={key} style={{ display: 'block', minWidth: 0 }}>
                                   <span style={fieldLabel}>{label}</span>
                                   <input type={type ?? 'text'} value={form[key]}
                                     onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
@@ -816,7 +816,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                 </label>
                               ))}
                               {fieldDefs.map(def => (
-                                <label key={def.id} style={{ display: 'block' }}>
+                                <label key={def.id} style={{ display: 'block', minWidth: 0 }}>
                                   <span style={fieldLabel}>{def.label}</span>
                                   <input type="text"
                                     value={customForm[def.name] != null ? String(customForm[def.name]) : ''}
@@ -838,9 +838,9 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                 { key: 'state', label: 'Estado', value: profile.state },
                                 { key: 'assignedTo', label: 'Responsável', value: profile.assignedTo },
                               ]).map(({ key, label, value }) => (
-                                <div key={key}>
+                                <div key={key} style={{ minWidth: 0 }}>
                                   <span style={fieldLabel}>{label}</span>
-                                  <div style={{ ...inputStyle, color: value ? 'var(--fg-primary)' : 'var(--fg-subtle)', background: 'var(--bg-subtle)' }}>
+                                  <div style={{ ...inputStyle, color: value ? 'var(--fg-primary)' : 'var(--fg-subtle)', background: 'var(--bg-subtle)', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                                     {value ?? '—'}
                                   </div>
                                 </div>
@@ -848,9 +848,9 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                               {fieldDefs.map(def => {
                                 const val = (profile.customFields as Record<string, unknown>)?.[def.name];
                                 return (
-                                  <div key={def.id}>
+                                  <div key={def.id} style={{ minWidth: 0 }}>
                                     <span style={fieldLabel}>{def.label}</span>
-                                    <div style={{ ...inputStyle, color: val ? 'var(--fg-primary)' : 'var(--fg-subtle)', background: 'var(--bg-subtle)' }}>
+                                    <div style={{ ...inputStyle, color: val ? 'var(--fg-primary)' : 'var(--fg-subtle)', background: 'var(--bg-subtle)', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                                       {val != null && val !== '' ? String(val) : '—'}
                                     </div>
                                   </div>
