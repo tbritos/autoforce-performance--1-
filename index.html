@@ -250,6 +250,21 @@
       .ds-input::placeholder { color: var(--fg-subtle); }
       .ds-input:focus { border-color: var(--accent); }
 
+      /* ── Buttons ─────────────────────────────────────────────────────── */
+      .ds-btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: var(--r-md);
+        color: var(--fg-primary);
+        font-weight: 600;
+        transition: background .15s, border-color .15s, color .15s;
+      }
+      .ds-btn:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+      .ds-btn:disabled { opacity: .6; cursor: not-allowed; }
+      .ds-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      .ds-btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
       /* ── Tables ──────────────────────────────────────────────────────── */
       .ds-table-wrap {
         background: var(--bg-surface);
