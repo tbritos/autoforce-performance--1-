@@ -756,7 +756,7 @@ const DashboardContent: React.FC<{
         <>
         <div style={{ padding: '24px 28px 64px', maxWidth: 1480, margin: '0 auto' }} className="space-y-6 animate-fade-in-up">
             <div className="flex justify-between items-start gap-4 flex-wrap">
-                <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--fg-primary)', alignSelf: 'center' }}>
+                <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--fg-primary)', alignSelf: 'center', letterSpacing: '-0.01em' }}>
                     {getGreeting()}{user?.name ? `, ${user.name.split(' ')[0]}` : ''}!
                 </div>
                 <div className="flex items-center gap-3 ds-card" style={{ padding: '8px 14px' }}>
