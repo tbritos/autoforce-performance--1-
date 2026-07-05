@@ -237,6 +237,19 @@
       [data-theme="dark"] .ds-badge.warning { background: rgba(234,179,8,.12); color: #FDE68A; }
       [data-theme="dark"] .ds-badge.danger  { background: rgba(239,68,68,.12); color: #FCA5A5; }
 
+      /* ── Inputs ──────────────────────────────────────────────────────── */
+      .ds-input {
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
+        border-radius: var(--r-md);
+        color: var(--fg-primary);
+        font-size: 13px;
+        outline: none;
+        transition: border-color .15s, background .2s, color .2s;
+      }
+      .ds-input::placeholder { color: var(--fg-subtle); }
+      .ds-input:focus { border-color: var(--accent); }
+
       /* ── Tables ──────────────────────────────────────────────────────── */
       .ds-table-wrap {
         background: var(--bg-surface);
