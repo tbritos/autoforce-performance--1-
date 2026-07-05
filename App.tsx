@@ -141,6 +141,17 @@ const formatMetricValue = (metric: Metric, value: number) => {
     return new Intl.NumberFormat('pt-BR').format(value);
 };
 
+function getGreeting(): string {
+    const hour = Number(new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Sao_Paulo',
+        hour: 'numeric',
+        hour12: false,
+    }).format(new Date()));
+    if (hour >= 5 && hour < 12) return 'Bom dia';
+    if (hour >= 12 && hour < 18) return 'Boa tarde';
+    return 'Boa noite';
+}
+
 // ─── Dashboard constants ───────────────────────────────────────────────────────
 
 const FUNNEL_STAGES: { status: LeadStatus; label: string; color: string }[] = [
@@ -433,8 +444,9 @@ const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () =>
 const DashboardContent: React.FC<{
     metrics: Metric[],
     revenueHistory: RevenueEntry[],
-    loadingData: boolean
-}> = ({ metrics, revenueHistory, loadingData }) => {
+    loadingData: boolean,
+    user: User | null
+}> = ({ metrics, revenueHistory, loadingData, user }) => {
     const [dateRange, setDateRange] = useState(() => {
         const end = new Date();
         const start = new Date();
@@ -743,7 +755,10 @@ const DashboardContent: React.FC<{
     return (
         <>
         <div style={{ padding: '24px 28px 64px', maxWidth: 1480, margin: '0 auto' }} className="space-y-6 animate-fade-in-up">
-            <div className="flex justify-end items-start gap-4 flex-wrap">
+            <div className="flex justify-between items-start gap-4 flex-wrap">
+                <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--fg-primary)', alignSelf: 'center' }}>
+                    {getGreeting()}{user?.name ? `, ${user.name.split(' ')[0]}` : ''}!
+                </div>
                 <div className="flex items-center gap-3 ds-card" style={{ padding: '8px 14px' }}>
                     <div className="flex items-center gap-2">
                         <label style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--fg-subtle)', fontWeight: 500 }}>De</label>
@@ -1512,7 +1527,7 @@ const AppContent: React.FC = () => {
             style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
           >
           <Routes>
-            <Route path="/" element={<DashboardContent metrics={metrics} revenueHistory={revenueHistory} loadingData={loadingData} />} />
+            <Route path="/" element={<DashboardContent metrics={metrics} revenueHistory={revenueHistory} loadingData={loadingData} user={user} />} />
 
             <Route path="/dashboard" element={<Navigate to="/" replace />} />
 
