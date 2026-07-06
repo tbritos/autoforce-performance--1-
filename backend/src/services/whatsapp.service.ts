@@ -498,7 +498,12 @@ export const EBOOK_MAQUINA_DE_VENDAS = {
 };
 
 export function getEbookMaquinaDeVendasUrl(): string {
-  const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').split(',')[0].trim();
+  // Mesma cadeia de fallback usada no redirect do Google (server.ts) — se
+  // FRONTEND_URL nao estiver configurada, tenta CORS_ORIGIN antes de cair pro
+  // localhost (que a Meta nao conseguiria alcancar pra buscar o documento).
+  const frontendUrl = (process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 'http://localhost:5173')
+    .split(',')[0]
+    .trim();
   return `${frontendUrl}${EBOOK_MAQUINA_DE_VENDAS.path}`;
 }
 

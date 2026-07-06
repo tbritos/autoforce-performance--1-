@@ -1019,16 +1019,31 @@ async function applyRecommendedActions(
 }
 
 async function handleSendDocument(leadEmail: string, phone: string): Promise<void> {
+  const { sendWhatsAppDocument, getEbookMaquinaDeVendasUrl, EBOOK_MAQUINA_DE_VENDAS } = await import('./whatsapp.service');
+  const documentUrl = getEbookMaquinaDeVendasUrl();
   try {
-    const { sendWhatsAppDocument, getEbookMaquinaDeVendasUrl, EBOOK_MAQUINA_DE_VENDAS } = await import('./whatsapp.service');
     await sendWhatsAppDocument({
       to: phone,
       leadEmail: isGeneratedWppEmail(leadEmail) ? null : leadEmail,
-      documentUrl: getEbookMaquinaDeVendasUrl(),
+      documentUrl,
       filename: EBOOK_MAQUINA_DE_VENDAS.filename,
       caption: 'Aqui está o ebook! 📘',
     });
   } catch (err) {
-    console.error('[AI-WPP] Erro ao enviar documento:', err);
+    console.error('[AI-WPP] Erro ao enviar documento, caindo para fallback de texto com o link:', err);
+    // Sem isso o lead nao recebe nada nesse turno se o envio do documento falhar
+    // (ex: FRONTEND_URL mal configurada) -- pelo menos o link em texto chega.
+    try {
+      const { recordOutgoingWhatsAppMessage, getWhatsAppCredentials } = await import('./whatsapp.service');
+      await sendWhatsAppText({
+        to: phone,
+        text: `Aqui está o ebook: ${documentUrl}`,
+        leadEmail,
+        getCredentials: getWhatsAppCredentials,
+        recordOutgoing: recordOutgoingWhatsAppMessage,
+      });
+    } catch (fallbackErr) {
+      console.error('[AI-WPP] Fallback de texto do documento tambem falhou:', fallbackErr);
+    }
   }
 }
