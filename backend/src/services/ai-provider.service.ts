@@ -42,6 +42,7 @@ const ALLOWED_ACTION_TYPES = new Set([
   'register_lead',
   'offer_meeting_slots',
   'confirm_meeting',
+  'send_document',
 ]);
 
 const AI_RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
@@ -419,8 +420,10 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
         'register_lead',
         'offer_meeting_slots',
         'confirm_meeting',
+        'send_document',
       ],
       nota_sobre_tags: 'NAO use a acao apply_tag. O sistema de tags e gerenciado automaticamente. As tags de agendamento sao link_agendamento_enviado e reuniao_agendada.',
+      nota_sobre_envio_de_documento: 'Use a acao send_document APENAS quando o lead pedir explicitamente o ebook, material ou PDF (ex: "pode me mandar o ebook?", "tem algum material?"). Nao envie por conta propria sem pedido claro.',
     },
     formato_obrigatorio_de_saida: {
       fit: 'qualified | nurture | disqualified',
@@ -434,7 +437,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
       recommended_next_step: 'proxima acao recomendada',
       recommended_actions: [
         {
-          type: 'create_rd_conversion | send_whatsapp_followup | create_pipedrive_deal | handoff_to_human | stop_sequence | ask_discovery_question | register_lead | offer_meeting_slots | confirm_meeting',
+          type: 'create_rd_conversion | send_whatsapp_followup | create_pipedrive_deal | handoff_to_human | stop_sequence | ask_discovery_question | register_lead | offer_meeting_slots | confirm_meeting | send_document',
           reason: 'por que essa acao faz sentido',
           payload: {},
         },
@@ -1033,6 +1036,15 @@ function normalizeActionType(value: string): string {
     falar_com_humano: 'handoff_to_human',
     register_contact: 'register_lead',
     cadastrar_lead: 'register_lead',
+    send_pdf: 'send_document',
+    send_ebook: 'send_document',
+    send_file: 'send_document',
+    send_material: 'send_document',
+    enviar_pdf: 'send_document',
+    enviar_ebook: 'send_document',
+    enviar_documento: 'send_document',
+    enviar_material: 'send_document',
+    enviar_arquivo: 'send_document',
   };
 
   return aliases[normalized] ?? normalized;

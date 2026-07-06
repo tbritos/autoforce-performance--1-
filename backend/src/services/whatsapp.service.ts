@@ -492,6 +492,63 @@ export async function sendWhatsAppTemplateFromUI(
   });
 }
 
+export const EBOOK_MAQUINA_DE_VENDAS = {
+  filename: 'Como Construir uma Maquina de Vendas Automotiva.pdf',
+  path: '/ebook-maquina-de-vendas-automotiva.pdf',
+};
+
+export function getEbookMaquinaDeVendasUrl(): string {
+  const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').split(',')[0].trim();
+  return `${frontendUrl}${EBOOK_MAQUINA_DE_VENDAS.path}`;
+}
+
+export async function sendWhatsAppDocument(input: {
+  to: string;
+  leadEmail: string | null;
+  documentUrl: string;
+  filename: string;
+  caption?: string;
+}): Promise<void> {
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
+  if (!phoneNumberId) throw new Error('WHATSAPP_PHONE_NUMBER_ID não configurado');
+
+  const { accessToken } = await getWhatsAppCredentials();
+  const phone = normalizePhone(input.to);
+
+  const body = {
+    messaging_product: 'whatsapp',
+    to: phone,
+    type: 'document',
+    document: {
+      link: input.documentUrl,
+      filename: input.filename,
+      ...(input.caption ? { caption: input.caption } : {}),
+    },
+  };
+
+  const res = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json() as { messages?: Array<{ id?: string }>; error?: { message: string } };
+  if (!res.ok || data.error) {
+    throw new Error(data.error?.message ?? `WhatsApp API error ${res.status}`);
+  }
+
+  await recordOutgoingWhatsAppMessage({
+    leadEmail: input.leadEmail,
+    phone,
+    messageId: data.messages?.[0]?.id ?? null,
+    text: input.caption ?? `📄 ${input.filename}`,
+    payload: body,
+  });
+}
+
 export interface TemplateButton {
   type: 'QUICK_REPLY' | 'PHONE_NUMBER' | 'URL';
   text: string;

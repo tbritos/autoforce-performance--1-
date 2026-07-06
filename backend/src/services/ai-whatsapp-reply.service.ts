@@ -936,6 +936,24 @@ async function applyRecommendedActions(
       case 'offer_meeting_slots':
         await handleOfferMeetingSlots(leadEmail, phone);
         break;
+      case 'send_document':
+        await handleSendDocument(leadEmail, phone);
+        break;
     }
+  }
+}
+
+async function handleSendDocument(leadEmail: string, phone: string): Promise<void> {
+  try {
+    const { sendWhatsAppDocument, getEbookMaquinaDeVendasUrl, EBOOK_MAQUINA_DE_VENDAS } = await import('./whatsapp.service');
+    await sendWhatsAppDocument({
+      to: phone,
+      leadEmail: isGeneratedWppEmail(leadEmail) ? null : leadEmail,
+      documentUrl: getEbookMaquinaDeVendasUrl(),
+      filename: EBOOK_MAQUINA_DE_VENDAS.filename,
+      caption: 'Aqui está o ebook! 📘',
+    });
+  } catch (err) {
+    console.error('[AI-WPP] Erro ao enviar documento:', err);
   }
 }
