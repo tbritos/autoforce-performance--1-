@@ -59,6 +59,16 @@ function normalizeText(value: string): string {
     .toLowerCase();
 }
 
+// Segunda camada de defesa contra dado inventado: alem da instrucao no prompt
+// ("nunca infira"), confere no codigo se o valor que a IA quer salvar em
+// name/jobTitle/company/city/state realmente aparece, literalmente, em alguma
+// mensagem que o PROPRIO LEAD escreveu (nao conta o que o bot disse/perguntou).
+function wasLiterallyMentionedByLead(value: string, leadInboundText: string): boolean {
+  const needle = normalizeText(value).trim();
+  if (!needle) return false;
+  return normalizeText(leadInboundText).includes(needle);
+}
+
 type RecoveredIntent =
   | 'meeting_request'
   | 'document_request'
@@ -376,7 +386,9 @@ async function executeAIAndReply(
 
   const messages = await loadMessagesByPhone(phone, lead.id, lead.email);
   const transcript = buildTranscript(messages);
-  const lastInboundText = messages.filter(m => m.direction === 'inbound').slice(-1)[0]?.text ?? '';
+  const inboundMessages = messages.filter(m => m.direction === 'inbound');
+  const lastInboundText = inboundMessages.slice(-1)[0]?.text ?? '';
+  const leadInboundText = inboundMessages.map(m => m.text ?? '').join('\n');
   const knowledgeHints = deriveKnowledgeHints({
     lastInboundText,
     transcript,
@@ -490,12 +502,22 @@ async function executeAIAndReply(
     const registerAction = result.recommendedActions?.find(a => a.type === 'register_lead');
     if (registerAction?.payload?.email) {
       const realEmail = String(registerAction.payload.email).trim().toLowerCase();
-      const realName = registerAction.payload.name ? String(registerAction.payload.name).trim() : lead.name;
-      await upgradeLeadEmail(lead.email, realEmail, realName);
-      actionLeadEmail = realEmail;
-      enrichmentLead.email = realEmail;
+      const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(realEmail);
+      // Fundir o historico desse contato "gerado" (wpp_...) num lead real e
+      // irreversivel na pratica — so faz isso se o email realmente foi escrito
+      // pelo lead, nunca so porque a IA "achou" que era esse.
+      if (!looksLikeEmail) {
+        console.warn(`[AI-WPP] register_lead.email="${realEmail}" descartado para ${lead.email}: nao parece um email valido.`);
+      } else if (!wasLiterallyMentionedByLead(realEmail, leadInboundText)) {
+        console.warn(`[AI-WPP] register_lead.email="${realEmail}" descartado para ${lead.email}: nao encontrado literalmente nas mensagens do lead (possivel invencao/erro).`);
+      } else {
+        const realName = registerAction.payload.name ? String(registerAction.payload.name).trim() : lead.name;
+        await upgradeLeadEmail(lead.email, realEmail, realName);
+        actionLeadEmail = realEmail;
+        enrichmentLead.email = realEmail;
+      }
     }
-    await enrichLeadFromAI(enrichmentLead, effectiveResult)
+    await enrichLeadFromAI(enrichmentLead, effectiveResult, leadInboundText)
       .catch(err => console.error('[AI-WPP] enrichLeadFromAI for new contact failed:', err));
     const newContactAllowedActions = actionsToApply.filter(action => action.type === 'offer_meeting_slots');
     if (newContactAllowedActions.length > 0) {
@@ -505,7 +527,7 @@ async function executeAIAndReply(
     return;
   }
 
-  await enrichLeadFromAI(lead, effectiveResult)
+  await enrichLeadFromAI(lead, effectiveResult, leadInboundText)
     .catch(err => console.error('[AI-WPP] enrichLeadFromAI failed:', err));
 
   // Known lead: apply actions and persist memory
@@ -543,6 +565,7 @@ async function enrichLeadFromAI(
     notesSummary?: string;
     isHot?: boolean;
   },
+  leadInboundText: string,
 ): Promise<void> {
   const currentLead = await prisma.lead.findUnique({
     where: { email: lead.email },
@@ -553,9 +576,13 @@ async function enrichLeadFromAI(
   const standardUpdates: Record<string, string> = {};
   for (const field of STANDARD_LEAD_UPDATE_FIELDS) {
     const value = result.leadUpdates?.[field];
-    if (typeof value === 'string' && value.trim()) {
-      standardUpdates[field] = value.trim();
+    if (typeof value !== 'string' || !value.trim()) continue;
+    const trimmed = value.trim();
+    if (!wasLiterallyMentionedByLead(trimmed, leadInboundText)) {
+      console.warn(`[AI-WPP] lead_updates.${field}="${trimmed}" descartado para ${lead.email}: nao encontrado literalmente nas mensagens do lead (possivel invencao).`);
+      continue;
     }
+    standardUpdates[field] = trimmed;
   }
 
   const customUpdates: Record<string, unknown> = {};
