@@ -5,6 +5,7 @@ import {
   handleWhatsAppWebhook,
   listWhatsAppConversationByLead,
   sendWhatsAppTextFromUI,
+  sendWhatsAppTemplateFromUI,
   setLeadAiHandoff,
   createWhatsAppTemplate,
   deleteWhatsAppTemplate,
@@ -65,6 +66,20 @@ export class WhatsAppController {
         return;
       }
       await sendWhatsAppTextFromUI(req.params.leadId, text.trim());
+      res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async sendTemplate(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { templateName, bodyParams } = req.body as { templateName?: string; bodyParams?: string[] };
+      if (!templateName?.trim()) {
+        res.status(400).json({ error: 'templateName é obrigatório' });
+        return;
+      }
+      await sendWhatsAppTemplateFromUI(req.params.leadId, templateName.trim(), bodyParams ?? []);
       res.json({ ok: true });
     } catch (err) {
       next(err);

@@ -386,6 +386,13 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   const [wppText, setWppText]                   = useState('');
   const [wppSending, setWppSending]             = useState(false);
   const wppBottomRef = useRef<HTMLDivElement>(null);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [templates, setTemplates]               = useState<import('../types').WhatsAppTemplate[] | null>(null);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [selectedTemplateName, setSelectedTemplateName] = useState('');
+  const [templateVarValues, setTemplateVarValues] = useState<string[]>([]);
+  const [sendingTemplate, setSendingTemplate]   = useState(false);
+  const [templateError, setTemplateError]       = useState('');
   const [emailsSent, setEmailsSent]             = useState<EmailSent[] | null>(null);
   const [emailsReceived, setEmailsReceived]     = useState<EmailReceived[] | null>(null);
   const [loadingEmails, setLoadingEmails]       = useState(false);
@@ -489,6 +496,54 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
       alert(err?.message ?? 'Erro ao enviar mensagem');
     } finally {
       setWppSending(false);
+    }
+  };
+
+  const openTemplateModal = async () => {
+    setTemplateModalOpen(true);
+    setTemplateError('');
+    if (templates) return;
+    setLoadingTemplates(true);
+    try {
+      const list = await DataService.getWhatsAppTemplates();
+      setTemplates(list.filter(t => t.status === 'APPROVED'));
+    } catch {
+      setTemplateError('Não foi possível carregar os templates.');
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  const selectedTemplate = templates?.find(t => t.name === selectedTemplateName) ?? null;
+  const selectedTemplateBody = selectedTemplate?.components.find(c => c.type === 'BODY')?.text ?? '';
+  const selectedTemplateVarCount = new Set(Array.from(selectedTemplateBody.matchAll(/\{\{(\d+)\}\}/g)).map(m => m[1])).size;
+  const selectedTemplatePreview = selectedTemplateBody.replace(/\{\{(\d+)\}\}/g, (_match, idx) => {
+    const value = templateVarValues[Number(idx) - 1];
+    return value?.trim() ? value : `{{${idx}}}`;
+  });
+
+  const handleSelectTemplate = (name: string) => {
+    setSelectedTemplateName(name);
+    const body = templates?.find(t => t.name === name)?.components.find(c => c.type === 'BODY')?.text ?? '';
+    const count = new Set(Array.from(body.matchAll(/\{\{(\d+)\}\}/g)).map(m => m[1])).size;
+    setTemplateVarValues(Array.from({ length: count }, () => ''));
+  };
+
+  const handleSendTemplate = async () => {
+    if (!profile || !selectedTemplateName || sendingTemplate) return;
+    setSendingTemplate(true);
+    setTemplateError('');
+    try {
+      await DataService.sendWhatsAppTemplate(profile.id, selectedTemplateName, templateVarValues);
+      setTemplateModalOpen(false);
+      setSelectedTemplateName('');
+      setTemplateVarValues([]);
+      const msgs = await DataService.getWhatsAppConversation(profile.id);
+      setWhatsAppMessages(msgs);
+    } catch (err: any) {
+      setTemplateError(err?.message ?? 'Erro ao enviar template');
+    } finally {
+      setSendingTemplate(false);
     }
   };
 
@@ -1209,14 +1264,103 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                               {wppSending ? <RefreshCw size={16} style={{animation:'spin 1s linear infinite'}}/> : <Send size={16}/>}
                             </button>
                           </div>
-                          <div style={{ display:'flex', justifyContent:'space-between', padding:'0 16px 10px', fontSize:11, color:'var(--fg-subtle)' }}>
+                          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0 16px 10px', fontSize:11, color:'var(--fg-subtle)' }}>
                             <span>Enter envia · Shift+Enter quebra linha</span>
-                            <span style={{ display:'flex', alignItems:'center', gap:4 }}><UserCheck size={10}/> Enviando como <strong>{senderName}</strong></span>
+                            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                              <button type="button" onClick={openTemplateModal} disabled={!profile.phone}
+                                title={!profile.phone ? 'Lead sem telefone cadastrado' : 'Enviar um template aprovado'}
+                                style={{ display:'flex', alignItems:'center', gap:4, border:'none', background:'transparent', color:'var(--accent)', fontSize:11, fontWeight:600, cursor:profile.phone ? 'pointer' : 'not-allowed', padding:0, opacity: profile.phone ? 1 : 0.5 }}>
+                                <FileText size={11} /> Enviar template
+                              </button>
+                              <span style={{ display:'flex', alignItems:'center', gap:4 }}><UserCheck size={10}/> Enviando como <strong>{senderName}</strong></span>
+                            </div>
                           </div>
                         </div>
                       </div>
                     );
                   })()}
+
+                  {templateModalOpen && ReactDOM.createPortal(
+                    <>
+                      <div onClick={() => setTemplateModalOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000 }} />
+                      <div style={{
+                        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+                        width: 460, maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
+                        background: 'var(--bg-surface)', borderRadius: 16,
+                        border: '1px solid var(--border)', boxShadow: 'var(--shadow-xl)', zIndex: 1001,
+                        padding: 24, display: 'flex', flexDirection: 'column', gap: 16,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--fg-primary)' }}>Enviar template</h2>
+                          <button type="button" onClick={() => setTemplateModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--fg-subtle)', display: 'flex' }}>
+                            <X size={16} />
+                          </button>
+                        </div>
+                        <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-muted)' }}>
+                          Use um template aprovado pra reengajar leads fora da janela de 24h de resposta.
+                        </p>
+
+                        {loadingTemplates ? (
+                          <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-muted)' }}>Carregando templates…</p>
+                        ) : !templates?.length ? (
+                          <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-muted)' }}>Nenhum template aprovado encontrado.</p>
+                        ) : (
+                          <>
+                            <label style={{ display: 'block' }}>
+                              <span style={{ fontSize: 11, color: 'var(--fg-subtle)', marginBottom: 4, display: 'block' }}>Template</span>
+                              <select
+                                value={selectedTemplateName}
+                                onChange={e => handleSelectTemplate(e.target.value)}
+                                style={{ width: '100%', height: 38, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 13, outline: 'none' }}
+                              >
+                                <option value="">Selecionar template…</option>
+                                {templates.map(t => (
+                                  <option key={t.name} value={t.name}>{t.name}</option>
+                                ))}
+                              </select>
+                            </label>
+
+                            {selectedTemplate && (
+                              <div style={{ padding: 12, background: 'var(--bg-subtle)', borderRadius: 8, fontSize: 12, color: 'var(--fg-secondary)', whiteSpace: 'pre-wrap' }}>
+                                {selectedTemplatePreview || <em style={{ color: 'var(--fg-subtle)' }}>Sem corpo de texto.</em>}
+                              </div>
+                            )}
+
+                            {selectedTemplateVarCount > 0 && (
+                              <div style={{ display: 'grid', gap: 8 }}>
+                                {templateVarValues.map((val, idx) => (
+                                  <label key={idx} style={{ display: 'block' }}>
+                                    <span style={{ fontSize: 11, color: 'var(--fg-subtle)', marginBottom: 4, display: 'block' }}>{`Variável {{${idx + 1}}}`}</span>
+                                    <input
+                                      type="text"
+                                      value={val}
+                                      onChange={e => setTemplateVarValues(prev => prev.map((v, i) => i === idx ? e.target.value : v))}
+                                      style={{ width: '100%', height: 36, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                                    />
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        {templateError && <p style={{ margin: 0, fontSize: 12, color: 'var(--red-600)' }}>{templateError}</p>}
+
+                        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                          <button type="button" onClick={() => setTemplateModalOpen(false)}
+                            style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-muted)', fontSize: 13, cursor: 'pointer' }}>
+                            Cancelar
+                          </button>
+                          <button type="button" onClick={handleSendTemplate} disabled={!selectedTemplateName || sendingTemplate}
+                            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: (!selectedTemplateName || sendingTemplate) ? 0.6 : 1 }}>
+                            {sendingTemplate ? <RefreshCw size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={13} />}
+                            Enviar
+                          </button>
+                        </div>
+                      </div>
+                    </>,
+                    document.body
+                  )}
 
                   {/* ── EMAILS TAB ── */}
                   {activeTab === 'emails' && (

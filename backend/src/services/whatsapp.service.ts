@@ -424,6 +424,74 @@ export async function sendWhatsAppTextFromUI(leadId: string, text: string): Prom
   });
 }
 
+export async function sendWhatsAppTemplateFromUI(
+  leadId: string,
+  templateName: string,
+  bodyParams: string[] = []
+): Promise<void> {
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { id: true, email: true, phone: true },
+  });
+  if (!lead) throw new Error('Lead não encontrado');
+  if (!lead.phone) throw new Error('Lead sem telefone cadastrado');
+
+  const templates = await fetchWhatsAppTemplates();
+  const template = templates.find(t => t.name === templateName);
+  if (!template) throw new Error(`Template "${templateName}" não encontrado`);
+
+  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
+  if (!phoneNumberId) throw new Error('WHATSAPP_PHONE_NUMBER_ID não configurado');
+
+  const { accessToken } = await getWhatsAppCredentials();
+  const phone = normalizePhone(lead.phone);
+
+  const params = bodyParams.map(value => ({ type: 'text', text: value }));
+  const templatePayload: Record<string, unknown> = {
+    name: template.name,
+    language: { code: template.language },
+  };
+  if (params.length > 0) {
+    templatePayload.components = [{ type: 'body', parameters: params }];
+  }
+
+  const body = {
+    messaging_product: 'whatsapp',
+    to: phone,
+    type: 'template',
+    template: templatePayload,
+  };
+
+  const res = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = await res.json() as { messages?: Array<{ id?: string }>; error?: { message: string } };
+  if (!res.ok || data.error) {
+    throw new Error(data.error?.message ?? `WhatsApp API error ${res.status}`);
+  }
+
+  const bodyComponent = template.components.find(c => c.type === 'BODY');
+  const resolvedText = bodyComponent?.text
+    ? bodyComponent.text.replace(/\{\{(\d+)\}\}/g, (_match, idx) => bodyParams[Number(idx) - 1] ?? `{{${idx}}}`)
+    : null;
+
+  const isGenerated = lead.email.startsWith('wpp_') && lead.email.endsWith('@autoforce.internal');
+  await recordOutgoingWhatsAppMessage({
+    leadEmail: isGenerated ? null : lead.email,
+    phone,
+    messageId: data.messages?.[0]?.id ?? null,
+    templateName: template.name,
+    text: resolvedText,
+    payload: body,
+  });
+}
+
 export interface TemplateButton {
   type: 'QUICK_REPLY' | 'PHONE_NUMBER' | 'URL';
   text: string;
