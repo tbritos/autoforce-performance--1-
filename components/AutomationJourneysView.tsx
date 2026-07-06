@@ -1526,12 +1526,16 @@ const AutomationJourneysView: React.FC = () => {
     if (connectFrom?.nodeId === id) setConnectFrom(null);
   };
 
-  const connectNode = (targetId: string, sourceHandle: ConnectionHandle = 'default') => {
+  const connectNode = (targetId: string, sourceHandle: ConnectionHandle = 'default', viaHandleButton = false) => {
     if (!connectFrom) {
       setConnectFrom({ nodeId: targetId, handle: sourceHandle });
       return;
     }
-    if (connectFrom.nodeId === targetId) {
+    // Re-clicking the exact same output handle cancels (lets the user back out of a
+    // connection they just started). Clicking anywhere else on that same node — its body,
+    // or the generic "Conectar" button — completes a self-loop instead, e.g. "Esperar
+    // resposta" looping back into itself while it keeps watching for replies.
+    if (connectFrom.nodeId === targetId && viaHandleButton && connectFrom.handle === sourceHandle) {
       setConnectFrom(null);
       return;
     }
@@ -2263,7 +2267,11 @@ const AutomationJourneysView: React.FC = () => {
               <div
                 key={node.id}
                 onMouseDown={event => startMoveNode(event, node)}
-                onClick={event => { event.stopPropagation(); setSelectedNodeId(node.id); }}
+                onClick={event => {
+                  event.stopPropagation();
+                  if (connectFrom) { connectNode(node.id); return; }
+                  setSelectedNodeId(node.id);
+                }}
                 onDoubleClick={event => { event.stopPropagation(); setModalNodeId(node.id); }}
                 style={{
                   position: 'absolute',
@@ -2321,7 +2329,7 @@ const AutomationJourneysView: React.FC = () => {
                             key={output.handle}
                             type="button"
                             onMouseDown={event => event.stopPropagation()}
-                            onClick={event => { event.stopPropagation(); connectNode(node.id, output.handle); }}
+                            onClick={event => { event.stopPropagation(); connectNode(node.id, output.handle, true); }}
                             style={{
                               border: `1px solid ${activeHandle ? output.color : 'var(--border)'}`,
                               borderRadius: 'var(--r-sm)',
@@ -2343,7 +2351,7 @@ const AutomationJourneysView: React.FC = () => {
                     <button
                       type="button"
                       onMouseDown={event => event.stopPropagation()}
-                      onClick={event => { event.stopPropagation(); connectNode(node.id); }}
+                      onClick={event => { event.stopPropagation(); connectNode(node.id, 'default', true); }}
                       style={{
                         border: '1px solid var(--border)',
                         borderRadius: 'var(--r-sm)',
