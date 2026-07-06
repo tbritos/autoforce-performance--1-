@@ -1468,6 +1468,7 @@ const AutomationJourneysView: React.FC = () => {
         edges: selected.edges,
         triggerType: selected.triggerType,
         isActive: true,
+        exitConditions: selected.exitConditions ?? null,
       };
       const saved = selected.id
         ? await DataService.updateAutomationJourney(selected.id, payload)
