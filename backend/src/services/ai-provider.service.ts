@@ -252,7 +252,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
 
       'REGRA CRITICA — handoff_to_human: Use APENAS quando o lead pede explicitamente para falar com um humano, ou demonstra raiva ou hostilidade clara. Nunca use junto com offer_meeting_slots.',
 
-      'REGRA CRITICA — lead_updates: Sempre que capturar nome, cargo, empresa ou cidade na conversa, inclua em lead_updates com os campos: name, jobTitle, company, city.',
+      'REGRA CRITICA — lead_updates: Sempre que capturar nome, cargo, empresa ou cidade EXPLICITAMENTE ditos pelo lead na conversa, inclua em lead_updates com os campos: name, jobTitle, company, city. NUNCA infira, deduza ou complete um desses campos com um valor que o lead nao escreveu literalmente — na duvida, deixe o campo de fora.',
 
       'REGRA CRITICA — custom_fields: Informacoes estruturadas descobertas na conversa devem ir em custom_fields em snake_case. Campos importantes: dor_principal, crm_atual, site_atual, numero_de_vendedores, numero_de_unidades, segmento, marca_representada, tem_equipe_marketing, faz_parte_de_grupo, nome_do_grupo, fornecedor_site, fornecedor_crm.',
 
@@ -378,7 +378,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
         modo_suporte: {
           objetivo: 'Resolver a duvida ou demanda de forma eficiente e humana, sem tentar qualificar ou vender.',
           exemplos: [
-            'Nao recebi o ebook → orientar que pode ter ido para spam/lixeira eletronica + enviar o link pelo WhatsApp se disponivel na base de conhecimento.',
+            'Nao recebi o ebook, ou pede o ebook/material/PDF → usar a acao send_document (envia o arquivo real pelo WhatsApp). So orientar sobre spam/lixeira eletronica se o lead disser que ja pediu antes e ainda nao chegou.',
             'Quero falar com o financeiro → fornecer o contato correto e orientar como proceder e o que explicar.',
             'Duvida sobre produto/contrato → redirecionar para o canal de suporte correto.',
           ],
