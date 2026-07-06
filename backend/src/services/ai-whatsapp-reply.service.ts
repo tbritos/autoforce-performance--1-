@@ -304,7 +304,11 @@ async function processAIReply(phone: string): Promise<void> {
   const now = new Date();
   if (lead.aiProcessing && lead.aiProcessingAt) {
     if (now.getTime() - lead.aiProcessingAt.getTime() < LOCK_TTL_MS) {
-      console.log(`[AI-WPP] aiProcessing lock active for ${phone} — skipping`);
+      // Nao descarta a mensagem: a chamada de IA anterior pode levar mais que o
+      // debounce (5s) pra terminar. Reagenda em vez de simplesmente ignorar, senao
+      // essa mensagem do lead nunca gera resposta (bug: "a IA ignorou o que eu disse").
+      console.log(`[AI-WPP] aiProcessing lock active for ${phone} — reagendando`);
+      scheduleAIReply(phone);
       return;
     }
   }
@@ -316,7 +320,7 @@ async function processAIReply(phone: string): Promise<void> {
 
   try {
     // If lead is responding to a meeting slot offer, handle it without going through AI
-    const messages = await loadMessagesByPhone(phone);
+    const messages = await loadMessagesByPhone(phone, lead.id, lead.email);
     const lastMsg  = messages.filter(m => m.direction === 'inbound').slice(-1)[0]?.text ?? '';
     if (lead.tags.some(t => t.startsWith('__slots__')) && lastMsg) {
       const handled = await tryHandleMeetingSelection(
@@ -370,7 +374,7 @@ async function executeAIAndReply(
 
   const isNewContact = isGeneratedWppEmail(lead.email);
 
-  const messages = await loadMessagesByPhone(phone);
+  const messages = await loadMessagesByPhone(phone, lead.id, lead.email);
   const transcript = buildTranscript(messages);
   const lastInboundText = messages.filter(m => m.direction === 'inbound').slice(-1)[0]?.text ?? '';
   const knowledgeHints = deriveKnowledgeHints({
@@ -683,13 +687,29 @@ async function findLeadByPhone(phone: string) {
 
 // ─── Load messages by phone ───────────────────────────────────────────────────
 
-async function loadMessagesByPhone(phone: string): Promise<WhatsAppConversationMessage[]> {
+async function loadMessagesByPhone(
+  phone: string,
+  leadId?: string,
+  leadEmail?: string
+): Promise<WhatsAppConversationMessage[]> {
   const suffix = phone.replace(/\D/g, '').slice(-9);
-  return (prisma as any).whatsAppMessage.findMany({
-    where: { phone: { endsWith: suffix } },
-    orderBy: { createdAt: 'asc' },
+  // Prioriza leadId/leadEmail (identificador exclusivo) e usa o sufixo de telefone
+  // so como fallback pra mensagens antigas sem esses campos preenchidos — casar so
+  // por telefone arriscaria misturar a conversa de outro lead com o mesmo sufixo.
+  const where: Record<string, unknown>[] = [{ phone: { endsWith: suffix } }];
+  if (leadId) where.push({ leadId });
+  if (leadEmail) where.push({ leadEmail });
+
+  // orderBy 'asc' + take retornaria as MENSAGENS MAIS ANTIGAS da conversa (bug: em
+  // qualquer conversa com mais de MAX_TRANSCRIPT_MSGS mensagens, o modelo nunca via
+  // a mensagem atual do lead, respondendo com base em contexto desatualizado).
+  // Busca as mais recentes (desc) e reverte pra ordem cronologica antes de retornar.
+  const recent = await (prisma as any).whatsAppMessage.findMany({
+    where: { OR: where },
+    orderBy: { createdAt: 'desc' },
     take: MAX_TRANSCRIPT_MSGS,
   });
+  return recent.reverse();
 }
 
 // ─── Transcript builder ───────────────────────────────────────────────────────
