@@ -61,6 +61,7 @@ function normalizeText(value: string): string {
 
 type RecoveredIntent =
   | 'meeting_request'
+  | 'document_request'
   | 'greeting'
   | 'price_question'
   | 'agent_identity_question'
@@ -79,6 +80,9 @@ function detectLeadIntent(message: string): RecoveredIntent {
     return 'company_lookup_question';
   }
   if (/\b(preco|valor|quanto custa|orcamento|mensalidade|custa)\b/.test(text)) return 'price_question';
+  // Checado ANTES de meeting_request: um pedido explicito de material/PDF nao deve
+  // ser desviado pra oferta de reuniao so porque a conversa mencionou "demo"/"agenda" antes.
+  if (/\b(pdf|ebook|e-book|material|documento|arquivo|apostila)\b/.test(text)) return 'document_request';
   if (/\b(reuniao|agenda|agendar|marcar|horario|demo|demonstracao|apresentacao|call)\b/.test(text)) return 'meeting_request';
   if (/^(oi|ola|bom dia|boa tarde|boa noite|e ai|eai)\b/.test(text.trim())) return 'greeting';
   if (!isQuestion && message.trim().split(/\s+/).length <= 4) return 'company_answer';
@@ -112,6 +116,23 @@ function recoverAIReply(input: {
       intent,
       actions,
       replyText: `Perfeito${greetingName}. Vou te mandar a agenda para voce escolher o melhor horario.\n\nPara eu deixar o diagnostico bem direcionado, preencha com seu melhor email quando abrir o link.`,
+    };
+  }
+
+  if (intent === 'document_request') {
+    // Um pedido explicito de material nunca deve virar oferta de reuniao — remove
+    // qualquer offer_meeting_slots que a IA (ou este recover) possa ter colocado.
+    const withoutMeetingOffer = actions.filter(a => a.type !== 'offer_meeting_slots');
+    if (!hasAction(withoutMeetingOffer, 'send_document')) {
+      withoutMeetingOffer.push({
+        type: 'send_document',
+        reason: 'Lead pediu o ebook/material em PDF pelo WhatsApp.',
+      });
+    }
+    return {
+      intent,
+      actions: withoutMeetingOffer,
+      replyText: `Claro${greetingName}! Vou te mandar o material agora mesmo.`,
     };
   }
 
@@ -759,18 +780,30 @@ async function sendWhatsAppText(params: SendTextParams): Promise<void> {
 
 // ─── Meeting scheduler handlers ───────────────────────────────────────────────
 
+const BOOKING_LINK_RESEND_COOLDOWN_HOURS = 6;
+
 async function handleOfferMeetingSlots(leadEmail: string, phone: string): Promise<void> {
   try {
+    const lead = await prisma.lead.findUnique({
+      where: { email: leadEmail },
+      select: { tags: true, email: true },
+    });
+
+    const sentTag = lead?.tags.find(t => t.startsWith('__booking_link_sent:'));
+    if (sentTag) {
+      const sentAt = new Date(sentTag.slice('__booking_link_sent:'.length));
+      const hoursSinceSent = (Date.now() - sentAt.getTime()) / (1000 * 60 * 60);
+      if (Number.isFinite(hoursSinceSent) && hoursSinceSent < BOOKING_LINK_RESEND_COOLDOWN_HOURS) {
+        console.log(`[AI-WPP] Link de agenda ja enviado ha ${hoursSinceSent.toFixed(1)}h para ${leadEmail} — evitando reenvio.`);
+        return;
+      }
+    }
+
     const { getAppointmentBookingUrl, getAvailableSlots } = await import('./meeting-scheduler.service');
     const { recordOutgoingWhatsAppMessage, getWhatsAppCredentials } = await import('./whatsapp.service');
 
     const bookingUrl = getAppointmentBookingUrl();
     if (bookingUrl) {
-      const lead = await prisma.lead.findUnique({
-        where: { email: leadEmail },
-        select: { tags: true, email: true },
-      });
-
       await prisma.lead.update({
         where: { email: leadEmail },
         data: {
@@ -809,12 +842,7 @@ async function handleOfferMeetingSlots(leadEmail: string, phone: string): Promis
       return;
     }
 
-    // Store slots in lead tags temporarily as JSON
-    const lead = await prisma.lead.findUnique({
-      where: { email: leadEmail },
-      select: { tags: true },
-    });
-
+    // Store slots in lead tags temporarily as JSON (reuses the `lead` fetched above)
     const top3 = slots.slice(0, 3);
     await prisma.lead.update({
       where: { email: leadEmail },
