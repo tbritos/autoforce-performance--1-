@@ -79,9 +79,17 @@ type RecoveredIntent =
   | 'company_answer'
   | 'generic';
 
+// Boilerplate tipico de resposta automatica/fora-do-horario de OUTRO WhatsApp
+// Business (o proprio numero do lead pode ter um bot de ausencia configurado).
+// Isso nao e o lead falando -- nao deve disparar nenhuma classificacao de
+// intencao (ex: "horario" aparecendo em "retornaremos no proximo horario util"
+// nao pode ser lido como pedido de reuniao).
+const AUTO_REPLY_BOILERPLATE = /\b(horario de funcionamento|horario comercial|fora do horario|proximo horario util|mensagem automatica|retornaremos|em breve retornaremos|estamos fora|resposta automatica)\b/;
+
 function detectLeadIntent(message: string): RecoveredIntent {
   const text = normalizeText(message);
   const trimmed = text.trim();
+  if (AUTO_REPLY_BOILERPLATE.test(text)) return 'generic';
   const isQuestion = message.includes('?') || /\b(qual|quem|como|voce sabe|sabe|me diz|me fala)\b/.test(trimmed);
   if (/\b(qual (e|eh) (o )?seu nome|quem (e|eh) voce|com quem|voce (e|eh) quem|se apresenta)\b/.test(trimmed)) {
     return 'agent_identity_question';
