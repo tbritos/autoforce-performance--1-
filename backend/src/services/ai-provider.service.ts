@@ -32,16 +32,14 @@ export type AIPrequalificationResult = {
   promptSnapshot?: unknown;
 };
 
+// So inclui acoes que tem codigo executando elas de verdade (ver
+// applyRecommendedActions em ai-whatsapp-reply.service.ts, e o tratamento
+// separado de register_lead). Uma acao "permitida" aqui mas sem handler faria a
+// IA achar/dizer que fez algo que na pratica nao teve efeito nenhum.
 const ALLOWED_ACTION_TYPES = new Set([
-  'create_rd_conversion',
-  'send_whatsapp_followup',
-  'create_pipedrive_deal',
   'handoff_to_human',
-  'stop_sequence',
-  'ask_discovery_question',
   'register_lead',
   'offer_meeting_slots',
-  'confirm_meeting',
   'send_document',
 ]);
 
@@ -390,7 +388,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
           'NUNCA repetir pergunta que ja foi respondida — ler o transcript antes.',
           'NUNCA mencionar preco, mensalidade ou valor de contrato.',
           'Se o lead perguntar sobre preco, dizer que o valor e personalizado e o especialista passa esse detalhe na conversa.',
-          'Se o lead demonstrar desinteresse claro, aplicar tag sem_interesse e recomendar stop_sequence.',
+          'Se o lead demonstrar desinteresse claro, aplicar tag sem_interesse e encerrar a abordagem comercial naturalmente na propria resposta.',
           'Perguntas configuradas pelo agente em perguntas_de_descoberta sao complementares — usar quando fizerem sentido no contexto.',
           'Quando o lead responder de forma vaga ou com pouco contexto, aprofunde com uma pergunta especifica — nunca interprete uma resposta superficial como qualificacao suficiente.',
         ],
@@ -411,15 +409,9 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
       },
       urgencia: ['baixa', 'media', 'alta'],
       acoes_recomendadas_permitidas: [
-        'create_rd_conversion',
-        'send_whatsapp_followup',
-        'create_pipedrive_deal',
         'handoff_to_human',
-        'stop_sequence',
-        'ask_discovery_question',
         'register_lead',
         'offer_meeting_slots',
-        'confirm_meeting',
         'send_document',
       ],
       nota_sobre_tags: 'NAO use a acao apply_tag. O sistema de tags e gerenciado automaticamente. As tags de agendamento sao link_agendamento_enviado e reuniao_agendada.',
@@ -437,7 +429,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
       recommended_next_step: 'proxima acao recomendada',
       recommended_actions: [
         {
-          type: 'create_rd_conversion | send_whatsapp_followup | create_pipedrive_deal | handoff_to_human | stop_sequence | ask_discovery_question | register_lead | offer_meeting_slots | confirm_meeting | send_document',
+          type: 'handoff_to_human | register_lead | offer_meeting_slots | send_document',
           reason: 'por que essa acao faz sentido',
           payload: {},
         },
