@@ -72,9 +72,11 @@ model Lead {
   assignedTo String?
 
   // AI agent state
-  aiProcessing   Boolean   @default(false)
-  aiProcessingAt DateTime?
-  aiHandoff      Boolean   @default(false)
+  aiProcessing        Boolean   @default(false)
+  aiProcessingAt      DateTime?
+  aiHandoff           Boolean   @default(false)
+  bookingLinkSentAt   DateTime?
+  pendingMeetingSlots Json?
 
   // Pipedrive integration
   pipedrivePersonId String?

@@ -1,4 +1,5 @@
 import { prisma } from '../config/database';
+import { Prisma } from '@prisma/client';
 import { loadAIAgentContext, persistAIAgentDecision } from './ai-agent-context.service';
 import { runAIPrequalification } from './ai-provider.service';
 import type { WhatsAppConversationMessage } from './whatsapp.service';
@@ -340,9 +341,9 @@ async function processAIReply(phone: string): Promise<void> {
     // If lead is responding to a meeting slot offer, handle it without going through AI
     const messages = await loadMessagesByPhone(phone, lead.id, lead.email);
     const lastMsg  = messages.filter(m => m.direction === 'inbound').slice(-1)[0]?.text ?? '';
-    if (lead.tags.some(t => t.startsWith('__slots__')) && lastMsg) {
+    if (lead.pendingMeetingSlots && lastMsg) {
       const handled = await tryHandleMeetingSelection(
-        { email: lead.email, name: lead.name, phone: lead.phone, tags: lead.tags },
+        { email: lead.email, name: lead.name, phone: lead.phone, pendingMeetingSlots: lead.pendingMeetingSlots },
         phone,
         lastMsg,
       );
@@ -712,6 +713,7 @@ async function findLeadByPhone(phone: string) {
     customFields: true,
     firstSeenAt: true, lastSeenAt: true,
     aiHandoff: true, aiProcessing: true, aiProcessingAt: true,
+    bookingLinkSentAt: true, pendingMeetingSlots: true,
   };
 
   for (const value of candidates) {
@@ -852,14 +854,12 @@ async function handleOfferMeetingSlots(leadEmail: string, phone: string): Promis
   try {
     const lead = await prisma.lead.findUnique({
       where: { email: leadEmail },
-      select: { tags: true, email: true },
+      select: { tags: true, email: true, bookingLinkSentAt: true },
     });
 
-    const sentTag = lead?.tags.find(t => t.startsWith('__booking_link_sent:'));
-    if (sentTag) {
-      const sentAt = new Date(sentTag.slice('__booking_link_sent:'.length));
-      const hoursSinceSent = (Date.now() - sentAt.getTime()) / (1000 * 60 * 60);
-      if (Number.isFinite(hoursSinceSent) && hoursSinceSent < BOOKING_LINK_RESEND_COOLDOWN_HOURS) {
+    if (lead?.bookingLinkSentAt) {
+      const hoursSinceSent = (Date.now() - lead.bookingLinkSentAt.getTime()) / (1000 * 60 * 60);
+      if (hoursSinceSent < BOOKING_LINK_RESEND_COOLDOWN_HOURS) {
         console.log(`[AI-WPP] Link de agenda ja enviado ha ${hoursSinceSent.toFixed(1)}h para ${leadEmail} — evitando reenvio.`);
         return;
       }
@@ -873,11 +873,8 @@ async function handleOfferMeetingSlots(leadEmail: string, phone: string): Promis
       await prisma.lead.update({
         where: { email: leadEmail },
         data: {
-          tags: [
-            ...(lead?.tags ?? []).filter(t => !t.startsWith('__booking_link_sent')),
-            'link_agendamento_enviado',
-            `__booking_link_sent:${new Date().toISOString()}`,
-          ],
+          bookingLinkSentAt: new Date(),
+          tags: [...(lead?.tags ?? []).filter(t => t !== 'link_agendamento_enviado'), 'link_agendamento_enviado'],
         },
       });
 
@@ -908,16 +905,12 @@ async function handleOfferMeetingSlots(leadEmail: string, phone: string): Promis
       return;
     }
 
-    // Store slots in lead tags temporarily as JSON (reuses the `lead` fetched above)
+    // Guarda os horarios oferecidos temporariamente pra resolver a escolha
+    // numerica (1/2/3) do lead na proxima mensagem, sem precisar da IA.
     const top3 = slots.slice(0, 3);
     await prisma.lead.update({
       where: { email: leadEmail },
-      data: {
-        tags: [
-          ...(lead?.tags ?? []).filter(t => !t.startsWith('__slots__')),
-          `__slots__${JSON.stringify(top3)}`,
-        ],
-      },
+      data: { pendingMeetingSlots: top3 as unknown as Prisma.InputJsonValue },
     });
 
     const lines = [
@@ -950,19 +943,18 @@ async function handleOfferMeetingSlots(leadEmail: string, phone: string): Promis
 }
 
 async function tryHandleMeetingSelection(
-  lead: { email: string; name: string | null; phone: string | null; tags: string[] },
+  lead: { email: string; name: string | null; phone: string | null; pendingMeetingSlots: unknown },
   phone: string,
   lastMessage: string,
 ): Promise<boolean> {
-  const slotTag = lead.tags.find(t => t.startsWith('__slots__'));
-  if (!slotTag) return false;
+  if (!lead.pendingMeetingSlots) return false;
 
   const choice = lastMessage.trim().replace(/\D/g, '');
   const idx = parseInt(choice, 10) - 1;
   if (isNaN(idx) || idx < 0 || idx > 2) return false;
 
   try {
-    const slots = JSON.parse(slotTag.replace('__slots__', ''));
+    const slots = lead.pendingMeetingSlots as any[];
     const slot = slots[idx];
     if (!slot) return false;
 
@@ -971,10 +963,10 @@ async function tryHandleMeetingSelection(
 
     const booked = await bookMeeting(slot, { name: lead.name, email: lead.email, phone: lead.phone });
 
-    // Remove slots tag
+    // Limpa os horarios pendentes
     await prisma.lead.update({
       where: { email: lead.email },
-      data: { tags: lead.tags.filter(t => !t.startsWith('__slots__')) },
+      data: { pendingMeetingSlots: Prisma.JsonNull },
     });
 
     const confirmMsg = [

@@ -464,10 +464,9 @@ export async function syncAppointmentScheduleBookings(): Promise<{ synced: numbe
         await prisma.lead.update({
           where: { email: matchedLead.email },
           data: {
-            tags: Array.from(new Set([
-              ...matchedLead.tags.filter(t => !t.startsWith('__booking_link_sent')),
-              'reuniao_agendada',
-            ])).filter(t => t !== 'booking_link_sent' && t !== 'link_agendamento_enviado'),
+            bookingLinkSentAt: null,
+            tags: Array.from(new Set([...matchedLead.tags, 'reuniao_agendada']))
+              .filter(t => t !== 'booking_link_sent' && t !== 'link_agendamento_enviado'),
           },
         });
         syncedLeadEmails.add(matchedLead.email);
