@@ -471,21 +471,32 @@ async function executeAIAndReply(
     agentContext,
   });
 
-  const recovered = recoverAIReply({
-    leadName: lead.name,
-    company: lead.company,
-    lastInboundText,
-    resultActions: result.recommendedActions ?? [],
-  });
-  const actionsToApply = recovered.actions;
+  // recoverAIReply e um classificador por palavra-chave -- deliberadamente cru,
+  // sem entender contexto real da conversa. So deve substituir a decisao da IA
+  // quando ela genuinamente falhou (sem resposta usavel). Quando a IA respondeu
+  // bem, usar as acoes do regex por cima so serve pra reintroduzir bugs (ex:
+  // "horario" numa mensagem de auto-resposta de OUTRO bot disparando oferta de
+  // reuniao mesmo com a IA ja tendo dado uma resposta correta pra situacao).
+  const aiHasUsableReply = result.source !== 'fallback' && !!result.replyMessage?.trim();
 
-  // Send text reply
   if (result.source === 'fallback') {
     console.error('[AI-WPP] AI returned fallback; sending safe fallback to', phone, '| reason:', (result as { reason?: string }).reason ?? 'unknown');
   }
-  const replyText = result.replyMessage?.trim()
-    || recovered.replyText;
-  if (!result.replyMessage?.trim()) {
+
+  let replyText: string;
+  let actionsToApply: AIAction[];
+  if (aiHasUsableReply) {
+    replyText = result.replyMessage!.trim();
+    actionsToApply = result.recommendedActions ?? [];
+  } else {
+    const recovered = recoverAIReply({
+      leadName: lead.name,
+      company: lead.company,
+      lastInboundText,
+      resultActions: result.recommendedActions ?? [],
+    });
+    replyText = recovered.replyText;
+    actionsToApply = recovered.actions;
     console.warn(`[AI-WPP] AI returned empty reply for ${phone}; source=${result.source} model=${result.model}; recoveredIntent=${recovered.intent}`);
   }
   const effectiveResult = {
