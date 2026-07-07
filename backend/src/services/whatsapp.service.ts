@@ -165,11 +165,15 @@ export async function listWhatsAppConversationByLead(leadId: string): Promise<Wh
     variants.forEach(v => where.push({ phone: { endsWith: v } }));
   }
 
-  return (prisma as any).whatsAppMessage.findMany({
+  // orderBy 'asc' + take pegaria as 300 mensagens MAIS ANTIGAS (mesmo bug corrigido
+  // em outros pontos do agente de IA): numa conversa com mais de 300 mensagens, o
+  // SDR veria so o inicio da conversa na tela, sem nenhuma mensagem recente.
+  const recent = await (prisma as any).whatsAppMessage.findMany({
     where: { OR: where },
-    orderBy: [{ createdAt: 'asc' }],
+    orderBy: [{ createdAt: 'desc' }],
     take: 300,
   });
+  return recent.reverse();
 }
 
 export async function recordOutgoingWhatsAppMessage(input: {

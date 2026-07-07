@@ -1117,7 +1117,11 @@ async function executeAIPrequalification(
   });
   if (!lead) throw new Error(`Lead ${leadEmail} nao encontrado para pre-qualificacao por IA`);
 
-  const messages = await (prisma as any).whatsAppMessage.findMany({
+  // orderBy 'asc' + take pegaria as 80 mensagens MAIS ANTIGAS da conversa (mesmo
+  // bug corrigido em ai-whatsapp-reply.service.ts): em qualquer conversa com mais
+  // de 80 mensagens, a pre-qualificacao analisaria so o inicio, nunca o estado
+  // atual real da conversa. Busca as mais recentes e reverte a ordem depois.
+  const recentMessages = await (prisma as any).whatsAppMessage.findMany({
     where: {
       OR: [
         { leadId: lead.id },
@@ -1125,7 +1129,7 @@ async function executeAIPrequalification(
         ...(lead.phone ? [{ phone: lead.phone.replace(/\D/g, '') }, { phone: lead.phone }] : []),
       ],
     },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: 'desc' },
     take: 80,
   }) as Array<{
     direction: string;
@@ -1134,6 +1138,7 @@ async function executeAIPrequalification(
     templateName: string | null;
     createdAt: Date;
   }>;
+  const messages = recentMessages.reverse();
 
   const transcript = messages
     .filter(message => message.text || message.templateName)
