@@ -1017,7 +1017,7 @@ async function applyRecommendedActions(
   for (const action of actions) {
     switch (action.type) {
       case 'handoff_to_human':
-        await prisma.lead.update({ where: { email: leadEmail }, data: { aiHandoff: true } });
+        await handleHandoffToHuman(leadEmail);
         break;
       case 'offer_meeting_slots':
         await handleOfferMeetingSlots(leadEmail, phone);
@@ -1027,6 +1027,24 @@ async function applyRecommendedActions(
         break;
     }
   }
+}
+
+const HANDOFF_TAG = 'transferido-para-humano';
+
+// Marca o lead como quente e adiciona uma tag dedicada -- em vez de mandar uma
+// notificacao ad-hoc, isso reaproveita o sistema de Automacao existente: uma
+// automacao com gatilho "tag adicionada" nessa tag pode criar o negocio no
+// Pipedrive, notificar o time comercial etc., sem precisar de codigo novo aqui.
+async function handleHandoffToHuman(leadEmail: string): Promise<void> {
+  const lead = await prisma.lead.findUnique({ where: { email: leadEmail }, select: { tags: true } });
+  await prisma.lead.update({
+    where: { email: leadEmail },
+    data: {
+      aiHandoff: true,
+      isHot: true,
+      tags: Array.from(new Set([...(lead?.tags ?? []), HANDOFF_TAG])),
+    },
+  });
 }
 
 async function handleSendDocument(leadEmail: string, phone: string): Promise<void> {
