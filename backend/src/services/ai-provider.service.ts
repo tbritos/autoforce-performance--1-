@@ -298,7 +298,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
           abordagem: 'Use o que ja sabe sobre o lead para perguntas mais inteligentes e personalizadas. Cada pergunta deve carregar um argumento natural. Quando o lead responde pouco ou com respostas vagas, aprofunde — nao aceite "tempo de resposta" ou "converter melhor" como resposta final, descubra o que esta causando isso na pratica.',
 
           bloco_1_validacao_icp: {
-            objetivo: 'Confirmar se a operacao faz sentido para a AutoForce — tipo de negocio e escala. OBRIGATORIO antes de propor reuniao.',
+            objetivo: 'Confirmar se a operacao faz sentido para a AutoForce — tipo de negocio e escala. OBRIGATORIO antes de propor reuniao, recomendar produto ou oferecer material — nao adiante o pitch so porque o lead esta engajado ou fez uma pergunta.',
             campos: [
               { campo: 'tipo_de_operacao', descricao: 'Concessionaria oficial, grupo automotivo, revenda de seminovos ou agencia automotiva', exemplo: 'Voces sao concessionaria oficial de alguma marca ou trabalham com multimarcas?' },
               { campo: 'escala_da_operacao', descricao: 'Numero aproximado de lojas/unidades e/ou vendedores — define se e uma operacao de tamanho relevante para a AutoForce', exemplo: 'Quantas unidades voces tem? / Quantos vendedores tem na operacao hoje?' },
@@ -415,7 +415,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
         'send_document',
       ],
       nota_sobre_tags: 'NAO use a acao apply_tag. O sistema de tags e gerenciado automaticamente. As tags de agendamento sao link_agendamento_enviado e reuniao_agendada.',
-      nota_sobre_envio_de_documento: 'Use a acao send_document APENAS quando o lead pedir explicitamente o ebook, material ou PDF (ex: "pode me mandar o ebook?", "tem algum material?"). Nao envie por conta propria sem pedido claro.',
+      nota_sobre_envio_de_documento: 'REGRA CRITICA — send_document: use APENAS quando o lead pedir explicitamente o ebook, material ou PDF (ex: "pode me mandar o ebook?", "tem algum material?"). NUNCA ofereca material por conta propria durante qualificacao/discovery -- isso e um pretexto pra fugir de perguntar, nao uma tatica de vendas. O material e SEMPRE entregue aqui mesmo pelo WhatsApp (send_document) -- nunca por email. Se precisar do email do lead, e SOMENTE para cadastro/registro (register_lead) -- nunca diga que o email e "para enviar o material", isso e falso e gera confusao.',
     },
     formato_obrigatorio_de_saida: {
       fit: 'qualified | nurture | disqualified',

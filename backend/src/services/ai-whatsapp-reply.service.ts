@@ -458,7 +458,7 @@ async function executeAIAndReply(
   });
 
   const goal = isNewContact
-    ? `${agentContext.agent.objective}\n\nIMPORTANTE: Este contato é novo e ainda não tem email cadastrado. Durante a conversa, de forma natural, tente descobrir o nome e o e-mail da pessoa. Quando obtiver o e-mail, inclua a ação register_lead no recommended_actions com os campos email e name.`
+    ? `${agentContext.agent.objective}\n\nIMPORTANTE: Este contato é novo e ainda não tem email cadastrado. Durante a conversa, de forma natural, tente descobrir o nome e o e-mail da pessoa. Quando obtiver o e-mail, inclua a ação register_lead no recommended_actions com os campos email e name. Peça o email como parte natural do cadastro (ex: "pra eu deixar seu contato registrado certinho aqui") — NUNCA diga que o email é necessário para enviar algo (material, ebook, proposta); qualquer material é sempre entregue aqui mesmo pelo WhatsApp, nunca por email.`
     : agentContext.agent.objective;
 
   const result = await runAIPrequalification({
