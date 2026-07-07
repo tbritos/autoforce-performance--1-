@@ -145,7 +145,12 @@ export class LeadHubService {
     // Atualiza campos que chegarem preenchidos no webhook
     // Campos vazios/nulos no input não sobrescrevem dados existentes
     const profileUpdate: Record<string, any> = {};
-    const fields = { name: input.name, phone: input.phone, company: input.company, jobTitle: input.jobTitle, city: input.city, state: input.state };
+    // normalizePhoneE164 aqui tambem -- sem isso, um update (ao contrario do
+    // create acima) salvava o telefone crua como veio da fonte (ex: "(47)
+    // 99905-7455"), o que quebra a busca por telefone do WhatsApp mais tarde
+    // (ela compara so digitos, e o "contains" nao acha substring quebrada por
+    // parenteses/espaco/hifen) -- causa real de leads duplicados.
+    const fields = { name: input.name, phone: normalizePhoneE164(input.phone), company: input.company, jobTitle: input.jobTitle, city: input.city, state: input.state };
     for (const [key, value] of Object.entries(fields)) {
       if (value !== undefined && value !== null && value !== '') {
         profileUpdate[key] = value;
@@ -967,7 +972,7 @@ export class LeadHubService {
               data: {
                 email,
                 name:       wl.name       || null,
-                phone:      wl.phone      || null,
+                phone:      normalizePhoneE164(wl.phone),
                 company:    wl.company    || null,
                 firstSource: 'rdstation_webhook',
                 firstSeenAt: wl.lastConversionDate ?? new Date(),
@@ -979,7 +984,7 @@ export class LeadHubService {
               where: { email },
               data: {
                 name:    existing.name    || wl.name    || null,
-                phone:   existing.phone   || wl.phone   || null,
+                phone:   existing.phone   || normalizePhoneE164(wl.phone),
                 company: existing.company || wl.company || null,
               },
             });
