@@ -179,7 +179,8 @@ router.post('/:id/test', async (req: Request, res: Response) => {
     const html    = renderTemplate(template.body,    testLead);
 
     // Cria lead temporário ou usa email como leadEmail sem FK
-    await sendEmail({
+    let sendErrorMessage: string | null = null;
+    const sent = await sendEmail({
       leadEmail:  toEmail.trim(),
       toEmail:    toEmail.trim(),
       subject:    `[TESTE] ${subject}`,
@@ -187,7 +188,19 @@ router.post('/:id/test', async (req: Request, res: Response) => {
       fromName:   template.fromName  ?? undefined,
       fromEmail:  template.fromEmail ?? undefined,
       skipRecord: true,
+      onError: message => { sendErrorMessage = message; },
     });
+
+    // sendEmail engole o erro e so retorna false (pra nao quebrar contagem de
+    // disparo em massa) -- sem checar aqui, a rota respondia "ok" mesmo quando
+    // o envio falhava de verdade (ex: RESEND_API_KEY invalida, dominio nao
+    // verificado), e a tela mostrava "Enviado!" sem nada ter sido enviado.
+    if (!sent) {
+      // 422 (nao 5xx) para o frontend nao tentar de novo automaticamente e
+      // acabar mandando o teste duas vezes.
+      res.status(422).json({ error: sendErrorMessage ?? 'Falha ao enviar o email de teste.' });
+      return;
+    }
 
     res.json({ ok: true });
   } catch (err) {

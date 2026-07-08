@@ -33,6 +33,10 @@ export interface SendEmailInput {
   automationExecutionId?: string;
   automationNodeId?: string;
   skipRecord?: boolean;
+  // Opcional: recebe a mensagem de erro real quando o envio falha, sem mudar o
+  // contrato de retorno (boolean) que os outros chamadores (disparo em massa)
+  // ja dependem pra contar sucesso/falha.
+  onError?: (message: string) => void;
 }
 
 export interface ReceivedEmailContent {
@@ -79,8 +83,15 @@ export async function sendEmail(input: SendEmailInput): Promise<boolean> {
     );
     resendId = (result.data as { id?: string } | null)?.id ?? null;
     status   = resendId ? 'sent' : 'failed';
+    if (!resendId) {
+      const message = (result as { error?: { message?: string } }).error?.message ?? 'Resend nao retornou um id de envio';
+      console.error('[resend] Erro ao enviar email:', message);
+      input.onError?.(message);
+    }
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error('[resend] Erro ao enviar email:', err);
+    input.onError?.(message);
   }
 
   if (!input.skipRecord) {
