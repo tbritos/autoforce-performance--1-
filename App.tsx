@@ -1309,7 +1309,9 @@ const AppContent: React.FC = () => {
   const isActive = (path: string) =>
     path === '/'
       ? location.pathname === '/' || location.pathname === '/dashboard'
-      : location.pathname.startsWith(path);
+      // Match exato ou seguido de "/" (ex: /disparos/:id) — startsWith puro
+      // marcava "/disparos-whatsapp" como ativo também para o item "/disparos".
+      : location.pathname === path || location.pathname.startsWith(`${path}/`);
   const sidebarWidth = isSidebarCollapsed ? 72 : 248;
 
   useEffect(() => {
