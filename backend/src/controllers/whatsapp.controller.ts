@@ -15,13 +15,22 @@ import {
 } from '../services/whatsapp.service';
 import { prisma } from '../config/database';
 
+// Erros vindos da Graph API da Meta (template duplicado, permissão faltando,
+// número inválido, etc.) são erros esperados/corrigíveis pelo usuário, não
+// falhas internas — respondidos direto com a mensagem real em vez de cair no
+// error handler global, que em produção mascara todo 500 como "Internal
+// Server Error" e escondia a causa.
+function respondWithMetaError(res: Response, err: unknown) {
+  res.status(400).json({ error: err instanceof Error ? err.message : 'Erro desconhecido ao falar com a Meta' });
+}
+
 export class WhatsAppController {
   static async getTemplates(req: Request, res: Response, next: NextFunction) {
     try {
       const phoneNumberId = req.query.phoneNumberId as string | undefined;
       res.json(await fetchWhatsAppTemplates(phoneNumberId));
     } catch (err) {
-      next(err);
+      respondWithMetaError(res, err);
     }
   }
 
@@ -29,7 +38,7 @@ export class WhatsAppController {
     try {
       res.json(await fetchWhatsAppPhoneNumbers());
     } catch (err) {
-      next(err);
+      respondWithMetaError(res, err);
     }
   }
 
@@ -82,7 +91,7 @@ export class WhatsAppController {
       const entry = await registerWhatsAppNumber({ phoneNumberId: phoneNumberId.trim(), label: label.trim(), wabaId: wabaId?.trim() });
       res.status(201).json(entry);
     } catch (err) {
-      next(err);
+      respondWithMetaError(res, err);
     }
   }
 
@@ -123,7 +132,7 @@ export class WhatsAppController {
       await sendWhatsAppTextFromUI(req.params.leadId, text.trim(), phoneNumberId);
       res.json({ ok: true });
     } catch (err) {
-      next(err);
+      respondWithMetaError(res, err);
     }
   }
 
@@ -137,7 +146,7 @@ export class WhatsAppController {
       await sendWhatsAppTemplateFromUI(req.params.leadId, templateName.trim(), bodyParams ?? [], phoneNumberId);
       res.json({ ok: true });
     } catch (err) {
-      next(err);
+      respondWithMetaError(res, err);
     }
   }
 
@@ -202,7 +211,7 @@ export class WhatsAppController {
       const result = await createWhatsAppTemplate({ name: safeName, category, language: language ?? 'pt_BR', headerText, bodyText, footerText, phoneNumberId });
       res.status(201).json(result);
     } catch (err) {
-      next(err);
+      respondWithMetaError(res, err);
     }
   }
 
@@ -214,7 +223,7 @@ export class WhatsAppController {
       await deleteWhatsAppTemplate(decodeURIComponent(templateName), phoneNumberId);
       res.json({ ok: true });
     } catch (err) {
-      next(err);
+      respondWithMetaError(res, err);
     }
   }
 
