@@ -767,8 +767,9 @@ export async function createWhatsAppTemplate(input: CreateTemplateInput): Promis
   return { id: data.id ?? '', status: data.status ?? 'PENDING' };
 }
 
-export async function deleteWhatsAppTemplate(templateName: string): Promise<void> {
-  const { accessToken, businessAccountId } = await getWhatsAppCredentials();
+export async function deleteWhatsAppTemplate(templateName: string, phoneNumberId?: string): Promise<void> {
+  const { accessToken, businessAccountId: defaultWabaId } = await getWhatsAppCredentials();
+  const businessAccountId = await resolveWabaId(accessToken, defaultWabaId, phoneNumberId);
 
   const url = `https://graph.facebook.com/v19.0/${businessAccountId}/message_templates?name=${encodeURIComponent(templateName)}`;
   const res = await fetch(url, {

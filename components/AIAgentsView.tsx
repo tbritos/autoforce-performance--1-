@@ -109,6 +109,7 @@ export default function AIAgentsView() {
   const [newNumberId, setNewNumberId]     = useState('');
   const [newNumberLabel, setNewNumberLabel] = useState('');
   const [addingNumber, setAddingNumber]   = useState(false);
+  const [templateNumberId, setTemplateNumberId] = useState('');
 
   const provider     = String(agentDraft.defaultProvider || 'gemini');
   const modelOptions = provider === 'openai' ? OPENAI_MODELS : GEMINI_MODELS;
@@ -127,7 +128,7 @@ export default function AIAgentsView() {
     try {
       const [nums, tpls, agents] = await Promise.all([
         DataService.getWhatsAppNumbers().catch(() => [] as WhatsAppNumberEntry[]),
-        DataService.getWhatsAppTemplates().catch(() => [] as WppTemplate[]),
+        DataService.getWhatsAppTemplates(templateNumberId || undefined).catch(() => [] as WppTemplate[]),
         DataService.listAIAgents().catch(() => [] as AIAgent[]),
       ]);
       setPhoneNums(nums);
@@ -144,6 +145,18 @@ export default function AIAgentsView() {
   };
 
   useEffect(() => { void loadAll(); }, []);
+
+  const changeTemplateNumber = async (id: string) => {
+    setTemplateNumberId(id);
+    setLoading(true);
+    try {
+      setTemplates(await DataService.getWhatsAppTemplates(id || undefined));
+    } catch {
+      setTemplates([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const saveNumberLabel = async (phoneNumberId: string) => {
     const label = (labelDrafts[phoneNumberId] ?? '').trim();
@@ -203,7 +216,7 @@ export default function AIAgentsView() {
   const deleteTemplate = async (name: string) => {
     setDeletingName(name);
     try {
-      await DataService.deleteWhatsAppTemplate(name);
+      await DataService.deleteWhatsAppTemplate(name, templateNumberId || undefined);
       await loadAll();
       setExpandedId(null);
     } catch (e: any) {
@@ -363,6 +376,13 @@ export default function AIAgentsView() {
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <select value={templateNumberId} onChange={e => void changeTemplateNumber(e.target.value)}
+                style={{ ...iStyle, width: 170, fontSize: 12, padding: '8px 10px' }}>
+                <option value="">Conta principal</option>
+                {phoneNums.map(n => (
+                  <option key={n.id} value={n.id}>{(n.label ?? n.verified_name) || n.display_phone_number}</option>
+                ))}
+              </select>
               <div style={{ position: 'relative' }}>
                 <Search size={12} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--fg-subtle)', pointerEvents: 'none' }} />
                 <input value={templateQuery} onChange={e => setTemplateQuery(e.target.value)}

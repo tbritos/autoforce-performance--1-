@@ -924,8 +924,9 @@ export const DataService = {
     return apiClient.post('/whatsapp/templates', payload);
   },
 
-  deleteWhatsAppTemplate: async (templateName: string): Promise<void> => {
-    return apiClient.delete(`/whatsapp/templates/${encodeURIComponent(templateName)}`);
+  deleteWhatsAppTemplate: async (templateName: string, phoneNumberId?: string): Promise<void> => {
+    const qs = phoneNumberId ? `?phoneNumberId=${encodeURIComponent(phoneNumberId)}` : '';
+    return apiClient.delete(`/whatsapp/templates/${encodeURIComponent(templateName)}${qs}`);
   },
 
   getWhatsAppConversation: async (leadId: string): Promise<import('../types').WhatsAppConversationMessage[]> => {

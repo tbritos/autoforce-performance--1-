@@ -209,8 +209,9 @@ export class WhatsAppController {
   static async deleteTemplate(req: Request, res: Response, next: NextFunction) {
     try {
       const { templateName } = req.params;
+      const phoneNumberId = req.query.phoneNumberId as string | undefined;
       if (!templateName) { res.status(400).json({ error: 'Nome do template obrigatório' }); return; }
-      await deleteWhatsAppTemplate(decodeURIComponent(templateName));
+      await deleteWhatsAppTemplate(decodeURIComponent(templateName), phoneNumberId);
       res.json({ ok: true });
     } catch (err) {
       next(err);

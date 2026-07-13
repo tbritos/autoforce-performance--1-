@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, ArrowLeft, Check, Eye, Link2, MessageSquare, Phone, Plus, Trash2, Zap } from 'lucide-react';
 import { DataService } from '../services/dataService';
+import type { WhatsAppNumberEntry } from '../types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -134,6 +135,12 @@ export default function WhatsAppTemplateNewView() {
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState('');
   const [showPreview, setShowPreview] = useState(true);
+  const [numbers, setNumbers] = useState<WhatsAppNumberEntry[]>([]);
+  const [phoneNumberId, setPhoneNumberId] = useState('');
+
+  useEffect(() => {
+    DataService.getWhatsAppNumbers().then(setNumbers).catch(() => setNumbers([]));
+  }, []);
 
   const safeName = form.name.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
 
@@ -176,6 +183,7 @@ export default function WhatsAppTemplateNewView() {
         bodyText:   form.bodyText,
         footerText: form.footerText || undefined,
         buttons:    buttons.length > 0 ? buttons.map(({ type, text, phone_number, url }) => ({ type, text, phone_number: phone_number || undefined, url: url || undefined })) : undefined,
+        phoneNumberId: phoneNumberId || undefined,
       });
       navigate('/ai-agents', { state: { tab: 'templates', flash: 'Template criado! Aguarde aprovação da Meta.' } });
     } catch (e: any) {
@@ -224,6 +232,18 @@ export default function WhatsAppTemplateNewView() {
           </div>
 
           <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+            {/* Numero / conta Meta */}
+            <Field label="Conta / número Meta" note="templates não são compartilhados entre contas diferentes">
+              <select value={phoneNumberId} onChange={e => setPhoneNumberId(e.target.value)} style={{ ...iStyle, cursor: 'pointer' }}>
+                <option value="">Conta principal (padrão)</option>
+                {numbers.map(n => (
+                  <option key={n.id} value={n.id}>
+                    {(n.label ?? n.verified_name) || n.display_phone_number} — {n.display_phone_number}
+                  </option>
+                ))}
+              </select>
+            </Field>
 
             {/* Nome + Categoria + Idioma */}
             <Field label="Nome do template" required note="Apenas letras minúsculas, números e underscores">
