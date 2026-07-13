@@ -838,12 +838,18 @@ function extractTemplateVars(components: WhatsAppTemplate['components']): string
   const vars: string[] = [];
   for (const comp of components) {
     if ((comp.type === 'HEADER' || comp.type === 'BODY') && comp.text) {
-      const matches = comp.text.match(/\{\{\d+\}\}/g) ?? [];
+      // Aceita tanto variavel posicional ({{1}}) quanto nomeada ({{nome}})
+      // — a Meta permite os dois formatos, um por template.
+      const matches = comp.text.match(/\{\{[^}]+\}\}/g) ?? [];
       vars.push(...matches);
     }
   }
+  const isNumeric = (v: string) => /^\{\{\d+\}\}$/.test(v);
   return [...new Set(vars)].sort((a, b) => {
-    return parseInt(a.replace(/\D/g, '')) - parseInt(b.replace(/\D/g, ''));
+    const aNum = isNumeric(a), bNum = isNumeric(b);
+    if (aNum && bNum) return parseInt(a.replace(/\D/g, '')) - parseInt(b.replace(/\D/g, ''));
+    if (aNum !== bNum) return aNum ? -1 : 1;
+    return a.localeCompare(b);
   });
 }
 

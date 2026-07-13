@@ -1021,7 +1021,9 @@ async function executeWhatsAppMessage(
     score:       String(lead.score ?? ''),
   };
 
-  // varMappings: { "{{1}}": "name", "{{2}}": "email", ... }
+  // varMappings: { "{{1}}": "name", "{{2}}": "email", ... } (posicional) OU
+  // { "{{nome}}": "name", ... } (parametro nomeado — a Meta so permite um
+  // formato por template, nunca misturado, mas tratamos cada chave por si).
   let varMappings: Record<string, string> = {};
   try { varMappings = JSON.parse(String(config.varMappings ?? '{}')); } catch { /* ignore */ }
 
@@ -1031,7 +1033,11 @@ async function executeWhatsAppMessage(
       const idxB = parseInt(b.replace(/\D/g, ''), 10) || 0;
       return idxA - idxB;
     })
-    .map(([, field]) => ({ type: 'text', text: leadFieldValues[field] ?? '' }));
+    .map(([placeholder, field]) => {
+      const name = placeholder.replace(/[{}]/g, '');
+      const text = leadFieldValues[field] ?? '';
+      return /^\d+$/.test(name) ? { type: 'text', text } : { type: 'text', parameter_name: name, text };
+    });
 
   const templatePayload: Record<string, unknown> = {
     name: templateName,
