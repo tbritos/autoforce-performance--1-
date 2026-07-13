@@ -792,13 +792,17 @@ type SendTextParams = {
     messageId?: string | null;
     text?: string | null;
     payload?: unknown;
+    phoneNumberId?: string | null;
   }) => Promise<void>;
 };
 
 async function sendWhatsAppText(params: SendTextParams): Promise<void> {
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
-  if (!phoneNumberId) {
-    console.warn('[AI-WPP] WHATSAPP_PHONE_NUMBER_ID não configurado — resposta não enviada');
+  const { resolveDefaultPhoneNumberIdForLead } = await import('./whatsapp.service');
+  let phoneNumberId: string;
+  try {
+    phoneNumberId = await resolveDefaultPhoneNumberIdForLead(params.to);
+  } catch (err) {
+    console.warn(`[AI-WPP] não foi possível resolver o número de envio — resposta não enviada: ${err instanceof Error ? err.message : err}`);
     return;
   }
 
@@ -843,6 +847,7 @@ async function sendWhatsAppText(params: SendTextParams): Promise<void> {
     messageId,
     text: params.text,
     payload: body,
+    phoneNumberId,
   });
 }
 

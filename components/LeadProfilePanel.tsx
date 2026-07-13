@@ -1119,6 +1119,21 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                       return groups;
                     })();
 
+                    // So mostra a tag de numero quando a conversa realmente tem mensagens
+                    // de mais de um numero — pra nao poluir a UI de quem so usa um.
+                    const NUMBER_TAG_COLORS = ['#25d366', '#7c3aed', '#0ea5e9'];
+                    const distinctPhoneNumberIds = Array.from(new Set(
+                      (whatsAppMessages ?? []).map(m => m.phoneNumberId).filter((id): id is string => !!id)
+                    ));
+                    const showNumberTag = distinctPhoneNumberIds.length > 1;
+                    const numberTagFor = (msg: WhatsAppConversationMessage) => {
+                      if (!msg.phoneNumberId) return null;
+                      const idx = distinctPhoneNumberIds.indexOf(msg.phoneNumberId);
+                      const color = NUMBER_TAG_COLORS[idx % NUMBER_TAG_COLORS.length];
+                      const text = msg.phoneNumberLabel ?? (msg.phoneNumberDisplay ? fmtPhoneDisplay(msg.phoneNumberDisplay) : 'Número não identificado');
+                      return { color, text };
+                    };
+
                     return (
                       <div style={{ ...cardStyle, overflow: 'hidden' }}>
                         {/* ── Chat header ── */}
@@ -1214,9 +1229,18 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                         } catch { return null; }
                                       })() : null;
 
+                                      const numberTag = showNumberTag ? numberTagFor(msg) : null;
+
                                       return (
                                         <div key={msg.id} style={{ display:'flex', justifyContent: out?'flex-end':'flex-start', padding:'0 8px', marginBottom:2 }}>
                                           <div style={{ maxWidth:'72%' }}>
+                                            {numberTag && (
+                                              <div style={{ display:'flex', justifyContent: out?'flex-end':'flex-start', margin:'0 4px 2px' }}>
+                                                <span style={{ fontSize:9, fontWeight:700, color:'#fff', background:numberTag.color, borderRadius:99, padding:'1px 7px' }}>
+                                                  {numberTag.text}
+                                                </span>
+                                              </div>
+                                            )}
                                             {attribution && (
                                               <p style={{ margin:'0 4px 2px', fontSize:10, color:'#666', textAlign:'right', display:'flex', alignItems:'center', justifyContent:'flex-end', gap:4 }}>
                                                 {isTemplate ? <Bot size={9}/> : <UserCheck size={9}/>} {attribution}

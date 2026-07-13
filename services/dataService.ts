@@ -898,6 +898,14 @@ export const DataService = {
     return apiClient.get('/whatsapp/phone-numbers');
   },
 
+  getWhatsAppNumbers: async (): Promise<import('../types').WhatsAppNumberEntry[]> => {
+    return apiClient.get('/whatsapp/numbers');
+  },
+
+  registerWhatsAppNumber: async (phoneNumberId: string, label: string): Promise<import('../types').WhatsAppNumberEntry> => {
+    return apiClient.post('/whatsapp/numbers', { phoneNumberId, label });
+  },
+
   getWhatsAppTemplates: async (phoneNumberId?: string): Promise<WhatsAppTemplate[]> => {
     const qs = phoneNumberId ? `?phoneNumberId=${encodeURIComponent(phoneNumberId)}` : '';
     return apiClient.get(`/whatsapp/templates${qs}`);

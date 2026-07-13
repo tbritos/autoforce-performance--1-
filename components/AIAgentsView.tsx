@@ -6,7 +6,7 @@ import {
   Smartphone, Trash2,
 } from 'lucide-react';
 import { DataService } from '../services/dataService';
-import type { AIAgent, WhatsAppPhoneNumber } from '../types';
+import type { AIAgent, WhatsAppNumberEntry } from '../types';
 
 type Tab = 'number' | 'templates' | 'agent';
 
@@ -93,7 +93,7 @@ export default function AIAgentsView() {
   const location  = useLocation();
 
   const [tab, setTab]               = useState<Tab>((location.state as any)?.tab ?? 'number');
-  const [phoneNums, setPhoneNums]   = useState<WhatsAppPhoneNumber[]>([]);
+  const [phoneNums, setPhoneNums]   = useState<WhatsAppNumberEntry[]>([]);
   const [templates, setTemplates]   = useState<WppTemplate[]>([]);
   const [agent, setAgent]           = useState<AIAgent | null>(null);
   const [agentDraft, setAgentDraft] = useState<Partial<AIAgent>>({});
@@ -104,6 +104,8 @@ export default function AIAgentsView() {
   const [templateQuery, setTemplateQuery] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deletingName, setDeletingName] = useState<string | null>(null);
+  const [labelDrafts, setLabelDrafts]   = useState<Record<string, string>>({});
+  const [savingLabelId, setSavingLabelId] = useState<string | null>(null);
 
   const provider     = String(agentDraft.defaultProvider || 'gemini');
   const modelOptions = provider === 'openai' ? OPENAI_MODELS : GEMINI_MODELS;
@@ -121,7 +123,7 @@ export default function AIAgentsView() {
     setError('');
     try {
       const [nums, tpls, agents] = await Promise.all([
-        DataService.getWhatsAppPhoneNumbers().catch(() => [] as WhatsAppPhoneNumber[]),
+        DataService.getWhatsAppNumbers().catch(() => [] as WhatsAppNumberEntry[]),
         DataService.getWhatsAppTemplates().catch(() => [] as WppTemplate[]),
         DataService.listAIAgents().catch(() => [] as AIAgent[]),
       ]);
@@ -139,6 +141,22 @@ export default function AIAgentsView() {
   };
 
   useEffect(() => { void loadAll(); }, []);
+
+  const saveNumberLabel = async (phoneNumberId: string) => {
+    const label = (labelDrafts[phoneNumberId] ?? '').trim();
+    if (!label) return;
+    setSavingLabelId(phoneNumberId);
+    setError('');
+    try {
+      await DataService.registerWhatsAppNumber(phoneNumberId, label);
+      setFlash('Número cadastrado.');
+      await loadAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao cadastrar número.');
+    } finally {
+      setSavingLabelId(null);
+    }
+  };
 
   const saveAgent = async () => {
     if (!agent) return;
@@ -247,13 +265,34 @@ export default function AIAgentsView() {
             phoneNums.map(num => {
               const q = QUALITY_LABELS[num.quality_rating] ?? QUALITY_LABELS['UNKNOWN'];
               return (
-                <div key={num.id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px' }}>
+                <div key={num.id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
                   <div style={{ width: 44, height: 44, borderRadius: 12, background: '#25d366', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Phone size={20} color="white" />
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--fg-primary)' }}>{num.display_phone_number}</p>
                     <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--fg-muted)' }}>{num.verified_name}</p>
+                    {num.isRegistered ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 6, padding: '2px 9px', borderRadius: 99, fontSize: 11, fontWeight: 700, color: '#166534', background: '#dcfce7' }}>
+                        <Check size={11} /> {num.label}
+                      </span>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                        <input
+                          type="text"
+                          placeholder="Rótulo (ex: Comercial, Campanha X)"
+                          value={labelDrafts[num.id] ?? ''}
+                          onChange={e => setLabelDrafts(prev => ({ ...prev, [num.id]: e.target.value }))}
+                          style={{ ...iStyle, width: 220, padding: '6px 10px' }}
+                        />
+                        <button type="button"
+                          disabled={savingLabelId === num.id || !(labelDrafts[num.id] ?? '').trim()}
+                          onClick={() => saveNumberLabel(num.id)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', opacity: savingLabelId === num.id ? 0.6 : 1, whiteSpace: 'nowrap' }}>
+                          {savingLabelId === num.id ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />} Cadastrar
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, justifyContent: 'flex-end' }}>

@@ -275,6 +275,17 @@ export interface WhatsAppPhoneNumber {
   quality_rating: string;
 }
 
+// Numero da Meta WABA combinado com o rotulo amigavel ja cadastrado no nosso
+// diretorio (ou null se ainda nao foi "cadastrado" no sistema).
+export interface WhatsAppNumberEntry {
+  id: string;
+  display_phone_number: string;
+  verified_name: string;
+  quality_rating: string;
+  label: string | null;
+  isRegistered: boolean;
+}
+
 export interface WhatsAppConversationMessage {
   id: string;
   leadId: string | null;
@@ -290,6 +301,9 @@ export interface WhatsAppConversationMessage {
   templateName: string | null;
   text: string | null;
   payload: unknown;
+  phoneNumberId: string | null;
+  phoneNumberLabel: string | null;
+  phoneNumberDisplay: string | null;
   sentAt: string | null;
   deliveredAt: string | null;
   readAt: string | null;

@@ -85,6 +85,9 @@ export interface WhatsAppConversationMessage {
   templateName: string | null;
   text: string | null;
   payload: unknown;
+  phoneNumberId: string | null;
+  phoneNumberLabel: string | null;
+  phoneNumberDisplay: string | null;
   sentAt: Date | null;
   deliveredAt: Date | null;
   readAt: Date | null;
@@ -122,6 +125,72 @@ export async function fetchWhatsAppPhoneNumbers(): Promise<WhatsAppPhoneNumber[]
   const url = `https://graph.facebook.com/v19.0/${businessAccountId}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating`;
   const data = await metaGet<{ data?: WhatsAppPhoneNumber[] }>(url, accessToken);
   return data.data ?? [];
+}
+
+// ── Diretorio de rotulos amigaveis por numero (WhatsAppNumber) ─────────────
+// Nao duplica dados da Meta — so guarda o "nome" que o time da pra cada
+// numero (ex: "Comercial", "Campanha X"). O numero padrao/fallback continua
+// sendo a env var WHATSAPP_PHONE_NUMBER_ID.
+
+export interface WhatsAppNumberEntry {
+  id: string;
+  phoneNumberId: string;
+  label: string;
+  displayPhoneNumber: string | null;
+}
+
+export async function listRegisteredWhatsAppNumbers(): Promise<WhatsAppNumberEntry[]> {
+  return (prisma as any).whatsAppNumber.findMany({ orderBy: { createdAt: 'asc' } });
+}
+
+export async function registerWhatsAppNumber(input: { phoneNumberId: string; label: string }): Promise<WhatsAppNumberEntry> {
+  const phoneNumberId = input.phoneNumberId.trim();
+  const label = input.label.trim();
+  if (!phoneNumberId) throw new Error('phoneNumberId é obrigatório');
+  if (!label) throw new Error('Rótulo é obrigatório');
+
+  let liveNumbers: WhatsAppPhoneNumber[];
+  try {
+    liveNumbers = await fetchWhatsAppPhoneNumbers();
+  } catch (err) {
+    throw new Error(`Não foi possível validar o número na Meta agora: ${err instanceof Error ? err.message : 'erro desconhecido'}`);
+  }
+
+  const match = liveNumbers.find(n => n.id === phoneNumberId);
+  if (!match) throw new Error('Esse phoneNumberId não foi encontrado entre os números da conta Meta Business.');
+
+  return (prisma as any).whatsAppNumber.upsert({
+    where: { phoneNumberId },
+    create: { phoneNumberId, label, displayPhoneNumber: match.display_phone_number },
+    update: { label, displayPhoneNumber: match.display_phone_number },
+  });
+}
+
+async function buildPhoneNumberLabelMap(): Promise<Map<string, WhatsAppNumberEntry>> {
+  const entries = await listRegisteredWhatsAppNumbers();
+  return new Map(entries.map(e => [e.phoneNumberId, e]));
+}
+
+// Resolve por qual numero da Meta uma resposta (manual ou da IA) deve ser
+// enviada: o numero que recebeu a MENSAGEM MAIS RECENTE desse lead, senao o
+// numero padrao (env var). So vale pra resposta manual/IA — disparos de
+// automação usam o phoneNumberId explicito configurado no bloco da jornada.
+export async function resolveDefaultPhoneNumberIdForLead(phone: string): Promise<string> {
+  const normalized = normalizePhone(phone);
+
+  const last = await (prisma as any).whatsAppMessage.findFirst({
+    where: {
+      direction: 'inbound',
+      phoneNumberId: { not: null },
+      OR: phoneSearchVariants(normalized).map(v => ({ phone: { endsWith: v } })),
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { phoneNumberId: true },
+  });
+
+  const resolved = last?.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
+  if (!resolved) throw new Error('WHATSAPP_PHONE_NUMBER_ID não configurado e nenhuma mensagem anterior encontrada para esse lead');
+  return resolved;
 }
 
 // Fetch templates — if phoneNumberId is provided, find its WABA first so we get
@@ -173,7 +242,18 @@ export async function listWhatsAppConversationByLead(leadId: string): Promise<Wh
     orderBy: [{ createdAt: 'desc' }],
     take: 300,
   });
-  return recent.reverse();
+
+  const labelMap = await buildPhoneNumberLabelMap();
+  const enriched = recent.map((msg: any) => {
+    const entry = msg.phoneNumberId ? labelMap.get(msg.phoneNumberId) : undefined;
+    return {
+      ...msg,
+      phoneNumberLabel: entry?.label ?? null,
+      phoneNumberDisplay: entry?.displayPhoneNumber ?? null,
+    };
+  });
+
+  return enriched.reverse();
 }
 
 export async function recordOutgoingWhatsAppMessage(input: {
@@ -185,6 +265,7 @@ export async function recordOutgoingWhatsAppMessage(input: {
   payload?: unknown;
   automationJourneyId?: string | null;
   automationExecutionId?: string | null;
+  phoneNumberId?: string | null;
 }): Promise<void> {
   const lead = input.leadEmail
     ? await prisma.lead.findUnique({ where: { email: input.leadEmail }, select: { id: true, email: true } })
@@ -203,6 +284,7 @@ export async function recordOutgoingWhatsAppMessage(input: {
     payload: input.payload ?? {},
     automationJourneyId: input.automationJourneyId ?? null,
     automationExecutionId: input.automationExecutionId ?? null,
+    phoneNumberId: input.phoneNumberId ?? null,
     sentAt: new Date(),
   };
 
@@ -230,7 +312,7 @@ function extractInboundText(message: any): { type: string; text: string | null }
   return { type: String(message.type ?? 'unknown'), text: null };
 }
 
-async function recordInboundMessage(message: any, senderName?: string | null): Promise<void> {
+async function recordInboundMessage(message: any, senderName: string | null, phoneNumberId: string | null): Promise<void> {
   const from = normalizePhone(message.from);
   if (!from) return;
 
@@ -280,6 +362,7 @@ async function recordInboundMessage(message: any, senderName?: string | null): P
       repliedToMessageId: message.context?.id ?? null,
       text,
       payload: message,
+      phoneNumberId,
       receivedAt,
       createdAt: receivedAt,
     },
@@ -293,6 +376,7 @@ async function recordInboundMessage(message: any, senderName?: string | null): P
       repliedToMessageId: message.context?.id ?? null,
       text,
       payload: message,
+      phoneNumberId,
       receivedAt,
     },
   });
@@ -309,7 +393,7 @@ async function recordInboundMessage(message: any, senderName?: string | null): P
   }
 }
 
-async function recordStatus(status: any): Promise<void> {
+async function recordStatus(status: any, phoneNumberId: string | null): Promise<void> {
   const messageId = String(status.id ?? '');
   if (!messageId) return;
 
@@ -338,6 +422,7 @@ async function recordStatus(status: any): Promise<void> {
         status: state,
         messageId,
         payload: status,
+        phoneNumberId,
         ...data,
       },
     });
@@ -359,6 +444,10 @@ export async function handleWhatsAppWebhook(payload: any): Promise<{ messages: n
   for (const entry of payload?.entry ?? []) {
     for (const change of entry?.changes ?? []) {
       const value = change?.value ?? {};
+      // Numero da Meta que recebeu/enviou essa mensagem — presente no payload
+      // real da Meta, um nivel acima de `message`/`status` (por isso nunca fica
+      // gravado dentro de `payload` da linha do banco, que so guarda `message`).
+      const phoneNumberId = (value.metadata?.phone_number_id as string | undefined) ?? null;
 
       // Build wa_id → display name map from contacts array
       const nameByPhone: Record<string, string> = {};
@@ -370,11 +459,11 @@ export async function handleWhatsAppWebhook(payload: any): Promise<{ messages: n
 
       for (const message of value.messages ?? []) {
         const senderName = nameByPhone[message.from] ?? null;
-        await recordInboundMessage(message, senderName);
+        await recordInboundMessage(message, senderName, phoneNumberId);
         messages += 1;
       }
       for (const status of value.statuses ?? []) {
-        await recordStatus(status);
+        await recordStatus(status, phoneNumberId);
         statuses += 1;
       }
     }
@@ -383,7 +472,7 @@ export async function handleWhatsAppWebhook(payload: any): Promise<{ messages: n
   return { messages, statuses };
 }
 
-export async function sendWhatsAppTextFromUI(leadId: string, text: string): Promise<void> {
+export async function sendWhatsAppTextFromUI(leadId: string, text: string, phoneNumberIdOverride?: string): Promise<void> {
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
     select: { id: true, email: true, phone: true },
@@ -391,11 +480,9 @@ export async function sendWhatsAppTextFromUI(leadId: string, text: string): Prom
   if (!lead) throw new Error('Lead não encontrado');
   if (!lead.phone) throw new Error('Lead sem telefone cadastrado');
 
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
-  if (!phoneNumberId) throw new Error('WHATSAPP_PHONE_NUMBER_ID não configurado');
-
   const { accessToken } = await getWhatsAppCredentials();
   const phone = normalizePhone(lead.phone);
+  const phoneNumberId = phoneNumberIdOverride?.trim() || await resolveDefaultPhoneNumberIdForLead(phone);
 
   const body = {
     messaging_product: 'whatsapp',
@@ -425,13 +512,15 @@ export async function sendWhatsAppTextFromUI(leadId: string, text: string): Prom
     messageId: data.messages?.[0]?.id ?? null,
     text,
     payload: body,
+    phoneNumberId,
   });
 }
 
 export async function sendWhatsAppTemplateFromUI(
   leadId: string,
   templateName: string,
-  bodyParams: string[] = []
+  bodyParams: string[] = [],
+  phoneNumberIdOverride?: string
 ): Promise<void> {
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
@@ -444,11 +533,9 @@ export async function sendWhatsAppTemplateFromUI(
   const template = templates.find(t => t.name === templateName);
   if (!template) throw new Error(`Template "${templateName}" não encontrado`);
 
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
-  if (!phoneNumberId) throw new Error('WHATSAPP_PHONE_NUMBER_ID não configurado');
-
   const { accessToken } = await getWhatsAppCredentials();
   const phone = normalizePhone(lead.phone);
+  const phoneNumberId = phoneNumberIdOverride?.trim() || await resolveDefaultPhoneNumberIdForLead(phone);
 
   const params = bodyParams.map(value => ({ type: 'text', text: value }));
   const templatePayload: Record<string, unknown> = {
@@ -493,6 +580,7 @@ export async function sendWhatsAppTemplateFromUI(
     templateName: template.name,
     text: resolvedText,
     payload: body,
+    phoneNumberId,
   });
 }
 
@@ -517,12 +605,11 @@ export async function sendWhatsAppDocument(input: {
   documentUrl: string;
   filename: string;
   caption?: string;
+  phoneNumberId?: string | null;
 }): Promise<void> {
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim();
-  if (!phoneNumberId) throw new Error('WHATSAPP_PHONE_NUMBER_ID não configurado');
-
   const { accessToken } = await getWhatsAppCredentials();
   const phone = normalizePhone(input.to);
+  const phoneNumberId = input.phoneNumberId?.trim() || await resolveDefaultPhoneNumberIdForLead(phone);
 
   const body = {
     messaging_product: 'whatsapp',
@@ -555,6 +642,7 @@ export async function sendWhatsAppDocument(input: {
     messageId: data.messages?.[0]?.id ?? null,
     text: input.caption ?? `📄 ${input.filename}`,
     payload: body,
+    phoneNumberId,
   });
 }
 

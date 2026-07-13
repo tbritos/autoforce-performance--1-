@@ -9,6 +9,8 @@ import {
   setLeadAiHandoff,
   createWhatsAppTemplate,
   deleteWhatsAppTemplate,
+  listRegisteredWhatsAppNumbers,
+  registerWhatsAppNumber,
   type CreateTemplateInput,
 } from '../services/whatsapp.service';
 import { prisma } from '../config/database';
@@ -26,6 +28,42 @@ export class WhatsAppController {
   static async getPhoneNumbers(req: Request, res: Response, next: NextFunction) {
     try {
       res.json(await fetchWhatsAppPhoneNumbers());
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  // Junta a lista viva de numeros da Meta com os rotulos amigaveis ja
+  // cadastrados no nosso diretorio (WhatsAppNumber).
+  static async getNumbers(req: Request, res: Response, next: NextFunction) {
+    try {
+      const [live, registered] = await Promise.all([
+        fetchWhatsAppPhoneNumbers(),
+        listRegisteredWhatsAppNumbers(),
+      ]);
+      const byPhoneNumberId = new Map(registered.map(r => [r.phoneNumberId, r]));
+
+      res.json(live.map(n => ({
+        id: n.id,
+        display_phone_number: n.display_phone_number,
+        verified_name: n.verified_name,
+        quality_rating: n.quality_rating,
+        label: byPhoneNumberId.get(n.id)?.label ?? null,
+        isRegistered: byPhoneNumberId.has(n.id),
+      })));
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async registerNumber(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { phoneNumberId, label } = req.body as { phoneNumberId?: string; label?: string };
+      if (!phoneNumberId?.trim()) { res.status(400).json({ error: 'phoneNumberId é obrigatório' }); return; }
+      if (!label?.trim())         { res.status(400).json({ error: 'Rótulo é obrigatório' }); return; }
+
+      const entry = await registerWhatsAppNumber({ phoneNumberId: phoneNumberId.trim(), label: label.trim() });
+      res.status(201).json(entry);
     } catch (err) {
       next(err);
     }
@@ -60,12 +98,12 @@ export class WhatsAppController {
 
   static async sendMessage(req: Request, res: Response, next: NextFunction) {
     try {
-      const { text } = req.body as { text?: string };
+      const { text, phoneNumberId } = req.body as { text?: string; phoneNumberId?: string };
       if (!text?.trim()) {
         res.status(400).json({ error: 'Mensagem não pode ser vazia' });
         return;
       }
-      await sendWhatsAppTextFromUI(req.params.leadId, text.trim());
+      await sendWhatsAppTextFromUI(req.params.leadId, text.trim(), phoneNumberId);
       res.json({ ok: true });
     } catch (err) {
       next(err);
@@ -74,12 +112,12 @@ export class WhatsAppController {
 
   static async sendTemplate(req: Request, res: Response, next: NextFunction) {
     try {
-      const { templateName, bodyParams } = req.body as { templateName?: string; bodyParams?: string[] };
+      const { templateName, bodyParams, phoneNumberId } = req.body as { templateName?: string; bodyParams?: string[]; phoneNumberId?: string };
       if (!templateName?.trim()) {
         res.status(400).json({ error: 'templateName é obrigatório' });
         return;
       }
-      await sendWhatsAppTemplateFromUI(req.params.leadId, templateName.trim(), bodyParams ?? []);
+      await sendWhatsAppTemplateFromUI(req.params.leadId, templateName.trim(), bodyParams ?? [], phoneNumberId);
       res.json({ ok: true });
     } catch (err) {
       next(err);

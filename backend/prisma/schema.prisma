@@ -432,6 +432,10 @@ model WhatsAppMessage {
   text         String? @db.Text
   payload      Json    @default("{}")
 
+  // Numero da Meta (phone_number_id) que enviou (outbound) ou recebeu (inbound) essa mensagem.
+  // Nulo em mensagens antigas, de antes de existir mais de um numero.
+  phoneNumberId String?
+
   sentAt      DateTime?
   deliveredAt DateTime?
   readAt      DateTime?
@@ -446,6 +450,19 @@ model WhatsAppMessage {
   @@index([automationJourneyId])
   @@index([automationExecutionId])
   @@index([createdAt])
+  @@index([phoneNumberId])
+}
+
+// Diretorio de rotulos amigaveis para numeros da Meta WABA — nao duplica dados da Meta,
+// so guarda o "nome" que o time da pra cada numero (ex: "Comercial", "Campanha X").
+// O numero padrao/fallback continua sendo WHATSAPP_PHONE_NUMBER_ID (env var).
+model WhatsAppNumber {
+  id                 String   @id @default(uuid())
+  phoneNumberId      String   @unique
+  label              String
+  displayPhoneNumber String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 // ============================================================

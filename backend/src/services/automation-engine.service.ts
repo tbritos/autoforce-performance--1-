@@ -1089,6 +1089,7 @@ async function executeWhatsAppMessage(
     payload: body,
     automationJourneyId: journeyId,
     automationExecutionId: executionId,
+    phoneNumberId,
   });
 }
 
