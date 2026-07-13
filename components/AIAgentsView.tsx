@@ -108,6 +108,7 @@ export default function AIAgentsView() {
   const [savingLabelId, setSavingLabelId] = useState<string | null>(null);
   const [newNumberId, setNewNumberId]     = useState('');
   const [newNumberLabel, setNewNumberLabel] = useState('');
+  const [newNumberWabaId, setNewNumberWabaId] = useState('');
   const [addingNumber, setAddingNumber]   = useState(false);
   const [templateNumberId, setTemplateNumberId] = useState('');
 
@@ -183,10 +184,11 @@ export default function AIAgentsView() {
     setAddingNumber(true);
     setError('');
     try {
-      await DataService.registerWhatsAppNumber(phoneNumberId, label);
+      await DataService.registerWhatsAppNumber(phoneNumberId, label, newNumberWabaId.trim() || undefined);
       setFlash('Número cadastrado.');
       setNewNumberId('');
       setNewNumberLabel('');
+      setNewNumberWabaId('');
       await loadAll();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao cadastrar número.');
@@ -303,6 +305,9 @@ export default function AIAgentsView() {
               <input type="text" placeholder="Rótulo (ex: Tiago Fernandes)"
                 value={newNumberLabel} onChange={e => setNewNumberLabel(e.target.value)}
                 style={{ ...iStyle, width: 200 }} />
+              <input type="text" placeholder="WABA ID (obrigatório se for outra conta Meta)"
+                value={newNumberWabaId} onChange={e => setNewNumberWabaId(e.target.value)}
+                style={{ ...iStyle, width: 220 }} />
               <button type="button"
                 disabled={addingNumber || !newNumberId.trim() || !newNumberLabel.trim()}
                 onClick={addNumberById}
@@ -310,6 +315,9 @@ export default function AIAgentsView() {
                 {addingNumber ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />} Cadastrar
               </button>
             </div>
+            <p style={{ margin: '8px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>
+              O WABA ID fica em WhatsApp Manager → clique nos "..." ao lado do nome da conta → Detalhes da conta. Sem ele, templates dessa conta não vão aparecer corretamente.
+            </p>
           </div>
 
           {loading ? (

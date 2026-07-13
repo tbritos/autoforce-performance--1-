@@ -75,11 +75,11 @@ export class WhatsAppController {
 
   static async registerNumber(req: Request, res: Response, next: NextFunction) {
     try {
-      const { phoneNumberId, label } = req.body as { phoneNumberId?: string; label?: string };
+      const { phoneNumberId, label, wabaId } = req.body as { phoneNumberId?: string; label?: string; wabaId?: string };
       if (!phoneNumberId?.trim()) { res.status(400).json({ error: 'phoneNumberId é obrigatório' }); return; }
       if (!label?.trim())         { res.status(400).json({ error: 'Rótulo é obrigatório' }); return; }
 
-      const entry = await registerWhatsAppNumber({ phoneNumberId: phoneNumberId.trim(), label: label.trim() });
+      const entry = await registerWhatsAppNumber({ phoneNumberId: phoneNumberId.trim(), label: label.trim(), wabaId: wabaId?.trim() });
       res.status(201).json(entry);
     } catch (err) {
       next(err);

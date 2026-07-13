@@ -902,8 +902,8 @@ export const DataService = {
     return apiClient.get('/whatsapp/numbers');
   },
 
-  registerWhatsAppNumber: async (phoneNumberId: string, label: string): Promise<import('../types').WhatsAppNumberEntry> => {
-    return apiClient.post('/whatsapp/numbers', { phoneNumberId, label });
+  registerWhatsAppNumber: async (phoneNumberId: string, label: string, wabaId?: string): Promise<import('../types').WhatsAppNumberEntry> => {
+    return apiClient.post('/whatsapp/numbers', { phoneNumberId, label, wabaId });
   },
 
   getWhatsAppTemplates: async (phoneNumberId?: string): Promise<WhatsAppTemplate[]> => {

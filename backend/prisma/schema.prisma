@@ -461,6 +461,11 @@ model WhatsAppNumber {
   phoneNumberId      String   @unique
   label              String
   displayPhoneNumber String?
+  // WABA (conta Meta Business) a que esse numero pertence. So precisa ser
+  // preenchido quando o numero NAO esta na conta principal (WHATSAPP_BUSINESS_ACCOUNT_ID)
+  // — templates nao sao compartilhados entre contas, entao sem isso o sistema
+  // buscaria template na conta errada.
+  wabaId             String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }

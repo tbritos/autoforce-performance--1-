@@ -157,15 +157,17 @@ export interface WhatsAppNumberEntry {
   phoneNumberId: string;
   label: string;
   displayPhoneNumber: string | null;
+  wabaId: string | null;
 }
 
 export async function listRegisteredWhatsAppNumbers(): Promise<WhatsAppNumberEntry[]> {
   return (prisma as any).whatsAppNumber.findMany({ orderBy: { createdAt: 'asc' } });
 }
 
-export async function registerWhatsAppNumber(input: { phoneNumberId: string; label: string }): Promise<WhatsAppNumberEntry> {
+export async function registerWhatsAppNumber(input: { phoneNumberId: string; label: string; wabaId?: string }): Promise<WhatsAppNumberEntry> {
   const phoneNumberId = input.phoneNumberId.trim();
   const label = input.label.trim();
+  const wabaId = input.wabaId?.trim() || null;
   if (!phoneNumberId) throw new Error('phoneNumberId é obrigatório');
   if (!label) throw new Error('Rótulo é obrigatório');
 
@@ -180,14 +182,21 @@ export async function registerWhatsAppNumber(input: { phoneNumberId: string; lab
 
   return (prisma as any).whatsAppNumber.upsert({
     where: { phoneNumberId },
-    create: { phoneNumberId, label, displayPhoneNumber: match.display_phone_number },
-    update: { label, displayPhoneNumber: match.display_phone_number },
+    create: { phoneNumberId, label, displayPhoneNumber: match.display_phone_number, wabaId },
+    update: { label, displayPhoneNumber: match.display_phone_number, ...(wabaId ? { wabaId } : {}) },
   });
 }
 
 async function buildPhoneNumberLabelMap(): Promise<Map<string, WhatsAppNumberEntry>> {
   const entries = await listRegisteredWhatsAppNumbers();
   return new Map(entries.map(e => [e.phoneNumberId, e]));
+}
+
+// WABA de um numero: primeiro confia no que foi cadastrado manualmente
+// (100% confiavel), so tenta adivinhar via Graph API como ultimo recurso.
+async function resolveRegisteredWabaId(phoneNumberId: string): Promise<string | null> {
+  const entry = await (prisma as any).whatsAppNumber.findUnique({ where: { phoneNumberId }, select: { wabaId: true } });
+  return entry?.wabaId ?? null;
 }
 
 // Resolve por qual numero da Meta uma resposta (manual ou da IA) deve ser
@@ -232,9 +241,13 @@ async function getAllWabaIds(): Promise<string[]> {
 async function resolveWabaId(accessToken: string, defaultWabaId: string, phoneNumberId?: string): Promise<string> {
   if (!phoneNumberId) return defaultWabaId;
 
-  // FIX: validate before using in URL path
-  validateGraphId(phoneNumberId, 'phoneNumberId');
+  // 1) Confia primeiro no que foi cadastrado manualmente (100% confiavel).
+  const registeredWabaId = await resolveRegisteredWabaId(phoneNumberId);
+  if (registeredWabaId) return registeredWabaId;
 
+  // 2) Best-effort via Graph API (nao confiavel pra todo caso — mantido so
+  // como fallback pra numeros ainda nao cadastrados com wabaId explicito).
+  validateGraphId(phoneNumberId, 'phoneNumberId');
   try {
     const infoUrl = `https://graph.facebook.com/v19.0/${phoneNumberId}?fields=whatsapp_business_account`;
     const info = await metaGet<{ whatsapp_business_account?: { id: string } }>(infoUrl, accessToken);
