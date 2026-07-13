@@ -381,6 +381,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   const [pipedriveUrl, setPipedriveUrl] = useState<string | null>(null);
   const [selectedConversion, setSelectedConversion] = useState<LeadConversion | null>(null);
   const [whatsAppMessages, setWhatsAppMessages] = useState<WhatsAppConversationMessage[] | null>(null);
+  const [activeWppNumberKey, setActiveWppNumberKey] = useState<string | null>(null);
   const [aiHandoff, setAiHandoff]               = useState<boolean>(false);
   const [handoffSaving, setHandoffSaving]       = useState(false);
   const [wppText, setWppText]                   = useState('');
@@ -1104,11 +1105,38 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                       if (d.startsWith('55') && d.length === 12) return `+${d.slice(0,2)} ${d.slice(2,4)} ${d.slice(4,8)}-${d.slice(8)}`;
                       return p;
                     };
-                    const wppGroups = (() => {
+                    // Cada numero da empresa e uma conversa separada pro lead — mesmo
+                    // sendo o mesmo lead, quem fala com o numero A e com o numero B esta
+                    // numa "conversa" distinta no WhatsApp de verdade. Agrupa por numero
+                    // (mensagens sem phoneNumberId, de antes de existir mais de um numero,
+                    // caem no grupo "Número principal") e deixa escolher qual ver.
+                    const NUMBER_COLORS = ['#25d366', '#7c3aed', '#0ea5e9'];
+                    const numberGroups = (() => {
                       if (!whatsAppMessages) return [];
+                      const byKey = new Map<string, { key: string; label: string; lastAt: number; msgs: WhatsAppConversationMessage[] }>();
+                      for (const m of whatsAppMessages) {
+                        const key = m.phoneNumberId ?? 'default';
+                        const label = m.phoneNumberLabel ?? (m.phoneNumberDisplay ? fmtPhoneDisplay(m.phoneNumberDisplay) : 'Número principal');
+                        const at = new Date(m.sentAt ?? m.receivedAt ?? m.createdAt).getTime();
+                        const existing = byKey.get(key);
+                        if (existing) {
+                          existing.msgs.push(m);
+                          if (at > existing.lastAt) { existing.lastAt = at; existing.label = label; }
+                        } else {
+                          byKey.set(key, { key, label, lastAt: at, msgs: [m] });
+                        }
+                      }
+                      return Array.from(byKey.values()).sort((a, b) => b.lastAt - a.lastAt);
+                    })();
+
+                    const showNumberTabs = numberGroups.length > 1;
+                    const activeGroup = numberGroups.find(g => g.key === activeWppNumberKey) ?? numberGroups[0] ?? null;
+                    const visibleMessages = activeGroup?.msgs ?? whatsAppMessages ?? [];
+
+                    const wppGroups = (() => {
                       const today = new Date(); const yest = new Date(); yest.setDate(yest.getDate()-1);
                       const groups: {label:string; key:string; msgs: WhatsAppConversationMessage[]}[] = [];
-                      for (const m of whatsAppMessages) {
+                      for (const m of visibleMessages) {
                         const d = new Date(m.sentAt ?? m.receivedAt ?? m.createdAt);
                         const k = d.toDateString();
                         const label = k === today.toDateString() ? 'Hoje' : k === yest.toDateString() ? 'Ontem'
@@ -1118,21 +1146,6 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                       }
                       return groups;
                     })();
-
-                    // So mostra a tag de numero quando a conversa realmente tem mensagens
-                    // de mais de um numero — pra nao poluir a UI de quem so usa um.
-                    const NUMBER_TAG_COLORS = ['#25d366', '#7c3aed', '#0ea5e9'];
-                    const distinctPhoneNumberIds = Array.from(new Set(
-                      (whatsAppMessages ?? []).map(m => m.phoneNumberId).filter((id): id is string => !!id)
-                    ));
-                    const showNumberTag = distinctPhoneNumberIds.length > 1;
-                    const numberTagFor = (msg: WhatsAppConversationMessage) => {
-                      if (!msg.phoneNumberId) return null;
-                      const idx = distinctPhoneNumberIds.indexOf(msg.phoneNumberId);
-                      const color = NUMBER_TAG_COLORS[idx % NUMBER_TAG_COLORS.length];
-                      const text = msg.phoneNumberLabel ?? (msg.phoneNumberDisplay ? fmtPhoneDisplay(msg.phoneNumberDisplay) : 'Número não identificado');
-                      return { color, text };
-                    };
 
                     return (
                       <div style={{ ...cardStyle, overflow: 'hidden' }}>
@@ -1171,6 +1184,29 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                           </button>
                         </div>
 
+                        {/* ── Abas por número (só quando há mais de uma conversa) ── */}
+                        {showNumberTabs && (
+                          <div style={{ display:'flex', gap:6, padding:'8px 16px', borderBottom:'1px solid var(--border)', background:'var(--bg-surface)', overflowX:'auto' }}>
+                            {numberGroups.map((g, idx) => {
+                              const color = NUMBER_COLORS[idx % NUMBER_COLORS.length];
+                              const active = g.key === activeGroup?.key;
+                              return (
+                                <button key={g.key} type="button" onClick={() => setActiveWppNumberKey(g.key)}
+                                  style={{
+                                    display:'flex', alignItems:'center', gap:6, padding:'5px 12px', borderRadius:99, whiteSpace:'nowrap',
+                                    border: active ? `1.5px solid ${color}` : '1px solid var(--border)',
+                                    background: active ? `${color}1a` : 'transparent',
+                                    color: active ? color : 'var(--fg-muted)',
+                                    fontSize:12, fontWeight:700, cursor:'pointer',
+                                  }}>
+                                  <span style={{ width:7, height:7, borderRadius:'50%', background:color, flexShrink:0 }} />
+                                  {g.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
                         {/* ── Status bar ── */}
                         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'7px 16px', background: aiHandoff ? '#fff7ed' : '#f0fdf4', borderBottom:`1px solid ${aiHandoff?'#fed7aa':'#bbf7d0'}`, fontSize:12 }}>
                           <span style={{ display:'flex', alignItems:'center', gap:6, color: aiHandoff ? '#92400e' : '#166534', fontWeight:500 }}>
@@ -1191,7 +1227,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                             <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, height:260, color:'#666', fontSize:13 }}>
                               <RefreshCw size={14} className="animate-spin" /> Carregando conversa...
                             </div>
-                          ) : whatsAppMessages.length === 0 ? (
+                          ) : visibleMessages.length === 0 ? (
                             <div style={{ display:'grid', placeItems:'center', height:260, color:'#888', fontSize:13, textAlign:'center' }}>
                               Nenhuma mensagem ainda. Envie a primeira!
                             </div>
@@ -1229,18 +1265,9 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                         } catch { return null; }
                                       })() : null;
 
-                                      const numberTag = showNumberTag ? numberTagFor(msg) : null;
-
                                       return (
                                         <div key={msg.id} style={{ display:'flex', justifyContent: out?'flex-end':'flex-start', padding:'0 8px', marginBottom:2 }}>
                                           <div style={{ maxWidth:'72%' }}>
-                                            {numberTag && (
-                                              <div style={{ display:'flex', justifyContent: out?'flex-end':'flex-start', margin:'0 4px 2px' }}>
-                                                <span style={{ fontSize:9, fontWeight:700, color:'#fff', background:numberTag.color, borderRadius:99, padding:'1px 7px' }}>
-                                                  {numberTag.text}
-                                                </span>
-                                              </div>
-                                            )}
                                             {attribution && (
                                               <p style={{ margin:'0 4px 2px', fontSize:10, color:'#666', textAlign:'right', display:'flex', alignItems:'center', justifyContent:'flex-end', gap:4 }}>
                                                 {isTemplate ? <Bot size={9}/> : <UserCheck size={9}/>} {attribution}
