@@ -1073,15 +1073,17 @@ async function executeWhatsAppMessage(
 
   const data = await res.json() as { messages?: Array<{ id?: string }> };
 
-  // Build resolved text preview from template components + resolved params
+  // Build resolved text preview from template components + varMappings.
+  // Usa varMappings direto (nao bodyParams por posicao) pra funcionar tanto
+  // com variavel posicional ({{1}}) quanto nomeada ({{nome}}).
   let resolvedText: string | null = null;
   try {
     const components: Array<{ type: string; text?: string }> = JSON.parse(String(config.templateComponents ?? '[]'));
     const bodyComp = components.find(c => c.type === 'BODY' || c.type === 'body');
     if (bodyComp?.text) {
-      resolvedText = bodyComp.text.replace(/\{\{(\d+)\}\}/g, (_: string, idx: string) => {
-        const param = bodyParams[parseInt(idx, 10) - 1];
-        return param?.text ?? `{{${idx}}}`;
+      resolvedText = bodyComp.text.replace(/\{\{[^}]+\}\}/g, (placeholder: string) => {
+        const field = varMappings[placeholder];
+        return field ? (leadFieldValues[field] ?? placeholder) : placeholder;
       });
     }
   } catch { /* ignore — fall back to null */ }
