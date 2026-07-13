@@ -48,7 +48,7 @@ import {
   ExitConditionRule,
   AIAgent,
   WhatsAppTemplate,
-  WhatsAppPhoneNumber,
+  WhatsAppNumberEntry,
   PipedriveStage,
 } from '../types';
 
@@ -852,14 +852,17 @@ function WhatsAppPhoneSelector({
   onChange,
 }: {
   value: string;
-  onChange: (id: string, num: WhatsAppPhoneNumber | undefined) => void;
+  onChange: (id: string, num: WhatsAppNumberEntry | undefined) => void;
 }) {
-  const [numbers, setNumbers] = useState<WhatsAppPhoneNumber[]>([]);
+  const [numbers, setNumbers] = useState<WhatsAppNumberEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
 
   useEffect(() => {
-    DataService.getWhatsAppPhoneNumbers()
+    // getWhatsAppNumbers junta a busca ao vivo (conta principal) com os
+    // numeros cadastrados no diretorio — inclusive de outras contas Meta
+    // Business (ex: Tiago Fernandes), que a busca ao vivo sozinha nao pega.
+    DataService.getWhatsAppNumbers()
       .then(n => setNumbers(n))
       .catch(e => setError(e instanceof Error ? e.message : 'Erro ao carregar números'))
       .finally(() => setLoading(false));
@@ -872,7 +875,7 @@ function WhatsAppPhoneSelector({
   const options: SmartSelectOption[] = numbers.map(n => ({
     value: n.id,
     label: n.display_phone_number,
-    description: n.verified_name,
+    description: n.label ?? n.verified_name,
   }));
 
   return (
