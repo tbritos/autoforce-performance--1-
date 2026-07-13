@@ -292,10 +292,18 @@ export async function listWhatsAppConversationByLead(leadId: string): Promise<Wh
   });
 
   const labelMap = await buildPhoneNumberLabelMap();
+  // Mensagens de antes de existir mais de um numero nao tem phoneNumberId
+  // gravado (null) — tratamos como sendo do numero padrao (env var), que e
+  // exatamente a mesma suposicao que resolveDefaultPhoneNumberIdForLead ja
+  // faz pra decidir por onde responder. Sem isso, a mesma conversa aparecia
+  // dividida em "numero padrao" e o numero de verdade (ex: "Lara").
+  const defaultPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim() || null;
   const enriched = recent.map((msg: any) => {
-    const entry = msg.phoneNumberId ? labelMap.get(msg.phoneNumberId) : undefined;
+    const phoneNumberId = msg.phoneNumberId ?? defaultPhoneNumberId;
+    const entry = phoneNumberId ? labelMap.get(phoneNumberId) : undefined;
     return {
       ...msg,
+      phoneNumberId,
       phoneNumberLabel: entry?.label ?? null,
       phoneNumberDisplay: entry?.displayPhoneNumber ?? null,
     };
