@@ -919,6 +919,7 @@ export const DataService = {
     bodyText: string;
     footerText?: string;
     buttons?: Array<{ type: string; text: string; phone_number?: string; url?: string }>;
+    phoneNumberId?: string;
   }): Promise<{ id: string; status: string }> => {
     return apiClient.post('/whatsapp/templates', payload);
   },

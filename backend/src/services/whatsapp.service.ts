@@ -120,11 +120,31 @@ async function findLeadByPhone(phone: string) {
 }
 
 export async function fetchWhatsAppPhoneNumbers(): Promise<WhatsAppPhoneNumber[]> {
-  const { accessToken, businessAccountId } = await getWhatsAppCredentials();
+  const { accessToken } = await getWhatsAppCredentials();
+  const wabaIds = await getAllWabaIds();
 
-  const url = `https://graph.facebook.com/v19.0/${businessAccountId}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating`;
-  const data = await metaGet<{ data?: WhatsAppPhoneNumber[] }>(url, accessToken);
-  return data.data ?? [];
+  const perWaba = await Promise.all(wabaIds.map(async wabaId => {
+    try {
+      const url = `https://graph.facebook.com/v19.0/${wabaId}/phone_numbers?fields=id,display_phone_number,verified_name,quality_rating`;
+      const data = await metaGet<{ data?: WhatsAppPhoneNumber[] }>(url, accessToken);
+      return data.data ?? [];
+    } catch (err) {
+      console.error(`[WPP] erro ao listar números da WABA ${wabaId}:`, err instanceof Error ? err.message : err);
+      return [];
+    }
+  }));
+
+  return perWaba.flat();
+}
+
+// Busca um numero diretamente pelo phoneNumberId — funciona pra qualquer WABA
+// que o token tenha permissao, mesmo que essa WABA nao esteja em
+// WHATSAPP_BUSINESS_ACCOUNT_IDS (nao precisa enumerar WABA por WABA).
+export async function fetchWhatsAppPhoneNumberById(phoneNumberId: string): Promise<WhatsAppPhoneNumber> {
+  validateGraphId(phoneNumberId, 'phoneNumberId');
+  const { accessToken } = await getWhatsAppCredentials();
+  const url = `https://graph.facebook.com/v19.0/${phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating`;
+  return metaGet<WhatsAppPhoneNumber>(url, accessToken);
 }
 
 // ── Diretorio de rotulos amigaveis por numero (WhatsAppNumber) ─────────────
@@ -149,15 +169,14 @@ export async function registerWhatsAppNumber(input: { phoneNumberId: string; lab
   if (!phoneNumberId) throw new Error('phoneNumberId é obrigatório');
   if (!label) throw new Error('Rótulo é obrigatório');
 
-  let liveNumbers: WhatsAppPhoneNumber[];
+  // Validacao direta pelo ID — funciona mesmo se o numero estiver numa WABA
+  // diferente da principal, desde que o token tenha permissao nela.
+  let match: WhatsAppPhoneNumber;
   try {
-    liveNumbers = await fetchWhatsAppPhoneNumbers();
+    match = await fetchWhatsAppPhoneNumberById(phoneNumberId);
   } catch (err) {
-    throw new Error(`Não foi possível validar o número na Meta agora: ${err instanceof Error ? err.message : 'erro desconhecido'}`);
+    throw new Error(`Não foi possível validar esse número na Meta: ${err instanceof Error ? err.message : 'erro desconhecido'}`);
   }
-
-  const match = liveNumbers.find(n => n.id === phoneNumberId);
-  if (!match) throw new Error('Esse phoneNumberId não foi encontrado entre os números da conta Meta Business.');
 
   return (prisma as any).whatsAppNumber.upsert({
     where: { phoneNumberId },
@@ -193,27 +212,43 @@ export async function resolveDefaultPhoneNumberIdForLead(phone: string): Promise
   return resolved;
 }
 
+// Numeros de telefone da Meta podem estar espalhados em mais de uma WABA (ex:
+// contas Meta Business separadas dentro do mesmo Business Manager). A WABA
+// "principal" continua em WHATSAPP_BUSINESS_ACCOUNT_ID; WABAs adicionais vao
+// em WHATSAPP_BUSINESS_ACCOUNT_IDS (separadas por virgula, incluindo a principal).
+async function getAllWabaIds(): Promise<string[]> {
+  const multi = process.env.WHATSAPP_BUSINESS_ACCOUNT_IDS?.trim();
+  if (multi) {
+    const ids = multi.split(',').map(s => s.trim()).filter(Boolean);
+    if (ids.length > 0) return ids;
+  }
+  const { businessAccountId } = await getWhatsAppCredentials();
+  return [businessAccountId];
+}
+
+// Dado um phoneNumberId, descobre a qual WABA ele pertence (numeros podem
+// estar em WABAs diferentes da principal). Sem phoneNumberId, usa a WABA
+// principal (WHATSAPP_BUSINESS_ACCOUNT_ID).
+async function resolveWabaId(accessToken: string, defaultWabaId: string, phoneNumberId?: string): Promise<string> {
+  if (!phoneNumberId) return defaultWabaId;
+
+  // FIX: validate before using in URL path
+  validateGraphId(phoneNumberId, 'phoneNumberId');
+
+  try {
+    const infoUrl = `https://graph.facebook.com/v19.0/${phoneNumberId}?fields=whatsapp_business_account`;
+    const info = await metaGet<{ whatsapp_business_account?: { id: string } }>(infoUrl, accessToken);
+    return info.whatsapp_business_account?.id ?? defaultWabaId;
+  } catch {
+    return defaultWabaId;
+  }
+}
+
 // Fetch templates — if phoneNumberId is provided, find its WABA first so we get
 // templates scoped to that specific number's Business Account.
 export async function fetchWhatsAppTemplates(phoneNumberId?: string): Promise<WhatsAppTemplate[]> {
   const { accessToken, businessAccountId } = await getWhatsAppCredentials();
-
-  let wabaId = businessAccountId;
-
-  if (phoneNumberId) {
-    // FIX: validate before using in URL path
-    validateGraphId(phoneNumberId, 'phoneNumberId');
-
-    try {
-      const infoUrl = `https://graph.facebook.com/v19.0/${phoneNumberId}?fields=whatsapp_business_account`;
-      const info = await metaGet<{ whatsapp_business_account?: { id: string } }>(infoUrl, accessToken);
-      if (info.whatsapp_business_account?.id) {
-        wabaId = info.whatsapp_business_account.id;
-      }
-    } catch {
-      // Fall back to default WABA
-    }
-  }
+  const wabaId = await resolveWabaId(accessToken, businessAccountId, phoneNumberId);
 
   const url = `https://graph.facebook.com/v19.0/${wabaId}/message_templates?limit=100&fields=id,name,status,category,language,components`;
   const data = await metaGet<{ data?: WhatsAppTemplate[] }>(url, accessToken);
@@ -529,13 +564,15 @@ export async function sendWhatsAppTemplateFromUI(
   if (!lead) throw new Error('Lead não encontrado');
   if (!lead.phone) throw new Error('Lead sem telefone cadastrado');
 
-  const templates = await fetchWhatsAppTemplates();
-  const template = templates.find(t => t.name === templateName);
-  if (!template) throw new Error(`Template "${templateName}" não encontrado`);
-
   const { accessToken } = await getWhatsAppCredentials();
   const phone = normalizePhone(lead.phone);
   const phoneNumberId = phoneNumberIdOverride?.trim() || await resolveDefaultPhoneNumberIdForLead(phone);
+
+  // Busca o template DEPOIS de saber o numero — templates ficam na WABA do
+  // numero, e cada WABA pode ter templates diferentes (nao sao compartilhados).
+  const templates = await fetchWhatsAppTemplates(phoneNumberId);
+  const template = templates.find(t => t.name === templateName);
+  if (!template) throw new Error(`Template "${templateName}" não encontrado`);
 
   const params = bodyParams.map(value => ({ type: 'text', text: value }));
   const templatePayload: Record<string, unknown> = {
@@ -661,6 +698,7 @@ export interface CreateTemplateInput {
   bodyText: string;
   footerText?: string;
   buttons?: TemplateButton[];
+  phoneNumberId?: string;
 }
 
 function extractVarCount(text: string): number {
@@ -669,7 +707,8 @@ function extractVarCount(text: string): number {
 }
 
 export async function createWhatsAppTemplate(input: CreateTemplateInput): Promise<{ id: string; status: string }> {
-  const { accessToken, businessAccountId } = await getWhatsAppCredentials();
+  const { accessToken, businessAccountId: defaultWabaId } = await getWhatsAppCredentials();
+  const businessAccountId = await resolveWabaId(accessToken, defaultWabaId, input.phoneNumberId);
 
   const components: Record<string, unknown>[] = [];
 

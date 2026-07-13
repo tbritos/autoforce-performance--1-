@@ -33,24 +33,41 @@ export class WhatsAppController {
     }
   }
 
-  // Junta a lista viva de numeros da Meta com os rotulos amigaveis ja
-  // cadastrados no nosso diretorio (WhatsAppNumber).
+  // Junta a lista viva de numeros da Meta (WABA principal, e outras se
+  // WHATSAPP_BUSINESS_ACCOUNT_IDS estiver configurada) com os rotulos ja
+  // cadastrados no nosso diretorio (WhatsAppNumber) — inclusive numeros
+  // cadastrados que estao numa WABA nao coberta pela listagem automatica
+  // (nesse caso o numero ainda aparece, usando os dados salvos no cadastro).
   static async getNumbers(req: Request, res: Response, next: NextFunction) {
     try {
       const [live, registered] = await Promise.all([
-        fetchWhatsAppPhoneNumbers(),
+        fetchWhatsAppPhoneNumbers().catch(() => [] as Awaited<ReturnType<typeof fetchWhatsAppPhoneNumbers>>),
         listRegisteredWhatsAppNumbers(),
       ]);
       const byPhoneNumberId = new Map(registered.map(r => [r.phoneNumberId, r]));
 
-      res.json(live.map(n => ({
+      const fromLive = live.map(n => ({
         id: n.id,
         display_phone_number: n.display_phone_number,
         verified_name: n.verified_name,
         quality_rating: n.quality_rating,
         label: byPhoneNumberId.get(n.id)?.label ?? null,
         isRegistered: byPhoneNumberId.has(n.id),
-      })));
+      }));
+
+      const liveIds = new Set(live.map(n => n.id));
+      const onlyRegistered = registered
+        .filter(r => !liveIds.has(r.phoneNumberId))
+        .map(r => ({
+          id: r.phoneNumberId,
+          display_phone_number: r.displayPhoneNumber ?? r.phoneNumberId,
+          verified_name: '',
+          quality_rating: 'UNKNOWN',
+          label: r.label,
+          isRegistered: true,
+        }));
+
+      res.json([...fromLive, ...onlyRegistered]);
     } catch (err) {
       next(err);
     }
@@ -176,13 +193,13 @@ export class WhatsAppController {
 
   static async createTemplate(req: Request, res: Response, next: NextFunction) {
     try {
-      const { name, category, language, headerText, bodyText, footerText } = req.body as Partial<CreateTemplateInput>;
+      const { name, category, language, headerText, bodyText, footerText, phoneNumberId } = req.body as Partial<CreateTemplateInput>;
       if (!name?.trim())     { res.status(400).json({ error: 'Nome é obrigatório' }); return; }
       if (!bodyText?.trim()) { res.status(400).json({ error: 'Body é obrigatório' }); return; }
       if (!category)         { res.status(400).json({ error: 'Categoria é obrigatória' }); return; }
 
       const safeName = name.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-      const result = await createWhatsAppTemplate({ name: safeName, category, language: language ?? 'pt_BR', headerText, bodyText, footerText });
+      const result = await createWhatsAppTemplate({ name: safeName, category, language: language ?? 'pt_BR', headerText, bodyText, footerText, phoneNumberId });
       res.status(201).json(result);
     } catch (err) {
       next(err);

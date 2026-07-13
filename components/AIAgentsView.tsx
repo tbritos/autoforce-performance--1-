@@ -106,6 +106,9 @@ export default function AIAgentsView() {
   const [deletingName, setDeletingName] = useState<string | null>(null);
   const [labelDrafts, setLabelDrafts]   = useState<Record<string, string>>({});
   const [savingLabelId, setSavingLabelId] = useState<string | null>(null);
+  const [newNumberId, setNewNumberId]     = useState('');
+  const [newNumberLabel, setNewNumberLabel] = useState('');
+  const [addingNumber, setAddingNumber]   = useState(false);
 
   const provider     = String(agentDraft.defaultProvider || 'gemini');
   const modelOptions = provider === 'openai' ? OPENAI_MODELS : GEMINI_MODELS;
@@ -155,6 +158,27 @@ export default function AIAgentsView() {
       setError(e instanceof Error ? e.message : 'Erro ao cadastrar número.');
     } finally {
       setSavingLabelId(null);
+    }
+  };
+
+  // Pra numeros que nao aparecem na listagem automatica (ex: outra conta Meta
+  // Business/WABA) — cadastra direto pelo Phone Number ID.
+  const addNumberById = async () => {
+    const phoneNumberId = newNumberId.trim();
+    const label = newNumberLabel.trim();
+    if (!phoneNumberId || !label) return;
+    setAddingNumber(true);
+    setError('');
+    try {
+      await DataService.registerWhatsAppNumber(phoneNumberId, label);
+      setFlash('Número cadastrado.');
+      setNewNumberId('');
+      setNewNumberLabel('');
+      await loadAll();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro ao cadastrar número.');
+    } finally {
+      setAddingNumber(false);
     }
   };
 
@@ -253,6 +277,26 @@ export default function AIAgentsView() {
           <div style={{ padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-muted)' }}>
             <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)' }}>Número conectado</p>
             <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-muted)' }}>Número de telefone registrado na Meta Business API.</p>
+          </div>
+
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-subtle)' }}>
+            <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>
+              Adicionar número por ID <span style={{ fontWeight: 400, color: 'var(--fg-subtle)' }}>(números de outra conta Meta Business não aparecem sozinhos na lista abaixo)</span>
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input type="text" placeholder="Phone Number ID (ex: 786886027832147)"
+                value={newNumberId} onChange={e => setNewNumberId(e.target.value)}
+                style={{ ...iStyle, width: 260 }} />
+              <input type="text" placeholder="Rótulo (ex: Tiago Fernandes)"
+                value={newNumberLabel} onChange={e => setNewNumberLabel(e.target.value)}
+                style={{ ...iStyle, width: 200 }} />
+              <button type="button"
+                disabled={addingNumber || !newNumberId.trim() || !newNumberLabel.trim()}
+                onClick={addNumberById}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px', borderRadius: 8, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: addingNumber ? 0.6 : 1 }}>
+                {addingNumber ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />} Cadastrar
+              </button>
+            </div>
           </div>
 
           {loading ? (
