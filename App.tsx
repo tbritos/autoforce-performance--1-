@@ -21,6 +21,8 @@ import EmailTemplateDetailView from './components/EmailTemplateDetailView';
 import EmailBlastsView from './components/EmailBlastsView';
 import EmailBlastDetailView from './components/EmailBlastDetailView';
 import WhatsAppTemplateNewView from './components/WhatsAppTemplateNewView';
+import WhatsAppBlastsView from './components/WhatsAppBlastsView';
+import WhatsAppBlastDetailView from './components/WhatsAppBlastDetailView';
 import { DataService } from './services/dataService';
 import { User, Metric, LandingPage, DailyLeadEntry, RevenueEntry, FunnelCounts, LeadStatus } from './types';
 import {
@@ -1286,6 +1288,7 @@ const AppContent: React.FC = () => {
         { label: 'Analytics (GA4)', path: '/analytics',   icon: BarChart3 },
         { label: 'E-mails',          path: '/emails',      icon: Mail },
         { label: 'Disparos',         path: '/disparos',    icon: Send },
+        { label: 'Disparos WhatsApp', path: '/disparos-whatsapp', icon: MessageSquare },
       ],
     },
     {
@@ -1549,6 +1552,8 @@ const AppContent: React.FC = () => {
             <Route path="/emails/:id/edit" element={<EmailEditorView />} />
             <Route path="/disparos" element={<EmailBlastsView />} />
             <Route path="/disparos/:id" element={<EmailBlastDetailView />} />
+            <Route path="/disparos-whatsapp" element={<WhatsAppBlastsView />} />
+            <Route path="/disparos-whatsapp/:id" element={<WhatsAppBlastDetailView />} />
             <Route path="/whatsapp/template/new" element={<WhatsAppTemplateNewView />} />
             <Route path="/email-templates" element={<Navigate to="/emails" replace />} />
 

@@ -221,6 +221,64 @@ export async function resolveDefaultPhoneNumberIdForLead(phone: string): Promise
   return resolved;
 }
 
+// ── Variavel de template: posicional ({{1}}) ou nomeada ({{nome}}) ────────
+// A Meta so permite um formato por template (nunca misturado), mas tratamos
+// cada chave de varMappings por si — usado tanto por jornadas de automacao
+// quanto por disparo avulso, pra nao duplicar essa regra pela terceira vez.
+
+export interface TemplateBodyParam {
+  type: 'text';
+  text: string;
+  parameter_name?: string;
+}
+
+// Placeholders distintos usados no HEADER/BODY de um template (ex: ["{{1}}"]
+// ou ["{{nome}}"]) — usado pra validar no servidor se todas as variaveis do
+// template escolhido tem mapeamento antes de deixar disparar em massa.
+export function extractTemplateVars(components: WhatsAppTemplateComponent[]): string[] {
+  const vars: string[] = [];
+  for (const comp of components) {
+    if ((comp.type === 'HEADER' || comp.type === 'BODY') && comp.text) {
+      const matches = comp.text.match(/\{\{[^}]+\}\}/g) ?? [];
+      vars.push(...matches);
+    }
+  }
+  return [...new Set(vars)];
+}
+
+// varMappings: { "{{1}}": "name", ... } ou { "{{nome}}": "name", ... } — a
+// chave e o placeholder literal do template, o valor e a chave de fieldValues.
+export function buildTemplateParams(
+  varMappings: Record<string, string>,
+  fieldValues: Record<string, string>
+): TemplateBodyParam[] {
+  return Object.entries(varMappings)
+    .sort(([a], [b]) => {
+      const idxA = parseInt(a.replace(/\D/g, ''), 10) || 0;
+      const idxB = parseInt(b.replace(/\D/g, ''), 10) || 0;
+      return idxA - idxB;
+    })
+    .map(([placeholder, field]) => {
+      const name = placeholder.replace(/[{}]/g, '');
+      const text = fieldValues[field] ?? '';
+      return /^\d+$/.test(name) ? { type: 'text', text } : { type: 'text', parameter_name: name, text };
+    });
+}
+
+// Substitui as variaveis no texto do BODY do template pelos valores reais —
+// usado so pra salvar/exibir na nossa conversa, nao afeta o envio de verdade
+// (que a Meta resolve a partir de buildTemplateParams).
+export function resolveTemplateBodyText(
+  bodyText: string,
+  varMappings: Record<string, string>,
+  fieldValues: Record<string, string>
+): string {
+  return bodyText.replace(/\{\{[^}]+\}\}/g, (placeholder: string) => {
+    const field = varMappings[placeholder];
+    return field ? (fieldValues[field] ?? placeholder) : placeholder;
+  });
+}
+
 // Numeros de telefone da Meta podem estar espalhados em mais de uma WABA (ex:
 // contas Meta Business separadas dentro do mesmo Business Manager). A WABA
 // "principal" continua em WHATSAPP_BUSINESS_ACCOUNT_ID; WABAs adicionais vao
@@ -322,18 +380,21 @@ export async function recordOutgoingWhatsAppMessage(input: {
   automationJourneyId?: string | null;
   automationExecutionId?: string | null;
   phoneNumberId?: string | null;
+  whatsAppBlastId?: string | null;
+  status?: 'sent' | 'failed';
 }): Promise<void> {
   const lead = input.leadEmail
     ? await prisma.lead.findUnique({ where: { email: input.leadEmail }, select: { id: true, email: true } })
     : null;
 
+  const status = input.status ?? 'sent';
   const data = {
     leadId: lead?.id ?? null,
     leadEmail: lead?.email ?? input.leadEmail ?? null,
     phone: normalizePhone(input.phone),
     direction: 'outbound',
     type: input.templateName ? 'template' : 'text',
-    status: 'sent',
+    status,
     messageId: input.messageId ?? null,
     templateName: input.templateName ?? null,
     text: input.text ?? null,
@@ -341,7 +402,9 @@ export async function recordOutgoingWhatsAppMessage(input: {
     automationJourneyId: input.automationJourneyId ?? null,
     automationExecutionId: input.automationExecutionId ?? null,
     phoneNumberId: input.phoneNumberId ?? null,
-    sentAt: new Date(),
+    whatsAppBlastId: input.whatsAppBlastId ?? null,
+    sentAt: status === 'sent' ? new Date() : null,
+    failedAt: status === 'failed' ? new Date() : null,
   };
 
   if (data.messageId) {

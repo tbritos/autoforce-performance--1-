@@ -34,6 +34,7 @@ import leadClassificationRulesRoutes from './routes/lead-classification-rules.ro
 import automationJourneysRoutes from './routes/automation-journeys.routes';
 import aiAgentsRoutes from './routes/ai-agents.routes';
 import whatsappRoutes from './routes/whatsapp.routes';
+import whatsappBlastsRoutes, { recoverStuckWhatsAppBlasts } from './routes/whatsapp-blasts.routes';
 import pipedriveRoutes from './routes/pipedrive.routes';
 import emailTemplatesRoutes from './routes/email-templates.routes';
 import emailBlastsRoutes, { recoverStuckBlasts } from './routes/email-blasts.routes';
@@ -815,6 +816,7 @@ app.use('/api/utm-links', utmLinksRoutes);
 app.use('/api/utm-destinations', utmDestinationsRoutes);
 app.use('/api/funnels', funnelRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/whatsapp-blasts', whatsappBlastsRoutes);
 app.use('/api/pipedrive', pipedriveRoutes);
 app.use('/api/email-templates', emailTemplatesRoutes);
 app.use('/api/email-blasts', emailBlastsRoutes);
@@ -834,5 +836,6 @@ startSyncScheduler();
 startupConnectionCheck().catch(err => console.error('[connections] startup check failed:', err));
 recoverStuckExecutions().catch(err => console.error('[automation] startup recovery failed:', err));
 recoverStuckBlasts().catch(err => console.error('[email-blasts] startup recovery failed:', err));
+recoverStuckWhatsAppBlasts().catch(err => console.error('[whatsapp-blasts] startup recovery failed:', err));
 
 export default app;

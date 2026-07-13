@@ -141,6 +141,20 @@ export function startSyncScheduler(): void {
     }).catch(() => {});
   }, 90_000);
 
+  // Dispara disparos de WhatsApp agendados (WhatsAppBlast) cujo horario ja chegou
+  setInterval(() => {
+    import('../routes/whatsapp-blasts.routes').then(({ processDueWhatsAppBlasts }) => {
+      processDueWhatsAppBlasts().catch(err => console.error('[whatsapp-blasts] scheduler error:', err));
+    }).catch(() => {});
+  }, 60_000);
+
+  // Retoma disparos de WhatsApp travados em "sending" sem progresso ha alguns minutos
+  setInterval(() => {
+    import('../routes/whatsapp-blasts.routes').then(({ recoverStaleWhatsAppBlasts }) => {
+      recoverStaleWhatsAppBlasts().catch(err => console.error('[whatsapp-blasts] watchdog error:', err));
+    }).catch(() => {});
+  }, 90_000);
+
   // Avalia gatilhos de automacao do tipo "Entrou em segmento" (segmentos sao dinamicos,
   // nao tem evento nativo — precisa comparar quem bate nas regras periodicamente)
   setInterval(() => {

@@ -427,6 +427,7 @@ model WhatsAppMessage {
   repliedToMessageId  String?
   automationJourneyId String?
   automationExecutionId String?
+  whatsAppBlastId     String?
 
   templateName String?
   text         String? @db.Text
@@ -451,6 +452,7 @@ model WhatsAppMessage {
   @@index([automationExecutionId])
   @@index([createdAt])
   @@index([phoneNumberId])
+  @@index([whatsAppBlastId])
 }
 
 // Diretorio de rotulos amigaveis para numeros da Meta WABA — nao duplica dados da Meta,
@@ -868,6 +870,35 @@ model EmailBlast {
   updatedAt     DateTime      @updatedAt
 
   sends EmailSent[]
+
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([createdAt])
+}
+
+// Disparo avulso de WhatsApp (fora de automacao) — publico por tag/segmento/
+// individual, igual EmailBlast. Nao tem tabela de "envios" separada porque o
+// status de entrega/leitura ja e rastreado direto em WhatsAppMessage (via
+// webhook, por messageId) — cada mensagem enviada pelo disparo so leva a tag
+// whatsAppBlastId, mesmo padrao de automationJourneyId/automationExecutionId.
+model WhatsAppBlast {
+  id               String    @id @default(cuid())
+  name             String
+  phoneNumberId    String
+  templateName     String
+  templateLanguage String    @default("pt_BR")
+  varMappings      Json      @default("{}") // { "{{1}}": "name" } ou { "{{nome}}": "name" }
+  audienceType     String // tag | segment | individual
+  audienceValue    String    @db.Text
+  audienceCount    Int       @default(0)
+  // status: draft | scheduled | sending | sent | failed | cancelled
+  status           String    @default("draft")
+  scheduledAt      DateTime?
+  sentCount        Int       @default(0)
+  failedCount      Int       @default(0)
+  sentAt           DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([status])
   @@index([scheduledAt])

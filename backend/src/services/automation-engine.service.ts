@@ -989,7 +989,7 @@ async function executeWhatsAppMessage(
   executionId: string,
   journeyId: string
 ): Promise<void> {
-  const { getWhatsAppCredentials, recordOutgoingWhatsAppMessage } = await import('./whatsapp.service');
+  const { getWhatsAppCredentials, recordOutgoingWhatsAppMessage, buildTemplateParams, resolveTemplateBodyText } = await import('./whatsapp.service');
 
   const lead = await prisma.lead.findUnique({
     where: { email: leadEmail },
@@ -1027,17 +1027,7 @@ async function executeWhatsAppMessage(
   let varMappings: Record<string, string> = {};
   try { varMappings = JSON.parse(String(config.varMappings ?? '{}')); } catch { /* ignore */ }
 
-  const bodyParams = Object.entries(varMappings)
-    .sort(([a], [b]) => {
-      const idxA = parseInt(a.replace(/\D/g, ''), 10) || 0;
-      const idxB = parseInt(b.replace(/\D/g, ''), 10) || 0;
-      return idxA - idxB;
-    })
-    .map(([placeholder, field]) => {
-      const name = placeholder.replace(/[{}]/g, '');
-      const text = leadFieldValues[field] ?? '';
-      return /^\d+$/.test(name) ? { type: 'text', text } : { type: 'text', parameter_name: name, text };
-    });
+  const bodyParams = buildTemplateParams(varMappings, leadFieldValues);
 
   const templatePayload: Record<string, unknown> = {
     name: templateName,
@@ -1074,17 +1064,12 @@ async function executeWhatsAppMessage(
   const data = await res.json() as { messages?: Array<{ id?: string }> };
 
   // Build resolved text preview from template components + varMappings.
-  // Usa varMappings direto (nao bodyParams por posicao) pra funcionar tanto
-  // com variavel posicional ({{1}}) quanto nomeada ({{nome}}).
   let resolvedText: string | null = null;
   try {
     const components: Array<{ type: string; text?: string }> = JSON.parse(String(config.templateComponents ?? '[]'));
     const bodyComp = components.find(c => c.type === 'BODY' || c.type === 'body');
     if (bodyComp?.text) {
-      resolvedText = bodyComp.text.replace(/\{\{[^}]+\}\}/g, (placeholder: string) => {
-        const field = varMappings[placeholder];
-        return field ? (leadFieldValues[field] ?? placeholder) : placeholder;
-      });
+      resolvedText = resolveTemplateBodyText(bodyComp.text, varMappings, leadFieldValues);
     }
   } catch { /* ignore — fall back to null */ }
 
