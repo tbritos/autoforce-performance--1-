@@ -662,6 +662,16 @@ const DashboardContent: React.FC<{
                 tooltip: 'Percentual de leads que se tornaram MQL no período. Calculado como: MQLs no período ÷ Leads no período. Não é cohort — um lead criado antes pode virar MQL dentro do período.',
             },
             {
+                id: '5',
+                label: 'Total de SQLs',
+                value: leadStats.sqls,
+                unit: '',
+                change: Number(sqlsChange.toFixed(1)),
+                trend: (sqlsChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
+                description: 'Leads qualificados por vendas no período',
+                tooltip: 'Quantidade de vezes que um lead avançou para o status SQL no período. Um lead pode ser qualificado mais de uma vez se retornar ao funil.',
+            },
+            {
                 id: '3',
                 label: 'MRR Novo',
                 value: Number(currentMrr.toFixed(2)),
@@ -680,16 +690,6 @@ const DashboardContent: React.FC<{
                 trend: (salesChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
                 description: 'Negócios fechados no período',
                 tooltip: 'Quantidade de negócios marcados como ganhos no Pipedrive (canal inbound) dentro do período selecionado. Atualizado automaticamente via sync.',
-            },
-            {
-                id: '5',
-                label: 'Total de SQLs',
-                value: leadStats.sqls,
-                unit: '',
-                change: Number(sqlsChange.toFixed(1)),
-                trend: (sqlsChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
-                description: 'Leads qualificados por vendas no período',
-                tooltip: 'Quantidade de vezes que um lead avançou para o status SQL no período. Um lead pode ser qualificado mais de uma vez se retornar ao funil.',
             },
         ];
     }, [leadStats, prevLeadStats, filteredRevenue, dateRange.start, dateRange.end, safeRevenueHistory]);
