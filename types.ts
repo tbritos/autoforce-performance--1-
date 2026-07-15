@@ -57,6 +57,7 @@ export interface LeadStatusHistoryEntry {
   toStatus: LeadStatus;
   changedBy: string | null;
   reason: string | null;
+  lostReason: string | null;
   changedAt: string;
 }
 

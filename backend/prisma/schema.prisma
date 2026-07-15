@@ -160,6 +160,7 @@ model LeadStatusHistory {
   changedBy  String?
   user       User?      @relation(fields: [changedBy], references: [email])
   reason     String?
+  lostReason String?    // Pipedrive lost_reason, captured when toStatus = LOST
   changedAt  DateTime   @default(now())
 
   @@index([leadEmail])

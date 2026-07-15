@@ -626,7 +626,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
 
     // Unified activity timeline
     type ActivityEvent =
-      | { kind: 'status';     date: string; id: string; from: LeadStatus; to: LeadStatus; reason: string | null; by: string | null }
+      | { kind: 'status';     date: string; id: string; from: LeadStatus; to: LeadStatus; reason: string | null; lostReason: string | null; by: string | null }
       | { kind: 'conversion'; date: string; id: string; conversion: LeadConversion }
       | { kind: 'pipedrive';  date: string; id: string; event: PipedriveDealEvent }
       | { kind: 'created';    date: string; id: string };
@@ -634,7 +634,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
     const buildTimeline = (): ActivityEvent[] => {
       const events: ActivityEvent[] = [];
       (profile?.statusHistory ?? []).forEach(h =>
-        events.push({ kind: 'status', date: h.changedAt, id: h.id, from: h.fromStatus, to: h.toStatus, reason: h.reason, by: h.changedBy }));
+        events.push({ kind: 'status', date: h.changedAt, id: h.id, from: h.fromStatus, to: h.toStatus, reason: h.reason, lostReason: h.lostReason, by: h.changedBy }));
       (profile?.conversions ?? []).forEach(c =>
         events.push({ kind: 'conversion', date: c.convertedAt, id: c.id, conversion: c }));
       (pipedriveEvents ?? []).forEach(e =>
@@ -1045,7 +1045,9 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                   iconColor = to.color; iconBg = `${to.color}18`;
                                   icon = <ArrowRight size={13} />;
                                   title = <span>Mudou de status <strong style={{ color: from.color }}>{from.label}</strong> → <strong style={{ color: to.color }}>{to.label}</strong></span>;
-                                  subtitle = ev.reason ? <span>{ev.reason}</span> : null;
+                                  subtitle = ev.to === 'LOST' && ev.lostReason
+                                    ? <span>Motivo da perda: <strong>{ev.lostReason}</strong></span>
+                                    : ev.reason ? <span>{ev.reason}</span> : null;
                                 } else if (ev.kind === 'conversion') {
                                   const meta = getConversionMeta(ev.conversion);
                                   iconColor = meta.color; iconBg = meta.bg;

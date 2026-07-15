@@ -31,6 +31,7 @@ interface PipedriveDealPayload {
   add_time?: string;
   won_time?: string;
   lost_time?: string;
+  lost_reason?: string;
   [key: string]: unknown;
 }
 
@@ -200,7 +201,7 @@ export class PipedriveWebhookController {
       : new Date();
 
     // 3. Resolve stage names + grab domain (best-effort, requires Pipedrive credentials)
-    // For won deals, also fetch the full deal to get all custom fields (v2 webhooks only send changed fields)
+    // For won/lost deals, also fetch the full deal to get all custom fields (v2 webhooks only send changed fields)
     let pipedriveDomain = process.env.PIPEDRIVE_DOMAIN || '';
     let fullDeal: Record<string, unknown> | null = null;
     try {
@@ -215,8 +216,9 @@ export class PipedriveWebhookController {
       if (token && pipedriveDomain) {
         await resolveStageNames([currentStage, previousStage], token, pipedriveDomain, authType);
 
-        // Fetch full deal to get all custom fields (webhook v2 only sends changed fields)
-        if (dealStatus === 'won') {
+        // Fetch full deal to get all custom fields (webhook v2 only sends changed fields).
+        // Lost deals need this too so lost_reason is reliably captured regardless of stage.
+        if (dealStatus === 'won' || dealStatus === 'lost') {
           try {
             const dealUrl = new URL(`https://${pipedriveDomain}.pipedrive.com/api/v1/deals/${dealId}`);
             if (authType === 'api_token') dealUrl.searchParams.set('api_token', token);
@@ -368,6 +370,7 @@ export class PipedriveWebhookController {
               toStatus:   newLeadStatus!,
               changedBy:  null,
               reason:     `Pipedrive deal #${dealId} — ${dealStatus} (webhook)`,
+              lostReason: newLeadStatus === 'LOST' ? ((dealData.lost_reason as string) ?? null) : null,
             },
           });
         }

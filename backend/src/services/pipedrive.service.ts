@@ -37,6 +37,7 @@ interface PipedriveDeal {
   close_time?: string;
   won_time?: string;
   lost_time?: string;
+  lost_reason?: string;
   add_time: string;
   update_time: string;
   [key: string]: unknown;
@@ -574,6 +575,7 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
                 toStatus:   newStatus!,
                 changedBy:  null,
                 reason:     `Pipedrive deal #${deal.id} — ${deal.status}`,
+                lostReason: newStatus === 'LOST' ? (deal.lost_reason ?? null) : null,
               },
             });
           }
