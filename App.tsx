@@ -612,6 +612,7 @@ const DashboardContent: React.FC<{
         // Lead/MQL/SQL metrics from Lead table (via leadStats API — real data)
         const rawLeadsChange = prevLeadStats.leads > 0 ? ((leadStats.leads - prevLeadStats.leads) / prevLeadStats.leads) * 100 : 0;
         const mqlsChange     = prevLeadStats.mqls  > 0 ? ((leadStats.mqls  - prevLeadStats.mqls)  / prevLeadStats.mqls)  * 100 : 0;
+        const sqlsChange     = prevLeadStats.sqls  > 0 ? ((leadStats.sqls  - prevLeadStats.sqls)  / prevLeadStats.sqls)  * 100 : 0;
         const currentQual    = leadStats.leads > 0 ? (leadStats.mqls / leadStats.leads) * 100 : 0;
         const prevQual       = prevLeadStats.leads > 0 ? (prevLeadStats.mqls / prevLeadStats.leads) * 100 : 0;
         const qualChange     = currentQual - prevQual;
@@ -634,7 +635,6 @@ const DashboardContent: React.FC<{
                 id: '0',
                 label: 'Total de Leads',
                 value: leadStats.leads,
-                target: 5000,
                 unit: '',
                 change: Number(rawLeadsChange.toFixed(1)),
                 trend: (rawLeadsChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
@@ -645,7 +645,6 @@ const DashboardContent: React.FC<{
                 id: '1',
                 label: 'Total de MQLs',
                 value: leadStats.mqls,
-                target: 4000,
                 unit: '',
                 change: Number(mqlsChange.toFixed(1)),
                 trend: (mqlsChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
@@ -656,7 +655,6 @@ const DashboardContent: React.FC<{
                 id: '2',
                 label: 'Taxa Lead → MQL',
                 value: Number(currentQual.toFixed(1)),
-                target: 45,
                 unit: '%',
                 change: Number(qualChange.toFixed(1)),
                 trend: (qualChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
@@ -667,7 +665,6 @@ const DashboardContent: React.FC<{
                 id: '3',
                 label: 'MRR Novo',
                 value: Number(currentMrr.toFixed(2)),
-                target: 15000,
                 unit: 'R$',
                 change: Number(mrrChange.toFixed(1)),
                 trend: (mrrChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
@@ -678,12 +675,21 @@ const DashboardContent: React.FC<{
                 id: '4',
                 label: 'Vendas Realizadas',
                 value: currentSales,
-                target: 120,
                 unit: '',
                 change: Number(salesChange.toFixed(1)),
                 trend: (salesChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
                 description: 'Negócios fechados no período',
                 tooltip: 'Quantidade de negócios marcados como ganhos no Pipedrive (canal inbound) dentro do período selecionado. Atualizado automaticamente via sync.',
+            },
+            {
+                id: '5',
+                label: 'Total de SQLs',
+                value: leadStats.sqls,
+                unit: '',
+                change: Number(sqlsChange.toFixed(1)),
+                trend: (sqlsChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
+                description: 'Leads qualificados por vendas no período',
+                tooltip: 'Quantidade de vezes que um lead avançou para o status SQL no período. Um lead pode ser qualificado mais de uma vez se retornar ao funil.',
             },
         ];
     }, [leadStats, prevLeadStats, filteredRevenue, dateRange.start, dateRange.end, safeRevenueHistory]);
@@ -810,7 +816,7 @@ const DashboardContent: React.FC<{
             </div>
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             {computedMetrics.map((metric) => {
                 const isAccent = metric.id === '3';
                 const kpiDrillDown: Record<string, DrillDownConfig | (() => void)> = {
@@ -819,6 +825,7 @@ const DashboardContent: React.FC<{
                   '2': { title: 'MQLs no período', event: 'became_mql', from: dateRange.start, to: dateRange.end },
                   '3': () => navigate('/revenue'),
                   '4': () => navigate('/revenue'),
+                  '5': { title: 'SQLs no período', event: 'became_sql', from: dateRange.start, to: dateRange.end },
                 };
                 const drillConf = kpiDrillDown[metric.id];
                 const handleClick = typeof drillConf === 'function'

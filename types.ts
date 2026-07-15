@@ -643,7 +643,7 @@ export interface Metric {
   id: string;
   label: string;
   value: number;
-  target: number;
+  target?: number;
   unit: string;
   change: number; // percentage
   trend: 'up' | 'down' | 'neutral';
