@@ -599,18 +599,24 @@ export class LeadHubService {
   // Query: KPI stats for a date range (dashboard cards)
   // ----------------------------------------------------------
   static async getLeadStats(start: Date, end: Date) {
-    const [leads, mqls, sqls] = await Promise.all([
+    // MQL/SQL count distinct leads (matching the drill-down list), not raw status-change
+    // events — a lead that re-qualifies more than once in the period counts once.
+    const [leads, mqlRows, sqlRows] = await Promise.all([
       prisma.lead.count({
         where: { deletedAt: null, status: { not: 'DISQUALIFIED' }, firstSeenAt: { gte: start, lte: end } },
       }),
-      prisma.leadStatusHistory.count({
+      prisma.leadStatusHistory.findMany({
         where: { toStatus: 'MQL', changedAt: { gte: start, lte: end } },
+        distinct: ['leadEmail'],
+        select: { leadEmail: true },
       }),
-      prisma.leadStatusHistory.count({
+      prisma.leadStatusHistory.findMany({
         where: { toStatus: 'SQL', changedAt: { gte: start, lte: end } },
+        distinct: ['leadEmail'],
+        select: { leadEmail: true },
       }),
     ]);
-    return { leads, mqls, sqls };
+    return { leads, mqls: mqlRows.length, sqls: sqlRows.length };
   }
 
   // ----------------------------------------------------------
