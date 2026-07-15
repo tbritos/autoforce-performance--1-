@@ -641,7 +641,7 @@ export class LeadHubService {
     // Enrich each lead with the conversion closest to (and before) its eventDate.
     // This correctly maps "Formulário topo / RD Station" to the event that fired on that day,
     // rather than showing the first-ever conversion which may be from a different channel.
-    const enrichConvSource = async (rawLeads: Array<{ email: string; eventDate: unknown; [key: string]: unknown }>) => {
+    const enrichConvSource = async <T extends { email: string; eventDate: unknown }>(rawLeads: T[]) => {
       if (!rawLeads.length) return rawLeads.map(l => ({ ...l, convSource: null as string | null, utmSource: null as string | null }));
       const allConvs = await prisma.leadConversion.findMany({
         where: { leadEmail: { in: rawLeads.map(l => l.email) } },
@@ -659,6 +659,22 @@ export class LeadHubService {
       });
     };
 
+    // Attach the reason for the most recent LOST transition, for leads currently LOST.
+    const enrichLostReason = async <T extends { email: string; status: string }>(rawLeads: T[]) => {
+      const lostEmails = rawLeads.filter(l => l.status === 'LOST').map(l => l.email);
+      if (!lostEmails.length) return rawLeads.map(l => ({ ...l, lostReason: null as string | null }));
+      const histories = await prisma.leadStatusHistory.findMany({
+        where: { leadEmail: { in: lostEmails }, toStatus: 'LOST' },
+        select: { leadEmail: true, lostReason: true, changedAt: true },
+        orderBy: { changedAt: 'desc' },
+      });
+      const reasonMap = new Map<string, string | null>();
+      for (const h of histories) {
+        if (!reasonMap.has(h.leadEmail)) reasonMap.set(h.leadEmail, h.lostReason);
+      }
+      return rawLeads.map(l => ({ ...l, lostReason: reasonMap.get(l.email) ?? null }));
+    };
+
     // Case 1: leads created in period
     if (params.event === 'leads_created') {
       const where = {
@@ -669,7 +685,7 @@ export class LeadHubService {
         prisma.lead.count({ where }),
         prisma.lead.findMany({ where, select: leadSelect, orderBy: { firstSeenAt: 'desc' }, skip, take: pageSize }),
       ]);
-      const enriched = await enrichConvSource(leads.map(l => ({ ...l, eventDate: l.firstSeenAt })));
+      const enriched = await enrichLostReason(await enrichConvSource(leads.map(l => ({ ...l, eventDate: l.firstSeenAt }))));
       return { total, page, pageSize, leads: enriched };
     }
 
@@ -709,7 +725,7 @@ export class LeadHubService {
       const rawLeads = paged
         .map(h => { const l = leadsMap.get(h.leadEmail); return l ? { ...l, eventDate: h.changedAt } : null; })
         .filter((l): l is NonNullable<typeof l> => l !== null);
-      const enriched = await enrichConvSource(rawLeads);
+      const enriched = await enrichLostReason(await enrichConvSource(rawLeads));
       return { total, page, pageSize, leads: enriched };
     }
 
@@ -720,7 +736,7 @@ export class LeadHubService {
         prisma.lead.count({ where }),
         prisma.lead.findMany({ where, select: leadSelect, orderBy: { lastSeenAt: 'desc' }, skip, take: pageSize }),
       ]);
-      const enriched = await enrichConvSource(leads.map(l => ({ ...l, eventDate: l.lastSeenAt })));
+      const enriched = await enrichLostReason(await enrichConvSource(leads.map(l => ({ ...l, eventDate: l.lastSeenAt }))));
       return { total, page, pageSize, leads: enriched };
     }
 
@@ -731,7 +747,7 @@ export class LeadHubService {
         prisma.lead.count({ where }),
         prisma.lead.findMany({ where, select: leadSelect, orderBy: { firstSeenAt: 'desc' }, skip, take: pageSize }),
       ]);
-      const enriched = await enrichConvSource(leads.map(l => ({ ...l, eventDate: l.firstSeenAt })));
+      const enriched = await enrichLostReason(await enrichConvSource(leads.map(l => ({ ...l, eventDate: l.firstSeenAt }))));
       return { total, page, pageSize, leads: enriched };
     }
 

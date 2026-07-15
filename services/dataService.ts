@@ -1177,6 +1177,11 @@ export const DataService = {
       status: string;
       isHot: boolean;
       eventDate: string;
+      firstSource: string | null;
+      firstMedium: string | null;
+      convSource: string | null;
+      utmSource: string | null;
+      lostReason: string | null;
     }>;
   }> => {
     const qs = new URLSearchParams();
