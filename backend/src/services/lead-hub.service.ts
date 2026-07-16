@@ -626,6 +626,8 @@ export class LeadHubService {
     event?: string;
     status?: string;
     source?: string;
+    pipelineId?: number;
+    stageId?: number;
     from?: string;
     to?: string;
     page?: number;
@@ -642,6 +644,7 @@ export class LeadHubService {
       id: true, email: true, name: true, company: true,
       status: true, firstSeenAt: true, lastSeenAt: true, isHot: true,
       firstSource: true, firstMedium: true,
+      pipedriveDealValue: true, pipedriveSetupValue: true,
     } as const;
 
     // Enrich each lead with the conversion closest to (and before) its eventDate.
@@ -757,7 +760,51 @@ export class LeadHubService {
       return { total, page, pageSize, leads: enriched };
     }
 
+    // Case 5: Pipedrive pipeline + stage filter (Forecast)
+    if (params.pipelineId != null && params.stageId != null) {
+      const where = {
+        deletedAt: null as null,
+        pipedriveDealId: { not: null },
+        pipedriveDealStatus: 'open',
+        pipedrivePipelineId: params.pipelineId,
+        pipedriveStageId: params.stageId,
+      };
+      const [total, leads] = await Promise.all([
+        prisma.lead.count({ where }),
+        prisma.lead.findMany({ where, select: leadSelect, orderBy: { lastSeenAt: 'desc' }, skip, take: pageSize }),
+      ]);
+      const enriched = await enrichConvSource(leads.map(l => ({ ...l, eventDate: l.lastSeenAt })));
+      return { total, page, pageSize, leads: enriched };
+    }
+
     return { total: 0, page: 1, pageSize, leads: [] };
+  }
+
+  // ----------------------------------------------------------
+  // Query: Pipedrive Forecast — open deals grouped by pipeline + stage
+  // ----------------------------------------------------------
+  static async getForecast() {
+    const rows = await prisma.lead.groupBy({
+      by: ['pipedrivePipelineId', 'pipedriveStageId', 'pipedriveStageName'],
+      where: {
+        deletedAt: null,
+        pipedriveDealId: { not: null },
+        pipedriveDealStatus: 'open',
+        pipedrivePipelineId: { not: null },
+        pipedriveStageId: { not: null },
+      },
+      _count: { _all: true },
+      _sum: { pipedriveDealValue: true, pipedriveSetupValue: true },
+    });
+
+    return rows.map(r => ({
+      pipelineId: r.pipedrivePipelineId!,
+      stageId:    r.pipedriveStageId!,
+      stageName:  r.pipedriveStageName,
+      dealCount:  r._count._all,
+      totalMrr:   r._sum.pipedriveDealValue ?? 0,
+      totalSetup: r._sum.pipedriveSetupValue ?? 0,
+    }));
   }
 
   // ----------------------------------------------------------

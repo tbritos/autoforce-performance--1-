@@ -40,12 +40,23 @@ export class LeadHubController {
 
   static async drillDown(req: Request, res: Response, next: NextFunction) {
     try {
-      const { event, status, source, from, to, page, pageSize } = req.query as Record<string, string | undefined>;
+      const { event, status, source, pipelineId, stageId, from, to, page, pageSize } = req.query as Record<string, string | undefined>;
       const result = await LeadHubService.drillDownLeads({
         event, status, source, from, to,
+        pipelineId: pipelineId ? Number(pipelineId) : undefined,
+        stageId:    stageId    ? Number(stageId)    : undefined,
         page:     page     ? Number(page)     : 1,
         pageSize: pageSize ? Number(pageSize) : 25,
       });
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async getForecast(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await LeadHubService.getForecast();
       res.json(result);
     } catch (err) {
       next(err);

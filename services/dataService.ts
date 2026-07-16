@@ -1161,6 +1161,8 @@ export const DataService = {
     event?: string;
     status?: string;
     source?: string;
+    pipelineId?: number;
+    stageId?: number;
     from?: string;
     to?: string;
     page?: number;
@@ -1182,17 +1184,32 @@ export const DataService = {
       convSource: string | null;
       utmSource: string | null;
       lostReason: string | null;
+      pipedriveDealValue: number | null;
+      pipedriveSetupValue: number | null;
     }>;
   }> => {
     const qs = new URLSearchParams();
-    if (params.event)    qs.set('event',    params.event);
-    if (params.status)   qs.set('status',   params.status);
-    if (params.source)   qs.set('source',   params.source);
-    if (params.from)     qs.set('from',     params.from);
-    if (params.to)       qs.set('to',       params.to);
-    if (params.page)     qs.set('page',     String(params.page));
-    if (params.pageSize) qs.set('pageSize', String(params.pageSize));
+    if (params.event)      qs.set('event',      params.event);
+    if (params.status)     qs.set('status',     params.status);
+    if (params.source)     qs.set('source',     params.source);
+    if (params.pipelineId != null) qs.set('pipelineId', String(params.pipelineId));
+    if (params.stageId    != null) qs.set('stageId',    String(params.stageId));
+    if (params.from)       qs.set('from',       params.from);
+    if (params.to)         qs.set('to',         params.to);
+    if (params.page)       qs.set('page',       String(params.page));
+    if (params.pageSize)   qs.set('pageSize',   String(params.pageSize));
     return apiClient.get(`/lead-hub/drill-down?${qs.toString()}`);
+  },
+
+  getForecast: async (): Promise<Array<{
+    pipelineId: number;
+    stageId: number;
+    stageName: string | null;
+    dealCount: number;
+    totalMrr: number;
+    totalSetup: number;
+  }>> => {
+    return apiClient.get('/lead-hub/forecast');
   },
 
   listCustomFieldDefs: async (): Promise<LeadCustomFieldDef[]> => {

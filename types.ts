@@ -266,7 +266,9 @@ export interface WhatsAppTemplate {
 export interface PipedriveStage {
   id: number;
   name: string;
+  pipeline_id: number;
   pipeline_name: string;
+  order_nr: number;
 }
 
 export interface WhatsAppPhoneNumber {

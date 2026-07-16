@@ -23,6 +23,7 @@ interface PipedriveDealPayload {
   title?: string;
   status?: 'open' | 'won' | 'lost' | 'deleted';
   stage_id?: number;
+  pipeline_id?: number;
   value?: number;
   currency?: string;
   person_id?: PipedrivePerson | null;
@@ -358,6 +359,13 @@ export class PipedriveWebhookController {
             pipedriveDealId:   dealId,
             pipedrivePersonId: personId ?? undefined,
             status:            newLeadStatus!,
+            // Forecast snapshot — kept fresh on every deal event, regardless of status change.
+            pipedrivePipelineId: dealData.pipeline_id ?? null,
+            pipedriveStageId:    currentStage,
+            pipedriveStageName:  currentStage != null ? (stageNameCache.get(currentStage) ?? null) : null,
+            pipedriveDealStatus: dealStatus,
+            pipedriveDealValue:  dealData.value ?? null,
+            pipedriveSetupValue: extractSetupValue(dealData[PIPEDRIVE_FIELDS.SETUP_VALUE]),
             ...(newLeadStatus === 'CLIENT' && !lead.convertedAt ? { convertedAt: new Date() } : {}),
           },
         });

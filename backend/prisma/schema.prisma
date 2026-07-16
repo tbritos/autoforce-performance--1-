@@ -82,6 +82,14 @@ model Lead {
   pipedrivePersonId String?
   pipedriveDealId   String?
 
+  // Pipedrive deal snapshot — updated on every sync/webhook, used for the Forecast view
+  pipedrivePipelineId Int?
+  pipedriveStageId    Int?
+  pipedriveStageName  String?
+  pipedriveDealStatus String? // 'open' | 'won' | 'lost' | 'deleted'
+  pipedriveDealValue  Float?  // MRR (deal.value)
+  pipedriveSetupValue Float?
+
   // Custom fields — schema defined in LeadCustomFieldDef
   customFields Json?
 
@@ -115,6 +123,8 @@ model Lead {
   @@index([pipedrivePersonId])
   @@index([aiProcessing])
   @@index([aiHandoff])
+  @@index([pipedriveDealStatus])
+  @@index([pipedriveStageId])
 }
 
 model LeadConversion {

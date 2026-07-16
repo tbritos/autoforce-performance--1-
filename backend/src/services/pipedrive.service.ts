@@ -28,6 +28,7 @@ interface PipedriveDeal {
   status: 'open' | 'won' | 'lost' | 'deleted';
   stage_id: number;
   stage_name?: string;
+  pipeline_id?: number;
   value: number;
   currency: string;
   person_id: { value: number; email?: Array<{ value: string; primary: boolean }>; phone?: Array<{ value: string; primary: boolean }> } | null;
@@ -552,6 +553,18 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
     const newStatus = isInbound ? resolveLeadStatus(deal, stageMap) : null;
     const prevStatus = lead.status;
 
+    // Snapshot of the deal's current pipeline/stage/value — used by the Forecast view.
+    // Captured for every synced deal (inbound or already-linked), regardless of whether
+    // it drives the internal LeadStatus.
+    const dealSnapshot = {
+      pipedrivePipelineId: deal.pipeline_id ?? null,
+      pipedriveStageId:    deal.stage_id ?? null,
+      pipedriveStageName:  stageNameCache.get(deal.stage_id) ?? deal.stage_name ?? null,
+      pipedriveDealStatus: deal.status,
+      pipedriveDealValue:  deal.value ?? null,
+      pipedriveSetupValue: extractSetupValue(deal[PIPEDRIVE_FIELDS.SETUP_VALUE]),
+    };
+
     try {
       await prisma.$transaction(async (tx) => {
         if (isInbound) {
@@ -562,6 +575,7 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
               status:          newStatus!,
               pipedriveDealId: String(deal.id),
               lastSeenAt:      new Date(),
+              ...dealSnapshot,
               ...(newStatus === 'CLIENT' && !lead!.convertedAt ? { convertedAt: new Date() } : {}),
             },
           });
@@ -579,6 +593,13 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
               },
             });
           }
+        } else {
+          // Non-inbound already-linked deal: keep the Forecast snapshot fresh
+          // without touching the lead's status.
+          await tx.lead.update({
+            where: { email: lead!.email },
+            data: dealSnapshot,
+          });
         }
 
         // Only create RevenueEntry for inbound won deals
@@ -983,13 +1004,13 @@ export async function markPipedriveDeal(
 
 // ─── Deal stage map helper (for configuration UI) ────────────────────────────
 
-export async function fetchPipedriveStages(): Promise<Array<{ id: number; name: string; pipeline_name: string }>> {
+export async function fetchPipedriveStages(): Promise<Array<{ id: number; name: string; pipeline_id: number; pipeline_name: string; order_nr: number }>> {
   const { token, domain, authType } = await getCredentials();
-  const res = await pipedriveGet<PipedriveListResponse<{ id: number; name: string; pipeline_id: number; pipeline_name: string }>>(
+  const res = await pipedriveGet<PipedriveListResponse<{ id: number; name: string; pipeline_id: number; pipeline_name: string; order_nr: number }>>(
     '/stages',
     token,
     domain,
     authType
   );
-  return (res.data ?? []).map(s => ({ id: s.id, name: s.name, pipeline_name: s.pipeline_name }));
+  return (res.data ?? []).map(s => ({ id: s.id, name: s.name, pipeline_id: s.pipeline_id, pipeline_name: s.pipeline_name, order_nr: s.order_nr }));
 }

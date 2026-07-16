@@ -23,6 +23,7 @@ router.delete('/custom-fields/:id', CustomFieldsController.remove);
 // GET  /api/lead-hub/funnel   — counts by status
 // POST /api/lead-hub/migrate-webhook — one-time WebhookLead → Lead migration
 router.get('/stats', LeadHubController.getLeadStats);
+router.get('/forecast', LeadHubController.getForecast);
 router.get('/drill-down', LeadHubController.drillDown);
 router.get('/export', LeadHubController.exportCsv);
 router.post('/import', LeadHubController.importLeads);

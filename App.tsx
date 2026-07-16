@@ -13,6 +13,7 @@ import LeadHubView from './components/LeadHubView';
 import LeadProfilePanel from './components/LeadProfilePanel';
 import UTMTrackerView from './components/UTMTrackerView';
 import FunnelView from './components/FunnelView';
+import ForecastView from './components/ForecastView';
 import AutomationJourneysView from './components/AutomationJourneysView';
 import AIAgentsView from './components/AIAgentsView';
 import EmailTemplatesView from './components/EmailTemplatesView';
@@ -1056,6 +1057,9 @@ const DashboardContent: React.FC<{
                   </div>
                 </div>
             </div>
+
+            {/* Forecast — propostas em aberto no Pipedrive */}
+            <ForecastView />
         </div>
         <DrillDownDrawer config={drillDown} onClose={() => setDrillDown(null)} />
         </>
