@@ -34,7 +34,6 @@ import {
   TrendingDown,
   Target,
   Globe,
-  Award,
   RefreshCw,
   DollarSign,
   CalendarDays,
@@ -852,16 +851,11 @@ const DashboardContent: React.FC<{
                 >
                   <div className="ds-kpi-row">
                     <div className="ds-kpi-label" style={{ gap: 5 }}>
-                      <Award size={12} />
                       {metric.label}
                       {(metric as { tooltip?: string }).tooltip && (
                         <TooltipInfo text={(metric as { tooltip?: string }).tooltip!} />
                       )}
                     </div>
-                    <span className={`ds-kpi-delta ${metric.trend === 'up' ? 'up' : 'down'}`}>
-                      {metric.trend === 'up' ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-                      {metric.change > 0 ? '+' : ''}{metric.change}%
-                    </span>
                   </div>
                   <div className="ds-kpi-value">
                     {formatMetricValue(metric, metric.value || 0)}
