@@ -1,4 +1,4 @@
-import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, EmailSent, EmailReceived, EmailStats, MetaCampaign, GoogleAdsCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, LeadConversion, WebhookLead, PlatformConnection, ConnectionRequirement, Lead, LeadListResult, LeadProfile, LeadCustomFieldDef, FunnelCounts, LeadStatus, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction, AutomationJourney, AutomationJourneyNode, AutomationJourneyEdge, AutomationJourneyStatus, ExitConditions, AIAgent, AIKnowledgeItem, AIInteractionLog, AIConversationMemory, UTMLink, UTMLinkListResult, UTMTemplate, UTMCampaignPicker, UTMDestination, FunnelDef, FunnelStats, CumulativeStageKey, FunnelStageLeadsResult, WhatsAppTemplate, PipedriveStage } from '../types';
+import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, EmailSent, EmailReceived, EmailStats, MetaCampaign, GoogleAdsCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, LeadConversion, WebhookLead, PlatformConnection, ConnectionRequirement, Lead, LeadListResult, LeadProfile, LeadCustomFieldDef, FunnelCounts, LeadStatus, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction, AutomationJourney, AutomationJourneyNode, AutomationJourneyEdge, AutomationJourneyStatus, ExitConditions, AIAgent, AIKnowledgeItem, AIInteractionLog, AIConversationMemory, UTMLink, UTMLinkListResult, UTMTemplate, UTMCampaignPicker, UTMDestination, FunnelDef, FunnelStats, CumulativeStageKey, FunnelStageLeadsResult, WhatsAppTemplate, PipedriveStage, Report, ReportSummary, ReportWidget, ReportLayoutItem, MetricDef, MetricQueryResult } from '../types';
 import { apiClient } from './apiClient';
 
 // ============================================================================
@@ -1637,6 +1637,46 @@ export const DataService = {
 
   deleteUTMDestination: async (id: string): Promise<void> => {
     await apiClient.delete(`/utm-destinations/${id}`);
+  },
+
+  // --- Relatórios customizáveis ---
+  getReports: async (): Promise<ReportSummary[]> => {
+    return apiClient.get<ReportSummary[]>('/reports');
+  },
+
+  getReport: async (id: string): Promise<Report> => {
+    return apiClient.get<Report>(`/reports/${id}`);
+  },
+
+  createReport: async (data: { name: string; description?: string | null }): Promise<Report> => {
+    return apiClient.post<Report>('/reports', data);
+  },
+
+  updateReport: async (id: string, data: {
+    name?: string;
+    description?: string | null;
+    layout?: ReportLayoutItem[];
+    widgets?: ReportWidget[];
+  }): Promise<Report> => {
+    return apiClient.patch<Report>(`/reports/${id}`, data);
+  },
+
+  deleteReport: async (id: string): Promise<void> => {
+    await apiClient.delete(`/reports/${id}`);
+  },
+
+  getReportMetrics: async (): Promise<MetricDef[]> => {
+    return apiClient.get<MetricDef[]>('/reports/metrics');
+  },
+
+  queryReportMetric: async (params: {
+    metricKey: string;
+    groupBy?: string | null;
+    filters?: Record<string, string> | null;
+    dateFrom?: string | null;
+    dateTo?: string | null;
+  }): Promise<MetricQueryResult> => {
+    return apiClient.post<MetricQueryResult>('/reports/query-metric', params);
   },
 };
 

@@ -39,6 +39,7 @@ import pipedriveRoutes from './routes/pipedrive.routes';
 import emailTemplatesRoutes from './routes/email-templates.routes';
 import emailBlastsRoutes, { recoverStuckBlasts } from './routes/email-blasts.routes';
 import segmentRoutes from './routes/segment.routes';
+import reportsRoutes from './routes/reports.routes';
 
 dotenv.config();
 
@@ -818,6 +819,7 @@ app.use('/api/funnels', funnelRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/whatsapp-blasts', whatsappBlastsRoutes);
 app.use('/api/pipedrive', pipedriveRoutes);
+app.use('/api/reports', reportsRoutes);
 app.use('/api/email-templates', emailTemplatesRoutes);
 app.use('/api/email-blasts', emailBlastsRoutes);
 app.use('/api/segments', segmentRoutes);

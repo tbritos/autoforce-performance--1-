@@ -277,6 +277,71 @@ export interface PipedriveStage {
   order_nr: number;
 }
 
+// ─── Relatórios customizáveis ───────────────────────────────────────────────
+
+export type ReportWidgetType = 'KPI_CARD' | 'LINE_CHART' | 'BAR_CHART' | 'PIE_CHART' | 'TABLE';
+
+export type MetricAggregation = 'sum' | 'count' | 'avg';
+export type MetricSource = 'leads' | 'revenue' | 'campaigns' | 'ga4' | 'email';
+
+export interface MetricDef {
+  key: string;
+  label: string;
+  source: MetricSource;
+  aggregation: MetricAggregation;
+  valueField: string | null;
+  dateField: string | null;
+  groupableDimensions: string[];
+  filterableDimensions: string[];
+  description?: string;
+}
+
+export interface MetricQueryResult {
+  rows: Array<{ dimension: string; value: number }>;
+}
+
+export interface ReportWidget {
+  id: string;
+  reportId?: string;
+  type: ReportWidgetType;
+  title: string;
+  metricKey: string;
+  groupBy: string | null;
+  filters: Record<string, string> | null;
+  dateFrom: string | null;
+  dateTo: string | null;
+  sortOrder?: number;
+}
+
+export interface ReportLayoutItem {
+  i: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface Report {
+  id: string;
+  name: string;
+  description: string | null;
+  layout: ReportLayoutItem[];
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  widgets: ReportWidget[];
+}
+
+export interface ReportSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  _count: { widgets: number };
+}
+
 export interface WhatsAppPhoneNumber {
   id: string;
   display_phone_number: string;

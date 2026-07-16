@@ -1238,3 +1238,65 @@ model SegmentTriggerMembership {
   @@index([journeyId])
   @@index([leadEmail])
 }
+
+// ============================================================
+// RELATÓRIOS CUSTOMIZÁVEIS
+// Usuário monta um relatório com widgets (card/gráfico/tabela), cada um
+// ligado a uma métrica do catálogo (backend/src/services/reports/metrics-catalog.ts).
+// Dado dos widgets nunca é persistido — sempre buscado ao vivo na hora de abrir.
+// ============================================================
+
+model Report {
+  id          String @id @default(uuid())
+  name        String
+  description String?
+
+  // Posições do grid (react-grid-layout): [{ i: widgetId, x, y, w, h }]
+  layout Json
+
+  createdBy String?
+
+  widgets ReportWidget[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
+}
+
+enum ReportWidgetType {
+  KPI_CARD
+  LINE_CHART
+  BAR_CHART
+  PIE_CHART
+  TABLE
+}
+
+model ReportWidget {
+  id       String @id @default(uuid())
+  reportId String
+  report   Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  type  ReportWidgetType
+  title String
+
+  // Chave do catálogo de métricas, ex: "leads.count", "campaigns.spend_sum"
+  metricKey String
+
+  // Dimensão de agrupamento, ex: "date_day", "platform", "status" (null = total único)
+  groupBy String?
+
+  // Filtros aplicados, ex: { "platform": "META_ADS" } — só campos declarados
+  // como filterableDimensions na definição da métrica são aceitos
+  filters Json?
+
+  dateFrom DateTime?
+  dateTo   DateTime?
+
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([reportId])
+}

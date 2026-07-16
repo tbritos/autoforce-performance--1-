@@ -14,6 +14,8 @@ import LeadProfilePanel from './components/LeadProfilePanel';
 import UTMTrackerView from './components/UTMTrackerView';
 import FunnelView from './components/FunnelView';
 import ForecastView from './components/ForecastView';
+import ReportsListView from './components/ReportsListView';
+import ReportBuilderView from './components/ReportBuilderView';
 import AutomationJourneysView from './components/AutomationJourneysView';
 import AIAgentsView from './components/AIAgentsView';
 import EmailTemplatesView from './components/EmailTemplatesView';
@@ -46,6 +48,7 @@ import {
   Link2,
   Layers,
   BookOpen,
+  FileBarChart,
   Sun,
   Moon,
   ChevronLeft,
@@ -1314,6 +1317,12 @@ const AppContent: React.FC = () => {
       ],
     },
     {
+      label: 'RELATÓRIOS',
+      items: [
+        { label: 'Relatórios',      path: '/reports',     icon: FileBarChart },
+      ],
+    },
+    {
       label: 'CONFIG',
       items: [
         { label: 'Conexões',        path: '/connections', icon: PlugZap },
@@ -1585,6 +1594,8 @@ const AppContent: React.FC = () => {
 
             {/* Config */}
             <Route path="/connections" element={<ConnectionsView />} />
+            <Route path="/reports" element={<ReportsListView />} />
+            <Route path="/reports/:id" element={<ReportBuilderView />} />
             <Route path="/docs" element={<DocsView onBack={() => navigate(-1)} />} />
 
             {/* Legado — mantém rotas antigas funcionando */}

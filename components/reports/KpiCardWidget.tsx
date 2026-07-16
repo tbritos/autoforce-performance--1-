@@ -1,0 +1,20 @@
+import React from 'react';
+import { ReportWidget } from '../../types';
+import { useMetricQuery, formatCompactNumber } from './useMetricQuery';
+import { WidgetFrame } from './WidgetFrame';
+
+export const KpiCardWidget: React.FC<{ widget: ReportWidget }> = ({ widget }) => {
+  const { data, loading, error } = useMetricQuery(widget);
+  const rows = data?.rows ?? [];
+  const total = rows.reduce((s, r) => s + r.value, 0);
+
+  return (
+    <WidgetFrame title={widget.title} loading={loading} error={error} empty={!loading && !error && rows.length === 0}>
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+        <span style={{ fontSize: 'clamp(20px, 6vw, 34px)', fontWeight: 700, color: 'var(--fg-primary)', fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }}>
+          {formatCompactNumber(total)}
+        </span>
+      </div>
+    </WidgetFrame>
+  );
+};
