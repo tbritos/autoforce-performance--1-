@@ -834,7 +834,7 @@ const DashboardContent: React.FC<{
                   '0': { title: 'Total de Leads', event: 'leads_created', from: dateRange.start, to: dateRange.end },
                   '1': { title: 'MQLs no período', event: 'became_mql', from: dateRange.start, to: dateRange.end },
                   '3': () => navigate('/revenue'),
-                  '4': () => navigate('/revenue'),
+                  '4': { title: 'Vendas realizadas no período', event: 'became_client', from: dateRange.start, to: dateRange.end },
                   '5': { title: 'SQLs no período', event: 'became_sql', from: dateRange.start, to: dateRange.end },
                   '6': { title: 'Negócios em Forecast', event: 'forecast' },
                 };
