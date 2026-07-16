@@ -554,8 +554,7 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
     const prevStatus = lead.status;
 
     // Snapshot of the deal's current pipeline/stage/value — used by the Forecast view.
-    // Captured for every synced deal (inbound or already-linked), regardless of whether
-    // it drives the internal LeadStatus.
+    // Only captured for inbound deals, same rule as status/revenue.
     const dealSnapshot = {
       pipedrivePipelineId: deal.pipeline_id ?? null,
       pipedriveStageId:    deal.stage_id ?? null,
@@ -593,14 +592,9 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
               },
             });
           }
-        } else {
-          // Non-inbound already-linked deal: keep the Forecast snapshot fresh
-          // without touching the lead's status.
-          await tx.lead.update({
-            where: { email: lead!.email },
-            data: dealSnapshot,
-          });
         }
+        // Non-inbound already-linked deals: no status, no Forecast snapshot — only
+        // the timeline event recorded below via recordDealEvents().
 
         // Only create RevenueEntry for inbound won deals
         if (deal.status === 'won' && isInbound) {
