@@ -186,6 +186,8 @@ type DrillDownLead = {
   firstSource: string | null; firstMedium: string | null;
   convSource: string | null; utmSource: string | null;
   lostReason: string | null;
+  pipedriveDealValue: number | null;
+  pipedriveSetupValue: number | null;
 };
 
 const STATUS_META_MAP: Record<string, { label: string; color: string }> = {
@@ -406,6 +408,11 @@ const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () =>
                   {lead.status === 'LOST' && lead.lostReason && (
                     <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={lead.lostReason}>
                       {lead.lostReason}
+                    </div>
+                  )}
+                  {(lead.pipedriveDealValue != null || lead.pipedriveSetupValue != null) && (
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#111827', marginTop: 4, whiteSpace: 'nowrap' }}>
+                      {formatCurrency((lead.pipedriveDealValue ?? 0) + (lead.pipedriveSetupValue ?? 0))}
                     </div>
                   )}
                 </div>
@@ -657,16 +664,6 @@ const DashboardContent: React.FC<{
                 tooltip: 'Quantidade de vezes que um lead avançou para o status MQL no período. Um lead pode ser qualificado mais de uma vez se retornar ao funil.',
             },
             {
-                id: '6',
-                label: 'Forecast',
-                value: Number(forecastTotals.totalMrr.toFixed(2)),
-                unit: 'R$',
-                change: 0,
-                trend: 'neutral' as 'up' | 'down' | 'neutral',
-                description: 'MRR em negociações abertas no Pipedrive',
-                tooltip: 'Soma do MRR de todos os negócios inbound em aberto no funil comercial do Pipedrive (todos os pipelines/estágios). Não é limitado pelo período selecionado no topo — reflete o funil agora.',
-            },
-            {
                 id: '5',
                 label: 'Total de SQLs',
                 value: leadStats.sqls,
@@ -695,6 +692,16 @@ const DashboardContent: React.FC<{
                 trend: (salesChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
                 description: 'Negócios fechados no período',
                 tooltip: 'Quantidade de negócios marcados como ganhos no Pipedrive (canal inbound) dentro do período selecionado. Atualizado automaticamente via sync.',
+            },
+            {
+                id: '6',
+                label: 'Forecast',
+                value: Number(forecastTotals.totalMrr.toFixed(2)),
+                unit: 'R$',
+                change: 0,
+                trend: 'neutral' as 'up' | 'down' | 'neutral',
+                description: 'MRR em negociações abertas no Pipedrive',
+                tooltip: 'Soma do MRR de todos os negócios inbound em aberto no funil comercial do Pipedrive (todos os pipelines/estágios). Não é limitado pelo período selecionado no topo — reflete o funil agora.',
             },
         ];
     }, [leadStats, prevLeadStats, filteredRevenue, dateRange.start, dateRange.end, safeRevenueHistory, forecastTotals]);
@@ -830,6 +837,7 @@ const DashboardContent: React.FC<{
                   '3': () => navigate('/revenue'),
                   '4': () => navigate('/revenue'),
                   '5': { title: 'SQLs no período', event: 'became_sql', from: dateRange.start, to: dateRange.end },
+                  '6': { title: 'Negócios em Forecast', event: 'forecast' },
                 };
                 const drillConf = kpiDrillDown[metric.id];
                 const handleClick = typeof drillConf === 'function'

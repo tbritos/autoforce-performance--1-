@@ -760,7 +760,23 @@ export class LeadHubService {
       return { total, page, pageSize, leads: enriched };
     }
 
-    // Case 5: Pipedrive pipeline + stage filter (Forecast)
+    // Case 5: Forecast — all open inbound deals, regardless of pipeline/stage.
+    // Not date-bound: reflects the live pipeline, same as the Forecast card/section.
+    if (params.event === 'forecast') {
+      const where = {
+        deletedAt: null as null,
+        pipedriveDealId: { not: null },
+        pipedriveDealStatus: 'open',
+      };
+      const [total, leads] = await Promise.all([
+        prisma.lead.count({ where }),
+        prisma.lead.findMany({ where, select: leadSelect, orderBy: { lastSeenAt: 'desc' }, skip, take: pageSize }),
+      ]);
+      const enriched = await enrichConvSource(leads.map(l => ({ ...l, eventDate: l.lastSeenAt })));
+      return { total, page, pageSize, leads: enriched };
+    }
+
+    // Case 6: Pipedrive pipeline + stage filter (Forecast drill-down per stage)
     if (params.pipelineId != null && params.stageId != null) {
       const where = {
         deletedAt: null as null,
