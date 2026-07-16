@@ -213,7 +213,11 @@ const PipelineTable: React.FC<{
 
 // ─── Main View ────────────────────────────────────────────────────────────────
 
-const ForecastView: React.FC = () => {
+interface ForecastViewProps {
+  onTotals?: (totals: { totalMrr: number; totalSetup: number; dealCount: number }) => void;
+}
+
+const ForecastView: React.FC<ForecastViewProps> = ({ onTotals }) => {
   const [loading, setLoading]   = useState(true);
   const [forecast, setForecast] = useState<ForecastRow[]>([]);
   const [stages, setStages]     = useState<PipedriveStage[]>([]);
@@ -228,6 +232,15 @@ const ForecastView: React.FC = () => {
   };
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    onTotals?.({
+      totalMrr:   forecast.reduce((s, r) => s + r.totalMrr, 0),
+      totalSetup: forecast.reduce((s, r) => s + r.totalSetup, 0),
+      dealCount:  forecast.reduce((s, r) => s + r.dealCount, 0),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forecast]);
 
   const stageMetaMap = useMemo(() => {
     const map = new Map<number, PipedriveStage>();

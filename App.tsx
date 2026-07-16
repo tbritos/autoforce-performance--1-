@@ -481,6 +481,7 @@ const DashboardContent: React.FC<{
     // ── Lead KPI stats from Lead table (replaces DailyLead) ──────────────────
     const [leadStats, setLeadStats] = useState({ leads: 0, mqls: 0, sqls: 0 });
     const [prevLeadStats, setPrevLeadStats] = useState({ leads: 0, mqls: 0, sqls: 0 });
+    const [forecastTotals, setForecastTotals] = useState({ totalMrr: 0, totalSetup: 0, dealCount: 0 });
 
     useEffect(() => {
       let cancelled = false;
@@ -620,9 +621,6 @@ const DashboardContent: React.FC<{
         const rawLeadsChange = prevLeadStats.leads > 0 ? ((leadStats.leads - prevLeadStats.leads) / prevLeadStats.leads) * 100 : 0;
         const mqlsChange     = prevLeadStats.mqls  > 0 ? ((leadStats.mqls  - prevLeadStats.mqls)  / prevLeadStats.mqls)  * 100 : 0;
         const sqlsChange     = prevLeadStats.sqls  > 0 ? ((leadStats.sqls  - prevLeadStats.sqls)  / prevLeadStats.sqls)  * 100 : 0;
-        const currentQual    = leadStats.leads > 0 ? (leadStats.mqls / leadStats.leads) * 100 : 0;
-        const prevQual       = prevLeadStats.leads > 0 ? (prevLeadStats.mqls / prevLeadStats.leads) * 100 : 0;
-        const qualChange     = currentQual - prevQual;
 
         // Revenue comparison — use filteredRevenue vs safeRevenueHistory for prev period
         const range = normalizeRange(dateRange.start, dateRange.end);
@@ -659,14 +657,14 @@ const DashboardContent: React.FC<{
                 tooltip: 'Quantidade de vezes que um lead avançou para o status MQL no período. Um lead pode ser qualificado mais de uma vez se retornar ao funil.',
             },
             {
-                id: '2',
-                label: 'Taxa Lead → MQL',
-                value: Number(currentQual.toFixed(1)),
-                unit: '%',
-                change: Number(qualChange.toFixed(1)),
-                trend: (qualChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
-                description: 'Leads convertidos em MQL no período',
-                tooltip: 'Percentual de leads que se tornaram MQL no período. Calculado como: MQLs no período ÷ Leads no período. Não é cohort — um lead criado antes pode virar MQL dentro do período.',
+                id: '6',
+                label: 'Forecast',
+                value: Number(forecastTotals.totalMrr.toFixed(2)),
+                unit: 'R$',
+                change: 0,
+                trend: 'neutral' as 'up' | 'down' | 'neutral',
+                description: 'MRR em negociações abertas no Pipedrive',
+                tooltip: 'Soma do MRR de todos os negócios inbound em aberto no funil comercial do Pipedrive (todos os pipelines/estágios). Não é limitado pelo período selecionado no topo — reflete o funil agora.',
             },
             {
                 id: '5',
@@ -699,7 +697,7 @@ const DashboardContent: React.FC<{
                 tooltip: 'Quantidade de negócios marcados como ganhos no Pipedrive (canal inbound) dentro do período selecionado. Atualizado automaticamente via sync.',
             },
         ];
-    }, [leadStats, prevLeadStats, filteredRevenue, dateRange.start, dateRange.end, safeRevenueHistory]);
+    }, [leadStats, prevLeadStats, filteredRevenue, dateRange.start, dateRange.end, safeRevenueHistory, forecastTotals]);
 
     const topProducts = useMemo(() => {
         const map = new Map<string, { count: number; mrr: number }>();
@@ -829,7 +827,6 @@ const DashboardContent: React.FC<{
                 const kpiDrillDown: Record<string, DrillDownConfig | (() => void)> = {
                   '0': { title: 'Total de Leads', event: 'leads_created', from: dateRange.start, to: dateRange.end },
                   '1': { title: 'MQLs no período', event: 'became_mql', from: dateRange.start, to: dateRange.end },
-                  '2': { title: 'MQLs no período', event: 'became_mql', from: dateRange.start, to: dateRange.end },
                   '3': () => navigate('/revenue'),
                   '4': () => navigate('/revenue'),
                   '5': { title: 'SQLs no período', event: 'became_sql', from: dateRange.start, to: dateRange.end },
@@ -1059,7 +1056,7 @@ const DashboardContent: React.FC<{
             </div>
 
             {/* Forecast — propostas em aberto no Pipedrive */}
-            <ForecastView />
+            <ForecastView onTotals={setForecastTotals} />
         </div>
         <DrillDownDrawer config={drillDown} onClose={() => setDrillDown(null)} />
         </>
