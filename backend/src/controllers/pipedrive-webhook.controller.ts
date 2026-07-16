@@ -193,9 +193,9 @@ export class PipedriveWebhookController {
     }
 
     const dealTitle     = current.title ?? null;
-    const currentStage  = current.stage_id ?? null;
+    let   currentStage  = current.stage_id ?? null;
     const previousStage = previous?.stage_id ?? null;
-    const currentValue  = current.value ?? null;
+    let   currentValue  = current.value ?? null;
     const previousValue = previous?.value ?? null;
     const occurredAt    = current.update_time
       ? new Date(current.update_time)
@@ -218,8 +218,10 @@ export class PipedriveWebhookController {
         await resolveStageNames([currentStage, previousStage], token, pipedriveDomain, authType);
 
         // Fetch full deal to get all custom fields (webhook v2 only sends changed fields).
-        // Lost deals need this too so lost_reason is reliably captured regardless of stage.
-        if (dealStatus === 'won' || dealStatus === 'lost') {
+        // Needed whenever a lead is matched: partial payloads (e.g. only "value" changed)
+        // may omit pipeline_id/stage_id/Canal de Origem, which breaks isInbound detection
+        // and the Forecast snapshot otherwise.
+        if (lead) {
           try {
             const dealUrl = new URL(`https://${pipedriveDomain}.pipedrive.com/api/v1/deals/${dealId}`);
             if (authType === 'api_token') dealUrl.searchParams.set('api_token', token);
@@ -233,6 +235,14 @@ export class PipedriveWebhookController {
                 console.log(`[pipedrive-webhook] fetched full deal custom fields:`, JSON.stringify(
                   Object.fromEntries(Object.entries(fullDeal).filter(([k]) => /^[a-f0-9]{40}$/.test(k)))
                 ));
+
+                // Partial webhook payloads may omit stage_id/value when a different field
+                // changed — prefer the full deal's values so downstream status/Forecast
+                // logic never operates on stale/missing data.
+                const fd = fullDeal as PipedriveDealPayload;
+                if (fd.stage_id != null) currentStage = fd.stage_id;
+                if (fd.value != null) currentValue = fd.value;
+                await resolveStageNames([currentStage], token, pipedriveDomain, authType);
               }
             }
           } catch {

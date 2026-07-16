@@ -15,6 +15,11 @@ import { DataService } from '../services/dataService';
 const isWppEmail = (email: string) => email.startsWith('wpp_') && email.endsWith('@autoforce.internal');
 const displayEmail = (email: string) => isWppEmail(email) ? null : email;
 
+const formatCurrency = (val: number) => {
+  if (Number.isNaN(val)) return 'R$ 0,00';
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+};
+
 // ─── Status config ─────────────────────────────────────────────────────────────
 
 const STATUSES: { value: LeadStatus; label: string; color: string }[] = [
@@ -1613,6 +1618,25 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                 ? 'Carregando...'
                                 : `${pipedriveEvents.length} movimentação${pipedriveEvents.length !== 1 ? 'ões' : ''} registrada${pipedriveEvents.length !== 1 ? 's' : ''}.`}
                             </p>
+                            {(profile.pipedriveDealValue != null || profile.pipedriveSetupValue != null) && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '8px 10px', borderRadius: 8, background: 'var(--bg-subtle)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                  <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>
+                                    {profile.pipedriveStageName ?? 'Estágio atual'}
+                                    {profile.pipedriveDealStatus === 'won' && ' · Ganho'}
+                                    {profile.pipedriveDealStatus === 'lost' && ' · Perdido'}
+                                  </span>
+                                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--fg-primary)' }}>
+                                    {formatCurrency((profile.pipedriveDealValue ?? 0) + (profile.pipedriveSetupValue ?? 0))}
+                                  </span>
+                                </div>
+                                {(profile.pipedriveSetupValue ?? 0) > 0 && (
+                                  <span style={{ fontSize: 10, color: 'var(--fg-subtle)' }}>
+                                    MRR {formatCurrency(profile.pipedriveDealValue ?? 0)} + Setup {formatCurrency(profile.pipedriveSetupValue ?? 0)}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                             {pipedriveUrl && (
                               <a href={pipedriveUrl} target="_blank" rel="noopener noreferrer"
                                 style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>

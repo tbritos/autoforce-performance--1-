@@ -121,6 +121,12 @@ export interface LeadProfile {
   pipedrivePersonId: string | null;
   pipedriveDealId: string | null;
   pipedriveDomain: string | null;
+  pipedrivePipelineId: number | null;
+  pipedriveStageId: number | null;
+  pipedriveStageName: string | null;
+  pipedriveDealStatus: string | null;
+  pipedriveDealValue: number | null;
+  pipedriveSetupValue: number | null;
   customFields: Record<string, unknown> | null;
   notes: string | null;
   conversions: LeadConversion[];
