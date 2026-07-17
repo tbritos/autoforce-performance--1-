@@ -30,6 +30,7 @@ interface SendRecord {
   readAt: string | null;
   failedAt: string | null;
   createdAt: string;
+  errorMessage: string | null;
 }
 
 interface WhatsAppBlast {
@@ -311,6 +312,11 @@ const WhatsAppBlastDetailView: React.FC = () => {
                           <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, background: sc.bg, color: sc.color }}>
                             {sc.label}
                           </span>
+                          {send.status === 'failed' && send.errorMessage && (
+                            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 4, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={send.errorMessage}>
+                              {send.errorMessage}
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '10px 16px', color: 'var(--fg-secondary)', whiteSpace: 'nowrap' }}>{fmt(send.sentAt ?? send.createdAt)}</td>
                         <td style={{ padding: '10px 16px', color: send.deliveredAt ? '#0ea5e9' : 'var(--fg-muted)', whiteSpace: 'nowrap' }}>

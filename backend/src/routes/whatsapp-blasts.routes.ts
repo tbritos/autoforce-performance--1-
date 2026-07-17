@@ -273,7 +273,7 @@ router.get('/:id', async (req: Request, res: Response) => {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
-        select: { id: true, leadId: true, phone: true, status: true, text: true, sentAt: true, deliveredAt: true, readAt: true, failedAt: true, createdAt: true },
+        select: { id: true, leadId: true, phone: true, status: true, text: true, sentAt: true, deliveredAt: true, readAt: true, failedAt: true, createdAt: true, payload: true },
       }),
       prisma.whatsAppMessage.count({ where: baseWhere }),
       prisma.whatsAppMessage.count({ where: { ...baseWhere, status: { in: ['delivered', 'read'] } } }),
@@ -289,7 +289,13 @@ router.get('/:id', async (req: Request, res: Response) => {
       ? await prisma.lead.findMany({ where: { id: { in: leadIds } }, select: { id: true, name: true } })
       : [];
     const nameByLeadId = new Map(leadNames.map(l => [l.id, l.name]));
-    const sendsWithName = sends.map(s => ({ ...s, leadName: s.leadId ? nameByLeadId.get(s.leadId) ?? null : null }));
+    const sendsWithName = sends.map(({ payload, ...s }) => {
+      const err = (payload as { error?: unknown } | null)?.error;
+      const errorMessage = s.status === 'failed'
+        ? (typeof err === 'string' ? err : (err as { message?: string } | null)?.message ?? null)
+        : null;
+      return { ...s, leadName: s.leadId ? nameByLeadId.get(s.leadId) ?? null : null, errorMessage };
+    });
 
     const stats = {
       sent, delivered, read, failed,
