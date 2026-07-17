@@ -989,7 +989,7 @@ async function executeWhatsAppMessage(
   executionId: string,
   journeyId: string
 ): Promise<void> {
-  const { getWhatsAppCredentials, recordOutgoingWhatsAppMessage, buildTemplateParams, resolveTemplateBodyText } = await import('./whatsapp.service');
+  const { getWhatsAppCredentials, recordOutgoingWhatsAppMessage, buildComponentParams, resolveTemplateBodyText } = await import('./whatsapp.service');
 
   const lead = await prisma.lead.findUnique({
     where: { email: leadEmail },
@@ -1027,15 +1027,25 @@ async function executeWhatsAppMessage(
   let varMappings: Record<string, string> = {};
   try { varMappings = JSON.parse(String(config.varMappings ?? '{}')); } catch { /* ignore */ }
 
-  const bodyParams = buildTemplateParams(varMappings, leadFieldValues);
+  // HEADER e BODY sao componentes separados pra Meta, cada um com seu proprio
+  // array de parameters — por isso extraimos o texto de cada um antes de
+  // montar os parametros (ver comentario em buildComponentParams).
+  let templateComponentsParsed: Array<{ type: string; text?: string }> = [];
+  try { templateComponentsParsed = JSON.parse(String(config.templateComponents ?? '[]')); } catch { /* ignore */ }
+  const headerComp = templateComponentsParsed.find(c => c.type === 'HEADER' || c.type === 'header');
+  const bodyComp   = templateComponentsParsed.find(c => c.type === 'BODY'   || c.type === 'body');
+
+  const headerParams = buildComponentParams(headerComp?.text, varMappings, leadFieldValues);
+  const bodyParams   = buildComponentParams(bodyComp?.text, varMappings, leadFieldValues);
 
   const templatePayload: Record<string, unknown> = {
     name: templateName,
     language: { code: language },
   };
-  if (bodyParams.length > 0) {
-    templatePayload.components = [{ type: 'body', parameters: bodyParams }];
-  }
+  const templateComponents: Array<Record<string, unknown>> = [];
+  if (headerParams.length > 0) templateComponents.push({ type: 'header', parameters: headerParams });
+  if (bodyParams.length > 0) templateComponents.push({ type: 'body', parameters: bodyParams });
+  if (templateComponents.length > 0) templatePayload.components = templateComponents;
 
   const body: Record<string, unknown> = {
     messaging_product: 'whatsapp',
@@ -1064,14 +1074,9 @@ async function executeWhatsAppMessage(
   const data = await res.json() as { messages?: Array<{ id?: string }> };
 
   // Build resolved text preview from template components + varMappings.
-  let resolvedText: string | null = null;
-  try {
-    const components: Array<{ type: string; text?: string }> = JSON.parse(String(config.templateComponents ?? '[]'));
-    const bodyComp = components.find(c => c.type === 'BODY' || c.type === 'body');
-    if (bodyComp?.text) {
-      resolvedText = resolveTemplateBodyText(bodyComp.text, varMappings, leadFieldValues);
-    }
-  } catch { /* ignore — fall back to null */ }
+  const resolvedText: string | null = bodyComp?.text
+    ? resolveTemplateBodyText(bodyComp.text, varMappings, leadFieldValues)
+    : null;
 
   await recordOutgoingWhatsAppMessage({
     leadEmail,

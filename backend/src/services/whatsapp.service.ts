@@ -248,19 +248,30 @@ export function extractTemplateVars(components: WhatsAppTemplateComponent[]): st
 
 // varMappings: { "{{1}}": "name", ... } ou { "{{nome}}": "name", ... } — a
 // chave e o placeholder literal do template, o valor e a chave de fieldValues.
-export function buildTemplateParams(
+//
+// IMPORTANTE: a Meta trata HEADER e BODY como componentes separados, cada um
+// com seu proprio array de parameters — mesmo que os dois usem o mesmo texto
+// de placeholder (ex: "{{1}}" no header E no body). Por isso essa funcao
+// recebe o texto de UM componente por vez (chame uma vez pro header e outra
+// pro body) — nunca junte os dois num so array, senao a Meta responde
+// "(#132000) Number of parameters does not match the expected number of params".
+export function buildComponentParams(
+  componentText: string | null | undefined,
   varMappings: Record<string, string>,
   fieldValues: Record<string, string>
 ): TemplateBodyParam[] {
-  return Object.entries(varMappings)
-    .sort(([a], [b]) => {
+  if (!componentText) return [];
+  const vars = [...new Set(componentText.match(/\{\{[^}]+\}\}/g) ?? [])];
+  return vars
+    .sort((a, b) => {
       const idxA = parseInt(a.replace(/\D/g, ''), 10) || 0;
       const idxB = parseInt(b.replace(/\D/g, ''), 10) || 0;
       return idxA - idxB;
     })
-    .map(([placeholder, field]) => {
+    .map(placeholder => {
+      const field = varMappings[placeholder];
       const name = placeholder.replace(/[{}]/g, '');
-      const text = fieldValues[field] ?? '';
+      const text = field ? (fieldValues[field] ?? '') : '';
       return /^\d+$/.test(name) ? { type: 'text', text } : { type: 'text', parameter_name: name, text };
     });
 }

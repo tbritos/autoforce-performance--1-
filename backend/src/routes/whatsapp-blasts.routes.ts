@@ -87,7 +87,7 @@ async function sendWhatsAppBlastNow(blastId: string, opts: { resume?: boolean } 
   }
 
   try {
-    const { getWhatsAppCredentials, fetchWhatsAppTemplates, recordOutgoingWhatsAppMessage, buildTemplateParams, resolveTemplateBodyText } =
+    const { getWhatsAppCredentials, fetchWhatsAppTemplates, recordOutgoingWhatsAppMessage, buildComponentParams, resolveTemplateBodyText } =
       await import('../services/whatsapp.service');
 
     let leads = await resolveAudienceLeads(blast.audienceType, blast.audienceValue);
@@ -105,6 +105,7 @@ async function sendWhatsAppBlastNow(blastId: string, opts: { resume?: boolean } 
     const { accessToken } = await getWhatsAppCredentials();
     const templates = await fetchWhatsAppTemplates(blast.phoneNumberId);
     const template = templates.find(t => t.name === blast.templateName);
+    const headerText = template?.components.find(c => c.type === 'HEADER')?.text ?? null;
     const bodyText = template?.components.find(c => c.type === 'BODY')?.text ?? null;
     const varMappings = (blast.varMappings ?? {}) as Record<string, string>;
 
@@ -118,7 +119,8 @@ async function sendWhatsAppBlastNow(blastId: string, opts: { resume?: boolean } 
       const batch = leads.slice(i, i + BATCH_SIZE);
       const results = await Promise.all(batch.map(async lead => {
         const fieldValues = leadFieldValues(lead);
-        const bodyParams = buildTemplateParams(varMappings, fieldValues);
+        const headerParams = buildComponentParams(headerText, varMappings, fieldValues);
+        const bodyParams = buildComponentParams(bodyText, varMappings, fieldValues);
         const to = toE164(lead.phone!);
         const resolvedText = bodyText ? resolveTemplateBodyText(bodyText, varMappings, fieldValues) : null;
 
@@ -126,7 +128,10 @@ async function sendWhatsAppBlastNow(blastId: string, opts: { resume?: boolean } 
           name: blast.templateName,
           language: { code: blast.templateLanguage },
         };
-        if (bodyParams.length > 0) templatePayload.components = [{ type: 'body', parameters: bodyParams }];
+        const templateComponents: Array<Record<string, unknown>> = [];
+        if (headerParams.length > 0) templateComponents.push({ type: 'header', parameters: headerParams });
+        if (bodyParams.length > 0) templateComponents.push({ type: 'body', parameters: bodyParams });
+        if (templateComponents.length > 0) templatePayload.components = templateComponents;
 
         const body = { messaging_product: 'whatsapp', to, type: 'template', template: templatePayload };
 
