@@ -17,12 +17,13 @@ export function useMetricQuery(widget: ReportWidget) {
       filters: widget.filters,
       dateFrom: widget.dateFrom,
       dateTo: widget.dateTo,
+      datePreset: widget.datePreset,
     })
       .then(res => { if (!cancelled) setData(res); })
       .catch((err: Error) => { if (!cancelled) setError(err.message || 'Erro ao buscar dado'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [widget.metricKey, widget.groupBy, JSON.stringify(widget.filters), widget.dateFrom, widget.dateTo]);
+  }, [widget.metricKey, widget.groupBy, JSON.stringify(widget.filters), widget.dateFrom, widget.dateTo, widget.datePreset]);
 
   return { data, loading, error };
 }

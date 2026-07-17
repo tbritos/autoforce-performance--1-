@@ -10,6 +10,7 @@ export interface ReportWidgetInput {
   filters?: Record<string, string> | null;
   dateFrom?: string | null;
   dateTo?: string | null;
+  datePreset?: string | null;
   sortOrder?: number;
 }
 
@@ -67,6 +68,7 @@ export class ReportsService {
               filters: (w.filters ?? undefined) as Prisma.InputJsonValue | undefined,
               dateFrom: w.dateFrom ? new Date(w.dateFrom) : null,
               dateTo: w.dateTo ? new Date(w.dateTo) : null,
+              datePreset: w.datePreset ?? null,
               sortOrder: w.sortOrder ?? i,
             })),
           });

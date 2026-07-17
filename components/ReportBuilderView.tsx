@@ -37,6 +37,16 @@ const DIMENSION_LABELS: Record<string, string> = {
   source: 'Fonte', pipedriveStageName: 'Estágio', pipedrivePipelineId: 'Pipeline', pipedriveStageId: 'ID do Estágio',
 };
 
+const DATE_PRESET_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'custom', label: 'Personalizado' },
+  { value: 'last_7_days', label: 'Últimos 7 dias' },
+  { value: 'last_30_days', label: 'Últimos 30 dias' },
+  { value: 'this_month', label: 'Este mês' },
+  { value: 'last_month', label: 'Último mês' },
+  { value: 'this_quarter', label: 'Este trimestre' },
+  { value: 'last_quarter', label: 'Último trimestre' },
+];
+
 function newId(): string {
   return (globalThis.crypto?.randomUUID?.() ?? `w_${Date.now()}_${Math.random().toString(36).slice(2)}`);
 }
@@ -66,6 +76,7 @@ const WidgetModal: React.FC<WidgetModalProps> = ({ metrics, initial, onCancel, o
   const [groupBy, setGroupBy] = useState<string>(initial?.groupBy ?? '');
   const [dateFrom, setDateFrom] = useState(initial?.dateFrom?.slice(0, 10) ?? '');
   const [dateTo, setDateTo] = useState(initial?.dateTo?.slice(0, 10) ?? '');
+  const [datePreset, setDatePreset] = useState(initial?.datePreset ?? 'custom');
   const [filterEntries, setFilterEntries] = useState<Array<{ key: string; value: string }>>(
     initial?.filters ? Object.entries(initial.filters).map(([key, value]) => ({ key, value })) : []
   );
@@ -93,8 +104,9 @@ const WidgetModal: React.FC<WidgetModalProps> = ({ metrics, initial, onCancel, o
       metricKey: metric.key,
       groupBy: groupBy || null,
       filters: Object.keys(filters).length ? filters : null,
-      dateFrom: metric.dateField && dateFrom ? dateFrom : null,
-      dateTo: metric.dateField && dateTo ? dateTo : null,
+      dateFrom: metric.dateField && datePreset === 'custom' && dateFrom ? dateFrom : null,
+      dateTo: metric.dateField && datePreset === 'custom' && dateTo ? dateTo : null,
+      datePreset: metric.dateField && datePreset !== 'custom' ? datePreset : null,
     });
   };
 
@@ -197,17 +209,33 @@ const WidgetModal: React.FC<WidgetModalProps> = ({ metrics, initial, onCancel, o
               )}
 
               {metric && metric.dateField && (
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-muted)', textTransform: 'uppercase' }}>De</span>
-                    <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-                      style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 13, outline: 'none' }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-muted)', textTransform: 'uppercase' }}>Período</span>
+                    <select value={datePreset} onChange={e => setDatePreset(e.target.value)}
+                      style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 13, outline: 'none' }}>
+                      {DATE_PRESET_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                    {datePreset !== 'custom' && (
+                      <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>
+                        Período recalculado automaticamente toda vez que o relatório for aberto.
+                      </span>
+                    )}
                   </label>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-muted)', textTransform: 'uppercase' }}>Até</span>
-                    <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-                      style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 13, outline: 'none' }} />
-                  </label>
+                  {datePreset === 'custom' && (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-muted)', textTransform: 'uppercase' }}>De</span>
+                        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                          style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 13, outline: 'none' }} />
+                      </label>
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-muted)', textTransform: 'uppercase' }}>Até</span>
+                        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                          style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 13, outline: 'none' }} />
+                      </label>
+                    </div>
+                  )}
                 </div>
               )}
               {metric && !metric.dateField && (

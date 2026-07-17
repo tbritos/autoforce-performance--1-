@@ -1675,6 +1675,7 @@ export const DataService = {
     filters?: Record<string, string> | null;
     dateFrom?: string | null;
     dateTo?: string | null;
+    datePreset?: string | null;
   }): Promise<MetricQueryResult> => {
     return apiClient.post<MetricQueryResult>('/reports/query-metric', params);
   },

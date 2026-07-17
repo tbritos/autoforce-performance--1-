@@ -310,6 +310,7 @@ export interface ReportWidget {
   filters: Record<string, string> | null;
   dateFrom: string | null;
   dateTo: string | null;
+  datePreset: string | null;
   sortOrder?: number;
 }
 

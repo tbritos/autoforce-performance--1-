@@ -1290,8 +1290,15 @@ model ReportWidget {
   // como filterableDimensions na definição da métrica são aceitos
   filters Json?
 
+  // Período fixo (usado quando datePreset é null/"custom")
   dateFrom DateTime?
   dateTo   DateTime?
+
+  // Período dinâmico, recalculado a cada abertura do relatório — ex:
+  // "last_7_days" | "last_30_days" | "this_month" | "last_month" |
+  // "this_quarter" | "last_quarter". Quando preenchido, tem prioridade sobre
+  // dateFrom/dateTo. Ver resolveDatePreset em report-query.service.ts.
+  datePreset String?
 
   sortOrder Int @default(0)
 

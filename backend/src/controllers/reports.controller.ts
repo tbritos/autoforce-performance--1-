@@ -85,15 +85,15 @@ export class ReportsController {
 
   static async queryMetric(req: Request, res: Response, next: NextFunction) {
     try {
-      const { metricKey, groupBy, filters, dateFrom, dateTo } = req.body as {
+      const { metricKey, groupBy, filters, dateFrom, dateTo, datePreset } = req.body as {
         metricKey?: string; groupBy?: string | null; filters?: Record<string, string> | null;
-        dateFrom?: string | null; dateTo?: string | null;
+        dateFrom?: string | null; dateTo?: string | null; datePreset?: string | null;
       };
       if (!metricKey) {
         res.status(400).json({ error: 'metricKey é obrigatório' });
         return;
       }
-      const result = await runMetricQuery({ metricKey, groupBy, filters, dateFrom, dateTo });
+      const result = await runMetricQuery({ metricKey, groupBy, filters, dateFrom, dateTo, datePreset });
       res.json(result);
     } catch (err) {
       next(err);

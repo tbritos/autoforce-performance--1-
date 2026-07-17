@@ -1,12 +1,16 @@
 import { prisma } from '../../config/database';
 import { getMetricDef, isDateBucket, MetricDef, DateBucket } from './metrics-catalog';
 
+export const DATE_PRESETS = ['last_7_days', 'last_30_days', 'this_month', 'last_month', 'this_quarter', 'last_quarter'] as const;
+export type DatePreset = (typeof DATE_PRESETS)[number];
+
 export interface RunMetricQueryParams {
   metricKey: string;
   groupBy?: string | null;
   filters?: Record<string, string> | null;
   dateFrom?: string | null;
   dateTo?: string | null;
+  datePreset?: string | null;
 }
 
 export interface MetricQueryResult {
@@ -34,6 +38,43 @@ function validateFilters(def: MetricDef, filters: Record<string, string> | null 
     clean[k] = v;
   }
   return clean;
+}
+
+// Recalcula o período toda vez que a métrica é consultada — "mês passado"
+// aponta sempre pro mês anterior ao atual, nunca uma data congelada.
+export function resolveDatePreset(preset: string, now: Date = new Date()): { dateFrom: string; dateTo: string } {
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+  switch (preset as DatePreset) {
+    case 'last_7_days': {
+      const to = new Date(now);
+      const from = new Date(now);
+      from.setDate(from.getDate() - 6);
+      return { dateFrom: fmt(from), dateTo: fmt(to) };
+    }
+    case 'last_30_days': {
+      const to = new Date(now);
+      const from = new Date(now);
+      from.setDate(from.getDate() - 29);
+      return { dateFrom: fmt(from), dateTo: fmt(to) };
+    }
+    case 'this_month':
+      return { dateFrom: fmt(new Date(y, m, 1)), dateTo: fmt(new Date(y, m + 1, 0)) };
+    case 'last_month':
+      return { dateFrom: fmt(new Date(y, m - 1, 1)), dateTo: fmt(new Date(y, m, 0)) };
+    case 'this_quarter': {
+      const q = Math.floor(m / 3);
+      return { dateFrom: fmt(new Date(y, q * 3, 1)), dateTo: fmt(new Date(y, q * 3 + 3, 0)) };
+    }
+    case 'last_quarter': {
+      const q = Math.floor(m / 3) - 1;
+      return { dateFrom: fmt(new Date(y, q * 3, 1)), dateTo: fmt(new Date(y, q * 3 + 3, 0)) };
+    }
+    default:
+      throw new Error(`Preset de data desconhecido: ${preset}`);
+  }
 }
 
 function dateRangeFilter(dateFrom?: string | null, dateTo?: string | null) {
@@ -191,8 +232,16 @@ export async function runMetricQuery(params: RunMetricQueryParams): Promise<Metr
   const def = getMetricDef(params.metricKey);
   const groupBy = validateGroupBy(def, params.groupBy);
   const filters = validateFilters(def, params.filters);
-  const dateFrom = def.dateField ? params.dateFrom : null;
-  const dateTo = def.dateField ? params.dateTo : null;
+
+  let dateFrom = params.dateFrom;
+  let dateTo = params.dateTo;
+  if (params.datePreset && params.datePreset !== 'custom') {
+    const resolved = resolveDatePreset(params.datePreset);
+    dateFrom = resolved.dateFrom;
+    dateTo = resolved.dateTo;
+  }
+  dateFrom = def.dateField ? dateFrom : null;
+  dateTo = def.dateField ? dateTo : null;
 
   switch (def.source) {
     case 'leads':     return queryLeads(def, groupBy, filters, dateFrom, dateTo);
