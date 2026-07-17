@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { TrendingUp, RefreshCw, X } from 'lucide-react';
 import { DataService } from '../services/dataService';
@@ -52,7 +53,7 @@ const StageDealsModal: React.FC<{
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / pageSize)) : 1;
 
-  return (
+  return createPortal(
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div onClick={e => e.stopPropagation()} style={{ width: 'min(760px, 100%)', maxHeight: '82vh', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,.3)' }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -136,7 +137,8 @@ const StageDealsModal: React.FC<{
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

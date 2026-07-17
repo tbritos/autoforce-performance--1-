@@ -884,7 +884,7 @@ const StageDrillDownModal: React.FC<{
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / pageSize)) : 1;
 
-  return (
+  return createPortal(
     <div
       onClick={onClose}
       style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
@@ -968,7 +968,8 @@ const StageDrillDownModal: React.FC<{
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

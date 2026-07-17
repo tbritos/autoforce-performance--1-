@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { FileBarChart, Plus, Trash2, X, Layers } from 'lucide-react';
 import { DataService } from '../services/dataService';
@@ -60,7 +61,7 @@ const ReportsListView: React.FC = () => {
         </button>
       </div>
 
-      {creating && (
+      {creating && createPortal(
         <div onClick={() => !saving && setCreating(false)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div onClick={e => e.stopPropagation()} className="ds-card" style={{ width: 'min(420px, 100%)', padding: 20 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -84,7 +85,8 @@ const ReportsListView: React.FC = () => {
               {saving ? 'Criando...' : 'Criar e Editar'}
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {reports === null ? (
