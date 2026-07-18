@@ -35,3 +35,11 @@ export const formatCompactNumber = (val: number): string => {
   if (Math.abs(val) >= 1_000) return `${(val / 1_000).toFixed(1)}k`;
   return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(val);
 };
+
+// Recharts v3's Tooltip formatter value pode ser number | string | array | undefined —
+// essa função normaliza pra exibição independente do tipo recebido.
+export const formatTooltipValue = (value: unknown): string => {
+  if (typeof value === 'number') return new Intl.NumberFormat('pt-BR').format(value);
+  if (Array.isArray(value)) return value.map(formatTooltipValue).join(', ');
+  return value == null ? '' : String(value);
+};

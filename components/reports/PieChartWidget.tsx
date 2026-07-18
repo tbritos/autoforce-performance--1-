@@ -1,7 +1,7 @@
 import React from 'react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { ReportWidget } from '../../types';
-import { useMetricQuery, CHART_PALETTE } from './useMetricQuery';
+import { useMetricQuery, CHART_PALETTE, formatTooltipValue } from './useMetricQuery';
 import { WidgetFrame } from './WidgetFrame';
 
 export const PieChartWidget: React.FC<{ widget: ReportWidget }> = ({ widget }) => {
@@ -18,7 +18,7 @@ export const PieChartWidget: React.FC<{ widget: ReportWidget }> = ({ widget }) =
             ))}
           </Pie>
           <Tooltip
-            formatter={(value: number) => new Intl.NumberFormat('pt-BR').format(value)}
+            formatter={formatTooltipValue}
             contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
           />
           <Legend wrapperStyle={{ fontSize: 11 }} />

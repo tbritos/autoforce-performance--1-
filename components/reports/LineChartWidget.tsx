@@ -1,7 +1,7 @@
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { ReportWidget } from '../../types';
-import { useMetricQuery, formatCompactNumber } from './useMetricQuery';
+import { useMetricQuery, formatCompactNumber, formatTooltipValue } from './useMetricQuery';
 import { WidgetFrame } from './WidgetFrame';
 
 export const LineChartWidget: React.FC<{ widget: ReportWidget }> = ({ widget }) => {
@@ -16,7 +16,7 @@ export const LineChartWidget: React.FC<{ widget: ReportWidget }> = ({ widget }) 
           <XAxis dataKey="dimension" tick={{ fill: 'var(--fg-muted)', fontSize: 10 }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} />
           <YAxis tick={{ fill: 'var(--fg-muted)', fontSize: 10 }} tickLine={false} axisLine={{ stroke: 'var(--border)' }} tickFormatter={formatCompactNumber} width={40} />
           <Tooltip
-            formatter={(value: number) => new Intl.NumberFormat('pt-BR').format(value)}
+            formatter={formatTooltipValue}
             contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
           />
           <Line type="monotone" dataKey="value" stroke="#3754E2" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
