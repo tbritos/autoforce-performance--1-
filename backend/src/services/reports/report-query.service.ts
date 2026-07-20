@@ -19,7 +19,7 @@ export interface MetricQueryResult {
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
-function validateGroupBy(def: MetricDef, groupBy: string | null | undefined): string | null {
+export function validateGroupBy(def: MetricDef, groupBy: string | null | undefined): string | null {
   if (!groupBy) return null;
   if (!def.groupableDimensions.includes(groupBy)) {
     throw new Error(`Agrupamento "${groupBy}" não é suportado pela métrica "${def.key}"`);
@@ -27,7 +27,7 @@ function validateGroupBy(def: MetricDef, groupBy: string | null | undefined): st
   return groupBy;
 }
 
-function validateFilters(def: MetricDef, filters: Record<string, string> | null | undefined): Record<string, string> {
+export function validateFilters(def: MetricDef, filters: Record<string, string> | null | undefined): Record<string, string> {
   if (!filters) return {};
   const clean: Record<string, string> = {};
   for (const [k, v] of Object.entries(filters)) {
@@ -77,7 +77,7 @@ export function resolveDatePreset(preset: string, now: Date = new Date()): { dat
   }
 }
 
-function dateRangeFilter(dateFrom?: string | null, dateTo?: string | null) {
+export function dateRangeFilter(dateFrom?: string | null, dateTo?: string | null) {
   if (!dateFrom && !dateTo) return undefined;
   const range: { gte?: Date; lte?: Date } = {};
   if (dateFrom) range.gte = new Date(dateFrom + 'T00:00:00');
@@ -85,9 +85,12 @@ function dateRangeFilter(dateFrom?: string | null, dateTo?: string | null) {
   return range;
 }
 
-// ISO-ish week label: "2026-W29"
+// ISO-ish week label: "2026-W29". Usa sempre getUTC* (nunca getFullYear/
+// getMonth/getDate locais) — misturar os dois faria essa label depender do
+// fuso horário local do processo Node, e o drill-down (report-drilldown.service.ts)
+// precisa inverter essa label de volta pro intervalo de datas exato.
 function isoWeekLabel(date: Date): string {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const dayNum = (d.getUTCDay() + 6) % 7; // Monday = 0
   d.setUTCDate(d.getUTCDate() - dayNum + 3); // Thursday of this week
   const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));

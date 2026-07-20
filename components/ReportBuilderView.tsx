@@ -6,12 +6,13 @@ import type { Layout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import {
-  ArrowLeft, Plus, Save, Trash2, X, Settings2,
+  ArrowLeft, Plus, Save, Trash2, X, Settings2, Lock, Globe,
   BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, Table2, Hash,
 } from 'lucide-react';
 import { DataService } from '../services/dataService';
-import { MetricDef, MetricSource, Report, ReportLayoutItem, ReportWidget, ReportWidgetType } from '../types';
+import { DrillDownClickParams, MetricDef, MetricSource, Report, ReportLayoutItem, ReportWidget, ReportWidgetType } from '../types';
 import { WidgetRenderer } from './reports/WidgetRenderer';
+import { ReportDrillDownModal } from './reports/ReportDrillDownModal';
 
 const SOURCE_LABELS: Record<MetricSource, string> = {
   leads: 'Leads / Funil',
@@ -304,6 +305,10 @@ const ReportBuilderView: React.FC = () => {
   const [editingWidget, setEditingWidget] = useState<ReportWidget | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [privacySaving, setPrivacySaving] = useState(false);
+  const [drillDown, setDrillDown] = useState<DrillDownClickParams | null>(null);
+
+  const canEdit = report?.canEdit ?? true;
 
   useEffect(() => {
     if (!id) return;
@@ -357,6 +362,17 @@ const ReportBuilderView: React.FC = () => {
     }
   };
 
+  const handleTogglePrivacy = async () => {
+    if (!id || !report || privacySaving) return;
+    setPrivacySaving(true);
+    try {
+      const result = await DataService.updateReportPrivacy(id, !report.isPublic);
+      setReport(prev => prev ? { ...prev, isPublic: result.isPublic } : prev);
+    } finally {
+      setPrivacySaving(false);
+    }
+  };
+
   if (!report) {
     return <div style={{ padding: 40, textAlign: 'center', color: 'var(--fg-subtle)' }}>Carregando...</div>;
   }
@@ -378,18 +394,28 @@ const ReportBuilderView: React.FC = () => {
             style={{ background: 'var(--bg-muted)', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <ArrowLeft size={15} />
           </button>
-          <input value={name} onChange={e => { setName(e.target.value); setDirty(true); }}
+          <input value={name} onChange={e => { setName(e.target.value); setDirty(true); }} disabled={!canEdit}
             style={{ fontSize: 19, fontWeight: 700, color: 'var(--fg-primary)', background: 'transparent', border: 'none', outline: 'none', minWidth: 200 }} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button type="button" onClick={() => setModalOpen(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-            <Plus size={15} /> Adicionar Widget
+          <button type="button" onClick={handleTogglePrivacy} disabled={!canEdit || privacySaving}
+            title={!canEdit ? 'Só o dono deste relatório pode alterar a privacidade' : report.isPublic ? 'Visível pra todo o time — clique pra tornar privado' : 'Privado — só você pode ver — clique pra compartilhar com o time'}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-muted)', fontSize: 12, fontWeight: 600, cursor: !canEdit ? 'not-allowed' : 'pointer', opacity: !canEdit ? 0.6 : 1 }}>
+            {report.isPublic ? <Globe size={14} /> : <Lock size={14} />}
+            {report.isPublic ? 'Compartilhado' : 'Privado'}
           </button>
-          <button type="button" onClick={handleSave} disabled={saving || !dirty}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 'var(--r-md)', border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: !dirty || saving ? 'default' : 'pointer', opacity: !dirty || saving ? 0.6 : 1 }}>
-            <Save size={15} /> {saving ? 'Salvando...' : 'Salvar'}
-          </button>
+          {canEdit && (
+            <button type="button" onClick={() => setModalOpen(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--fg-primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              <Plus size={15} /> Adicionar Widget
+            </button>
+          )}
+          {canEdit && (
+            <button type="button" onClick={handleSave} disabled={saving || !dirty}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 'var(--r-md)', border: 'none', background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: !dirty || saving ? 'default' : 'pointer', opacity: !dirty || saving ? 0.6 : 1 }}>
+              <Save size={15} /> {saving ? 'Salvando...' : 'Salvar'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -404,26 +430,32 @@ const ReportBuilderView: React.FC = () => {
             width={width}
             layout={layout}
             gridConfig={{ cols: 12, rowHeight: 36, margin: [12, 12], containerPadding: null, maxRows: Infinity }}
+            dragConfig={{ enabled: canEdit }}
+            resizeConfig={{ enabled: canEdit }}
             onLayoutChange={handleLayoutChange}
           >
             {widgets.map(w => (
               <div key={w.id} className="ds-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-                <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, zIndex: 2 }}>
-                  <button type="button" onClick={() => setEditingWidget(w)}
-                    style={{ background: 'var(--bg-muted)', border: 'none', borderRadius: 6, width: 22, height: 22, cursor: 'pointer', color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Settings2 size={11} />
-                  </button>
-                  <button type="button" onClick={() => handleRemoveWidget(w.id)}
-                    style={{ background: 'var(--bg-muted)', border: 'none', borderRadius: 6, width: 22, height: 22, cursor: 'pointer', color: 'var(--red-500)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Trash2 size={11} />
-                  </button>
-                </div>
-                <WidgetRenderer widget={w} />
+                {canEdit && (
+                  <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 2, zIndex: 2 }}>
+                    <button type="button" onClick={() => setEditingWidget(w)}
+                      style={{ background: 'var(--bg-muted)', border: 'none', borderRadius: 6, width: 22, height: 22, cursor: 'pointer', color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Settings2 size={11} />
+                    </button>
+                    <button type="button" onClick={() => handleRemoveWidget(w.id)}
+                      style={{ background: 'var(--bg-muted)', border: 'none', borderRadius: 6, width: 22, height: 22, cursor: 'pointer', color: 'var(--red-500)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+                )}
+                <WidgetRenderer widget={w} onDrillDown={setDrillDown} />
               </div>
             ))}
           </GridLayout>
         )}
       </div>
+
+      <ReportDrillDownModal params={drillDown} onClose={() => setDrillDown(null)} />
     </div>
   );
 };

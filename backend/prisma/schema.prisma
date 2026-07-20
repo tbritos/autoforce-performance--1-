@@ -1256,12 +1256,22 @@ model Report {
 
   createdBy String?
 
+  // true (padrão) = visível pra todo o time, igual todo o resto do app hoje.
+  // false = só o dono (createdBy) ou um admin pode ver/editar/apagar.
+  isPublic Boolean @default(true)
+
+  // Favorito global (não por usuário) — mesmo conceito de UTMLink.isFavorite.
+  isFavorite Boolean @default(false)
+
   widgets ReportWidget[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([createdAt])
+  @@index([createdBy])
+  @@index([isPublic])
+  @@index([isFavorite])
 }
 
 enum ReportWidgetType {

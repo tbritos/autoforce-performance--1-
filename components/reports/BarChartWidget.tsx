@@ -1,11 +1,12 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { ReportWidget } from '../../types';
-import { useMetricQuery, formatCompactNumber, formatTooltipValue } from './useMetricQuery';
+import { DrillDownClickParams, ReportWidget } from '../../types';
+import { useMetricQuery, useDrillDownTrigger, formatCompactNumber, formatTooltipValue } from './useMetricQuery';
 import { WidgetFrame } from './WidgetFrame';
 
-export const BarChartWidget: React.FC<{ widget: ReportWidget }> = ({ widget }) => {
+export const BarChartWidget: React.FC<{ widget: ReportWidget; onDrillDown?: (params: DrillDownClickParams) => void }> = ({ widget, onDrillDown }) => {
   const { data, loading, error } = useMetricQuery(widget);
+  const { enabled, trigger } = useDrillDownTrigger(widget, onDrillDown);
   const rows = data?.rows ?? [];
 
   return (
@@ -20,7 +21,11 @@ export const BarChartWidget: React.FC<{ widget: ReportWidget }> = ({ widget }) =
             contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
             cursor={{ fill: 'var(--bg-hover)' }}
           />
-          <Bar dataKey="value" fill="#3754E2" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+          <Bar
+            dataKey="value" fill="#3754E2" radius={[4, 4, 0, 0]} isAnimationActive={false}
+            cursor={enabled ? 'pointer' : 'default'}
+            onClick={enabled ? (_data, index) => trigger(rows[index]?.dimension ?? null) : undefined}
+          />
         </BarChart>
       </ResponsiveContainer>
     </WidgetFrame>

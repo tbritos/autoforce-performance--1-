@@ -1,11 +1,12 @@
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { ReportWidget } from '../../types';
-import { useMetricQuery, formatCompactNumber, formatTooltipValue } from './useMetricQuery';
+import { DrillDownClickParams, ReportWidget } from '../../types';
+import { useMetricQuery, useDrillDownTrigger, formatCompactNumber, formatTooltipValue } from './useMetricQuery';
 import { WidgetFrame } from './WidgetFrame';
 
-export const LineChartWidget: React.FC<{ widget: ReportWidget }> = ({ widget }) => {
+export const LineChartWidget: React.FC<{ widget: ReportWidget; onDrillDown?: (params: DrillDownClickParams) => void }> = ({ widget, onDrillDown }) => {
   const { data, loading, error } = useMetricQuery(widget);
+  const { enabled, trigger } = useDrillDownTrigger(widget, onDrillDown);
   const rows = data?.rows ?? [];
 
   return (
@@ -19,7 +20,16 @@ export const LineChartWidget: React.FC<{ widget: ReportWidget }> = ({ widget }) 
             formatter={formatTooltipValue}
             contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
           />
-          <Line type="monotone" dataKey="value" stroke="#3754E2" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
+          <Line
+            type="monotone" dataKey="value" stroke="#3754E2" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false}
+            activeDot={(props: any) => (
+              <circle
+                cx={props.cx} cy={props.cy} r={5} fill="#3754E2" stroke="var(--bg-surface)" strokeWidth={2}
+                style={{ cursor: enabled ? 'pointer' : 'default' }}
+                onClick={enabled ? () => trigger(props.payload?.dimension ?? null) : undefined}
+              />
+            )}
+          />
         </LineChart>
       </ResponsiveContainer>
     </WidgetFrame>

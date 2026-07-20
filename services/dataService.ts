@@ -1,4 +1,4 @@
-import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, EmailSent, EmailReceived, EmailStats, MetaCampaign, GoogleAdsCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, LeadConversion, WebhookLead, PlatformConnection, ConnectionRequirement, Lead, LeadListResult, LeadProfile, LeadCustomFieldDef, FunnelCounts, LeadStatus, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction, AutomationJourney, AutomationJourneyNode, AutomationJourneyEdge, AutomationJourneyStatus, ExitConditions, AIAgent, AIKnowledgeItem, AIInteractionLog, AIConversationMemory, UTMLink, UTMLinkListResult, UTMTemplate, UTMCampaignPicker, UTMDestination, FunnelDef, FunnelStats, CumulativeStageKey, FunnelStageLeadsResult, WhatsAppTemplate, PipedriveStage, Report, ReportSummary, ReportWidget, ReportLayoutItem, MetricDef, MetricQueryResult } from '../types';
+import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, EmailSent, EmailReceived, EmailStats, MetaCampaign, GoogleAdsCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, LeadConversion, WebhookLead, PlatformConnection, ConnectionRequirement, Lead, LeadListResult, LeadProfile, LeadCustomFieldDef, FunnelCounts, LeadStatus, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction, AutomationJourney, AutomationJourneyNode, AutomationJourneyEdge, AutomationJourneyStatus, ExitConditions, AIAgent, AIKnowledgeItem, AIInteractionLog, AIConversationMemory, UTMLink, UTMLinkListResult, UTMTemplate, UTMCampaignPicker, UTMDestination, FunnelDef, FunnelStats, CumulativeStageKey, FunnelStageLeadsResult, WhatsAppTemplate, PipedriveStage, Report, ReportSummary, ReportWidget, ReportLayoutItem, MetricDef, MetricQueryResult, DrillDownClickParams, DrillDownResult } from '../types';
 import { apiClient } from './apiClient';
 
 // ============================================================================
@@ -1665,6 +1665,14 @@ export const DataService = {
     await apiClient.delete(`/reports/${id}`);
   },
 
+  toggleReportFavorite: async (id: string): Promise<{ isFavorite: boolean }> => {
+    return apiClient.patch<{ isFavorite: boolean }>(`/reports/${id}/favorite`, {});
+  },
+
+  updateReportPrivacy: async (id: string, isPublic: boolean): Promise<{ isPublic: boolean }> => {
+    return apiClient.patch<{ isPublic: boolean }>(`/reports/${id}/privacy`, { isPublic });
+  },
+
   getReportMetrics: async (): Promise<MetricDef[]> => {
     return apiClient.get<MetricDef[]>('/reports/metrics');
   },
@@ -1678,6 +1686,10 @@ export const DataService = {
     datePreset?: string | null;
   }): Promise<MetricQueryResult> => {
     return apiClient.post<MetricQueryResult>('/reports/query-metric', params);
+  },
+
+  drillDownReportMetric: async (params: DrillDownClickParams & { page: number; pageSize?: number }): Promise<DrillDownResult> => {
+    return apiClient.post<DrillDownResult>('/reports/drill-down', params);
   },
 };
 

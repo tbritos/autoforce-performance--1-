@@ -1,10 +1,11 @@
 import React from 'react';
-import { ReportWidget } from '../../types';
-import { useMetricQuery } from './useMetricQuery';
+import { DrillDownClickParams, ReportWidget } from '../../types';
+import { useMetricQuery, useDrillDownTrigger } from './useMetricQuery';
 import { WidgetFrame } from './WidgetFrame';
 
-export const TableWidget: React.FC<{ widget: ReportWidget }> = ({ widget }) => {
+export const TableWidget: React.FC<{ widget: ReportWidget; onDrillDown?: (params: DrillDownClickParams) => void }> = ({ widget, onDrillDown }) => {
   const { data, loading, error } = useMetricQuery(widget);
+  const { enabled, trigger } = useDrillDownTrigger(widget, onDrillDown);
   const rows = data?.rows ?? [];
 
   return (
@@ -18,7 +19,10 @@ export const TableWidget: React.FC<{ widget: ReportWidget }> = ({ widget }) => {
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={r.dimension} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)' }}>
+            <tr
+              key={r.dimension}
+              onClick={enabled ? () => trigger(r.dimension) : undefined}
+              style={{ background: i % 2 === 0 ? 'transparent' : 'var(--bg-subtle)', cursor: enabled ? 'pointer' : 'default' }}>
               <td style={{ padding: '4px 6px', color: 'var(--fg-primary)' }}>{r.dimension}</td>
               <td style={{ padding: '4px 6px', textAlign: 'right', color: 'var(--fg-secondary)', fontVariantNumeric: 'tabular-nums' }}>
                 {new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(r.value)}

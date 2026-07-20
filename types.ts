@@ -300,6 +300,31 @@ export interface MetricQueryResult {
   rows: Array<{ dimension: string; value: number }>;
 }
 
+export type DrillDownEntity = 'lead' | 'revenue_entry' | 'campaign_metric' | 'email_campaign' | null;
+
+export interface DrillDownResult {
+  supported: boolean;
+  reason?: string;
+  entity: DrillDownEntity;
+  total: number;
+  page: number;
+  pageSize: number;
+  rows: Array<Record<string, unknown>>;
+}
+
+// Parâmetros pra abrir o modal de drill-down a partir de um clique num
+// widget — dimension null/undefined = clique no total (card de KPI).
+export interface DrillDownClickParams {
+  metricKey: string;
+  groupBy: string | null;
+  dimension: string | null;
+  filters: Record<string, string> | null;
+  dateFrom: string | null;
+  dateTo: string | null;
+  datePreset: string | null;
+  title: string;
+}
+
 export interface ReportWidget {
   id: string;
   reportId?: string;
@@ -328,6 +353,10 @@ export interface Report {
   description: string | null;
   layout: ReportLayoutItem[];
   createdBy: string | null;
+  isPublic: boolean;
+  isFavorite: boolean;
+  isOwner: boolean;
+  canEdit: boolean;
   createdAt: string;
   updatedAt: string;
   widgets: ReportWidget[];
@@ -338,6 +367,10 @@ export interface ReportSummary {
   name: string;
   description: string | null;
   createdBy: string | null;
+  isPublic: boolean;
+  isFavorite: boolean;
+  isOwner: boolean;
+  canEdit: boolean;
   createdAt: string;
   updatedAt: string;
   _count: { widgets: number };
