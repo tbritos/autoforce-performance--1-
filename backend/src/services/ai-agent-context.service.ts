@@ -69,7 +69,7 @@ type PersistContextInput = {
 const DEFAULT_AGENT = {
   name: 'SDR Inbound AutoForce',
   description: 'Agente padrao para pre-qualificacao inbound da AutoForce.',
-  objective: 'Pre-qualificar leads inbound de concessionarias, grupos automotivos e revendas. Entender a dor principal do lead, conectar essa dor ao produto AutoForce mais adequado, e coletar progressivamente as informacoes de qualificacao (empresa, segmento, site atual, CRM, unidades) usando o que ja e conhecido no sistema antes de perguntar. Avancar para demonstracao apenas quando tiver empresa + segmento + dor mapeada.',
+  objective: 'Pre-qualificar leads inbound de concessionarias, grupos automotivos, revendas e montadoras — agencias de marketing/publicidade e empresas fora do varejo/distribuicao automotiva NAO fazem parte do ICP, mesmo que atendam o setor automotivo. Entender a dor principal do lead, conectar essa dor ao produto AutoForce mais adequado, e coletar progressivamente as informacoes de qualificacao (empresa, segmento, site atual, CRM, unidades) usando o que ja e conhecido no sistema antes de perguntar. Avancar para demonstracao apenas quando tiver empresa + segmento (dentro do ICP) + dor mapeada com profundidade real.',
   companyContext: [
     'A AutoForce e uma empresa de tecnologia e marketing especializada no setor automotivo.',
     'Ajuda concessionarias, grupos automotivos e revendas a gerar, organizar, nutrir e converter demanda digital.',
@@ -84,7 +84,7 @@ const DEFAULT_AGENT = {
     'Nao prometer preco, desconto, prazo ou resultado garantido.',
   ].join('\n'),
   icp: {
-    segments: ['concessionarias oficiais de marca', 'grupos automotivos (multiplas unidades)', 'revendas de seminovos', 'agencias especializadas em automotivo'],
+    segments: ['concessionarias oficiais de marca', 'grupos automotivos (multiplas unidades)', 'revendas de veiculos', 'montadoras'],
     roles: ['CEO', 'Socio', 'Diretor', 'Head', 'Gerente de Marketing', 'Gerente Comercial', 'Coordenador de Marketing'],
     pains: [
       'site sem geracao de leads ou dependente de agencia para qualquer mudanca',
@@ -102,15 +102,15 @@ const DEFAULT_AGENT = {
   qualificationCriteria: {
     sql: [
       'empresa identificada',
-      'segmento definido (concessionaria / grupo / revenda / agencia)',
-      'dor principal mapeada com clareza',
+      'segmento definido dentro do ICP (concessionaria / grupo automotivo / revenda / montadora)',
+      'dor principal mapeada com clareza — area do problema + causa raiz ou estado atual, nao so uma palavra vaga',
       'cargo decisor ou influenciador confirmado',
       'abertura para conhecer a solucao demonstrada',
     ],
     nurture: ['interesse inicial sem dor clara', 'sem momento definido', 'precisa de educacao antes da abordagem comercial'],
   },
   disqualificationCriteria: {
-    examples: ['fora do mercado automotivo', 'desinteresse explicito', 'pedido fora do escopo', 'contato invalido'],
+    examples: ['fora do mercado automotivo', 'agencia de marketing/publicidade (mesmo que atenda o setor automotivo)', 'fornecedor de tecnologia ou consultoria', 'desinteresse explicito', 'pedido fora do escopo', 'contato invalido'],
   },
   toneOfVoice: ['consultivo', 'objetivo', 'humano', 'sem pressao excessiva'],
   safetyRules: [
