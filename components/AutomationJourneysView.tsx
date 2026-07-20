@@ -3,18 +3,11 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Activity,
-  Bot,
   Check,
   ChevronDown,
   ChevronLeft,
-  Clock,
-  Database,
-  GitBranch,
-  Mail,
   MailOpen,
-  MessageCircle,
   MoreHorizontal,
-  MousePointer2,
   Pencil,
   Play,
   Plus,
@@ -51,9 +44,9 @@ import {
   WhatsAppNumberEntry,
   PipedriveStage,
 } from '../types';
-
-const NODE_W = 230;
-const NODE_H = 88;
+import { JourneyCanvas } from './automation/JourneyCanvas';
+import { BLOCKS, blockMeta, nodeSubtitle } from './automation/journey-blocks';
+import type { Connection } from '@xyflow/react';
 
 // ─── Send Email Panel (component to avoid hooks-in-conditional error) ─────────
 
@@ -145,25 +138,7 @@ const SendEmailPanel: React.FC<{
   );
 };
 
-const BLOCKS: Array<{
-  type: AutomationNodeType;
-  label: string;
-  description: string;
-  color: string;
-  icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
-}> = [
-  { type: 'trigger',          label: 'Entrada',      description: 'Lead entrou, tag aplicada ou webhook recebido',  color: '#456CEC', icon: Zap },
-  { type: 'condition',        label: 'Condição',     description: 'Cargo, tag, score, dor, origem ou campo',        color: '#22C55E', icon: GitBranch },
-  { type: 'wait',             label: 'Esperar',      description: 'Aguardar horas ou dias antes do próximo passo',  color: '#F59E0B', icon: Clock },
-  { type: 'whatsapp_wait_reply', label: 'Esperar resposta', description: 'Aguardar resposta do lead no WhatsApp',    color: '#10B981', icon: MessageCircle },
-  { type: 'email_wait_event',  label: 'Evento de email', description: 'Aguardar abertura, clique ou resposta do email', color: '#3B82F6', icon: MailOpen },
-  { type: 'ai_prequalify',     label: 'IA',           description: 'Pre-qualificar conversa e atualizar o lead',      color: '#6366F1', icon: Bot },
-  { type: 'internal_action',  label: 'Ação interna', description: 'Adicionar tag, score, etapa ou campo',           color: '#14B8A6', icon: Tags },
-  { type: 'rd_conversion',    label: 'RD Station',   description: 'Criar conversão para entrar em fluxo de e-mail', color: '#8B5CF6', icon: Mail },
-  { type: 'whatsapp_message', label: 'WhatsApp',     description: 'Enviar template ou mensagem da cadência',        color: '#10B981', icon: MessageCircle },
-  { type: 'pipedrive_action', label: 'Pipedrive',    description: 'Criar ou atualizar negócio comercial',           color: '#EF4444', icon: Database },
-  { type: 'send_email',      label: 'Enviar Email', description: 'Enviar email via Resend com template personalizado', color: '#3B82F6', icon: Mail },
-];
+// BLOCKS, blockMeta, nodeSubtitle — ver components/automation/journey-blocks.ts
 
 const LEAD_STATUS_OPTIONS = [
   { value: 'LEAD',         label: 'Lead' },
@@ -222,71 +197,6 @@ const defaultNodes = (): AutomationJourneyNode[] => [
 
 const defaultEdges = (): AutomationJourneyEdge[] => [];
 
-const blockMeta = (type: AutomationNodeType) => BLOCKS.find(block => block.type === type) ?? BLOCKS[0];
-
-function nodeSubtitle(node: AutomationJourneyNode): { text: string; warn: boolean } {
-  const c = (node.config ?? {}) as Record<string, string>;
-  switch (node.type) {
-    case 'trigger': {
-      if (!c.event) return { text: '⚠ Configure o gatilho', warn: true };
-      const labels: Record<string, string> = {
-        lead_created:   'Lead entrou na base',
-        conversion_received: c.eventValue ? `Conversão: ${c.eventValue}` : 'Conversão específica',
-        tag_added:      c.eventValue ? `Tag: ${c.eventValue}` : 'Tag aplicada',
-        score_reached:  c.eventValue ? `Score ≥ ${c.eventValue}` : 'Score atingiu limite',
-        status_changed: c.eventValue ? `Etapa → ${c.eventValue}` : 'Etapa mudou',
-        email_received: c.eventValue ? `Email recebido: ${c.eventValue}` : 'Email recebido',
-        segment_entered: 'Entrou em segmento',
-      };
-      return { text: labels[c.event] ?? c.event, warn: false };
-    }
-    case 'wait':
-      if (c.amount && c.unit) return { text: `Aguardar ${c.amount} ${c.unit}`, warn: false };
-      return { text: 'Definir tempo...', warn: false };
-    case 'whatsapp_wait_reply':
-      if (c.amount && c.unit) return { text: `Resposta por até ${c.amount} ${c.unit}`, warn: false };
-      return { text: 'Definir prazo de resposta...', warn: false };
-    case 'email_wait_event': {
-      const eventLabel = c.waitForEvent === 'received' || c.waitForEvent === 'reply'
-        ? 'resposta'
-        : c.waitForEvent === 'clicked' ? 'clique' : 'abertura';
-      if (c.timeoutAmount && c.timeoutUnit) return { text: `${eventLabel} por até ${c.timeoutAmount} ${c.timeoutUnit}`, warn: false };
-      return { text: 'Definir condição de email...', warn: false };
-    }
-    case 'ai_prequalify':
-      return { text: c.goal || 'Analisar conversa e qualificar lead', warn: false };
-    case 'condition':
-      if (c.field && c.value) return { text: `${c.field} ${c.operator ?? ''} ${c.value}`.trim(), warn: false };
-      return { text: 'Definir condição...', warn: false };
-    case 'internal_action': {
-      const labels: Record<string, string> = {
-        add_tag:    c.value ? `+tag: ${c.value}` : 'Adicionar tag',
-        remove_tag: c.value ? `-tag: ${c.value}` : 'Remover tag',
-        set_status: c.value ? `Etapa: ${c.value}` : 'Mudar etapa',
-        add_score:  c.value ? `+${c.value} pts` : 'Adicionar score',
-        set_score:  c.value ? `Score: ${c.value}` : 'Definir score',
-      };
-      return { text: c.action ? (labels[c.action] ?? c.action) : 'Definir ação...', warn: false };
-    }
-    case 'rd_conversion':
-      return { text: c.conversionName || c.conversionIdentifier || 'Configurar conversão...', warn: false };
-    case 'whatsapp_message':
-      return { text: c.templateName || 'Selecionar template...', warn: false };
-    case 'send_email':
-      return { text: c.templateName ? String(c.templateName) : (c.subject ? String(c.subject) : 'Configurar email...'), warn: false };
-    case 'pipedrive_action': {
-      const labels: Record<string, string> = {
-        create_deal:  c.pipeline ? `Criar · ${c.pipeline === 'novo_cliente' ? 'Novo Cliente' : 'Upsell'}` : 'Criar negócio',
-        update_stage: 'Mudar estágio',
-        mark_won:     'Marcar como ganho',
-        mark_lost:    'Marcar como perdido',
-      };
-      return { text: c.action ? (labels[c.action] ?? c.action) : 'Definir ação...', warn: false };
-    }
-    default:
-      return { text: blockMeta(node.type).label, warn: false };
-  }
-}
 
 const statusLabel: Record<AutomationJourneyStatus, string> = {
   DRAFT: 'Rascunho',
@@ -1285,7 +1195,6 @@ const ExecutionsDrawer: React.FC<{
 // ─────────────────────────────────────────────────────────────────────────────
 
 const AutomationJourneysView: React.FC = () => {
-  const canvasRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { id: routeId } = useParams<{ id: string }>();
 
@@ -1297,12 +1206,6 @@ const AutomationJourneysView: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AutomationJourneyStatus>('all');
   const [sortOrder, setSortOrder] = useState<'recent' | 'name' | 'executions'>('recent');
-  type ConnectionHandle = 'default' | 'true' | 'false' | 'replied' | 'no_reply' | 'failed' | 'event' | 'timeout';
-  const [connectFrom, setConnectFrom] = useState<{ nodeId: string; handle: ConnectionHandle } | null>(null);
-  const [dragNodeId, setDragNodeId] = useState<string | null>(null);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const panRef = useRef<{ startX: number; startY: number; scrollLeft: number; scrollTop: number } | null>(null);
-  const [isPanning, setIsPanning] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [panelValues, setPanelValues] = useState<{ label: string; config: Record<string, string> } | null>(null);
   const [modalNodeId, setModalNodeId] = useState<string | null>(null);
@@ -1386,14 +1289,12 @@ const AutomationJourneysView: React.FC = () => {
     if (routeId === 'new') {
       setSelected(emptyDraft());
       setSelectedNodeId(null);
-      setConnectFrom(null);
       return;
     }
     const found = journeys.find(j => j.id === routeId);
     if (found) {
       setSelected(found);
       setSelectedNodeId(null);
-      setConnectFrom(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId, journeys]);
@@ -1532,108 +1433,44 @@ const AutomationJourneysView: React.FC = () => {
       edges: selected.edges.filter(edge => edge.source !== id && edge.target !== id),
     });
     if (selectedNodeId === id) setSelectedNodeId(null);
-    if (connectFrom?.nodeId === id) setConnectFrom(null);
   };
 
-  const connectNode = (targetId: string, sourceHandle: ConnectionHandle = 'default', viaHandleButton = false) => {
-    if (!connectFrom) {
-      setConnectFrom({ nodeId: targetId, handle: sourceHandle });
-      return;
-    }
-    // Re-clicking the exact same output handle cancels (lets the user back out of a
-    // connection they just started). Clicking anywhere else on that same node — its body,
-    // or the generic "Conectar" button — completes a self-loop instead, e.g. "Esperar
-    // resposta" looping back into itself while it keeps watching for replies.
-    if (connectFrom.nodeId === targetId && viaHandleButton && connectFrom.handle === sourceHandle) {
-      setConnectFrom(null);
-      return;
-    }
+  // Cria uma edge a partir do onConnect nativo do React Flow (arrastar de um
+  // handle até outro). Mesma regra de sempre: só uma edge por output handle
+  // (conectar de novo no mesmo output substitui a edge anterior).
+  const handleConnect = (connection: Connection) => {
+    const sourceHandle = connection.sourceHandle ?? 'default';
+    if (!connection.source || !connection.target) return;
     const exists = selected.edges.some(edge =>
-      edge.source === connectFrom.nodeId &&
-      edge.target === targetId &&
-      (edge.sourceHandle ?? 'default') === connectFrom.handle
+      edge.source === connection.source &&
+      edge.target === connection.target &&
+      (edge.sourceHandle ?? 'default') === sourceHandle
     );
-    if (!exists) {
-      const withoutSameOutput = selected.edges.filter(edge =>
-        !(edge.source === connectFrom.nodeId && (edge.sourceHandle ?? 'default') === connectFrom.handle)
-      );
-      updateSelected({
-        edges: [
-          ...withoutSameOutput,
-          {
-            id: `edge-${Date.now()}`,
-            source: connectFrom.nodeId,
-            target: targetId,
-            sourceHandle: connectFrom.handle,
-          },
-        ],
-      });
-    }
-    setConnectFrom(null);
+    if (exists) return;
+    const withoutSameOutput = selected.edges.filter(edge =>
+      !(edge.source === connection.source && (edge.sourceHandle ?? 'default') === sourceHandle)
+    );
+    updateSelected({
+      edges: [
+        ...withoutSameOutput,
+        {
+          id: `edge-${Date.now()}`,
+          source: connection.source,
+          target: connection.target,
+          sourceHandle,
+        },
+      ],
+    });
   };
 
   const removeEdge = (id: string) => {
     updateSelected({ edges: selected.edges.filter(edge => edge.id !== id) });
   };
 
-  const canvasPoint = (event: React.DragEvent | React.MouseEvent) => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return { x: 120, y: 120 };
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
-  };
-
-  const onDropBlock = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const type = event.dataTransfer.getData('application/x-automation-node') as AutomationNodeType;
-    if (!type) return;
+  const handleDropBlock = (type: AutomationNodeType, x: number, y: number) => {
     // Trigger is mandatory and unique — block adding a second one
     if (type === 'trigger' && selected.nodes.some(n => n.type === 'trigger')) return;
-    const point = canvasPoint(event);
-    addNode(type, Math.max(20, point.x - NODE_W / 2), Math.max(20, point.y - 30));
-  };
-
-  const startMoveNode = (event: React.MouseEvent, node: AutomationJourneyNode) => {
-    event.stopPropagation();
-    const point = canvasPoint(event);
-    setDragNodeId(node.id);
-    setDragOffset({ x: point.x - node.x, y: point.y - node.y });
-    setSelectedNodeId(node.id);
-  };
-
-  const startPan = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    panRef.current = {
-      startX: event.clientX,
-      startY: event.clientY,
-      scrollLeft: canvasRef.current?.scrollLeft ?? 0,
-      scrollTop: canvasRef.current?.scrollTop ?? 0,
-    };
-    setIsPanning(true);
-    setSelectedNodeId(null);
-  };
-
-  const moveNode = (event: React.MouseEvent<HTMLDivElement>) => {
-    // Pan canvas
-    if (panRef.current && !dragNodeId && canvasRef.current) {
-      const dx = event.clientX - panRef.current.startX;
-      const dy = event.clientY - panRef.current.startY;
-      canvasRef.current.scrollLeft = panRef.current.scrollLeft - dx;
-      canvasRef.current.scrollTop  = panRef.current.scrollTop  - dy;
-      return;
-    }
-    // Move node
-    if (!dragNodeId) return;
-    const point = canvasPoint(event);
-    updateNode(dragNodeId, {
-      x: Math.max(12, point.x - dragOffset.x),
-      y: Math.max(12, point.y - dragOffset.y),
-    });
-  };
-
-  const stopDrag = () => {
-    panRef.current = null;
-    setIsPanning(false);
-    setDragNodeId(null);
+    addNode(type, x, y);
   };
 
   // ── Panel field helpers ──────────────────────────────────────────────────────
@@ -2123,280 +1960,22 @@ const AutomationJourneysView: React.FC = () => {
         {/* Canvas + panel wrapper */}
         <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
 
-        {/* Canvas */}
-        <div
-          ref={canvasRef}
-          onDrop={onDropBlock}
-          onDragOver={event => event.preventDefault()}
-          onMouseDown={startPan}
-          onMouseMove={moveNode}
-          onMouseUp={stopDrag}
-          onMouseLeave={stopDrag}
-          onClick={() => setSelectedNodeId(null)}
-          style={{
-            position: 'absolute',
-            inset: 0,
-            overflow: 'auto',
-            cursor: dragNodeId ? 'default' : isPanning ? 'grabbing' : 'grab',
-            background:
-              'linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)',
-            backgroundSize: '28px 28px',
-            backgroundColor: 'var(--bg-app)',
-          }}
-        >
-          <svg style={{ position: 'absolute', inset: 0, width: 1800, height: 1200, pointerEvents: 'none', overflow: 'visible' }}>
-            {selected.edges.map(edge => {
-              const source = selected.nodes.find(node => node.id === edge.source);
-              const target = selected.nodes.find(node => node.id === edge.target);
-              if (!source || !target) return null;
-              const x1 = source.x + NODE_W;
-              const y1 = source.y + (
-                source.type === 'condition' && edge.sourceHandle === 'true' ? NODE_H - 30 :
-                source.type === 'condition' && edge.sourceHandle === 'false' ? NODE_H - 12 :
-                source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'replied' ? NODE_H - 42 :
-                source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'no_reply' ? NODE_H - 25 :
-                source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'failed' ? NODE_H - 8 :
-                source.type === 'email_wait_event' && edge.sourceHandle === 'event' ? NODE_H - 30 :
-                source.type === 'email_wait_event' && edge.sourceHandle === 'timeout' ? NODE_H - 12 :
-                NODE_H / 2
-              );
-              const x2 = target.x;
-              const y2 = target.y + NODE_H / 2;
-              const mid = Math.max(70, Math.abs(x2 - x1) / 2);
-              const edgeColor =
-                edge.sourceHandle === 'true' ? 'var(--green-500)' :
-                edge.sourceHandle === 'false' ? 'var(--red-500)' :
-                edge.sourceHandle === 'replied' ? 'var(--green-500)' :
-                edge.sourceHandle === 'no_reply' ? '#F59E0B' :
-                edge.sourceHandle === 'failed' ? 'var(--red-500)' :
-                edge.sourceHandle === 'event' ? 'var(--green-500)' :
-                edge.sourceHandle === 'timeout' ? '#F59E0B' :
-                'var(--accent)';
-              const label =
-                edge.sourceHandle === 'true' ? 'Verdadeiro' :
-                edge.sourceHandle === 'false' ? 'Falso' :
-                edge.sourceHandle === 'replied' ? 'Respondeu' :
-                edge.sourceHandle === 'no_reply' ? 'Não respondeu' :
-                edge.sourceHandle === 'failed' ? 'Falhou' :
-                edge.sourceHandle === 'event' ? (source.config?.waitForEvent === 'received' || source.config?.waitForEvent === 'reply' ? 'Respondeu' : 'Abriu/Clicou') :
-                edge.sourceHandle === 'timeout' ? (source.config?.waitForEvent === 'received' || source.config?.waitForEvent === 'reply' ? 'Não respondeu' : 'Não abriu') :
-                '';
-              return (
-                <g key={edge.id}>
-                  <path
-                    d={`M ${x1} ${y1} C ${x1 + mid} ${y1}, ${x2 - mid} ${y2}, ${x2} ${y2}`}
-                    fill="none"
-                    stroke={edgeColor}
-                    strokeWidth="2"
-                    markerEnd={`url(#arrow-${
-                      edge.sourceHandle === 'true' || edge.sourceHandle === 'replied' || edge.sourceHandle === 'event' ? 'true' :
-                      edge.sourceHandle === 'false' || edge.sourceHandle === 'failed' ? 'false' :
-                      edge.sourceHandle === 'no_reply' || edge.sourceHandle === 'timeout' ? 'warning' : 'default'
-                    })`}
-                  />
-                  {label && (
-                    <text
-                      x={(x1 + x2) / 2}
-                      y={(y1 + y2) / 2 - 8}
-                      textAnchor="middle"
-                      style={{ fontSize: 10, fontWeight: 800, fill: edgeColor, paintOrder: 'stroke', stroke: 'var(--bg-app)', strokeWidth: 4 }}
-                    >
-                      {label}
-                    </text>
-                  )}
-                </g>
-              );
-            })}
-            <defs>
-              <marker id="arrow-default" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-                <path d="M0,0 L0,6 L8,3 z" fill="var(--accent)" />
-              </marker>
-              <marker id="arrow-true" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-                <path d="M0,0 L0,6 L8,3 z" fill="var(--green-500)" />
-              </marker>
-              <marker id="arrow-false" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-                <path d="M0,0 L0,6 L8,3 z" fill="var(--red-500)" />
-              </marker>
-              <marker id="arrow-warning" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-                <path d="M0,0 L0,6 L8,3 z" fill="#F59E0B" />
-              </marker>
-            </defs>
-          </svg>
+        <JourneyCanvas
+          nodes={selected.nodes}
+          edges={selected.edges}
+          selectedNodeId={selectedNodeId}
+          onSelectNode={setSelectedNodeId}
+          onNodePositionChange={(id, x, y) => updateNode(id, { x, y })}
+          onConnect={handleConnect}
+          onRemoveEdge={removeEdge}
+          onOpenNodeModal={setModalNodeId}
+          onDropBlock={handleDropBlock}
+        />
 
-          {selected.edges.map(edge => {
-            const source = selected.nodes.find(node => node.id === edge.source);
-            const target = selected.nodes.find(node => node.id === edge.target);
-            if (!source || !target) return null;
-            const sourceY = source.y + (
-              source.type === 'condition' && edge.sourceHandle === 'true' ? NODE_H - 30 :
-              source.type === 'condition' && edge.sourceHandle === 'false' ? NODE_H - 12 :
-              source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'replied' ? NODE_H - 42 :
-              source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'no_reply' ? NODE_H - 25 :
-              source.type === 'whatsapp_wait_reply' && edge.sourceHandle === 'failed' ? NODE_H - 8 :
-              source.type === 'email_wait_event' && edge.sourceHandle === 'event' ? NODE_H - 30 :
-              source.type === 'email_wait_event' && edge.sourceHandle === 'timeout' ? NODE_H - 12 :
-              NODE_H / 2
-            );
-            return (
-              <button
-                key={`btn-${edge.id}`}
-                type="button"
-                onClick={event => { event.stopPropagation(); removeEdge(edge.id); }}
-                title="Remover conexao"
-                style={{
-                  position: 'absolute',
-                  left: (source.x + target.x + NODE_W) / 2,
-                  top: (sourceY + target.y + NODE_H / 2) / 2 - 12,
-                  width: 22,
-                  height: 22,
-                  borderRadius: 999,
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg-surface)',
-                  color: 'var(--fg-muted)',
-                  display: 'grid',
-                  placeItems: 'center',
-                  cursor: 'pointer',
-                  zIndex: 4,
-                }}
-              >
-                <X size={12} />
-              </button>
-            );
-          })}
-
-          {selected.nodes.map(node => {
-            const meta = blockMeta(node.type);
-            const Icon = meta.icon;
-            const active = selectedNodeId === node.id;
-            const connecting = connectFrom?.nodeId === node.id;
-            const conditionOutputs = node.type === 'condition';
-            const whatsAppReplyOutputs = node.type === 'whatsapp_wait_reply';
-            const emailWaitOutputs = node.type === 'email_wait_event';
-            return (
-              <div
-                key={node.id}
-                onMouseDown={event => startMoveNode(event, node)}
-                onClick={event => {
-                  event.stopPropagation();
-                  if (connectFrom) { connectNode(node.id); return; }
-                  setSelectedNodeId(node.id);
-                }}
-                onDoubleClick={event => { event.stopPropagation(); setModalNodeId(node.id); }}
-                style={{
-                  position: 'absolute',
-                  left: node.x,
-                  top: node.y,
-                  width: NODE_W,
-                  minHeight: NODE_H,
-                  border: `1.5px solid ${active || connecting ? meta.color : nodeSubtitle(node).warn ? '#F59E0B' : 'var(--border)'}`,
-                  borderRadius: 'var(--r-lg)',
-                  background: 'var(--bg-surface)',
-                  boxShadow: active ? `0 0 0 3px ${meta.color}22` : 'var(--shadow-sm)',
-                  padding: 12,
-                  cursor: dragNodeId === node.id ? 'grabbing' : 'grab',
-                  zIndex: active ? 8 : 5,
-                  transition: 'box-shadow .12s, border-color .12s',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                  <span style={{ position: 'relative', width: 32, height: 32, borderRadius: 9, display: 'grid', placeItems: 'center', background: `${meta.color}22`, color: meta.color, flexShrink: 0 }}>
-                    <Icon size={16} />
-                    {nodeSubtitle(node).warn && (
-                      <span style={{
-                        position: 'absolute', top: -3, right: -3,
-                        width: 10, height: 10, borderRadius: 999,
-                        background: '#F59E0B', border: '2px solid var(--bg-surface)',
-                      }} />
-                    )}
-                  </span>
-                  <div style={{ minWidth: 0 }}>
-                    <strong style={{ display: 'block', color: 'var(--fg-primary)', fontSize: 13, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{node.label}</strong>
-                    {(() => { const sub = nodeSubtitle(node); return (
-                      <span style={{ display: 'block', color: sub.warn ? '#F59E0B' : 'var(--fg-muted)', fontSize: 11, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {sub.text}
-                      </span>
-                    ); })()}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: (conditionOutputs || whatsAppReplyOutputs || emailWaitOutputs) ? 'stretch' : 'center', justifyContent: 'space-between', gap: 8, marginTop: 10 }}>
-                  {conditionOutputs || whatsAppReplyOutputs || emailWaitOutputs ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: conditionOutputs || emailWaitOutputs ? '1fr 1fr' : '1fr', gap: 6, width: '100%' }}>
-                      {(conditionOutputs ? [
-                        { handle: 'true' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Verdadeiro', color: 'var(--green-500)' },
-                        { handle: 'false' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Falso', color: 'var(--red-500)' },
-                      ] : emailWaitOutputs ? [
-                        { handle: 'event' as const, label: connectFrom && !connecting ? 'Ligar aqui' : (node.config?.waitForEvent === 'received' || node.config?.waitForEvent === 'reply' ? 'Respondeu' : 'Abriu/Clicou'), color: 'var(--green-500)' },
-                        { handle: 'timeout' as const, label: connectFrom && !connecting ? 'Ligar aqui' : (node.config?.waitForEvent === 'received' || node.config?.waitForEvent === 'reply' ? 'Não respondeu' : 'Não abriu'), color: '#F59E0B' },
-                      ] : [
-                        { handle: 'replied' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Respondeu', color: 'var(--green-500)' },
-                        { handle: 'no_reply' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Não respondeu', color: '#F59E0B' },
-                        { handle: 'failed' as const, label: connectFrom && !connecting ? 'Ligar aqui' : 'Falhou', color: 'var(--red-500)' },
-                      ]).map(output => {
-                        const activeHandle = connecting && connectFrom?.handle === output.handle;
-                        return (
-                          <button
-                            key={output.handle}
-                            type="button"
-                            onMouseDown={event => event.stopPropagation()}
-                            onClick={event => { event.stopPropagation(); connectNode(node.id, output.handle, true); }}
-                            style={{
-                              border: `1px solid ${activeHandle ? output.color : 'var(--border)'}`,
-                              borderRadius: 'var(--r-sm)',
-                              padding: '5px 7px',
-                              background: activeHandle ? `${output.color}22` : 'var(--bg-elevated)',
-                              color: activeHandle ? output.color : 'var(--fg-muted)',
-                              fontSize: 10,
-                              fontWeight: 800,
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {output.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onMouseDown={event => event.stopPropagation()}
-                      onClick={event => { event.stopPropagation(); connectNode(node.id, 'default', true); }}
-                      style={{
-                        border: '1px solid var(--border)',
-                        borderRadius: 'var(--r-sm)',
-                        padding: '5px 8px',
-                        background: connecting ? `${meta.color}22` : 'var(--bg-elevated)',
-                        color: connecting ? meta.color : 'var(--fg-muted)',
-                        fontSize: 11,
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      {connectFrom && !connecting ? 'Ligar aqui' : 'Conectar'}
-                    </button>
-                  )}
-                  {!conditionOutputs && !whatsAppReplyOutputs && !emailWaitOutputs && <MousePointer2 size={13} style={{ color: 'var(--fg-subtle)' }} />}
-                </div>
-              </div>
-            );
-          })}
-
-          {selected.nodes.length === 0 && (
-            <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'var(--fg-muted)', fontSize: 14 }}>
-              Arraste blocos da esquerda para montar a jornada.
-            </div>
-          )}
-
-        </div>
-
-        {/* Canvas footer — fora do div scrollável, fixo no wrapper */}
+        {/* Canvas footer */}
         <div style={{ position: 'absolute', bottom: 16, left: 16, display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: '6px 12px', fontSize: 12, color: 'var(--fg-muted)', pointerEvents: 'none', zIndex: 10 }}>
           <Search size={12} />
           {selected.nodes.length} blocos · {selected.edges.length} conexões
-        </div>
-        <div style={{ position: 'absolute', bottom: 16, right: 16, display: 'flex', flexDirection: 'column', gap: 4, zIndex: 10 }}>
-          <button type="button" style={{ width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--bg-surface)', color: 'var(--fg-muted)', cursor: 'default', display: 'grid', placeItems: 'center', fontSize: 16, lineHeight: 1 }}>+</button>
-          <button type="button" style={{ width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--bg-surface)', color: 'var(--fg-muted)', cursor: 'default', display: 'grid', placeItems: 'center', fontSize: 16, lineHeight: 1 }}>−</button>
         </div>
 
         {/* ── CONFIG MODAL (portal, centralizado) ─────────────────────────────── */}
