@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import {
   X, ArrowLeft, User, Mail, Phone, Building2,
@@ -422,6 +422,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
       if (cancelled) return;
       setProfile(p);
       setWhatsAppMessages(null);
+      setTemplates(null);
       setEmailsSent(null);
       setEmailsReceived(null);
       setPipedriveEvents(null);
@@ -505,13 +506,28 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
     }
   };
 
+  // Numero da Meta pelo qual esse lead conversa de verdade (numeros diferentes
+  // podem estar em WABAs diferentes, e templates nao sao compartilhados entre
+  // WABAs). Mesma regra que o backend usa pra decidir por onde enviar
+  // (resolveDefaultPhoneNumberIdForLead: ultima mensagem INBOUND desse lead) —
+  // resolvendo aqui tambem garante que o dropdown e o envio usam sempre o
+  // mesmo numero, em vez de cada chamada adivinhar por conta propria.
+  const lastInboundPhoneNumberId = useMemo(() => {
+    if (!whatsAppMessages) return undefined;
+    for (let i = whatsAppMessages.length - 1; i >= 0; i--) {
+      const m = whatsAppMessages[i];
+      if (m.direction === 'inbound' && m.phoneNumberId) return m.phoneNumberId;
+    }
+    return undefined;
+  }, [whatsAppMessages]);
+
   const openTemplateModal = async () => {
     setTemplateModalOpen(true);
     setTemplateError('');
     if (templates) return;
     setLoadingTemplates(true);
     try {
-      const list = await DataService.getWhatsAppTemplates();
+      const list = await DataService.getWhatsAppTemplates(lastInboundPhoneNumberId);
       setTemplates(list.filter(t => t.status === 'APPROVED'));
     } catch {
       setTemplateError('Não foi possível carregar os templates.');
@@ -540,7 +556,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
     setSendingTemplate(true);
     setTemplateError('');
     try {
-      await DataService.sendWhatsAppTemplate(profile.id, selectedTemplateName, templateVarValues);
+      await DataService.sendWhatsAppTemplate(profile.id, selectedTemplateName, templateVarValues, lastInboundPhoneNumberId);
       setTemplateModalOpen(false);
       setSelectedTemplateName('');
       setTemplateVarValues([]);
