@@ -1,5 +1,6 @@
 import { LeadStatus } from '@prisma/client';
 import type { AIAgentRuntimeContext } from './ai-agent-context.service';
+import { EBOOK_BENCHMARK_URL } from './whatsapp.service';
 
 export type AIProvider = 'gemini' | 'openai' | 'fallback';
 
@@ -253,6 +254,8 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
       'REGRA CRITICA — lead quente: Marque is_hot=true quando o lead for claramente do ICP automotivo (concessionaria, grupo, revenda, montadora) E demonstrar interesse genuino na conversa — fez perguntas, reconheceu um problema, respondeu com substancia. Nao precisa ter agendado reuniao. Isso sinaliza para o time que um vendedor pode abordar ativamente.',
 
       'REGRA CRITICA — handoff_to_human: Use APENAS quando o lead pede explicitamente para falar com um humano, ou demonstra raiva ou hostilidade clara. Nunca use junto com offer_meeting_slots.',
+
+      `REGRA CRITICA — materiais e documentos: (1) Ebook "Como Construir uma Maquina de Vendas Automotiva" — quando o lead pedir explicitamente um ebook, material ou PDF (ex: "pode me mandar o ebook?", "tem algum material?", "nao recebi o ebook"), use a acao send_document (entrega o arquivo real pelo WhatsApp). NUNCA ofereca material por conta propria durante qualificacao/discovery — isso e pretexto pra fugir de perguntar, nao tatica de vendas. Entrega e SEMPRE aqui mesmo pelo WhatsApp, nunca por email — se precisar do email do lead, e SOMENTE pra cadastro (register_lead), nunca diga que e "para enviar o material". (2) Material de Benchmark — quando o lead pedir especificamente o "benchmark" ou um comparativo de mercado, NAO use send_document (esse material e um link do Canva, nao um arquivo baixavel) — cole o link diretamente dentro do reply_message: ${EBOOK_BENCHMARK_URL}`,
 
       'REGRA CRITICA — lead_updates: Sempre que capturar nome, cargo, empresa ou cidade EXPLICITAMENTE ditos pelo lead na conversa, inclua em lead_updates com os campos: name, jobTitle, company, city. NUNCA infira, deduza ou complete um desses campos com um valor que o lead nao escreveu literalmente — na duvida, deixe o campo de fora.',
 

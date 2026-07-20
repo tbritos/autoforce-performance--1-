@@ -721,6 +721,13 @@ export const EBOOK_MAQUINA_DE_VENDAS = {
   path: '/ebook-maquina-de-vendas-automotiva.pdf',
 };
 
+// Material de benchmark — diferente do ebook acima, esse e um link de
+// visualizacao do Canva (pagina HTML, nao um arquivo baixavel), entao nao da
+// pra mandar como documento anexado do WhatsApp (a Meta precisa baixar um
+// arquivo de verdade pra isso). Enviado como link normal dentro do texto.
+export const EBOOK_BENCHMARK_URL =
+  'https://www.canva.com/design/DAHAObarEMs/pXFWmTuuvg8-9DS_SkUd5w/view?utm_content=DAHAObarEMs&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=hd2658ba1eb#1';
+
 export function getEbookMaquinaDeVendasUrl(): string {
   // Mesma cadeia de fallback usada no redirect do Google (server.ts) — se
   // FRONTEND_URL nao estiver configurada, tenta CORS_ORIGIN antes de cair pro

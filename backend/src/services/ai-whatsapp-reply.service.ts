@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { loadAIAgentContext, persistAIAgentDecision } from './ai-agent-context.service';
 import { runAIPrequalification } from './ai-provider.service';
 import type { WhatsAppConversationMessage } from './whatsapp.service';
+import { EBOOK_BENCHMARK_URL } from './whatsapp.service';
 import { normalizePhoneE164, phoneSearchVariants } from '../utils/phone';
 
 const DEBOUNCE_MS = 5_000;
@@ -72,6 +73,7 @@ function wasLiterallyMentionedByLead(value: string, leadInboundText: string): bo
 
 type RecoveredIntent =
   | 'meeting_request'
+  | 'benchmark_request'
   | 'document_request'
   | 'greeting'
   | 'price_question'
@@ -99,6 +101,10 @@ function detectLeadIntent(message: string): RecoveredIntent {
     return 'company_lookup_question';
   }
   if (/\b(preco|valor|quanto custa|orcamento|mensalidade|custa)\b/.test(text)) return 'price_question';
+  // Checado ANTES de document_request: "manda o ebook de benchmark" contem
+  // tanto "ebook" quanto "benchmark" — o benchmark e um link (Canva), nao o
+  // PDF real que document_request envia, entao precisa ganhar a prioridade.
+  if (/\bbenchmark\b/.test(text)) return 'benchmark_request';
   // Checado ANTES de meeting_request: um pedido explicito de material/PDF nao deve
   // ser desviado pra oferta de reuniao so porque a conversa mencionou "demo"/"agenda" antes.
   if (/\b(pdf|ebook|e-book|material|documento|arquivo|apostila)\b/.test(text)) return 'document_request';
@@ -135,6 +141,17 @@ function recoverAIReply(input: {
       intent,
       actions,
       replyText: `Perfeito${greetingName}. Vou te mandar a agenda para voce escolher o melhor horario.\n\nPara eu deixar o diagnostico bem direcionado, preencha com seu melhor email quando abrir o link.`,
+    };
+  }
+
+  if (intent === 'benchmark_request') {
+    // So um link dentro do texto (Canva, nao arquivo baixavel) — nunca usa
+    // send_document, que e reservado pro ebook em PDF de verdade.
+    const withoutMeetingOffer = actions.filter(a => a.type !== 'offer_meeting_slots');
+    return {
+      intent,
+      actions: withoutMeetingOffer,
+      replyText: `Claro${greetingName}! Segue o material de benchmark:\n${EBOOK_BENCHMARK_URL}`,
     };
   }
 
