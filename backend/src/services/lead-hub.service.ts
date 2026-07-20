@@ -595,6 +595,30 @@ export class LeadHubService {
     });
   }
 
+  // Um lead conta como "virou SQL" quando entra num estagio SQL-ou-alem vindo de um
+  // estagio anterior (LEAD/MQL/nenhum) — cobre tanto quem passa literalmente pelo
+  // estagio SQL quanto quem o vendedor pulou direto pra um estagio mais a frente no
+  // Pipedrive (ex: MQL -> Agendamento). Nao conta quando o lead JA estava em SQL ou
+  // alem e so avancou mais um estagio (ex: SQL -> Demo) — isso nao e uma nova
+  // qualificacao, e o mesmo lead continuando o funil. Se o lead sair do funil (LOST)
+  // e depois retornar e requalificar, essa nova entrada conta de novo normalmente.
+  private static readonly SQL_OR_LATER_STATUSES: LeadStatus[] = [
+    'SQL', 'SCHEDULED', 'DEMO', 'PROPOSAL', 'OPPORTUNITY', 'CLIENT',
+  ];
+
+  private static sqlCrossingWhere(
+    changedAt?: Prisma.LeadStatusHistoryWhereInput['changedAt']
+  ): Prisma.LeadStatusHistoryWhereInput {
+    return {
+      toStatus: { in: LeadHubService.SQL_OR_LATER_STATUSES },
+      OR: [
+        { fromStatus: null },
+        { fromStatus: { notIn: LeadHubService.SQL_OR_LATER_STATUSES } },
+      ],
+      ...(changedAt ? { changedAt } : {}),
+    };
+  }
+
   // ----------------------------------------------------------
   // Query: KPI stats for a date range (dashboard cards)
   // ----------------------------------------------------------
@@ -611,7 +635,7 @@ export class LeadHubService {
         select: { leadEmail: true },
       }),
       prisma.leadStatusHistory.findMany({
-        where: { toStatus: 'SQL', changedAt: { gte: start, lte: end } },
+        where: LeadHubService.sqlCrossingWhere({ gte: start, lte: end }),
         distinct: ['leadEmail'],
         select: { leadEmail: true },
       }),
@@ -698,10 +722,40 @@ export class LeadHubService {
       return { total, page, pageSize, leads: enriched };
     }
 
-    // Case 2: leads that reached a status in the period (historical query)
+    // Case 2a: became_sql — mesma regra de "entrou em SQL ou alem, vindo de um
+    // estagio anterior" usada no card do dashboard (getLeadStats), pra a lista
+    // aberta ao clicar no card bater com o numero mostrado.
+    if (params.event === 'became_sql') {
+      const histories = await prisma.leadStatusHistory.findMany({
+        where: LeadHubService.sqlCrossingWhere(
+          fromDate || toDate ? { gte: fromDate, lte: toDate } : undefined
+        ),
+        select: { leadEmail: true, changedAt: true },
+        orderBy: { changedAt: 'desc' },
+      });
+      const seen = new Set<string>();
+      const unique: { leadEmail: string; changedAt: Date }[] = [];
+      for (const h of histories) {
+        if (!seen.has(h.leadEmail)) { seen.add(h.leadEmail); unique.push(h); }
+      }
+      const total  = unique.length;
+      const paged  = unique.slice(skip, skip + pageSize);
+      const emails = paged.map(h => h.leadEmail);
+      const leadsData = await prisma.lead.findMany({
+        where: { email: { in: emails }, deletedAt: null },
+        select: leadSelect,
+      });
+      const leadsMap = new Map(leadsData.map(l => [l.email, l]));
+      const rawLeads = paged
+        .map(h => { const l = leadsMap.get(h.leadEmail); return l ? { ...l, eventDate: h.changedAt } : null; })
+        .filter((l): l is NonNullable<typeof l> => l !== null);
+      const enriched = await enrichLostReason(await enrichConvSource(rawLeads));
+      return { total, page, pageSize, leads: enriched };
+    }
+
+    // Case 2b: leads that reached a status in the period (historical query)
     const statusEventMap: Record<string, string> = {
       became_mql:       'MQL',
-      became_sql:       'SQL',
       became_scheduled: 'SCHEDULED',
       became_demo:      'DEMO',
       became_proposal:  'PROPOSAL',

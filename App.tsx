@@ -673,7 +673,7 @@ const DashboardContent: React.FC<{
                 change: Number(sqlsChange.toFixed(1)),
                 trend: (sqlsChange >= 0 ? 'up' : 'down') as 'up' | 'down' | 'neutral',
                 description: 'Leads qualificados por vendas no período',
-                tooltip: 'Quantidade de vezes que um lead avançou para o status SQL no período. Um lead pode ser qualificado mais de uma vez se retornar ao funil.',
+                tooltip: 'Quantidade de vezes que um lead entrou em SQL ou em um estágio mais à frente no funil (Agendamento, Reunião, Proposta, Oportunidade, Cliente) vindo de um estágio anterior — mesmo se o vendedor pular o estágio SQL no Pipedrive. Um lead pode ser qualificado mais de uma vez se sair e retornar ao funil.',
             },
             {
                 id: '3',
