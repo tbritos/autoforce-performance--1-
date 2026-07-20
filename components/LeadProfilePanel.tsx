@@ -9,7 +9,7 @@ import {
   CheckCircle, XCircle, MessageCircle, Send, Bot, UserCheck, AlertCircle, Inbox,
   Eye, MousePointerClick, Clock,
 } from 'lucide-react';
-import { LeadProfile, LeadStatus, LeadCustomFieldDef, PipedriveDealEvent, LeadConversion, WhatsAppConversationMessage, EmailSent, EmailReceived } from '../types';
+import { LeadProfile, LeadStatus, LeadCustomFieldDef, PipedriveDealEvent, LeadConversion, WhatsAppConversationMessage, WhatsAppNumberEntry, EmailSent, EmailReceived } from '../types';
 import { DataService } from '../services/dataService';
 
 const isWppEmail = (email: string) => email.startsWith('wpp_') && email.endsWith('@autoforce.internal');
@@ -397,6 +397,8 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [selectedTemplateName, setSelectedTemplateName] = useState('');
   const [templateVarValues, setTemplateVarValues] = useState<string[]>([]);
+  const [whatsAppNumbers, setWhatsAppNumbers] = useState<WhatsAppNumberEntry[] | null>(null);
+  const [selectedPhoneNumberId, setSelectedPhoneNumberId] = useState('');
   const [sendingTemplate, setSendingTemplate]   = useState(false);
   const [templateError, setTemplateError]       = useState('');
   const [emailsSent, setEmailsSent]             = useState<EmailSent[] | null>(null);
@@ -423,6 +425,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
       setProfile(p);
       setWhatsAppMessages(null);
       setTemplates(null);
+      setSelectedPhoneNumberId('');
       setEmailsSent(null);
       setEmailsReceived(null);
       setPipedriveEvents(null);
@@ -521,19 +524,36 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
     return undefined;
   }, [whatsAppMessages]);
 
-  const openTemplateModal = async () => {
+  const openTemplateModal = () => {
     setTemplateModalOpen(true);
     setTemplateError('');
-    if (templates) return;
-    setLoadingTemplates(true);
-    try {
-      const list = await DataService.getWhatsAppTemplates(lastInboundPhoneNumberId);
-      setTemplates(list.filter(t => t.status === 'APPROVED'));
-    } catch {
-      setTemplateError('Não foi possível carregar os templates.');
-    } finally {
-      setLoadingTemplates(false);
+    // Pre-seleciona o numero detectado pela conversa — usuario pode trocar
+    // manualmente no dropdown do modal se quiser enviar por outro numero.
+    if (!selectedPhoneNumberId && lastInboundPhoneNumberId) {
+      setSelectedPhoneNumberId(lastInboundPhoneNumberId);
     }
+    if (!whatsAppNumbers) {
+      DataService.getWhatsAppNumbers().then(setWhatsAppNumbers).catch(() => setWhatsAppNumbers([]));
+    }
+  };
+
+  // Busca (ou re-busca) os templates sempre que o modal abre ou o numero de
+  // envio selecionado muda — garante que a lista mostrada e a usada no envio
+  // sao sempre do mesmo numero/WABA.
+  useEffect(() => {
+    if (!templateModalOpen) return;
+    setLoadingTemplates(true);
+    setTemplateError('');
+    DataService.getWhatsAppTemplates(selectedPhoneNumberId || undefined)
+      .then(list => setTemplates(list.filter(t => t.status === 'APPROVED')))
+      .catch(() => setTemplateError('Não foi possível carregar os templates.'))
+      .finally(() => setLoadingTemplates(false));
+  }, [templateModalOpen, selectedPhoneNumberId]);
+
+  const handlePhoneNumberChange = (id: string) => {
+    setSelectedPhoneNumberId(id);
+    setSelectedTemplateName('');
+    setTemplateVarValues([]);
   };
 
   const selectedTemplate = templates?.find(t => t.name === selectedTemplateName) ?? null;
@@ -556,7 +576,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
     setSendingTemplate(true);
     setTemplateError('');
     try {
-      await DataService.sendWhatsAppTemplate(profile.id, selectedTemplateName, templateVarValues, lastInboundPhoneNumberId);
+      await DataService.sendWhatsAppTemplate(profile.id, selectedTemplateName, templateVarValues, selectedPhoneNumberId || undefined);
       setTemplateModalOpen(false);
       setSelectedTemplateName('');
       setTemplateVarValues([]);
@@ -1373,6 +1393,24 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                         <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-muted)' }}>
                           Use um template aprovado pra reengajar leads fora da janela de 24h de resposta.
                         </p>
+
+                        {whatsAppNumbers && whatsAppNumbers.length > 1 && (
+                          <label style={{ display: 'block' }}>
+                            <span style={{ fontSize: 11, color: 'var(--fg-subtle)', marginBottom: 4, display: 'block' }}>Número de envio</span>
+                            <select
+                              value={selectedPhoneNumberId}
+                              onChange={e => handlePhoneNumberChange(e.target.value)}
+                              style={{ width: '100%', height: 38, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 13, outline: 'none' }}
+                            >
+                              {whatsAppNumbers.map(n => (
+                                <option key={n.id} value={n.id}>
+                                  {(n.label ?? n.verified_name ?? n.display_phone_number)}
+                                  {n.id === lastInboundPhoneNumberId ? ' (número da conversa)' : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
 
                         {loadingTemplates ? (
                           <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-muted)' }}>Carregando templates…</p>
