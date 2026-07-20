@@ -44,7 +44,7 @@ function outputsFor(node: AutomationJourneyNode): OutputDef[] {
       { handle: 'timeout', label: isReply ? 'Não respondeu' : 'Não abriu', color: '#F59E0B', top: '90%' },
     ];
   }
-  return [{ handle: 'default', label: 'Conectar', color: blockMeta(node.type).color, top: '50%' }];
+  return [{ handle: 'default', label: '', color: blockMeta(node.type).color, top: '50%' }];
 }
 
 function edgeVisual(edge: AutomationJourneyEdge, sourceNode?: AutomationJourneyNode): { color: string; label: string } {
@@ -95,6 +95,15 @@ const JourneyBlockNode: React.FC<NodeProps<BlockNode>> = ({ data, selected }) =>
         <Handle type="target" position={Position.Left} style={{ top: '50%', width: 10, height: 10, background: 'var(--fg-subtle)', border: '2px solid var(--bg-surface)' }} />
       )}
 
+      {!multiOutput && (
+        <Handle
+          type="source"
+          position={Position.Right}
+          id={outputs[0].handle}
+          style={{ top: '50%', width: 10, height: 10, background: meta.color, border: '2px solid var(--bg-surface)' }}
+        />
+      )}
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
         <span style={{ position: 'relative', width: 32, height: 32, borderRadius: 9, display: 'grid', placeItems: 'center', background: `${meta.color}22`, color: meta.color, flexShrink: 0 }}>
           <Icon size={16} />
@@ -110,25 +119,27 @@ const JourneyBlockNode: React.FC<NodeProps<BlockNode>> = ({ data, selected }) =>
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: multiOutput ? 'column' : 'row', gap: 6, marginTop: 10 }}>
-        {outputs.map(output => (
-          <div key={output.handle} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-            <span style={{
-              fontSize: multiOutput ? 10 : 11, fontWeight: 800, color: output.color,
-              background: `${output.color}18`, borderRadius: 'var(--r-sm)', padding: '4px 18px 4px 7px',
-              whiteSpace: 'nowrap',
-            }}>
-              {output.label}
-            </span>
-            <Handle
-              type="source"
-              position={Position.Right}
-              id={output.handle}
-              style={{ position: 'absolute', top: '50%', right: -6, width: 10, height: 10, background: output.color, border: '2px solid var(--bg-surface)' }}
-            />
-          </div>
-        ))}
-      </div>
+      {multiOutput && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
+          {outputs.map(output => (
+            <div key={output.handle} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+              <span style={{
+                fontSize: 10, fontWeight: 800, color: output.color,
+                background: `${output.color}18`, borderRadius: 'var(--r-sm)', padding: '4px 18px 4px 7px',
+                whiteSpace: 'nowrap',
+              }}>
+                {output.label}
+              </span>
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={output.handle}
+                style={{ position: 'absolute', top: '50%', right: -6, width: 10, height: 10, background: output.color, border: '2px solid var(--bg-surface)' }}
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
