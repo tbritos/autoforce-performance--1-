@@ -606,6 +606,13 @@ export class LeadHubService {
     'SQL', 'SCHEDULED', 'DEMO', 'PROPOSAL', 'OPPORTUNITY', 'CLIENT',
   ];
 
+  // Fontes que representam importacao/migracao em massa de uma base ja
+  // existente (nao uma qualificacao nova acontecendo agora) — ver
+  // sqlCrossingWhere abaixo. 'importacao_csv' = CsvImportModal (Lead Hub);
+  // 'rdstation_webhook' = migrateWebhookLeads (migracao unica de
+  // WebhookLead -> Lead, mesmo raciocinio).
+  private static readonly BULK_IMPORT_SOURCES = ['importacao_csv', 'rdstation_webhook'];
+
   private static sqlCrossingWhere(
     changedAt?: Prisma.LeadStatusHistoryWhereInput['changedAt']
   ): Prisma.LeadStatusHistoryWhereInput {
@@ -615,16 +622,17 @@ export class LeadHubService {
         { fromStatus: null },
         { fromStatus: { notIn: LeadHubService.SQL_OR_LATER_STATUSES } },
       ],
-      // Leads importados via CSV (ex: base de clientes ja existentes) nao
-      // "viraram SQL" de verdade quando o Pipedrive sincroniza e grava o
-      // status deles — isso e so o sistema catalogando algo que ja
-      // aconteceu no passado, nao uma qualificacao nova no periodo.
-      // OR explicito (em vez de so `not`) pra garantir que leads sem
-      // firstSource (null) continuem contando normalmente.
+      // Leads importados/migrados em massa (ex: base de clientes ja
+      // existentes) nao "viraram SQL" de verdade quando o Pipedrive
+      // sincroniza e grava o status deles — isso e so o sistema
+      // catalogando algo que ja aconteceu no passado, nao uma
+      // qualificacao nova no periodo. OR explicito (em vez de so `notIn`)
+      // pra garantir que leads sem firstSource (null) continuem contando
+      // normalmente.
       lead: {
         OR: [
           { firstSource: null },
-          { firstSource: { not: 'importacao_csv' } },
+          { firstSource: { notIn: LeadHubService.BULK_IMPORT_SOURCES } },
         ],
       },
       ...(changedAt ? { changedAt } : {}),
