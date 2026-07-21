@@ -86,14 +86,14 @@ function ReportFieldValueCombobox({ source, field, value, onChange, disabled }: 
       left: rect.left,
       width: Math.max(rect.width, 200),
       zIndex: 9999,
-      background: 'var(--bg-card)', border: '1.5px solid var(--border)', borderRadius: 10,
+      background: 'var(--bg-surface)', border: '1.5px solid var(--border)', borderRadius: 10,
       boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
       maxHeight: 260, display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
       <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
         <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Buscar ou digitar..."
-          style={{ width: '100%', boxSizing: 'border-box', padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, color: 'var(--fg-primary)', outline: 'none', background: 'var(--bg-card)' }}
+          style={{ width: '100%', boxSizing: 'border-box', padding: '5px 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 12, color: 'var(--fg-primary)', outline: 'none', background: 'var(--bg-surface)' }}
         />
       </div>
       <div style={{ overflowY: 'auto', flex: 1 }}>
@@ -137,7 +137,7 @@ function ReportFieldValueCombobox({ source, field, value, onChange, disabled }: 
       <button ref={triggerRef} type="button" onClick={handleOpen} disabled={disabled}
         style={{
           width: '100%', padding: '6px 10px', border: '1.5px solid var(--border)', borderRadius: 8,
-          fontSize: 13, background: 'var(--bg-card)', cursor: disabled ? 'not-allowed' : 'pointer', textAlign: 'left',
+          fontSize: 13, background: 'var(--bg-surface)', cursor: disabled ? 'not-allowed' : 'pointer', textAlign: 'left',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
           color: value ? 'var(--fg-primary)' : 'var(--fg-muted)',
           opacity: disabled ? 0.6 : 1,
@@ -236,19 +236,19 @@ export function ReportFilterBar({ conditions, onChange, metrics, disabled }: {
               <div style={{ flex: 1, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '8px 0' }}>
                 <select value={cond.source} disabled={disabled}
                   onChange={e => updateCondition(cond.id, { source: e.target.value as MetricSource })}
-                  style={{ padding: '6px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, color: 'var(--fg-primary)', background: 'var(--bg-card)', cursor: disabled ? 'not-allowed' : 'pointer', outline: 'none' }}>
+                  style={{ padding: '6px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, color: 'var(--fg-primary)', background: 'var(--bg-surface)', cursor: disabled ? 'not-allowed' : 'pointer', outline: 'none' }}>
                   {sources.map(s => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
                 </select>
 
                 <select value={cond.field} disabled={disabled}
                   onChange={e => updateCondition(cond.id, { field: e.target.value })}
-                  style={{ padding: '6px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, color: 'var(--fg-primary)', background: 'var(--bg-card)', cursor: disabled ? 'not-allowed' : 'pointer', outline: 'none' }}>
+                  style={{ padding: '6px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, color: 'var(--fg-primary)', background: 'var(--bg-surface)', cursor: disabled ? 'not-allowed' : 'pointer', outline: 'none' }}>
                   {dims.map(d => <option key={d} value={d}>{fieldLabel(d)}</option>)}
                 </select>
 
                 <select value={cond.operator} disabled={disabled}
                   onChange={e => updateCondition(cond.id, { operator: e.target.value as FilterOperator })}
-                  style={{ padding: '6px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, color: 'var(--fg-primary)', background: 'var(--bg-card)', cursor: disabled ? 'not-allowed' : 'pointer', outline: 'none' }}>
+                  style={{ padding: '6px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, color: 'var(--fg-primary)', background: 'var(--bg-surface)', cursor: disabled ? 'not-allowed' : 'pointer', outline: 'none' }}>
                   {operators.map(o => <option key={o} value={o}>{OPERATOR_LABELS[o]}</option>)}
                 </select>
 
