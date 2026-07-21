@@ -1,5 +1,6 @@
 import { prisma } from '../../config/database';
 import { getMetricDef, isDateBucket, MetricDef, DateBucket } from './metrics-catalog';
+import { ReportFilterCondition, conditionToWhereValue, sanitizeConditionsForMetric } from './report-filter-ops';
 
 export const DATE_PRESETS = ['last_7_days', 'last_30_days', 'this_month', 'last_month', 'this_quarter', 'last_quarter'] as const;
 export type DatePreset = (typeof DATE_PRESETS)[number];
@@ -7,7 +8,7 @@ export type DatePreset = (typeof DATE_PRESETS)[number];
 export interface RunMetricQueryParams {
   metricKey: string;
   groupBy?: string | null;
-  filters?: Record<string, string> | null;
+  filters?: ReportFilterCondition[] | null;
   dateFrom?: string | null;
   dateTo?: string | null;
   datePreset?: string | null;
@@ -27,19 +28,14 @@ export function validateGroupBy(def: MetricDef, groupBy: string | null | undefin
   return groupBy;
 }
 
-// Filtros agora sao globais no relatorio (aplicados a todos os widgets) —
-// um filtro de um campo que a metrica desse widget nao suporta e ignorado em
-// silencio, nao e mais um erro. Ex: filtro "platform" (so campanhas) nao deve
-// quebrar um widget de "leads.count" no mesmo relatorio.
-export function validateFilters(def: MetricDef, filters: Record<string, string> | null | undefined): Record<string, string> {
-  if (!filters) return {};
-  const clean: Record<string, string> = {};
-  for (const [k, v] of Object.entries(filters)) {
-    if (v == null || v === '') continue;
-    if (!def.filterableDimensions.includes(k)) continue;
-    clean[k] = v;
+// Aplica uma lista de condicoes (campo+operador+valor) direto num objeto
+// where flat — usado por toda fonte exceto campanhas, que tem o caso especial
+// de "platform" morar numa relacao (Campaign), nao na propria tabela.
+export function applyConditions(where: Record<string, unknown>, conditions: ReportFilterCondition[]): void {
+  for (const c of conditions) {
+    const rhs = conditionToWhereValue(c.field, c.operator, c.value);
+    if (rhs !== undefined) where[c.field] = rhs;
   }
-  return clean;
 }
 
 // Recalcula o período toda vez que a métrica é consultada — "mês passado"
@@ -149,9 +145,10 @@ function aggregate(
 
 // ─── Per-source handlers ──────────────────────────────────────────────────────
 
-async function queryLeads(def: MetricDef, groupBy: string | null, filters: Record<string, string>, dateFrom?: string | null, dateTo?: string | null): Promise<MetricQueryResult> {
+async function queryLeads(def: MetricDef, groupBy: string | null, conditions: ReportFilterCondition[], dateFrom?: string | null, dateTo?: string | null): Promise<MetricQueryResult> {
   if (def.key === 'leads.count') {
-    const where: Record<string, unknown> = { deletedAt: null, ...filters };
+    const where: Record<string, unknown> = { deletedAt: null };
+    applyConditions(where, conditions);
     if (dateFrom || dateTo) where.firstSeenAt = dateRangeFilter(dateFrom, dateTo);
     const rows = await prisma.lead.findMany({
       where,
@@ -161,7 +158,8 @@ async function queryLeads(def: MetricDef, groupBy: string | null, filters: Recor
   }
 
   if (def.key === 'leads.status_transitions') {
-    const where: Record<string, unknown> = { ...filters };
+    const where: Record<string, unknown> = {};
+    applyConditions(where, conditions);
     if (dateFrom || dateTo) where.changedAt = dateRangeFilter(dateFrom, dateTo);
     const rows = await prisma.leadStatusHistory.findMany({
       where,
@@ -175,8 +173,8 @@ async function queryLeads(def: MetricDef, groupBy: string | null, filters: Recor
     deletedAt: null,
     pipedriveDealId: { not: null },
     pipedriveDealStatus: 'open',
-    ...filters,
   };
+  applyConditions(where, conditions);
   const rows = await prisma.lead.findMany({
     where,
     select: { pipedriveDealValue: true, pipedriveSetupValue: true, pipedriveStageName: true, pipedrivePipelineId: true },
@@ -184,8 +182,9 @@ async function queryLeads(def: MetricDef, groupBy: string | null, filters: Recor
   return aggregate(rows, def, groupBy);
 }
 
-async function queryRevenue(def: MetricDef, groupBy: string | null, filters: Record<string, string>, dateFrom?: string | null, dateTo?: string | null): Promise<MetricQueryResult> {
-  const where: Record<string, unknown> = { ...filters };
+async function queryRevenue(def: MetricDef, groupBy: string | null, conditions: ReportFilterCondition[], dateFrom?: string | null, dateTo?: string | null): Promise<MetricQueryResult> {
+  const where: Record<string, unknown> = {};
+  applyConditions(where, conditions);
   if (dateFrom || dateTo) where.date = dateRangeFilter(dateFrom, dateTo);
   const rows = await prisma.revenueEntry.findMany({
     where,
@@ -194,11 +193,17 @@ async function queryRevenue(def: MetricDef, groupBy: string | null, filters: Rec
   return aggregate(rows, def, groupBy);
 }
 
-async function queryCampaigns(def: MetricDef, groupBy: string | null, filters: Record<string, string>, dateFrom?: string | null, dateTo?: string | null): Promise<MetricQueryResult> {
-  const { platform, ...campaignScalarFilters } = filters;
-  const where: Record<string, unknown> = { ...campaignScalarFilters };
+async function queryCampaigns(def: MetricDef, groupBy: string | null, conditions: ReportFilterCondition[], dateFrom?: string | null, dateTo?: string | null): Promise<MetricQueryResult> {
+  const where: Record<string, unknown> = {};
+  let campaignWhere: Record<string, unknown> | undefined;
+  for (const c of conditions) {
+    const rhs = conditionToWhereValue(c.field, c.operator, c.value);
+    if (rhs === undefined) continue;
+    if (c.field === 'platform') campaignWhere = { ...(campaignWhere ?? {}), platform: rhs };
+    else where[c.field] = rhs;
+  }
   if (dateFrom || dateTo) where.date = dateRangeFilter(dateFrom, dateTo);
-  if (platform) where.campaign = { platform };
+  if (campaignWhere) where.campaign = campaignWhere;
 
   const rows = await prisma.campaignMetrics.findMany({
     where,
@@ -212,8 +217,9 @@ async function queryCampaigns(def: MetricDef, groupBy: string | null, filters: R
   return aggregate(flat, def, groupBy);
 }
 
-async function queryGa4(def: MetricDef, groupBy: string | null, filters: Record<string, string>): Promise<MetricQueryResult> {
-  const where: Record<string, unknown> = { ...filters };
+async function queryGa4(def: MetricDef, groupBy: string | null, conditions: ReportFilterCondition[]): Promise<MetricQueryResult> {
+  const where: Record<string, unknown> = {};
+  applyConditions(where, conditions);
   const rows = await prisma.landingPage.findMany({
     where,
     select: { sessions: true, views: true, conversions: true, bounceRate: true, path: true, name: true },
@@ -221,8 +227,9 @@ async function queryGa4(def: MetricDef, groupBy: string | null, filters: Record<
   return aggregate(rows, def, groupBy);
 }
 
-async function queryEmail(def: MetricDef, groupBy: string | null, filters: Record<string, string>, dateFrom?: string | null, dateTo?: string | null): Promise<MetricQueryResult> {
-  const where: Record<string, unknown> = { ...filters };
+async function queryEmail(def: MetricDef, groupBy: string | null, conditions: ReportFilterCondition[], dateFrom?: string | null, dateTo?: string | null): Promise<MetricQueryResult> {
+  const where: Record<string, unknown> = {};
+  applyConditions(where, conditions);
   if (dateFrom || dateTo) where.date = dateRangeFilter(dateFrom, dateTo);
   const rows = await prisma.emailCampaign.findMany({
     where,
@@ -236,7 +243,7 @@ async function queryEmail(def: MetricDef, groupBy: string | null, filters: Recor
 export async function runMetricQuery(params: RunMetricQueryParams): Promise<MetricQueryResult> {
   const def = getMetricDef(params.metricKey);
   const groupBy = validateGroupBy(def, params.groupBy);
-  const filters = validateFilters(def, params.filters);
+  const conditions = sanitizeConditionsForMetric(def, params.filters);
 
   let dateFrom = params.dateFrom;
   let dateTo = params.dateTo;
@@ -249,11 +256,11 @@ export async function runMetricQuery(params: RunMetricQueryParams): Promise<Metr
   dateTo = def.dateField ? dateTo : null;
 
   switch (def.source) {
-    case 'leads':     return queryLeads(def, groupBy, filters, dateFrom, dateTo);
-    case 'revenue':   return queryRevenue(def, groupBy, filters, dateFrom, dateTo);
-    case 'campaigns': return queryCampaigns(def, groupBy, filters, dateFrom, dateTo);
-    case 'ga4':       return queryGa4(def, groupBy, filters);
-    case 'email':     return queryEmail(def, groupBy, filters, dateFrom, dateTo);
+    case 'leads':     return queryLeads(def, groupBy, conditions, dateFrom, dateTo);
+    case 'revenue':   return queryRevenue(def, groupBy, conditions, dateFrom, dateTo);
+    case 'campaigns': return queryCampaigns(def, groupBy, conditions, dateFrom, dateTo);
+    case 'ga4':       return queryGa4(def, groupBy, conditions);
+    case 'email':     return queryEmail(def, groupBy, conditions, dateFrom, dateTo);
     default:          throw new Error(`Fonte de dados desconhecida: ${def.source}`);
   }
 }

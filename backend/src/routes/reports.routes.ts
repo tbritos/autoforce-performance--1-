@@ -6,6 +6,7 @@ const router = Router();
 // GET  /api/reports/metrics        — catálogo de métricas disponíveis
 // POST /api/reports/query-metric   — roda uma métrica ao vivo (usado pelos widgets)
 router.get('/metrics', ReportsController.metrics);
+router.get('/field-values', ReportsController.fieldValues);
 router.post('/query-metric', ReportsController.queryMetric);
 router.post('/drill-down', ReportsController.drillDown);
 

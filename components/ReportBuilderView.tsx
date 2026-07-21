@@ -10,17 +10,11 @@ import {
   BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, Table2, Hash,
 } from 'lucide-react';
 import { DataService } from '../services/dataService';
-import { DrillDownClickParams, MetricDef, MetricSource, Report, ReportLayoutItem, ReportQueryContext, ReportWidget, ReportWidgetType } from '../types';
+import { DrillDownClickParams, MetricDef, MetricSource, Report, ReportFilterCondition, ReportLayoutItem, ReportQueryContext, ReportWidget, ReportWidgetType } from '../types';
 import { WidgetRenderer } from './reports/WidgetRenderer';
 import { ReportDrillDownModal } from './reports/ReportDrillDownModal';
-
-const SOURCE_LABELS: Record<MetricSource, string> = {
-  leads: 'Leads / Funil',
-  revenue: 'Receita',
-  campaigns: 'Campanhas (Meta/Google Ads)',
-  ga4: 'GA4 / Landing Pages',
-  email: 'E-mail (RD Station)',
-};
+import { ReportFilterBar } from './reports/ReportFilterBar';
+import { SOURCE_LABELS, DIMENSION_LABELS } from './reports/reportLabels';
 
 const WIDGET_TYPE_META: Record<ReportWidgetType, { label: string; icon: React.ElementType; defaultW: number; defaultH: number }> = {
   KPI_CARD:   { label: 'Card (número)', icon: Hash,          defaultW: 3, defaultH: 3 },
@@ -28,14 +22,6 @@ const WIDGET_TYPE_META: Record<ReportWidgetType, { label: string; icon: React.El
   BAR_CHART:  { label: 'Gráfico de Barra', icon: BarChart3,     defaultW: 6, defaultH: 6 },
   PIE_CHART:  { label: 'Gráfico de Pizza', icon: PieChartIcon,  defaultW: 6, defaultH: 6 },
   TABLE:      { label: 'Tabela',           icon: Table2,        defaultW: 6, defaultH: 6 },
-};
-
-const DIMENSION_LABELS: Record<string, string> = {
-  date_day: 'Dia', date_week: 'Semana', date_month: 'Mês',
-  status: 'Status', toStatus: 'Novo Status', firstSource: 'Origem', firstMedium: 'Mídia',
-  assignedTo: 'Responsável', origin: 'Origem', closedBy: 'Vendedor', originType: 'Tipo',
-  platform: 'Plataforma', campaignId: 'Campanha', path: 'Página', name: 'Nome',
-  source: 'Fonte', pipedriveStageName: 'Estágio', pipedrivePipelineId: 'Pipeline', pipedriveStageId: 'ID do Estágio',
 };
 
 const DATE_PRESET_OPTIONS: Array<{ value: string; label: string }> = [
@@ -231,24 +217,15 @@ const ReportBuilderView: React.FC = () => {
   const [dirty, setDirty] = useState(false);
   const [privacySaving, setPrivacySaving] = useState(false);
   const [drillDown, setDrillDown] = useState<DrillDownClickParams | null>(null);
-  const [reportFilters, setReportFilters] = useState<Array<{ key: string; value: string }>>([]);
+  const [reportFilters, setReportFilters] = useState<ReportFilterCondition[]>([]);
   const [reportDateFrom, setReportDateFrom] = useState('');
   const [reportDateTo, setReportDateTo] = useState('');
   const [reportDatePreset, setReportDatePreset] = useState('custom');
 
   const canEdit = report?.canEdit ?? true;
 
-  const allFilterableDims = useMemo(() => {
-    const set = new Set<string>();
-    metrics.forEach(m => m.filterableDimensions.forEach(d => set.add(d)));
-    return Array.from(set);
-  }, [metrics]);
-
   const reportContext: ReportQueryContext = useMemo(() => ({
-    filters: reportFilters.reduce<Record<string, string>>((acc, { key, value }) => {
-      if (key && value) acc[key] = value;
-      return acc;
-    }, {}),
+    filters: reportFilters.length > 0 ? reportFilters : null,
     dateFrom: reportDatePreset === 'custom' && reportDateFrom ? reportDateFrom : null,
     dateTo: reportDatePreset === 'custom' && reportDateTo ? reportDateTo : null,
     datePreset: reportDatePreset !== 'custom' ? reportDatePreset : null,
@@ -262,7 +239,9 @@ const ReportBuilderView: React.FC = () => {
       setLayout(r.layout ?? []);
       setWidgets(r.widgets ?? []);
       setMetrics(m);
-      setReportFilters(r.filters ? Object.entries(r.filters).map(([key, value]) => ({ key, value })) : []);
+      // formato antigo (mapa {campo:valor}) de relatórios salvos antes dessa
+      // mudança não é um array — trata como "sem filtro" em vez de quebrar.
+      setReportFilters(Array.isArray(r.filters) ? r.filters : []);
       setReportDateFrom(r.dateFrom?.slice(0, 10) ?? '');
       setReportDateTo(r.dateTo?.slice(0, 10) ?? '');
       setReportDatePreset(r.datePreset ?? 'custom');
@@ -302,7 +281,7 @@ const ReportBuilderView: React.FC = () => {
     try {
       const updated = await DataService.updateReport(id, {
         name, layout, widgets,
-        filters: Object.keys(reportContext.filters ?? {}).length ? reportContext.filters : null,
+        filters: reportFilters.length > 0 ? reportFilters : null,
         dateFrom: reportContext.dateFrom,
         dateTo: reportContext.dateTo,
         datePreset: reportContext.datePreset,
@@ -310,7 +289,7 @@ const ReportBuilderView: React.FC = () => {
       setReport(updated);
       setLayout(updated.layout ?? []);
       setWidgets(updated.widgets ?? []);
-      setReportFilters(updated.filters ? Object.entries(updated.filters).map(([key, value]) => ({ key, value })) : []);
+      setReportFilters(Array.isArray(updated.filters) ? updated.filters : []);
       setReportDateFrom(updated.dateFrom?.slice(0, 10) ?? '');
       setReportDateTo(updated.dateTo?.slice(0, 10) ?? '');
       setReportDatePreset(updated.datePreset ?? 'custom');
@@ -406,37 +385,13 @@ const ReportBuilderView: React.FC = () => {
 
         <div>
           <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase' }}>Filtros</span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-            {reportFilters.length === 0 && (
-              <p style={{ fontSize: 12, color: 'var(--fg-subtle)', margin: 0 }}>
-                Nenhum filtro aplicado — os gráficos abaixo mostram todos os dados.
-              </p>
-            )}
-            {reportFilters.map((f, i) => (
-              <div key={i} style={{ display: 'flex', gap: 6 }}>
-                <select value={f.key} disabled={!canEdit}
-                  onChange={e => { setReportFilters(prev => prev.map((x, j) => j === i ? { ...x, key: e.target.value } : x)); setDirty(true); }}
-                  style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 12 }}>
-                  <option value="">Campo...</option>
-                  {allFilterableDims.map(d => <option key={d} value={d}>{DIMENSION_LABELS[d] ?? d}</option>)}
-                </select>
-                <input value={f.value} disabled={!canEdit} placeholder="valor"
-                  onChange={e => { setReportFilters(prev => prev.map((x, j) => j === i ? { ...x, value: e.target.value } : x)); setDirty(true); }}
-                  style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 12 }} />
-                {canEdit && (
-                  <button type="button" onClick={() => { setReportFilters(prev => prev.filter((_, j) => j !== i)); setDirty(true); }}
-                    style={{ background: 'transparent', border: 'none', color: 'var(--fg-subtle)', cursor: 'pointer' }}>
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-            ))}
-            {canEdit && (
-              <button type="button" onClick={() => { setReportFilters(prev => [...prev, { key: '', value: '' }]); setDirty(true); }}
-                style={{ alignSelf: 'flex-start', fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                + adicionar filtro
-              </button>
-            )}
+          <div style={{ marginTop: 6 }}>
+            <ReportFilterBar
+              conditions={reportFilters}
+              onChange={next => { setReportFilters(next); setDirty(true); }}
+              metrics={metrics}
+              disabled={!canEdit}
+            />
           </div>
         </div>
       </div>

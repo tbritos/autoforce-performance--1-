@@ -1,6 +1,7 @@
 import { prisma } from '../../config/database';
 import { getMetricDef, isDateBucket, MetricDef, DateBucket } from './metrics-catalog';
-import { validateGroupBy, validateFilters, dateRangeFilter, resolveDatePreset } from './report-query.service';
+import { validateGroupBy, dateRangeFilter, resolveDatePreset, applyConditions } from './report-query.service';
+import { ReportFilterCondition, NUMERIC_FILTER_FIELDS, conditionToWhereValue, sanitizeConditionsForMetric } from './report-filter-ops';
 
 const MAX_PAGE_SIZE = 50;
 const DEFAULT_PAGE_SIZE = 20;
@@ -11,7 +12,7 @@ export interface RunDrillDownParams {
   // Rótulo do "pedaço" clicado no gráfico (ex: "SQL", "2026-W29", "Não informado").
   // null/undefined = clique no total (card de KPI) — sem filtro extra.
   dimension?: string | null;
-  filters?: Record<string, string> | null;
+  filters?: ReportFilterCondition[] | null;
   dateFrom?: string | null;
   dateTo?: string | null;
   datePreset?: string | null;
@@ -30,11 +31,6 @@ export interface DrillDownResult {
   pageSize: number;
   rows: Array<Record<string, unknown>>;
 }
-
-// groupBy que na verdade são inteiros no banco — dimensionValue() (em
-// report-query.service.ts) sempre converte pra string pra exibir no gráfico,
-// aqui convertemos de volta pro tipo certo antes de filtrar.
-const INTEGER_DIMENSIONS = new Set(['pipedrivePipelineId', 'pipedriveStageId']);
 
 function paginate(page?: number, pageSize?: number) {
   const safePage = Math.max(1, page ?? 1);
@@ -111,7 +107,7 @@ function applyDimensionAndDate(
     }
   }
   if (groupBy && dimension != null && !isDateBucket(groupBy)) {
-    where[groupBy] = dimension === 'Não informado' ? null : (INTEGER_DIMENSIONS.has(groupBy) ? Number(dimension) : dimension);
+    where[groupBy] = dimension === 'Não informado' ? null : (NUMERIC_FILTER_FIELDS.has(groupBy) ? Number(dimension) : dimension);
   }
 }
 
@@ -123,7 +119,7 @@ const LEAD_SELECT = {
 
 async function drillDownLeads(
   def: MetricDef, groupBy: string | null, dimension: string | null | undefined,
-  filters: Record<string, string>, dateFrom: string | null | undefined, dateTo: string | null | undefined,
+  conditions: ReportFilterCondition[], dateFrom: string | null | undefined, dateTo: string | null | undefined,
   page?: number, pageSize?: number
 ): Promise<DrillDownResult> {
   const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
@@ -131,7 +127,8 @@ async function drillDownLeads(
   if (def.key === 'leads.status_transitions') {
     // groupBy (toStatus) e a data vivem em LeadStatusHistory, não em Lead —
     // busca lá e junta os dados do lead pra exibir.
-    const historyWhere: Record<string, unknown> = { ...filters };
+    const historyWhere: Record<string, unknown> = {};
+    applyConditions(historyWhere, conditions);
     applyDimensionAndDate(historyWhere, def, groupBy, dimension, dateFrom, dateTo);
     const [total, histories] = await Promise.all([
       prisma.leadStatusHistory.count({ where: historyWhere }),
@@ -149,8 +146,9 @@ async function drillDownLeads(
   }
 
   const where: Record<string, unknown> = def.key === 'leads.count'
-    ? { deletedAt: null, ...filters }
-    : { deletedAt: null, pipedriveDealId: { not: null }, pipedriveDealStatus: 'open', ...filters }; // forecast_mrr / forecast_setup
+    ? { deletedAt: null }
+    : { deletedAt: null, pipedriveDealId: { not: null }, pipedriveDealStatus: 'open' }; // forecast_mrr / forecast_setup
+  applyConditions(where, conditions);
   applyDimensionAndDate(where, def, groupBy, dimension, dateFrom, dateTo);
 
   const [total, rows] = await Promise.all([
@@ -162,11 +160,12 @@ async function drillDownLeads(
 
 async function drillDownRevenue(
   def: MetricDef, groupBy: string | null, dimension: string | null | undefined,
-  filters: Record<string, string>, dateFrom: string | null | undefined, dateTo: string | null | undefined,
+  conditions: ReportFilterCondition[], dateFrom: string | null | undefined, dateTo: string | null | undefined,
   page?: number, pageSize?: number
 ): Promise<DrillDownResult> {
   const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
-  const where: Record<string, unknown> = { ...filters };
+  const where: Record<string, unknown> = {};
+  applyConditions(where, conditions);
   applyDimensionAndDate(where, def, groupBy, dimension, dateFrom, dateTo);
 
   const [total, rows] = await Promise.all([
@@ -190,13 +189,18 @@ async function drillDownRevenue(
 
 async function drillDownCampaigns(
   def: MetricDef, groupBy: string | null, dimension: string | null | undefined,
-  filters: Record<string, string>, dateFrom: string | null | undefined, dateTo: string | null | undefined,
+  conditions: ReportFilterCondition[], dateFrom: string | null | undefined, dateTo: string | null | undefined,
   page?: number, pageSize?: number
 ): Promise<DrillDownResult> {
   const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
-  const { platform: platformFilter, ...campaignScalarFilters } = filters;
-  const where: Record<string, unknown> = { ...campaignScalarFilters };
-  let campaignWhere: Record<string, unknown> | undefined = platformFilter ? { platform: platformFilter } : undefined;
+  const where: Record<string, unknown> = {};
+  let campaignWhere: Record<string, unknown> | undefined;
+  for (const c of conditions) {
+    const rhs = conditionToWhereValue(c.field, c.operator, c.value);
+    if (rhs === undefined) continue;
+    if (c.field === 'platform') campaignWhere = { ...(campaignWhere ?? {}), platform: rhs };
+    else where[c.field] = rhs;
+  }
 
   // "platform" mora em Campaign (relação), não em CampaignMetrics — tratado à
   // parte; os demais casos (data, campaignId) usam o helper genérico.
@@ -229,11 +233,12 @@ async function drillDownCampaigns(
 
 async function drillDownEmail(
   def: MetricDef, groupBy: string | null, dimension: string | null | undefined,
-  filters: Record<string, string>, dateFrom: string | null | undefined, dateTo: string | null | undefined,
+  conditions: ReportFilterCondition[], dateFrom: string | null | undefined, dateTo: string | null | undefined,
   page?: number, pageSize?: number
 ): Promise<DrillDownResult> {
   const { skip, take, page: p, pageSize: ps } = paginate(page, pageSize);
-  const where: Record<string, unknown> = { ...filters };
+  const where: Record<string, unknown> = {};
+  applyConditions(where, conditions);
   applyDimensionAndDate(where, def, groupBy, dimension, dateFrom, dateTo);
 
   const [total, rows] = await Promise.all([
@@ -258,14 +263,14 @@ function drillDownGa4(page?: number, pageSize?: number): DrillDownResult {
 export async function runDrillDownQuery(params: RunDrillDownParams): Promise<DrillDownResult> {
   const def = getMetricDef(params.metricKey);
   const groupBy = validateGroupBy(def, params.groupBy);
-  const filters = validateFilters(def, params.filters);
+  const conditions = sanitizeConditionsForMetric(def, params.filters);
   const { dateFrom, dateTo } = resolveDates(def, params);
 
   switch (def.source) {
-    case 'leads':     return drillDownLeads(def, groupBy, params.dimension, filters, dateFrom, dateTo, params.page, params.pageSize);
-    case 'revenue':   return drillDownRevenue(def, groupBy, params.dimension, filters, dateFrom, dateTo, params.page, params.pageSize);
-    case 'campaigns': return drillDownCampaigns(def, groupBy, params.dimension, filters, dateFrom, dateTo, params.page, params.pageSize);
-    case 'email':     return drillDownEmail(def, groupBy, params.dimension, filters, dateFrom, dateTo, params.page, params.pageSize);
+    case 'leads':     return drillDownLeads(def, groupBy, params.dimension, conditions, dateFrom, dateTo, params.page, params.pageSize);
+    case 'revenue':   return drillDownRevenue(def, groupBy, params.dimension, conditions, dateFrom, dateTo, params.page, params.pageSize);
+    case 'campaigns': return drillDownCampaigns(def, groupBy, params.dimension, conditions, dateFrom, dateTo, params.page, params.pageSize);
+    case 'email':     return drillDownEmail(def, groupBy, params.dimension, conditions, dateFrom, dateTo, params.page, params.pageSize);
     case 'ga4':       return drillDownGa4(params.page, params.pageSize);
     default:          throw new Error(`Fonte de dados desconhecida: ${(def as MetricDef).source}`);
   }

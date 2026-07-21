@@ -312,13 +312,28 @@ export interface DrillDownResult {
   rows: Array<Record<string, unknown>>;
 }
 
+export type FilterOperator = 'equals' | 'not_equals' | 'contains' | 'is_set' | 'is_not_set';
+
+export interface ReportFilterCondition {
+  id: string;
+  source: MetricSource;
+  field: string;
+  operator: FilterOperator;
+  value: string;
+}
+
+export interface FieldValueOption {
+  value: string;
+  label: string;
+}
+
 // Parâmetros pra abrir o modal de drill-down a partir de um clique num
 // widget — dimension null/undefined = clique no total (card de KPI).
 export interface DrillDownClickParams {
   metricKey: string;
   groupBy: string | null;
   dimension: string | null;
-  filters: Record<string, string> | null;
+  filters: ReportFilterCondition[] | null;
   dateFrom: string | null;
   dateTo: string | null;
   datePreset: string | null;
@@ -353,7 +368,7 @@ export interface Report {
   isFavorite: boolean;
   isOwner: boolean;
   canEdit: boolean;
-  filters: Record<string, string> | null;
+  filters: ReportFilterCondition[] | null;
   dateFrom: string | null;
   dateTo: string | null;
   datePreset: string | null;
@@ -365,7 +380,7 @@ export interface Report {
 // Filtros/período globais do relatório, repassados como prop pros widgets —
 // já que cada gráfico não tem mais sua própria config de filtro/período.
 export interface ReportQueryContext {
-  filters: Record<string, string> | null;
+  filters: ReportFilterCondition[] | null;
   dateFrom: string | null;
   dateTo: string | null;
   datePreset: string | null;

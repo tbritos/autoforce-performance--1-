@@ -3,6 +3,8 @@ import { ReportsService, ReportWidgetInput } from '../services/reports.service';
 import { runMetricQuery } from '../services/reports/report-query.service';
 import { runDrillDownQuery } from '../services/reports/report-drilldown.service';
 import { listMetrics } from '../services/reports/metrics-catalog';
+import { ReportFilterCondition } from '../services/reports/report-filter-ops';
+import { getFieldValueOptions } from '../services/reports/report-field-values.service';
 import { canEditReport } from '../services/reports/report-access';
 import type { AuthUser } from '../services/auth.service';
 
@@ -143,10 +145,29 @@ export class ReportsController {
     }
   }
 
+  static async fieldValues(req: Request, res: Response, next: NextFunction) {
+    try {
+      const source = String(req.query.source ?? '');
+      const field = String(req.query.field ?? '');
+      if (!source || !field) {
+        res.status(400).json({ error: 'source e field são obrigatórios' });
+        return;
+      }
+      const options = await getFieldValueOptions(source, field);
+      if (options === null) {
+        res.status(400).json({ error: 'source/field inválido' });
+        return;
+      }
+      res.json({ options });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   static async queryMetric(req: Request, res: Response, next: NextFunction) {
     try {
       const { metricKey, groupBy, filters, dateFrom, dateTo, datePreset } = req.body as {
-        metricKey?: string; groupBy?: string | null; filters?: Record<string, string> | null;
+        metricKey?: string; groupBy?: string | null; filters?: ReportFilterCondition[] | null;
         dateFrom?: string | null; dateTo?: string | null; datePreset?: string | null;
       };
       if (!metricKey) {
@@ -164,7 +185,7 @@ export class ReportsController {
     try {
       const { metricKey, groupBy, dimension, filters, dateFrom, dateTo, datePreset, page, pageSize } = req.body as {
         metricKey?: string; groupBy?: string | null; dimension?: string | null;
-        filters?: Record<string, string> | null; dateFrom?: string | null; dateTo?: string | null;
+        filters?: ReportFilterCondition[] | null; dateFrom?: string | null; dateTo?: string | null;
         datePreset?: string | null; page?: number; pageSize?: number;
       };
       if (!metricKey) {

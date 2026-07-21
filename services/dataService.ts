@@ -1,4 +1,4 @@
-import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, EmailSent, EmailReceived, EmailStats, MetaCampaign, GoogleAdsCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, LeadConversion, WebhookLead, PlatformConnection, ConnectionRequirement, Lead, LeadListResult, LeadProfile, LeadCustomFieldDef, FunnelCounts, LeadStatus, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction, AutomationJourney, AutomationJourneyNode, AutomationJourneyEdge, AutomationJourneyStatus, ExitConditions, AIAgent, AIKnowledgeItem, AIInteractionLog, AIConversationMemory, UTMLink, UTMLinkListResult, UTMTemplate, UTMCampaignPicker, UTMDestination, FunnelDef, FunnelStats, CumulativeStageKey, FunnelStageLeadsResult, WhatsAppTemplate, PipedriveStage, Report, ReportSummary, ReportWidget, ReportLayoutItem, MetricDef, MetricQueryResult, DrillDownClickParams, DrillDownResult } from '../types';
+import { Metric, ChartData, LandingPage, DailyLeadEntry, RevenueEntry, OKR, TeamMember, CampaignEvent, Campaign, AssetItem, EmailCampaign, EmailSent, EmailReceived, EmailStats, MetaCampaign, GoogleAdsCampaign, AssetVersion, WorkflowEmailStat, SyncLog, LeadConversionSummary, LeadConversion, WebhookLead, PlatformConnection, ConnectionRequirement, Lead, LeadListResult, LeadProfile, LeadCustomFieldDef, FunnelCounts, LeadStatus, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction, AutomationJourney, AutomationJourneyNode, AutomationJourneyEdge, AutomationJourneyStatus, ExitConditions, AIAgent, AIKnowledgeItem, AIInteractionLog, AIConversationMemory, UTMLink, UTMLinkListResult, UTMTemplate, UTMCampaignPicker, UTMDestination, FunnelDef, FunnelStats, CumulativeStageKey, FunnelStageLeadsResult, WhatsAppTemplate, PipedriveStage, Report, ReportSummary, ReportWidget, ReportLayoutItem, MetricDef, MetricSource, MetricQueryResult, DrillDownClickParams, DrillDownResult, ReportFilterCondition, FieldValueOption } from '../types';
 import { apiClient } from './apiClient';
 
 // ============================================================================
@@ -1657,7 +1657,7 @@ export const DataService = {
     description?: string | null;
     layout?: ReportLayoutItem[];
     widgets?: ReportWidget[];
-    filters?: Record<string, string> | null;
+    filters?: ReportFilterCondition[] | null;
     dateFrom?: string | null;
     dateTo?: string | null;
     datePreset?: string | null;
@@ -1684,7 +1684,7 @@ export const DataService = {
   queryReportMetric: async (params: {
     metricKey: string;
     groupBy?: string | null;
-    filters?: Record<string, string> | null;
+    filters?: ReportFilterCondition[] | null;
     dateFrom?: string | null;
     dateTo?: string | null;
     datePreset?: string | null;
@@ -1694,6 +1694,11 @@ export const DataService = {
 
   drillDownReportMetric: async (params: DrillDownClickParams & { page: number; pageSize?: number }): Promise<DrillDownResult> => {
     return apiClient.post<DrillDownResult>('/reports/drill-down', params);
+  },
+
+  fetchReportFieldValues: async (source: MetricSource, field: string): Promise<FieldValueOption[]> => {
+    const res = await apiClient.get<{ options: FieldValueOption[] }>(`/reports/field-values?source=${encodeURIComponent(source)}&field=${encodeURIComponent(field)}`);
+    return res.options;
   },
 };
 
