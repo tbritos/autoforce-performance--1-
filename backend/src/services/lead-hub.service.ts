@@ -615,6 +615,18 @@ export class LeadHubService {
         { fromStatus: null },
         { fromStatus: { notIn: LeadHubService.SQL_OR_LATER_STATUSES } },
       ],
+      // Leads importados via CSV (ex: base de clientes ja existentes) nao
+      // "viraram SQL" de verdade quando o Pipedrive sincroniza e grava o
+      // status deles — isso e so o sistema catalogando algo que ja
+      // aconteceu no passado, nao uma qualificacao nova no periodo.
+      // OR explicito (em vez de so `not`) pra garantir que leads sem
+      // firstSource (null) continuem contando normalmente.
+      lead: {
+        OR: [
+          { firstSource: null },
+          { firstSource: { not: 'importacao_csv' } },
+        ],
+      },
       ...(changedAt ? { changedAt } : {}),
     };
   }
