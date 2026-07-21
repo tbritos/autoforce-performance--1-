@@ -609,9 +609,10 @@ export class LeadHubService {
   // Fontes que representam importacao/migracao em massa de uma base ja
   // existente (nao uma qualificacao nova acontecendo agora) — ver
   // sqlCrossingWhere abaixo. 'importacao_csv' = CsvImportModal (Lead Hub);
-  // 'rdstation_webhook' = migrateWebhookLeads (migracao unica de
-  // WebhookLead -> Lead, mesmo raciocinio).
-  private static readonly BULK_IMPORT_SOURCES = ['importacao_csv', 'rdstation_webhook'];
+  // 'rdstation' = base de leads importada do RD Station; 'rdstation_webhook'
+  // = migrateWebhookLeads (migracao unica de WebhookLead -> Lead), mesmo
+  // raciocinio.
+  private static readonly BULK_IMPORT_SOURCES = ['importacao_csv', 'rdstation', 'rdstation_webhook'];
 
   private static sqlCrossingWhere(
     changedAt?: Prisma.LeadStatusHistoryWhereInput['changedAt']
