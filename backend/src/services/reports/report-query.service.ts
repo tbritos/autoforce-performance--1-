@@ -27,14 +27,16 @@ export function validateGroupBy(def: MetricDef, groupBy: string | null | undefin
   return groupBy;
 }
 
+// Filtros agora sao globais no relatorio (aplicados a todos os widgets) —
+// um filtro de um campo que a metrica desse widget nao suporta e ignorado em
+// silencio, nao e mais um erro. Ex: filtro "platform" (so campanhas) nao deve
+// quebrar um widget de "leads.count" no mesmo relatorio.
 export function validateFilters(def: MetricDef, filters: Record<string, string> | null | undefined): Record<string, string> {
   if (!filters) return {};
   const clean: Record<string, string> = {};
   for (const [k, v] of Object.entries(filters)) {
     if (v == null || v === '') continue;
-    if (!def.filterableDimensions.includes(k)) {
-      throw new Error(`Filtro "${k}" não é suportado pela métrica "${def.key}"`);
-    }
+    if (!def.filterableDimensions.includes(k)) continue;
     clean[k] = v;
   }
   return clean;

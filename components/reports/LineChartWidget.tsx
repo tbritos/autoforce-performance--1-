@@ -1,12 +1,12 @@
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { DrillDownClickParams, ReportWidget } from '../../types';
+import { DrillDownClickParams, ReportQueryContext, ReportWidget } from '../../types';
 import { useMetricQuery, useDrillDownTrigger, formatCompactNumber, formatTooltipValue } from './useMetricQuery';
 import { WidgetFrame } from './WidgetFrame';
 
-export const LineChartWidget: React.FC<{ widget: ReportWidget; onDrillDown?: (params: DrillDownClickParams) => void }> = ({ widget, onDrillDown }) => {
-  const { data, loading, error } = useMetricQuery(widget);
-  const { enabled, trigger } = useDrillDownTrigger(widget, onDrillDown);
+export const LineChartWidget: React.FC<{ widget: ReportWidget; reportContext: ReportQueryContext; onDrillDown?: (params: DrillDownClickParams) => void }> = ({ widget, reportContext, onDrillDown }) => {
+  const { data, loading, error } = useMetricQuery(widget, reportContext);
+  const { enabled, trigger } = useDrillDownTrigger(widget, reportContext, onDrillDown);
   const rows = data?.rows ?? [];
 
   return (

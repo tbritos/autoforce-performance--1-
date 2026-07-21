@@ -332,10 +332,6 @@ export interface ReportWidget {
   title: string;
   metricKey: string;
   groupBy: string | null;
-  filters: Record<string, string> | null;
-  dateFrom: string | null;
-  dateTo: string | null;
-  datePreset: string | null;
   sortOrder?: number;
 }
 
@@ -357,9 +353,22 @@ export interface Report {
   isFavorite: boolean;
   isOwner: boolean;
   canEdit: boolean;
+  filters: Record<string, string> | null;
+  dateFrom: string | null;
+  dateTo: string | null;
+  datePreset: string | null;
   createdAt: string;
   updatedAt: string;
   widgets: ReportWidget[];
+}
+
+// Filtros/período globais do relatório, repassados como prop pros widgets —
+// já que cada gráfico não tem mais sua própria config de filtro/período.
+export interface ReportQueryContext {
+  filters: Record<string, string> | null;
+  dateFrom: string | null;
+  dateTo: string | null;
+  datePreset: string | null;
 }
 
 export interface ReportSummary {

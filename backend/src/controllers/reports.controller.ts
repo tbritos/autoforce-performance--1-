@@ -60,8 +60,9 @@ export class ReportsController {
         return;
       }
 
-      const { name, description, layout, widgets } = req.body as {
+      const { name, description, layout, widgets, filters, dateFrom, dateTo, datePreset } = req.body as {
         name?: string; description?: string | null; layout?: unknown; widgets?: ReportWidgetInput[];
+        filters?: Record<string, string> | null; dateFrom?: string | null; dateTo?: string | null; datePreset?: string | null;
       };
 
       if (widgets) {
@@ -77,7 +78,7 @@ export class ReportsController {
         }
       }
 
-      const report = await ReportsService.update(req.params.id, { name, description, layout, widgets }, user);
+      const report = await ReportsService.update(req.params.id, { name, description, layout, widgets, filters, dateFrom, dateTo, datePreset }, user);
       res.json(report);
     } catch (err) {
       next(err);

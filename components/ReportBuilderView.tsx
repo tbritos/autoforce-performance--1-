@@ -10,7 +10,7 @@ import {
   BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, Table2, Hash,
 } from 'lucide-react';
 import { DataService } from '../services/dataService';
-import { DrillDownClickParams, MetricDef, MetricSource, Report, ReportLayoutItem, ReportWidget, ReportWidgetType } from '../types';
+import { DrillDownClickParams, MetricDef, MetricSource, Report, ReportLayoutItem, ReportQueryContext, ReportWidget, ReportWidgetType } from '../types';
 import { WidgetRenderer } from './reports/WidgetRenderer';
 import { ReportDrillDownModal } from './reports/ReportDrillDownModal';
 
@@ -75,12 +75,6 @@ const WidgetModal: React.FC<WidgetModalProps> = ({ metrics, initial, onCancel, o
   const [type, setType] = useState<ReportWidgetType>(initial?.type ?? 'KPI_CARD');
   const [title, setTitle] = useState(initial?.title ?? '');
   const [groupBy, setGroupBy] = useState<string>(initial?.groupBy ?? '');
-  const [dateFrom, setDateFrom] = useState(initial?.dateFrom?.slice(0, 10) ?? '');
-  const [dateTo, setDateTo] = useState(initial?.dateTo?.slice(0, 10) ?? '');
-  const [datePreset, setDatePreset] = useState(initial?.datePreset ?? 'custom');
-  const [filterEntries, setFilterEntries] = useState<Array<{ key: string; value: string }>>(
-    initial?.filters ? Object.entries(initial.filters).map(([key, value]) => ({ key, value })) : []
-  );
 
   const metric = metrics.find(m => m.key === metricKey) ?? null;
   const sourceMetrics = useMemo(() => metrics.filter(m => m.source === source), [metrics, source]);
@@ -94,20 +88,12 @@ const WidgetModal: React.FC<WidgetModalProps> = ({ metrics, initial, onCancel, o
 
   const handleSave = () => {
     if (!metric) return;
-    const filters: Record<string, string> = {};
-    for (const { key, value } of filterEntries) {
-      if (key && value) filters[key] = value;
-    }
     onSave({
       id: initial?.id ?? newId(),
       type,
       title: title.trim() || metric.label,
       metricKey: metric.key,
       groupBy: groupBy || null,
-      filters: Object.keys(filters).length ? filters : null,
-      dateFrom: metric.dateField && datePreset === 'custom' && dateFrom ? dateFrom : null,
-      dateTo: metric.dateField && datePreset === 'custom' && dateTo ? dateTo : null,
-      datePreset: metric.dateField && datePreset !== 'custom' ? datePreset : null,
     });
   };
 
@@ -209,68 +195,6 @@ const WidgetModal: React.FC<WidgetModalProps> = ({ metrics, initial, onCancel, o
                 </label>
               )}
 
-              {metric && metric.dateField && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-muted)', textTransform: 'uppercase' }}>Período</span>
-                    <select value={datePreset} onChange={e => setDatePreset(e.target.value)}
-                      style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 13, outline: 'none' }}>
-                      {DATE_PRESET_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                    {datePreset !== 'custom' && (
-                      <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>
-                        Período recalculado automaticamente toda vez que o relatório for aberto.
-                      </span>
-                    )}
-                  </label>
-                  {datePreset === 'custom' && (
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-muted)', textTransform: 'uppercase' }}>De</span>
-                        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-                          style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 13, outline: 'none' }} />
-                      </label>
-                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-muted)', textTransform: 'uppercase' }}>Até</span>
-                        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-                          style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 13, outline: 'none' }} />
-                      </label>
-                    </div>
-                  )}
-                </div>
-              )}
-              {metric && !metric.dateField && (
-                <p style={{ fontSize: 11, color: 'var(--fg-subtle)', margin: 0 }}>
-                  Essa métrica não tem filtro de período — sempre mostra o dado mais recente.
-                </p>
-              )}
-
-              {metric && metric.filterableDimensions.length > 0 && (
-                <div>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--fg-muted)', textTransform: 'uppercase' }}>Filtros (opcional)</span>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-                    {filterEntries.map((f, i) => (
-                      <div key={i} style={{ display: 'flex', gap: 6 }}>
-                        <select value={f.key} onChange={e => setFilterEntries(prev => prev.map((x, j) => j === i ? { ...x, key: e.target.value } : x))}
-                          style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 12 }}>
-                          <option value="">Campo...</option>
-                          {metric.filterableDimensions.map(d => <option key={d} value={d}>{DIMENSION_LABELS[d] ?? d}</option>)}
-                        </select>
-                        <input value={f.value} onChange={e => setFilterEntries(prev => prev.map((x, j) => j === i ? { ...x, value: e.target.value } : x))}
-                          placeholder="valor" style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 12 }} />
-                        <button type="button" onClick={() => setFilterEntries(prev => prev.filter((_, j) => j !== i))}
-                          style={{ background: 'transparent', border: 'none', color: 'var(--fg-subtle)', cursor: 'pointer' }}>
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ))}
-                    <button type="button" onClick={() => setFilterEntries(prev => [...prev, { key: '', value: '' }])}
-                      style={{ alignSelf: 'flex-start', fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                      + adicionar filtro
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -307,8 +231,28 @@ const ReportBuilderView: React.FC = () => {
   const [dirty, setDirty] = useState(false);
   const [privacySaving, setPrivacySaving] = useState(false);
   const [drillDown, setDrillDown] = useState<DrillDownClickParams | null>(null);
+  const [reportFilters, setReportFilters] = useState<Array<{ key: string; value: string }>>([]);
+  const [reportDateFrom, setReportDateFrom] = useState('');
+  const [reportDateTo, setReportDateTo] = useState('');
+  const [reportDatePreset, setReportDatePreset] = useState('custom');
 
   const canEdit = report?.canEdit ?? true;
+
+  const allFilterableDims = useMemo(() => {
+    const set = new Set<string>();
+    metrics.forEach(m => m.filterableDimensions.forEach(d => set.add(d)));
+    return Array.from(set);
+  }, [metrics]);
+
+  const reportContext: ReportQueryContext = useMemo(() => ({
+    filters: reportFilters.reduce<Record<string, string>>((acc, { key, value }) => {
+      if (key && value) acc[key] = value;
+      return acc;
+    }, {}),
+    dateFrom: reportDatePreset === 'custom' && reportDateFrom ? reportDateFrom : null,
+    dateTo: reportDatePreset === 'custom' && reportDateTo ? reportDateTo : null,
+    datePreset: reportDatePreset !== 'custom' ? reportDatePreset : null,
+  }), [reportFilters, reportDateFrom, reportDateTo, reportDatePreset]);
 
   useEffect(() => {
     if (!id) return;
@@ -318,6 +262,10 @@ const ReportBuilderView: React.FC = () => {
       setLayout(r.layout ?? []);
       setWidgets(r.widgets ?? []);
       setMetrics(m);
+      setReportFilters(r.filters ? Object.entries(r.filters).map(([key, value]) => ({ key, value })) : []);
+      setReportDateFrom(r.dateFrom?.slice(0, 10) ?? '');
+      setReportDateTo(r.dateTo?.slice(0, 10) ?? '');
+      setReportDatePreset(r.datePreset ?? 'custom');
     });
   }, [id]);
 
@@ -352,10 +300,20 @@ const ReportBuilderView: React.FC = () => {
     if (!id) return;
     setSaving(true);
     try {
-      const updated = await DataService.updateReport(id, { name, layout, widgets });
+      const updated = await DataService.updateReport(id, {
+        name, layout, widgets,
+        filters: Object.keys(reportContext.filters ?? {}).length ? reportContext.filters : null,
+        dateFrom: reportContext.dateFrom,
+        dateTo: reportContext.dateTo,
+        datePreset: reportContext.datePreset,
+      });
       setReport(updated);
       setLayout(updated.layout ?? []);
       setWidgets(updated.widgets ?? []);
+      setReportFilters(updated.filters ? Object.entries(updated.filters).map(([key, value]) => ({ key, value })) : []);
+      setReportDateFrom(updated.dateFrom?.slice(0, 10) ?? '');
+      setReportDateTo(updated.dateTo?.slice(0, 10) ?? '');
+      setReportDatePreset(updated.datePreset ?? 'custom');
       setDirty(false);
     } finally {
       setSaving(false);
@@ -419,6 +377,70 @@ const ReportBuilderView: React.FC = () => {
         </div>
       </div>
 
+      <div className="ds-card" style={{ padding: 16, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase' }}>Período</span>
+          <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+            <select value={reportDatePreset} disabled={!canEdit}
+              onChange={e => { setReportDatePreset(e.target.value); setDirty(true); }}
+              style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 13, outline: 'none' }}>
+              {DATE_PRESET_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            {reportDatePreset === 'custom' && (
+              <>
+                <input type="date" value={reportDateFrom} disabled={!canEdit}
+                  onChange={e => { setReportDateFrom(e.target.value); setDirty(true); }}
+                  style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 13, outline: 'none' }} />
+                <input type="date" value={reportDateTo} disabled={!canEdit}
+                  onChange={e => { setReportDateTo(e.target.value); setDirty(true); }}
+                  style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 13, outline: 'none' }} />
+              </>
+            )}
+          </div>
+          {reportDatePreset !== 'custom' && (
+            <span style={{ fontSize: 11, color: 'var(--fg-subtle)', marginTop: 6, display: 'block' }}>
+              Período recalculado automaticamente toda vez que o relatório for aberto.
+            </span>
+          )}
+        </div>
+
+        <div>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-muted)', textTransform: 'uppercase' }}>Filtros</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+            {reportFilters.length === 0 && (
+              <p style={{ fontSize: 12, color: 'var(--fg-subtle)', margin: 0 }}>
+                Nenhum filtro aplicado — os gráficos abaixo mostram todos os dados.
+              </p>
+            )}
+            {reportFilters.map((f, i) => (
+              <div key={i} style={{ display: 'flex', gap: 6 }}>
+                <select value={f.key} disabled={!canEdit}
+                  onChange={e => { setReportFilters(prev => prev.map((x, j) => j === i ? { ...x, key: e.target.value } : x)); setDirty(true); }}
+                  style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 12 }}>
+                  <option value="">Campo...</option>
+                  {allFilterableDims.map(d => <option key={d} value={d}>{DIMENSION_LABELS[d] ?? d}</option>)}
+                </select>
+                <input value={f.value} disabled={!canEdit} placeholder="valor"
+                  onChange={e => { setReportFilters(prev => prev.map((x, j) => j === i ? { ...x, value: e.target.value } : x)); setDirty(true); }}
+                  style={{ flex: 1, padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 12 }} />
+                {canEdit && (
+                  <button type="button" onClick={() => { setReportFilters(prev => prev.filter((_, j) => j !== i)); setDirty(true); }}
+                    style={{ background: 'transparent', border: 'none', color: 'var(--fg-subtle)', cursor: 'pointer' }}>
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+            {canEdit && (
+              <button type="button" onClick={() => { setReportFilters(prev => [...prev, { key: '', value: '' }]); setDirty(true); }}
+                style={{ alignSelf: 'flex-start', fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                + adicionar filtro
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
       <div ref={containerRef} style={{ minHeight: 200 }}>
         {mounted && widgets.length === 0 && (
           <div className="ds-card" style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--fg-subtle)' }}>
@@ -448,7 +470,7 @@ const ReportBuilderView: React.FC = () => {
                     </button>
                   </div>
                 )}
-                <WidgetRenderer widget={w} onDrillDown={setDrillDown} />
+                <WidgetRenderer widget={w} reportContext={reportContext} onDrillDown={setDrillDown} />
               </div>
             ))}
           </GridLayout>

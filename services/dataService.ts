@@ -1657,6 +1657,10 @@ export const DataService = {
     description?: string | null;
     layout?: ReportLayoutItem[];
     widgets?: ReportWidget[];
+    filters?: Record<string, string> | null;
+    dateFrom?: string | null;
+    dateTo?: string | null;
+    datePreset?: string | null;
   }): Promise<Report> => {
     return apiClient.patch<Report>(`/reports/${id}`, data);
   },

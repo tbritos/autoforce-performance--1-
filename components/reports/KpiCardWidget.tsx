@@ -1,11 +1,11 @@
 import React from 'react';
-import { DrillDownClickParams, ReportWidget } from '../../types';
+import { DrillDownClickParams, ReportQueryContext, ReportWidget } from '../../types';
 import { useMetricQuery, useDrillDownTrigger, formatCompactNumber } from './useMetricQuery';
 import { WidgetFrame } from './WidgetFrame';
 
-export const KpiCardWidget: React.FC<{ widget: ReportWidget; onDrillDown?: (params: DrillDownClickParams) => void }> = ({ widget, onDrillDown }) => {
-  const { data, loading, error } = useMetricQuery(widget);
-  const { enabled, trigger } = useDrillDownTrigger(widget, onDrillDown);
+export const KpiCardWidget: React.FC<{ widget: ReportWidget; reportContext: ReportQueryContext; onDrillDown?: (params: DrillDownClickParams) => void }> = ({ widget, reportContext, onDrillDown }) => {
+  const { data, loading, error } = useMetricQuery(widget, reportContext);
+  const { enabled, trigger } = useDrillDownTrigger(widget, reportContext, onDrillDown);
   const rows = data?.rows ?? [];
   const total = rows.reduce((s, r) => s + r.value, 0);
 

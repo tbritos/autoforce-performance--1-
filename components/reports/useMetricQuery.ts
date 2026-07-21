@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { DataService } from '../../services/dataService';
-import { DrillDownClickParams, MetricDef, MetricQueryResult, ReportWidget } from '../../types';
+import { DrillDownClickParams, MetricDef, MetricQueryResult, ReportQueryContext, ReportWidget } from '../../types';
 
-export function useMetricQuery(widget: ReportWidget) {
+export function useMetricQuery(widget: ReportWidget, ctx: ReportQueryContext) {
   const [data, setData] = useState<MetricQueryResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -14,16 +14,16 @@ export function useMetricQuery(widget: ReportWidget) {
     DataService.queryReportMetric({
       metricKey: widget.metricKey,
       groupBy: widget.groupBy,
-      filters: widget.filters,
-      dateFrom: widget.dateFrom,
-      dateTo: widget.dateTo,
-      datePreset: widget.datePreset,
+      filters: ctx.filters,
+      dateFrom: ctx.dateFrom,
+      dateTo: ctx.dateTo,
+      datePreset: ctx.datePreset,
     })
       .then(res => { if (!cancelled) setData(res); })
       .catch((err: Error) => { if (!cancelled) setError(err.message || 'Erro ao buscar dado'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [widget.metricKey, widget.groupBy, JSON.stringify(widget.filters), widget.dateFrom, widget.dateTo, widget.datePreset]);
+  }, [widget.metricKey, widget.groupBy, JSON.stringify(ctx.filters), ctx.dateFrom, ctx.dateTo, ctx.datePreset]);
 
   return { data, loading, error };
 }
@@ -52,7 +52,7 @@ export function useMetricDef(metricKey: string): MetricDef | undefined {
 // (não existe registro individual por trás de um snapshot por página) ou
 // quando a tela não passou onDrillDown. `dimensionLabel` null = clique no
 // total (card de KPI), sem filtro extra de "pedaço" clicado.
-export function useDrillDownTrigger(widget: ReportWidget, onDrillDown?: (params: DrillDownClickParams) => void) {
+export function useDrillDownTrigger(widget: ReportWidget, ctx: ReportQueryContext, onDrillDown?: (params: DrillDownClickParams) => void) {
   const def = useMetricDef(widget.metricKey);
   const enabled = !!onDrillDown && !!def && def.source !== 'ga4';
   const trigger = (dimensionLabel: string | null) => {
@@ -61,10 +61,10 @@ export function useDrillDownTrigger(widget: ReportWidget, onDrillDown?: (params:
       metricKey: widget.metricKey,
       groupBy: widget.groupBy,
       dimension: dimensionLabel,
-      filters: widget.filters,
-      dateFrom: widget.dateFrom,
-      dateTo: widget.dateTo,
-      datePreset: widget.datePreset,
+      filters: ctx.filters,
+      dateFrom: ctx.dateFrom,
+      dateTo: ctx.dateTo,
+      datePreset: ctx.datePreset,
       title: dimensionLabel ? `${widget.title} — ${dimensionLabel}` : widget.title,
     });
   };

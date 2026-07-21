@@ -9,10 +9,6 @@ export interface ReportWidgetInput {
   title: string;
   metricKey: string;
   groupBy?: string | null;
-  filters?: Record<string, string> | null;
-  dateFrom?: string | null;
-  dateTo?: string | null;
-  datePreset?: string | null;
   sortOrder?: number;
 }
 
@@ -21,6 +17,10 @@ export interface UpdateReportInput {
   description?: string | null;
   layout?: unknown;
   widgets?: ReportWidgetInput[];
+  filters?: Record<string, string> | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  datePreset?: string | null;
 }
 
 export class ReportsService {
@@ -93,10 +93,6 @@ export class ReportsService {
               title: w.title,
               metricKey: w.metricKey,
               groupBy: w.groupBy ?? null,
-              filters: (w.filters ?? undefined) as Prisma.InputJsonValue | undefined,
-              dateFrom: w.dateFrom ? new Date(w.dateFrom) : null,
-              dateTo: w.dateTo ? new Date(w.dateTo) : null,
-              datePreset: w.datePreset ?? null,
               sortOrder: w.sortOrder ?? i,
             })),
           });
@@ -115,6 +111,10 @@ export class ReportsService {
           ...(input.name !== undefined ? { name: input.name } : {}),
           ...(input.description !== undefined ? { description: input.description } : {}),
           ...(input.layout !== undefined ? { layout: input.layout as Prisma.InputJsonValue } : {}),
+          ...(input.filters !== undefined ? { filters: (input.filters ?? Prisma.JsonNull) as Prisma.InputJsonValue } : {}),
+          ...(input.dateFrom !== undefined ? { dateFrom: input.dateFrom ? new Date(input.dateFrom) : null } : {}),
+          ...(input.dateTo !== undefined ? { dateTo: input.dateTo ? new Date(input.dateTo) : null } : {}),
+          ...(input.datePreset !== undefined ? { datePreset: input.datePreset ?? null } : {}),
           ...(adopt ? { createdBy: adopt } : {}),
         },
         include: { widgets: { orderBy: { sortOrder: 'asc' } } },
