@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { ReportsService, ReportWidgetInput } from '../services/reports.service';
+import { ReportWidgetType } from '@prisma/client';
+import { ReportsService } from '../services/reports.service';
 import { runMetricQuery } from '../services/reports/report-query.service';
 import { runDrillDownQuery } from '../services/reports/report-drilldown.service';
 import { listMetrics } from '../services/reports/metrics-catalog';
@@ -62,25 +63,17 @@ export class ReportsController {
         return;
       }
 
-      const { name, description, layout, widgets, filters, dateFrom, dateTo, datePreset } = req.body as {
-        name?: string; description?: string | null; layout?: unknown; widgets?: ReportWidgetInput[];
+      const { name, description, metricKey, groupBy, chartType, filters, dateFrom, dateTo, datePreset } = req.body as {
+        name?: string; description?: string | null; metricKey?: string | null; groupBy?: string | null; chartType?: ReportWidgetType;
         filters?: Record<string, string> | null; dateFrom?: string | null; dateTo?: string | null; datePreset?: string | null;
       };
 
-      if (widgets) {
-        for (const w of widgets) {
-          if (!w.id || !w.type || !w.title || !w.metricKey) {
-            res.status(400).json({ error: 'Cada widget precisa de id, type, title e metricKey' });
-            return;
-          }
-          if (!ReportsService.isValidWidgetType(w.type)) {
-            res.status(400).json({ error: `Tipo de widget inválido: ${w.type}` });
-            return;
-          }
-        }
+      if (chartType !== undefined && !ReportsService.isValidWidgetType(chartType)) {
+        res.status(400).json({ error: `Tipo de gráfico inválido: ${chartType}` });
+        return;
       }
 
-      const report = await ReportsService.update(req.params.id, { name, description, layout, widgets, filters, dateFrom, dateTo, datePreset }, user);
+      const report = await ReportsService.update(req.params.id, { name, description, metricKey, groupBy, chartType, filters, dateFrom, dateTo, datePreset }, user);
       res.json(report);
     } catch (err) {
       next(err);

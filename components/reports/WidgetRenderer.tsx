@@ -1,5 +1,5 @@
 import React from 'react';
-import { DrillDownClickParams, ReportQueryContext, ReportWidget } from '../../types';
+import { DrillDownClickParams, ReportQueryContext, ChartConfig } from '../../types';
 import { KpiCardWidget } from './KpiCardWidget';
 import { LineChartWidget } from './LineChartWidget';
 import { BarChartWidget } from './BarChartWidget';
@@ -7,7 +7,7 @@ import { PieChartWidget } from './PieChartWidget';
 import { TableWidget } from './TableWidget';
 
 interface WidgetRendererProps {
-  widget: ReportWidget;
+  widget: ChartConfig;
   reportContext: ReportQueryContext;
   onDrillDown?: (params: DrillDownClickParams) => void;
 }

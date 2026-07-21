@@ -1278,6 +1278,15 @@ model Report {
   // Métricas sem dateField (ex: GA4) ignoram isso. Ver resolveDatePreset.
   datePreset String?
 
+  // "Um gráfico só por relatório" — config do gráfico único direto aqui.
+  // metricKey/groupBy null = relatório ainda sem métrica escolhida.
+  // widgets/layout abaixo ficam sem uso pelo código de aplicação, mantidos
+  // só pra não perder dado de relatórios com mais de 1 widget (ver migração
+  // 20260722000000_report_single_chart).
+  metricKey String?
+  groupBy   String?
+  chartType ReportWidgetType @default(BAR_CHART)
+
   widgets ReportWidget[]
 
   createdAt DateTime @default(now())

@@ -340,29 +340,20 @@ export interface DrillDownClickParams {
   title: string;
 }
 
-export interface ReportWidget {
-  id: string;
-  reportId?: string;
+// Config do gráfico único de um relatório — passada pros componentes de
+// gráfico (WidgetRenderer, KpiCardWidget, etc). "title" é calculado no
+// cliente a partir da métrica/agrupamento escolhidos, não é persistido.
+export interface ChartConfig {
   type: ReportWidgetType;
   title: string;
   metricKey: string;
   groupBy: string | null;
-  sortOrder?: number;
-}
-
-export interface ReportLayoutItem {
-  i: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
 }
 
 export interface Report {
   id: string;
   name: string;
   description: string | null;
-  layout: ReportLayoutItem[];
   createdBy: string | null;
   isPublic: boolean;
   isFavorite: boolean;
@@ -372,9 +363,11 @@ export interface Report {
   dateFrom: string | null;
   dateTo: string | null;
   datePreset: string | null;
+  metricKey: string | null;
+  groupBy: string | null;
+  chartType: ReportWidgetType;
   createdAt: string;
   updatedAt: string;
-  widgets: ReportWidget[];
 }
 
 // Filtros/período globais do relatório, repassados como prop pros widgets —
@@ -397,7 +390,8 @@ export interface ReportSummary {
   canEdit: boolean;
   createdAt: string;
   updatedAt: string;
-  _count: { widgets: number };
+  chartType: ReportWidgetType;
+  metricKey: string | null;
 }
 
 export interface WhatsAppPhoneNumber {

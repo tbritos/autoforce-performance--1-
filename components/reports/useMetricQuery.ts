@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { DataService } from '../../services/dataService';
-import { DrillDownClickParams, MetricDef, MetricQueryResult, ReportQueryContext, ReportWidget } from '../../types';
+import { DrillDownClickParams, MetricDef, MetricQueryResult, ReportQueryContext, ChartConfig } from '../../types';
 
-export function useMetricQuery(widget: ReportWidget, ctx: ReportQueryContext) {
+export function useMetricQuery(widget: ChartConfig, ctx: ReportQueryContext) {
   const [data, setData] = useState<MetricQueryResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +52,7 @@ export function useMetricDef(metricKey: string): MetricDef | undefined {
 // (não existe registro individual por trás de um snapshot por página) ou
 // quando a tela não passou onDrillDown. `dimensionLabel` null = clique no
 // total (card de KPI), sem filtro extra de "pedaço" clicado.
-export function useDrillDownTrigger(widget: ReportWidget, ctx: ReportQueryContext, onDrillDown?: (params: DrillDownClickParams) => void) {
+export function useDrillDownTrigger(widget: ChartConfig, ctx: ReportQueryContext, onDrillDown?: (params: DrillDownClickParams) => void) {
   const def = useMetricDef(widget.metricKey);
   const enabled = !!onDrillDown && !!def && def.source !== 'ga4';
   const trigger = (dimensionLabel: string | null) => {

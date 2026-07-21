@@ -3,13 +3,15 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { FileBarChart, Plus, Trash2, X, Layers, Star, Lock, Search } from 'lucide-react';
 import { DataService } from '../services/dataService';
-import { ReportSummary } from '../types';
+import { MetricDef, ReportSummary } from '../types';
+import { CHART_TYPE_META } from './reports/reportLabels';
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
 
 const ReportsListView: React.FC = () => {
   const navigate = useNavigate();
   const [reports, setReports] = useState<ReportSummary[] | null>(null);
+  const [metrics, setMetrics] = useState<MetricDef[]>([]);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -22,6 +24,9 @@ const ReportsListView: React.FC = () => {
   };
 
   useEffect(() => { load(); }, []);
+  useEffect(() => { DataService.getReportMetrics().then(setMetrics).catch(() => setMetrics([])); }, []);
+
+  const metricLabel = (key: string | null) => key ? (metrics.find(m => m.key === key)?.label ?? key) : 'Sem métrica configurada';
 
   const handleToggleFavorite = async (id: string) => {
     setReports(prev => prev?.map(r => r.id === id ? { ...r, isFavorite: !r.isFavorite } : r) ?? null);
@@ -165,9 +170,12 @@ const ReportsListView: React.FC = () => {
                   {r.description}
                 </p>
               )}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, color: 'var(--fg-subtle)', marginTop: 'auto', paddingTop: 8 }}>
-                <span>{r._count.widgets} widget{r._count.widgets !== 1 ? 's' : ''}</span>
-                <span>Atualizado {fmtDate(r.updatedAt)}</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, color: 'var(--fg-subtle)', marginTop: 'auto', paddingTop: 8, gap: 8 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {(() => { const Icon = CHART_TYPE_META[r.chartType].icon; return <Icon size={12} style={{ flexShrink: 0 }} />; })()}
+                  {metricLabel(r.metricKey)}
+                </span>
+                <span style={{ flexShrink: 0 }}>Atualizado {fmtDate(r.updatedAt)}</span>
               </div>
             </div>
           ))}

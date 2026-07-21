@@ -1,10 +1,10 @@
 import React from 'react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { DrillDownClickParams, ReportQueryContext, ReportWidget } from '../../types';
+import { DrillDownClickParams, ReportQueryContext, ChartConfig } from '../../types';
 import { useMetricQuery, useDrillDownTrigger, CHART_PALETTE, formatTooltipValue } from './useMetricQuery';
 import { WidgetFrame } from './WidgetFrame';
 
-export const PieChartWidget: React.FC<{ widget: ReportWidget; reportContext: ReportQueryContext; onDrillDown?: (params: DrillDownClickParams) => void }> = ({ widget, reportContext, onDrillDown }) => {
+export const PieChartWidget: React.FC<{ widget: ChartConfig; reportContext: ReportQueryContext; onDrillDown?: (params: DrillDownClickParams) => void }> = ({ widget, reportContext, onDrillDown }) => {
   const { data, loading, error } = useMetricQuery(widget, reportContext);
   const { enabled, trigger } = useDrillDownTrigger(widget, reportContext, onDrillDown);
   const rows = data?.rows ?? [];

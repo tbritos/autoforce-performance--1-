@@ -1,10 +1,10 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { DrillDownClickParams, ReportQueryContext, ReportWidget } from '../../types';
+import { DrillDownClickParams, ReportQueryContext, ChartConfig } from '../../types';
 import { useMetricQuery, useDrillDownTrigger, formatCompactNumber, formatTooltipValue } from './useMetricQuery';
 import { WidgetFrame } from './WidgetFrame';
 
-export const BarChartWidget: React.FC<{ widget: ReportWidget; reportContext: ReportQueryContext; onDrillDown?: (params: DrillDownClickParams) => void }> = ({ widget, reportContext, onDrillDown }) => {
+export const BarChartWidget: React.FC<{ widget: ChartConfig; reportContext: ReportQueryContext; onDrillDown?: (params: DrillDownClickParams) => void }> = ({ widget, reportContext, onDrillDown }) => {
   const { data, loading, error } = useMetricQuery(widget, reportContext);
   const { enabled, trigger } = useDrillDownTrigger(widget, reportContext, onDrillDown);
   const rows = data?.rows ?? [];

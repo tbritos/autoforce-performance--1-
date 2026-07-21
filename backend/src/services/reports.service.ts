@@ -3,20 +3,12 @@ import { Prisma, ReportWidgetType } from '@prisma/client';
 import type { AuthUser } from './auth.service';
 import { canViewReport, canEditReport, isReportOwner } from './reports/report-access';
 
-export interface ReportWidgetInput {
-  id: string; // gerado no cliente (uuid) — mantém correspondência estável com o layout do grid
-  type: ReportWidgetType;
-  title: string;
-  metricKey: string;
-  groupBy?: string | null;
-  sortOrder?: number;
-}
-
 export interface UpdateReportInput {
   name?: string;
   description?: string | null;
-  layout?: unknown;
-  widgets?: ReportWidgetInput[];
+  metricKey?: string | null;
+  groupBy?: string | null;
+  chartType?: ReportWidgetType;
   filters?: Record<string, string> | null;
   dateFrom?: string | null;
   dateTo?: string | null;
@@ -39,7 +31,7 @@ export class ReportsService {
         id: true, name: true, description: true, createdBy: true,
         isPublic: true, isFavorite: true,
         createdAt: true, updatedAt: true,
-        _count: { select: { widgets: true } },
+        chartType: true, metricKey: true,
       },
     });
     return reports.map(r => ({
@@ -52,10 +44,7 @@ export class ReportsService {
   // Fetch cru, sem checagem de permissão — usado tanto pelo controller (que
   // decide o status HTTP certo) quanto internamente por update/remove.
   static async get(id: string) {
-    return prisma.report.findUnique({
-      where: { id },
-      include: { widgets: { orderBy: { sortOrder: 'asc' } } },
-    });
+    return prisma.report.findUnique({ where: { id } });
   }
 
   // Fetch com permissão aplicada — devolve null tanto pra "não existe" quanto
@@ -76,49 +65,30 @@ export class ReportsService {
         createdBy: input.createdBy ?? null,
         layout: [],
       },
-      include: { widgets: true },
     });
   }
 
   static async update(id: string, input: UpdateReportInput, user?: AuthUser) {
-    return prisma.$transaction(async (tx) => {
-      if (input.widgets) {
-        await tx.reportWidget.deleteMany({ where: { reportId: id } });
-        if (input.widgets.length > 0) {
-          await tx.reportWidget.createMany({
-            data: input.widgets.map((w, i) => ({
-              id: w.id,
-              reportId: id,
-              type: w.type,
-              title: w.title,
-              metricKey: w.metricKey,
-              groupBy: w.groupBy ?? null,
-              sortOrder: w.sortOrder ?? i,
-            })),
-          });
-        }
-      }
+    // "Adoção": relatório sem dono ganha um na primeira vez que alguém salva
+    // ele — em vez de exigir uma migração manual de dados pra preencher
+    // createdBy nos relatórios antigos.
+    const existing = await prisma.report.findUnique({ where: { id }, select: { createdBy: true } });
+    const adopt = existing && !existing.createdBy && user?.email ? user.email : undefined;
 
-      // "Adoção": relatório sem dono ganha um na primeira vez que alguém salva
-      // ele — em vez de exigir uma migração manual de dados pra preencher
-      // createdBy nos relatórios antigos.
-      const existing = await tx.report.findUnique({ where: { id }, select: { createdBy: true } });
-      const adopt = existing && !existing.createdBy && user?.email ? user.email : undefined;
-
-      return tx.report.update({
-        where: { id },
-        data: {
-          ...(input.name !== undefined ? { name: input.name } : {}),
-          ...(input.description !== undefined ? { description: input.description } : {}),
-          ...(input.layout !== undefined ? { layout: input.layout as Prisma.InputJsonValue } : {}),
-          ...(input.filters !== undefined ? { filters: (input.filters ?? Prisma.JsonNull) as Prisma.InputJsonValue } : {}),
-          ...(input.dateFrom !== undefined ? { dateFrom: input.dateFrom ? new Date(input.dateFrom) : null } : {}),
-          ...(input.dateTo !== undefined ? { dateTo: input.dateTo ? new Date(input.dateTo) : null } : {}),
-          ...(input.datePreset !== undefined ? { datePreset: input.datePreset ?? null } : {}),
-          ...(adopt ? { createdBy: adopt } : {}),
-        },
-        include: { widgets: { orderBy: { sortOrder: 'asc' } } },
-      });
+    return prisma.report.update({
+      where: { id },
+      data: {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.metricKey !== undefined ? { metricKey: input.metricKey } : {}),
+        ...(input.groupBy !== undefined ? { groupBy: input.groupBy } : {}),
+        ...(input.chartType !== undefined ? { chartType: input.chartType } : {}),
+        ...(input.filters !== undefined ? { filters: (input.filters ?? Prisma.JsonNull) as Prisma.InputJsonValue } : {}),
+        ...(input.dateFrom !== undefined ? { dateFrom: input.dateFrom ? new Date(input.dateFrom) : null } : {}),
+        ...(input.dateTo !== undefined ? { dateTo: input.dateTo ? new Date(input.dateTo) : null } : {}),
+        ...(input.datePreset !== undefined ? { datePreset: input.datePreset ?? null } : {}),
+        ...(adopt ? { createdBy: adopt } : {}),
+      },
     });
   }
 
