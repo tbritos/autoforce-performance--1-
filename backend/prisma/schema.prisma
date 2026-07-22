@@ -322,6 +322,13 @@ model AIAgent {
   defaultModel    String?
   fallbackModels  String[] @default([])
 
+  // Numero da Meta (phone_number_id) que ativa esse agente ao receber uma
+  // mensagem — null = cai pro fallback do env var WHATSAPP_PHONE_NUMBER_ID
+  // (ver isAgentPhoneNumber em whatsapp.service.ts). Garante que o agente so
+  // responda mensagens recebidas no numero dele, nao em disparos de outros
+  // numeros cadastrados.
+  whatsappPhoneNumberId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

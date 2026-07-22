@@ -442,6 +442,18 @@ function extractInboundText(message: any): { type: string; text: string | null }
   return { type: String(message.type ?? 'unknown'), text: null };
 }
 
+// Confere se `phoneNumberId` (o numero da Meta que RECEBEU a mensagem) e o
+// numero configurado pro agente de IA — evita que o agente responda a
+// mensagens recebidas em outros numeros (ex: respostas a disparos em massa
+// feitos de um numero diferente). Sem nada configurado em lugar nenhum, nao
+// bloqueia (mantem o comportamento anterior a essa checagem).
+async function isAgentPhoneNumber(phoneNumberId: string | null): Promise<boolean> {
+  const agent = await (prisma as any).aIAgent.findFirst({ where: { isActive: true }, select: { whatsappPhoneNumberId: true } });
+  const expected = agent?.whatsappPhoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || null;
+  if (!expected) return true;
+  return phoneNumberId === expected;
+}
+
 async function recordInboundMessage(message: any, senderName: string | null, phoneNumberId: string | null): Promise<void> {
   const from = normalizePhone(message.from);
   if (!from) return;
@@ -511,9 +523,13 @@ async function recordInboundMessage(message: any, senderName: string | null, pho
     },
   });
 
-  const { scheduleAIReply } = await import('./ai-whatsapp-reply.service');
-  scheduleAIReply(from);
-  console.log(`[WPP] inbound message recorded; AI reply scheduled phone=${from} lead=${lead.email} type=${type}`);
+  if (await isAgentPhoneNumber(phoneNumberId)) {
+    const { scheduleAIReply } = await import('./ai-whatsapp-reply.service');
+    scheduleAIReply(from);
+    console.log(`[WPP] inbound message recorded; AI reply scheduled phone=${from} lead=${lead.email} type=${type}`);
+  } else {
+    console.log(`[WPP] inbound message on non-agent number (phoneNumberId=${phoneNumberId}); AI reply skipped phone=${from} lead=${lead.email}`);
+  }
 
   try {
     const { resumeWaitingWhatsAppReply } = await import('./automation-engine.service');

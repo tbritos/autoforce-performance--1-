@@ -83,6 +83,7 @@ export class AIAgentsService {
     if (input.defaultModel !== undefined) data.defaultModel = String(input.defaultModel || '').trim() || null;
     if (input.fallbackModels !== undefined) data.fallbackModels = toStringArray(input.fallbackModels);
     if (input.isActive !== undefined) data.isActive = Boolean(input.isActive);
+    if (input.whatsappPhoneNumberId !== undefined) data.whatsappPhoneNumberId = String(input.whatsappPhoneNumberId || '').trim() || null;
 
     return (prisma as any).aIAgent.update({ where: { id }, data });
   }

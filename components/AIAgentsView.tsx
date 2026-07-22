@@ -205,6 +205,7 @@ export default function AIAgentsView() {
         defaultProvider: agentDraft.defaultProvider,
         defaultModel: agentDraft.defaultModel,
         fallbackModels: agentDraft.fallbackModels ?? [],
+        whatsappPhoneNumberId: agentDraft.whatsappPhoneNumberId ?? null,
       });
       setAgent(saved);
       setAgentDraft(saved);
@@ -510,6 +511,17 @@ export default function AIAgentsView() {
                   </select>
                 </Field>
               </div>
+
+              <Field label="Número que ativa o agente" note="(mensagens recebidas em outros números, ex: disparos, não ativam o agente)">
+                <select value={agentDraft.whatsappPhoneNumberId ?? ''}
+                  onChange={e => setAgentDraft(d => ({ ...d, whatsappPhoneNumberId: e.target.value || null }))}
+                  style={{ ...iStyle, cursor: 'pointer' }}>
+                  <option value="">Usar o número padrão do sistema (variável de ambiente)</option>
+                  {phoneNums.map(n => (
+                    <option key={n.id} value={n.id}>{(n.label ?? n.verified_name) || n.display_phone_number}</option>
+                  ))}
+                </select>
+              </Field>
 
               <Field label="Modelos de fallback" note="(acionados em cascata se o principal falhar)">
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingTop: 2 }}>

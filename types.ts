@@ -550,6 +550,7 @@ export interface AIAgent {
   defaultModel: string | null;
   fallbackModels: string[];
   isActive: boolean;
+  whatsappPhoneNumberId: string | null;
   createdAt: string;
   updatedAt: string;
   _count?: {
