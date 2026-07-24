@@ -28,7 +28,6 @@ import {
   CheckCircle,
   AlertCircle,
   FileText,
-  Tag,
 } from 'lucide-react';
 import { Lead, LeadListResult, LeadStatus, FunnelCounts, LeadCustomFieldDef, LeadWebhookSource, LeadWebhookLog, LeadWebhookInspection, LeadClassificationRule, LeadRuleCondition, LeadRuleAction } from '../types';
 import { DataService } from '../services/dataService';
@@ -693,21 +692,6 @@ const LeadHubView: React.FC = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  const [taggingImports, setTaggingImports] = useState(false);
-  const handleTagBulkImportLeads = useCallback(async () => {
-    if (!window.confirm('Marcar com a tag "importacao" todo lead com origem importacao_csv, rdstation ou rdstation_webhook? Leads que já têm a tag são ignorados.')) return;
-    setTaggingImports(true);
-    try {
-      const result = await DataService.tagBulkImportLeads();
-      window.alert(`Concluído. ${result.tagged} lead(s) marcado(s) agora, ${result.alreadyTagged} já estavam marcados (${result.total} avaliado(s) no total).`);
-      load();
-    } catch (err) {
-      window.alert('Erro ao marcar leads: ' + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setTaggingImports(false);
-    }
-  }, [load]);
-
   const handleStatusFilter = useCallback((status: LeadStatus | undefined) => setStatusFilter(status), []);
   const openLead = useCallback((id: string) => {
     navigate(`/leads/${encodeURIComponent(id)}`);
@@ -749,9 +733,6 @@ const LeadHubView: React.FC = () => {
           </button>
           <button type="button" onClick={() => DataService.exportLeadsCsv({ status: statusFilter, search: debouncedSearch, customField: customFilterField, customValue: customFilterValue, startDate: dateFrom || undefined, endDate: dateTo || undefined })} style={btnStyle} title="Exportar CSV">
             <Download size={13} /> Exportar
-          </button>
-          <button type="button" onClick={handleTagBulkImportLeads} disabled={taggingImports} style={{ ...btnStyle, opacity: taggingImports ? 0.6 : 1 }} title='Marcar com a tag "importacao" todo lead de importacao_csv/rdstation/rdstation_webhook — pra não contar nos cards de MQL/SQL/Vendas'>
-            <Tag size={13} /> {taggingImports ? 'Marcando...' : 'Marcar importados'}
           </button>
           <button type="button" onClick={load} disabled={loading} style={{ ...btnStyle, padding: 8 }} aria-label="Recarregar">
             <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
