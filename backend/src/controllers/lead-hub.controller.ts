@@ -104,6 +104,17 @@ export class LeadHubController {
     }
   }
 
+  // POST /api/lead-hub/tag-bulk-import-leads — one-time backfill: marca com
+  // a tag "importacao" todo lead das origens antigas de importação em massa
+  static async tagBulkImportLeads(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await LeadHubService.tagBulkImportLeads();
+      res.json({ message: 'Tags aplicadas', ...result });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   static async profile(req: Request, res: Response, next: NextFunction) {
     try {
       const { email } = req.params;

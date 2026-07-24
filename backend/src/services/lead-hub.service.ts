@@ -608,9 +608,14 @@ export class LeadHubService {
 
   // Tag que marca um lead como "nao contar nos cards de MQL/SQL/Vendas" —
   // uso tipico: base de clientes ja existente importada/migrada em massa,
-  // nao uma qualificacao nova acontecendo agora. Aplicada manualmente por
-  // lead via addTag/addTagById (sem backfill automatico).
+  // nao uma qualificacao nova acontecendo agora. Aplicada por lead via
+  // addTag/addTagById, ou em massa via tagBulkImportLeads (ver abaixo).
   private static readonly EXCLUDED_LEAD_TAG = 'importacao';
+
+  // Origens que antes eram excluidas dos cards diretamente por firstSource,
+  // antes da troca pra tag (ver EXCLUDED_LEAD_TAG acima) — usado só como
+  // criterio do backfill unico em tagBulkImportLeads.
+  private static readonly LEGACY_BULK_IMPORT_SOURCES = ['importacao_csv', 'rdstation', 'rdstation_webhook'];
 
   private static sqlCrossingWhere(
     changedAt?: Prisma.LeadStatusHistoryWhereInput['changedAt']
@@ -962,6 +967,36 @@ export class LeadHubService {
       where: { id },
       data: { tags: lead.tags.filter(t => t !== tag) },
     });
+  }
+
+  // Backfill unico: marca com EXCLUDED_LEAD_TAG todo lead cuja firstSource
+  // esta em LEGACY_BULK_IMPORT_SOURCES — o mesmo grupo que antes era
+  // excluido dos cards direto por firstSource, antes da troca pra tag.
+  // Idempotente (pula quem ja tem a tag) e nao dispara o trigger de
+  // automacao 'tag_added' — e um backfill de dado em massa, nao uma acao
+  // de usuario em um lead especifico, e disparar isso pra centenas de leads
+  // de uma vez poderia acionar automacoes indevidamente.
+  static async tagBulkImportLeads(): Promise<{ tagged: number; alreadyTagged: number; total: number }> {
+    const leads = await prisma.lead.findMany({
+      where: { firstSource: { in: LeadHubService.LEGACY_BULK_IMPORT_SOURCES } },
+      select: { id: true, tags: true },
+    });
+
+    let tagged = 0;
+    let alreadyTagged = 0;
+    for (const lead of leads) {
+      if (lead.tags.includes(LeadHubService.EXCLUDED_LEAD_TAG)) {
+        alreadyTagged++;
+        continue;
+      }
+      await prisma.lead.update({
+        where: { id: lead.id },
+        data: { tags: { push: LeadHubService.EXCLUDED_LEAD_TAG } },
+      });
+      tagged++;
+    }
+
+    return { tagged, alreadyTagged, total: leads.length };
   }
 
   // ----------------------------------------------------------

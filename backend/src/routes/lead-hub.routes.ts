@@ -32,6 +32,7 @@ router.get('/tags', LeadHubController.getAllTags);
 router.get('/by-source', LeadHubController.bySource);
 router.get('/conversion-sources', LeadHubController.conversionSources);
 router.post('/migrate-webhook', LeadHubController.migrateWebhook);
+router.post('/tag-bulk-import-leads', LeadHubController.tagBulkImportLeads);
 router.get('/field-values', LeadHubController.getFieldValues);
 router.get('/', LeadHubController.list);
 

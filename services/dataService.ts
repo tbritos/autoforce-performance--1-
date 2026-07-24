@@ -1310,6 +1310,10 @@ export const DataService = {
     return apiClient.post('/lead-hub/migrate-webhook', {});
   },
 
+  tagBulkImportLeads: async (): Promise<{ message: string; tagged: number; alreadyTagged: number; total: number }> => {
+    return apiClient.post('/lead-hub/tag-bulk-import-leads', {});
+  },
+
   listLeadWebhooks: async (): Promise<LeadWebhookSource[]> => {
     return apiClient.get<LeadWebhookSource[]>('/lead-webhooks');
   },
