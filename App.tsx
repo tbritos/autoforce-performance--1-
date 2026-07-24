@@ -131,6 +131,13 @@ const normalizeRange = (startValue: string, endValue: string) => {
   return start <= end ? { start, end } : { start: end, end: start };
 };
 
+// Mesma tag usada em backend/src/services/lead-hub.service.ts
+// (LeadHubService.EXCLUDED_LEAD_TAG) — leads marcados com ela nao contam em
+// nenhuma metrica de receita (MRR Novo, MRR por mes, produtos, origens),
+// mesmo criterio ja usado em MQL/SQL/Vendas Realizadas.
+const EXCLUDED_LEAD_TAG = 'importacao';
+const isExcludedRevenue = (entry: RevenueEntry) => (entry.leadTags ?? []).includes(EXCLUDED_LEAD_TAG);
+
 // ─── Pure format helpers (module-level to avoid TDZ in useMemo callbacks) ──────
 
 const formatCurrency = (val: number) => {
@@ -592,7 +599,11 @@ const DashboardContent: React.FC<{
 
     // Fallback de segurança para evitar erro se metrics vier vazio
     const safeMetrics = Array.isArray(metrics) ? metrics : [];
-    const safeRevenueHistory = Array.isArray(revenueHistory) ? revenueHistory : [];
+    // Filtra aqui, na fonte — MRR Novo, MRR por mês, produtos e origens
+    // (todos derivados de safeRevenueHistory/filteredRevenue) passam a
+    // excluir consistentemente a receita de leads com a tag "importacao",
+    // igual já acontece em MQL/SQL/Vendas Realizadas.
+    const safeRevenueHistory = (Array.isArray(revenueHistory) ? revenueHistory : []).filter(e => !isExcludedRevenue(e));
 
     // aggregateForRange uses function declaration (hoisted) so it cannot cause TDZ
     // even if a minifier reorders const initialisations inside this component.
