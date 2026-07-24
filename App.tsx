@@ -399,11 +399,12 @@ const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () =>
                 </div>
 
                 {/* Status */}
-                <div style={{ paddingRight: 8 }}>
+                <div style={{ paddingRight: 8, minWidth: 0, overflow: 'hidden' }}>
                   <span style={{
                     display: 'inline-block', padding: '2px 8px', borderRadius: 99,
                     fontSize: 10, fontWeight: 700,
                     color: meta.color, background: meta.color + '1f',
+                    maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>
                     {meta.label}
                   </span>
