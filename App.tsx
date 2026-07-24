@@ -131,13 +131,6 @@ const normalizeRange = (startValue: string, endValue: string) => {
   return start <= end ? { start, end } : { start: end, end: start };
 };
 
-// Mesma tag usada em backend/src/services/lead-hub.service.ts
-// (LeadHubService.EXCLUDED_LEAD_TAG) — leads marcados com ela nao contam nos
-// cards de MQL/SQL/Vendas Realizadas (base de clientes importada/migrada em
-// massa, nao uma qualificacao/venda nova acontecendo agora).
-const EXCLUDED_LEAD_TAG = 'importacao';
-const isExcludedRevenue = (entry: RevenueEntry) => (entry.leadTags ?? []).includes(EXCLUDED_LEAD_TAG);
-
 // ─── Pure format helpers (module-level to avoid TDZ in useMemo callbacks) ──────
 
 const formatCurrency = (val: number) => {
@@ -495,8 +488,8 @@ const DashboardContent: React.FC<{
     const [insightsLoading, setInsightsLoading] = useState(true);
 
     // ── Lead KPI stats from Lead table (replaces DailyLead) ──────────────────
-    const [leadStats, setLeadStats] = useState({ leads: 0, mqls: 0, sqls: 0 });
-    const [prevLeadStats, setPrevLeadStats] = useState({ leads: 0, mqls: 0, sqls: 0 });
+    const [leadStats, setLeadStats] = useState({ leads: 0, mqls: 0, sqls: 0, clients: 0 });
+    const [prevLeadStats, setPrevLeadStats] = useState({ leads: 0, mqls: 0, sqls: 0, clients: 0 });
     const [forecastTotals, setForecastTotals] = useState({ totalMrr: 0, totalSetup: 0, dealCount: 0 });
 
     useEffect(() => {
@@ -568,21 +561,18 @@ const DashboardContent: React.FC<{
 
     const totalInvest = useMemo(() => metaSpend + googleSpend, [metaSpend, googleSpend]);
 
-    // Conversion rates use leadStats (period-filtered) + revenue filtered by same range
+    // Conversion rates all come from leadStats agora — "vendas" (clients) usa a
+    // mesma fonte (LeadStatusHistory toStatus=CLIENT) do card e da lista de
+    // drill-down, em vez de contar RevenueEntry (podia divergir da lista).
     const conversionRates = useMemo(() => {
-      const { leads, mqls, sqls } = leadStats;
-      const revenue = (Array.isArray(revenueHistory) ? revenueHistory : []).filter(e => !isExcludedRevenue(e));
-      const range = normalizeRange(dateRange.start, dateRange.end);
-      const vendas = range
-        ? revenue.filter(e => { const d = parseDateOnly(e.date); return d >= range.start && d <= range.end; }).length
-        : revenue.length;
+      const { leads, mqls, sqls, clients } = leadStats;
       return {
-        leadToMql:  leads > 0 ? (mqls  / leads) * 100 : 0,
-        mqlToSql:   mqls  > 0 ? (sqls  / mqls)  * 100 : 0,
-        sqlToSale:  sqls  > 0 ? (vendas / sqls)  * 100 : 0,
-        leadToSale: leads > 0 ? (vendas / leads) * 100 : 0,
+        leadToMql:  leads > 0 ? (mqls    / leads) * 100 : 0,
+        mqlToSql:   mqls  > 0 ? (sqls    / mqls)  * 100 : 0,
+        sqlToSale:  sqls  > 0 ? (clients / sqls)  * 100 : 0,
+        leadToSale: leads > 0 ? (clients / leads) * 100 : 0,
       };
-    }, [leadStats, revenueHistory, dateRange.start, dateRange.end]);
+    }, [leadStats]);
 
     // Desqualificado (bot/inoperante) nao entra no total usado pras porcentagens do
     // dashboard, mas continua contado normalmente na barra do Banco de Leads.
@@ -605,17 +595,18 @@ const DashboardContent: React.FC<{
 
     // aggregateForRange uses function declaration (hoisted) so it cannot cause TDZ
     // even if a minifier reorders const initialisations inside this component.
+    // Só MRR — "sales"/Vendas Realizadas agora vem de leadStats.clients (mesma
+    // fonte da lista de drill-down), não mais de RevenueEntry.
     function aggregateForRange(startValue: string, endValue: string) {
         const range = normalizeRange(startValue, endValue);
-        if (!range) return { mrr: 0, sales: 0 };
+        if (!range) return { mrr: 0 };
         const { start, end } = range;
         const revenue = safeRevenueHistory.filter(entry => {
             const entryDate = parseDateOnly(entry.date);
             return entryDate >= start && entryDate <= end;
         });
         return {
-            mrr:   revenue.reduce((sum, item) => sum + (item.mrrValue || 0), 0),
-            sales: revenue.filter(e => !isExcludedRevenue(e)).length,
+            mrr: revenue.reduce((sum, item) => sum + (item.mrrValue || 0), 0),
         };
     }
 
@@ -631,24 +622,27 @@ const DashboardContent: React.FC<{
     const computedMetrics = useMemo(() => {
         // Revenue metrics from RevenueEntry (filtered by date in the existing memos)
         const currentMrr   = filteredRevenue.reduce((s, e) => s + (e.mrrValue || 0), 0);
-        const currentSales = filteredRevenue.filter(e => !isExcludedRevenue(e)).length;
+        // Vendas Realizadas vem de leadStats.clients — mesma fonte da lista de
+        // drill-down (evento became_client), não mais de RevenueEntry (podia
+        // divergir do número mostrado ao clicar no card).
+        const currentSales = leadStats.clients;
 
-        // Lead/MQL/SQL metrics from Lead table (via leadStats API — real data)
-        const rawLeadsChange = prevLeadStats.leads > 0 ? ((leadStats.leads - prevLeadStats.leads) / prevLeadStats.leads) * 100 : 0;
-        const mqlsChange     = prevLeadStats.mqls  > 0 ? ((leadStats.mqls  - prevLeadStats.mqls)  / prevLeadStats.mqls)  * 100 : 0;
-        const sqlsChange     = prevLeadStats.sqls  > 0 ? ((leadStats.sqls  - prevLeadStats.sqls)  / prevLeadStats.sqls)  * 100 : 0;
+        // Lead/MQL/SQL/Vendas metrics from Lead table (via leadStats API — real data)
+        const rawLeadsChange = prevLeadStats.leads   > 0 ? ((leadStats.leads   - prevLeadStats.leads)   / prevLeadStats.leads)   * 100 : 0;
+        const mqlsChange     = prevLeadStats.mqls    > 0 ? ((leadStats.mqls    - prevLeadStats.mqls)    / prevLeadStats.mqls)    * 100 : 0;
+        const sqlsChange     = prevLeadStats.sqls    > 0 ? ((leadStats.sqls    - prevLeadStats.sqls)    / prevLeadStats.sqls)    * 100 : 0;
+        const salesChange    = prevLeadStats.clients > 0 ? ((leadStats.clients - prevLeadStats.clients) / prevLeadStats.clients) * 100 : 0;
 
         // Revenue comparison — use filteredRevenue vs safeRevenueHistory for prev period
         const range = normalizeRange(dateRange.start, dateRange.end);
-        let mrrChange = 0, salesChange = 0;
+        let mrrChange = 0;
         if (range) {
           const dayMs = 24 * 60 * 60 * 1000;
           const rangeDays = Math.round((range.end.getTime() - range.start.getTime()) / dayMs) + 1;
           const prevEnd   = new Date(range.start.getTime() - dayMs);
           const prevStart = new Date(prevEnd.getTime() - (rangeDays - 1) * dayMs);
           const prev = aggregateForRange(prevStart.toISOString().split('T')[0], prevEnd.toISOString().split('T')[0]);
-          mrrChange   = prev.mrr   > 0 ? ((currentMrr   - prev.mrr)   / prev.mrr)   * 100 : 0;
-          salesChange = prev.sales > 0 ? ((currentSales - prev.sales) / prev.sales) * 100 : 0;
+          mrrChange = prev.mrr > 0 ? ((currentMrr - prev.mrr) / prev.mrr) * 100 : 0;
         }
 
         return [
@@ -777,9 +771,9 @@ const DashboardContent: React.FC<{
             { label: 'Leads',   value: leadStats.leads,       color: '#60a5fa' },
             { label: 'MQL',     value: leadStats.mqls,        color: '#3b82f6' },
             { label: 'SQL',     value: leadStats.sqls,        color: '#818cf8' },
-            { label: 'Vendas',  value: filteredRevenue.filter(e => !isExcludedRevenue(e)).length, color: '#22c55e' },
+            { label: 'Vendas',  value: leadStats.clients,       color: '#22c55e' },
         ];
-    }, [leadStats, filteredRevenue, visits]);
+    }, [leadStats, visits]);
     
     return (
         <>

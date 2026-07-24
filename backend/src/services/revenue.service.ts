@@ -30,7 +30,7 @@ export class RevenueService {
     const revenues = await prisma.revenueEntry.findMany({
       where,
       orderBy: { date: 'desc' },
-      include: { lead: { select: { id: true, name: true, tags: true } } },
+      include: { lead: { select: { id: true, name: true } } },
     });
 
     return revenues.map(rev => ({
@@ -49,7 +49,6 @@ export class RevenueService {
       leadEmail: rev.leadEmail ?? null,
       leadName: rev.lead?.name ?? null,
       leadId: rev.lead?.id ?? null,
-      leadTags: rev.lead?.tags ?? [],
     }));
   }
 

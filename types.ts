@@ -818,7 +818,6 @@ export interface RevenueEntry {
   leadEmail?: string | null;
   leadName?: string | null;
   leadId?: string | null;
-  leadTags?: string[];
 }
 
 export interface LandingPage {

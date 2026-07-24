@@ -640,9 +640,12 @@ export class LeadHubService {
   // Query: KPI stats for a date range (dashboard cards)
   // ----------------------------------------------------------
   static async getLeadStats(start: Date, end: Date) {
-    // MQL/SQL count distinct leads (matching the drill-down list), not raw status-change
-    // events — a lead that re-qualifies more than once in the period counts once.
-    const [leads, mqlRows, sqlRows] = await Promise.all([
+    // MQL/SQL/Vendas count distinct leads (matching the drill-down lists), not raw
+    // status-change events — a lead that re-qualifies more than once in the period
+    // counts once. "Vendas Realizadas" (clients) usa a mesma fonte da lista aberta ao
+    // clicar o card (evento became_client) — antes vinha de RevenueEntry, o que podia
+    // divergir do numero mostrado na lista.
+    const [leads, mqlRows, sqlRows, clientRows] = await Promise.all([
       prisma.lead.count({
         where: { deletedAt: null, status: { not: 'DISQUALIFIED' }, firstSeenAt: { gte: start, lte: end } },
       }),
@@ -660,8 +663,17 @@ export class LeadHubService {
         distinct: ['leadEmail'],
         select: { leadEmail: true },
       }),
+      prisma.leadStatusHistory.findMany({
+        where: {
+          toStatus: 'CLIENT',
+          changedAt: { gte: start, lte: end },
+          lead: { NOT: { tags: { has: LeadHubService.EXCLUDED_LEAD_TAG } } },
+        },
+        distinct: ['leadEmail'],
+        select: { leadEmail: true },
+      }),
     ]);
-    return { leads, mqls: mqlRows.length, sqls: sqlRows.length };
+    return { leads, mqls: mqlRows.length, sqls: sqlRows.length, clients: clientRows.length };
   }
 
   // ----------------------------------------------------------
