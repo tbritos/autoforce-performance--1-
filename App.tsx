@@ -131,6 +131,13 @@ const normalizeRange = (startValue: string, endValue: string) => {
   return start <= end ? { start, end } : { start: end, end: start };
 };
 
+// Mesma tag usada em backend/src/services/lead-hub.service.ts
+// (LeadHubService.EXCLUDED_LEAD_TAG) — leads marcados com ela nao contam nos
+// cards de MQL/SQL/Vendas Realizadas (base de clientes importada/migrada em
+// massa, nao uma qualificacao/venda nova acontecendo agora).
+const EXCLUDED_LEAD_TAG = 'importacao';
+const isExcludedRevenue = (entry: RevenueEntry) => (entry.leadTags ?? []).includes(EXCLUDED_LEAD_TAG);
+
 // ─── Pure format helpers (module-level to avoid TDZ in useMemo callbacks) ──────
 
 const formatCurrency = (val: number) => {
@@ -564,7 +571,7 @@ const DashboardContent: React.FC<{
     // Conversion rates use leadStats (period-filtered) + revenue filtered by same range
     const conversionRates = useMemo(() => {
       const { leads, mqls, sqls } = leadStats;
-      const revenue = Array.isArray(revenueHistory) ? revenueHistory : [];
+      const revenue = (Array.isArray(revenueHistory) ? revenueHistory : []).filter(e => !isExcludedRevenue(e));
       const range = normalizeRange(dateRange.start, dateRange.end);
       const vendas = range
         ? revenue.filter(e => { const d = parseDateOnly(e.date); return d >= range.start && d <= range.end; }).length
@@ -608,7 +615,7 @@ const DashboardContent: React.FC<{
         });
         return {
             mrr:   revenue.reduce((sum, item) => sum + (item.mrrValue || 0), 0),
-            sales: revenue.length,
+            sales: revenue.filter(e => !isExcludedRevenue(e)).length,
         };
     }
 
@@ -624,7 +631,7 @@ const DashboardContent: React.FC<{
     const computedMetrics = useMemo(() => {
         // Revenue metrics from RevenueEntry (filtered by date in the existing memos)
         const currentMrr   = filteredRevenue.reduce((s, e) => s + (e.mrrValue || 0), 0);
-        const currentSales = filteredRevenue.length;
+        const currentSales = filteredRevenue.filter(e => !isExcludedRevenue(e)).length;
 
         // Lead/MQL/SQL metrics from Lead table (via leadStats API — real data)
         const rawLeadsChange = prevLeadStats.leads > 0 ? ((leadStats.leads - prevLeadStats.leads) / prevLeadStats.leads) * 100 : 0;
@@ -770,7 +777,7 @@ const DashboardContent: React.FC<{
             { label: 'Leads',   value: leadStats.leads,       color: '#60a5fa' },
             { label: 'MQL',     value: leadStats.mqls,        color: '#3b82f6' },
             { label: 'SQL',     value: leadStats.sqls,        color: '#818cf8' },
-            { label: 'Vendas',  value: filteredRevenue.length, color: '#22c55e' },
+            { label: 'Vendas',  value: filteredRevenue.filter(e => !isExcludedRevenue(e)).length, color: '#22c55e' },
         ];
     }, [leadStats, filteredRevenue, visits]);
     

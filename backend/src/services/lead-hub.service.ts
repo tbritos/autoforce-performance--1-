@@ -606,13 +606,11 @@ export class LeadHubService {
     'SQL', 'SCHEDULED', 'DEMO', 'PROPOSAL', 'OPPORTUNITY', 'CLIENT',
   ];
 
-  // Fontes que representam importacao/migracao em massa de uma base ja
-  // existente (nao uma qualificacao nova acontecendo agora) — ver
-  // sqlCrossingWhere abaixo. 'importacao_csv' = CsvImportModal (Lead Hub);
-  // 'rdstation' = base de leads importada do RD Station; 'rdstation_webhook'
-  // = migrateWebhookLeads (migracao unica de WebhookLead -> Lead), mesmo
-  // raciocinio.
-  private static readonly BULK_IMPORT_SOURCES = ['importacao_csv', 'rdstation', 'rdstation_webhook'];
+  // Tag que marca um lead como "nao contar nos cards de MQL/SQL/Vendas" —
+  // uso tipico: base de clientes ja existente importada/migrada em massa,
+  // nao uma qualificacao nova acontecendo agora. Aplicada manualmente por
+  // lead via addTag/addTagById (sem backfill automatico).
+  private static readonly EXCLUDED_LEAD_TAG = 'importacao';
 
   private static sqlCrossingWhere(
     changedAt?: Prisma.LeadStatusHistoryWhereInput['changedAt']
@@ -623,19 +621,12 @@ export class LeadHubService {
         { fromStatus: null },
         { fromStatus: { notIn: LeadHubService.SQL_OR_LATER_STATUSES } },
       ],
-      // Leads importados/migrados em massa (ex: base de clientes ja
-      // existentes) nao "viraram SQL" de verdade quando o Pipedrive
-      // sincroniza e grava o status deles — isso e so o sistema
-      // catalogando algo que ja aconteceu no passado, nao uma
-      // qualificacao nova no periodo. OR explicito (em vez de so `notIn`)
-      // pra garantir que leads sem firstSource (null) continuem contando
-      // normalmente.
-      lead: {
-        OR: [
-          { firstSource: null },
-          { firstSource: { notIn: LeadHubService.BULK_IMPORT_SOURCES } },
-        ],
-      },
+      // Leads marcados com a tag de exclusao (ex: base de clientes ja
+      // existentes importada/migrada em massa) nao "viraram SQL" de
+      // verdade quando o Pipedrive sincroniza e grava o status deles —
+      // isso e so o sistema catalogando algo que ja aconteceu no passado,
+      // nao uma qualificacao nova no periodo.
+      lead: { NOT: { tags: { has: LeadHubService.EXCLUDED_LEAD_TAG } } },
       ...(changedAt ? { changedAt } : {}),
     };
   }
@@ -651,7 +642,11 @@ export class LeadHubService {
         where: { deletedAt: null, status: { not: 'DISQUALIFIED' }, firstSeenAt: { gte: start, lte: end } },
       }),
       prisma.leadStatusHistory.findMany({
-        where: { toStatus: 'MQL', changedAt: { gte: start, lte: end } },
+        where: {
+          toStatus: 'MQL',
+          changedAt: { gte: start, lte: end },
+          lead: { NOT: { tags: { has: LeadHubService.EXCLUDED_LEAD_TAG } } },
+        },
         distinct: ['leadEmail'],
         select: { leadEmail: true },
       }),
@@ -789,6 +784,9 @@ export class LeadHubService {
         where: {
           toStatus: toStatus as any,
           ...(fromDate || toDate ? { changedAt: { gte: fromDate, lte: toDate } } : {}),
+          // Mesma exclusao do card "Total de MQLs" — a lista precisa bater
+          // com o numero mostrado quando o card e clicado.
+          ...(toStatus === 'MQL' ? { lead: { NOT: { tags: { has: LeadHubService.EXCLUDED_LEAD_TAG } } } } : {}),
         },
         select: { leadEmail: true, changedAt: true },
         orderBy: { changedAt: 'desc' },
