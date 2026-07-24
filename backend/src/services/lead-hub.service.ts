@@ -673,7 +673,28 @@ export class LeadHubService {
         select: { leadEmail: true },
       }),
     ]);
-    return { leads, mqls: mqlRows.length, sqls: sqlRows.length, clients: clientRows.length };
+
+    // "MRR Novo" soma a receita dos MESMOS leads contados em "Vendas
+    // Realizadas" (clientRows), em vez de filtrar RevenueEntry pela sua
+    // própria coluna "date" — essa data pode ser bem diferente de quando o
+    // lead de fato virou Cliente no funil (changedAt), o que fazia o MRR
+    // Novo e o Vendas Realizadas mostrarem números de períodos diferentes
+    // na prática mesmo com o mesmo filtro de data selecionado na tela.
+    const clientEmails = clientRows.map(r => r.leadEmail);
+    const mrrAgg = clientEmails.length > 0
+      ? await prisma.revenueEntry.aggregate({
+          where: { leadEmail: { in: clientEmails } },
+          _sum: { mrrValue: true },
+        })
+      : { _sum: { mrrValue: 0 } };
+
+    return {
+      leads,
+      mqls: mqlRows.length,
+      sqls: sqlRows.length,
+      clients: clientRows.length,
+      newMrr: mrrAgg._sum.mrrValue ?? 0,
+    };
   }
 
   // ----------------------------------------------------------

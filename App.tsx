@@ -496,8 +496,8 @@ const DashboardContent: React.FC<{
     const [insightsLoading, setInsightsLoading] = useState(true);
 
     // ── Lead KPI stats from Lead table (replaces DailyLead) ──────────────────
-    const [leadStats, setLeadStats] = useState({ leads: 0, mqls: 0, sqls: 0, clients: 0 });
-    const [prevLeadStats, setPrevLeadStats] = useState({ leads: 0, mqls: 0, sqls: 0, clients: 0 });
+    const [leadStats, setLeadStats] = useState({ leads: 0, mqls: 0, sqls: 0, clients: 0, newMrr: 0 });
+    const [prevLeadStats, setPrevLeadStats] = useState({ leads: 0, mqls: 0, sqls: 0, clients: 0, newMrr: 0 });
     const [forecastTotals, setForecastTotals] = useState({ totalMrr: 0, totalSetup: 0, dealCount: 0 });
 
     useEffect(() => {
@@ -605,23 +605,6 @@ const DashboardContent: React.FC<{
     // igual já acontece em MQL/SQL/Vendas Realizadas.
     const safeRevenueHistory = (Array.isArray(revenueHistory) ? revenueHistory : []).filter(e => !isExcludedRevenue(e));
 
-    // aggregateForRange uses function declaration (hoisted) so it cannot cause TDZ
-    // even if a minifier reorders const initialisations inside this component.
-    // Só MRR — "sales"/Vendas Realizadas agora vem de leadStats.clients (mesma
-    // fonte da lista de drill-down), não mais de RevenueEntry.
-    function aggregateForRange(startValue: string, endValue: string) {
-        const range = normalizeRange(startValue, endValue);
-        if (!range) return { mrr: 0 };
-        const { start, end } = range;
-        const revenue = safeRevenueHistory.filter(entry => {
-            const entryDate = parseDateOnly(entry.date);
-            return entryDate >= start && entryDate <= end;
-        });
-        return {
-            mrr: revenue.reduce((sum, item) => sum + (item.mrrValue || 0), 0),
-        };
-    }
-
     const filteredRevenue = useMemo(() => {
         const range = normalizeRange(dateRange.start, dateRange.end);
         if (!range) return safeRevenueHistory;
@@ -632,30 +615,20 @@ const DashboardContent: React.FC<{
     }, [dateRange.end, dateRange.start, safeRevenueHistory]);
 
     const computedMetrics = useMemo(() => {
-        // Revenue metrics from RevenueEntry (filtered by date in the existing memos)
-        const currentMrr   = filteredRevenue.reduce((s, e) => s + (e.mrrValue || 0), 0);
-        // Vendas Realizadas vem de leadStats.clients — mesma fonte da lista de
-        // drill-down (evento became_client), não mais de RevenueEntry (podia
-        // divergir do número mostrado ao clicar no card).
+        // MRR Novo e Vendas Realizadas vêm de leadStats agora (mesma fonte: leads
+        // que viraram Cliente no período, via LeadStatusHistory) — antes MRR Novo
+        // filtrava RevenueEntry pela sua própria coluna "date", que podia ser bem
+        // diferente de quando o lead de fato virou Cliente (changedAt), fazendo
+        // os dois cards mostrarem números de períodos efetivamente diferentes.
+        const currentMrr   = leadStats.newMrr;
         const currentSales = leadStats.clients;
 
-        // Lead/MQL/SQL/Vendas metrics from Lead table (via leadStats API — real data)
+        // Lead/MQL/SQL/Vendas/MRR metrics from Lead table (via leadStats API — real data)
         const rawLeadsChange = prevLeadStats.leads   > 0 ? ((leadStats.leads   - prevLeadStats.leads)   / prevLeadStats.leads)   * 100 : 0;
         const mqlsChange     = prevLeadStats.mqls    > 0 ? ((leadStats.mqls    - prevLeadStats.mqls)    / prevLeadStats.mqls)    * 100 : 0;
         const sqlsChange     = prevLeadStats.sqls    > 0 ? ((leadStats.sqls    - prevLeadStats.sqls)    / prevLeadStats.sqls)    * 100 : 0;
         const salesChange    = prevLeadStats.clients > 0 ? ((leadStats.clients - prevLeadStats.clients) / prevLeadStats.clients) * 100 : 0;
-
-        // Revenue comparison — use filteredRevenue vs safeRevenueHistory for prev period
-        const range = normalizeRange(dateRange.start, dateRange.end);
-        let mrrChange = 0;
-        if (range) {
-          const dayMs = 24 * 60 * 60 * 1000;
-          const rangeDays = Math.round((range.end.getTime() - range.start.getTime()) / dayMs) + 1;
-          const prevEnd   = new Date(range.start.getTime() - dayMs);
-          const prevStart = new Date(prevEnd.getTime() - (rangeDays - 1) * dayMs);
-          const prev = aggregateForRange(prevStart.toISOString().split('T')[0], prevEnd.toISOString().split('T')[0]);
-          mrrChange = prev.mrr > 0 ? ((currentMrr - prev.mrr) / prev.mrr) * 100 : 0;
-        }
+        const mrrChange      = prevLeadStats.newMrr  > 0 ? ((leadStats.newMrr  - prevLeadStats.newMrr)  / prevLeadStats.newMrr)  * 100 : 0;
 
         return [
             {
@@ -719,7 +692,7 @@ const DashboardContent: React.FC<{
                 tooltip: 'Soma do MRR de todos os negócios inbound em aberto no funil comercial do Pipedrive (todos os pipelines/estágios). Não é limitado pelo período selecionado no topo — reflete o funil agora.',
             },
         ];
-    }, [leadStats, prevLeadStats, filteredRevenue, dateRange.start, dateRange.end, safeRevenueHistory, forecastTotals]);
+    }, [leadStats, prevLeadStats, forecastTotals]);
 
     const topProducts = useMemo(() => {
         const map = new Map<string, { count: number; mrr: number }>();
