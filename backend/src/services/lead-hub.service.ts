@@ -789,9 +789,12 @@ export class LeadHubService {
         where: {
           toStatus: toStatus as any,
           ...(fromDate || toDate ? { changedAt: { gte: fromDate, lte: toDate } } : {}),
-          // Mesma exclusao do card "Total de MQLs" — a lista precisa bater
-          // com o numero mostrado quando o card e clicado.
-          ...(toStatus === 'MQL' ? { lead: { NOT: { tags: { has: LeadHubService.EXCLUDED_LEAD_TAG } } } } : {}),
+          // Mesma exclusao dos cards "Total de MQLs"/"Vendas Realizadas" — a
+          // lista precisa bater com o numero mostrado quando o card e
+          // clicado, sem leads marcados aparecendo na lista.
+          ...(toStatus === 'MQL' || toStatus === 'CLIENT'
+            ? { lead: { NOT: { tags: { has: LeadHubService.EXCLUDED_LEAD_TAG } } } }
+            : {}),
         },
         select: { leadEmail: true, changedAt: true },
         orderBy: { changedAt: 'desc' },
