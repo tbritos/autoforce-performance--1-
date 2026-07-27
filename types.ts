@@ -26,6 +26,36 @@ export interface Lead {
   _count: { conversions: number };
 }
 
+// ─── CRM Lara (kanban de marketing/nutrição) ──────────────────────────────────
+// Estágio interno, separado do LeadStatus (que é sincronizado com o Pipedrive).
+
+export type MarketingStage =
+  | 'NOVO'
+  | 'QUALIFICACAO'
+  | 'NUTRICAO'
+  | 'AGUARDANDO_FOLLOWUP'
+  | 'AGENDA_ENVIADA'
+  | 'REUNIAO_AGENDADA'
+  | 'SEM_INTERESSE'
+  | 'TRANSFERIDO_HUMANO';
+
+export interface MarketingKanbanCard {
+  id: string;
+  name: string | null;
+  email: string;
+  company: string | null;
+  phone: string | null;
+  score: number;
+  isHot: boolean;
+  marketingStageChangedAt: string | null;
+  marketingStageSource: string | null;
+}
+
+export interface MarketingKanbanBoard {
+  totals: Record<MarketingStage, number>;
+  columns: Record<MarketingStage, MarketingKanbanCard[]>;
+}
+
 export interface LeadListResult {
   leads: Lead[];
   total: number;
@@ -551,6 +581,9 @@ export interface AIAgent {
   fallbackModels: string[];
   isActive: boolean;
   whatsappPhoneNumberId: string | null;
+  followUpDelayHours: number;
+  followUpMaxAttempts: number;
+  followUpTemplateName: string | null;
   createdAt: string;
   updatedAt: string;
   _count?: {

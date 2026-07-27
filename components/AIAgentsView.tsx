@@ -206,6 +206,9 @@ export default function AIAgentsView() {
         defaultModel: agentDraft.defaultModel,
         fallbackModels: agentDraft.fallbackModels ?? [],
         whatsappPhoneNumberId: agentDraft.whatsappPhoneNumberId ?? null,
+        followUpDelayHours: agentDraft.followUpDelayHours ?? 24,
+        followUpMaxAttempts: agentDraft.followUpMaxAttempts ?? 2,
+        followUpTemplateName: agentDraft.followUpTemplateName ?? null,
       });
       setAgent(saved);
       setAgentDraft(saved);
@@ -521,6 +524,25 @@ export default function AIAgentsView() {
                     <option key={n.id} value={n.id}>{(n.label ?? n.verified_name) || n.display_phone_number}</option>
                   ))}
                 </select>
+              </Field>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <Field label="Follow-up automático" note="(horas de silêncio antes de reengajar)">
+                  <input type="number" min={1} value={agentDraft.followUpDelayHours ?? 24}
+                    onChange={e => setAgentDraft(d => ({ ...d, followUpDelayHours: Math.max(1, Number(e.target.value) || 1) }))}
+                    style={iStyle} />
+                </Field>
+                <Field label="Máximo de tentativas" note="(0 desativa o follow-up automático)">
+                  <input type="number" min={0} value={agentDraft.followUpMaxAttempts ?? 2}
+                    onChange={e => setAgentDraft(d => ({ ...d, followUpMaxAttempts: Math.max(0, Number(e.target.value) || 0) }))}
+                    style={iStyle} />
+                </Field>
+              </div>
+
+              <Field label="Template de reengajamento (Meta)" note="(nome técnico do template aprovado, usado quando o follow-up cai fora da janela de 24h da última mensagem do lead — sem isso, esses follow-ups são pulados)">
+                <input type="text" placeholder="ex: reengajamento_lead" value={agentDraft.followUpTemplateName ?? ''}
+                  onChange={e => setAgentDraft(d => ({ ...d, followUpTemplateName: e.target.value || null }))}
+                  style={iStyle} />
               </Field>
 
               <Field label="Modelos de fallback" note="(acionados em cascata se o principal falhar)">

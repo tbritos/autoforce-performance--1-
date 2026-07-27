@@ -10,6 +10,7 @@ import CampaignsView from './components/CampaignsView';
 import ConnectionsView from './components/ConnectionsView';
 import DocsView from './components/DocsView';
 import LeadHubView from './components/LeadHubView';
+import CRMLaraView from './components/CRMLaraView';
 import LeadProfilePanel from './components/LeadProfilePanel';
 import UTMTrackerView from './components/UTMTrackerView';
 import FunnelView from './components/FunnelView';
@@ -1275,6 +1276,7 @@ const AppContent: React.FC = () => {
       label: 'LEADS',
       items: [
         { label: 'Banco de Leads',  path: '/leads',       icon: Users },
+        { label: 'CRM Lara',       path: '/crm-lara',    icon: Bot },
         { label: 'UTM Tracker',     path: '/utm',         icon: Link2 },
       ],
     },
@@ -1550,6 +1552,7 @@ const AppContent: React.FC = () => {
             {/* Leads */}
             <Route path="/leads/:leadId" element={<LeadProfilePage />} />
             <Route path="/leads" element={<LeadHubView />} />
+            <Route path="/crm-lara" element={<CRMLaraView />} />
             <Route path="/utm" element={<UTMTrackerView />} />
             <Route path="/automation" element={<AutomationJourneysView />} />
             <Route path="/automation/:id" element={<AutomationJourneysView />} />

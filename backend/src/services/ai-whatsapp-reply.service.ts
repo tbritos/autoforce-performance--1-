@@ -404,8 +404,9 @@ async function executeAIAndReply(
     customFields: unknown;
     firstSeenAt: Date; lastSeenAt: Date;
   },
-  phone: string
-): Promise<void> {
+  phone: string,
+  options?: { followUp?: boolean; withinSessionWindow?: boolean; followUpTemplateName?: string | null }
+): Promise<{ sent: boolean }> {
   const { recordOutgoingWhatsAppMessage, getWhatsAppCredentials } = await import('./whatsapp.service');
 
   const isNewContact = isGeneratedWppEmail(lead.email);
@@ -476,6 +477,8 @@ async function executeAIAndReply(
 
   const goal = isNewContact
     ? `${agentContext.agent.objective}\n\nIMPORTANTE: Este contato é novo e ainda não tem email cadastrado. Durante a conversa, de forma natural, tente descobrir o nome e o e-mail da pessoa. Quando obtiver o e-mail, inclua a ação register_lead no recommended_actions com os campos email e name. Peça o email como parte natural do cadastro (ex: "pra eu deixar seu contato registrado certinho aqui") — NUNCA diga que o email é necessário para enviar algo (material, ebook, proposta); qualquer material é sempre entregue aqui mesmo pelo WhatsApp, nunca por email.`
+    : options?.followUp
+    ? `${agentContext.agent.objective}\n\nIMPORTANTE: o lead está em silêncio há um bom tempo (não respondeu a nenhuma mensagem recente). Antes de tudo, avalie o histórico da conversa: se em algum momento o lead demonstrou claramente que não tem mais interesse, pediu pra não ser mais contatado, ou a conversa já chegou a uma conclusão natural, NÃO gere uma mensagem — em vez disso, inclua a ação "skip_followup" em recommended_actions e deixe a resposta vazia. Caso contrário, gere uma mensagem curta e natural de reengajamento — pergunte se ainda tem interesse, se ficou alguma dúvida, ou se é um bom momento pra continuar a conversa. Não repita literalmente a última mensagem enviada, não pareça um robô insistindo, e não mencione que isso é um "follow-up" automático.`
     : agentContext.agent.objective;
 
   const result = await runAIPrequalification({
@@ -488,6 +491,21 @@ async function executeAIAndReply(
     fallbackModels: agentContext.agent.fallbackModels,
     agentContext,
   });
+
+  // A IA pode decidir, olhando o historico, que esse lead nao deve receber
+  // follow-up (ja sinalizou desinteresse, pediu pra nao ser mais contatado
+  // etc) — marca e para de considerar esse lead em follow-ups futuros, sem
+  // mandar nada e sem contar como tentativa.
+  if (options?.followUp && result.recommendedActions?.some(a => a.type === 'skip_followup')) {
+    await prisma.lead.update({
+      where: { email: lead.email },
+      data: { tags: Array.from(new Set([...lead.tags, 'followup_desinteresse'])) },
+    }).catch(() => {});
+    const { setMarketingStage } = await import('./lead-marketing-stage.service');
+    await setMarketingStage(lead.email, 'SEM_INTERESSE', 'ai').catch(() => {});
+    console.log(`[AI-Followup] IA decidiu não reengajar ${lead.email} (sinal de desinteresse) — lead excluído de futuros follow-ups`);
+    return { sent: false };
+  }
 
   // recoverAIReply e um classificador por palavra-chave -- deliberadamente cru,
   // sem entender contexto real da conversa. So deve substituir a decisao da IA
@@ -522,7 +540,22 @@ async function executeAIAndReply(
     replyMessage: replyText,
     recommendedActions: actionsToApply,
   };
-  if (replyText) {
+
+  let sent = false;
+  if (options?.followUp && options.withinSessionWindow === false) {
+    // Fora da janela de 24h desde a ultima mensagem do lead — a Meta rejeita
+    // texto livre nesse caso, so um template pre-aprovado pode ser enviado.
+    // O texto gerado pela IA (replyText) e descartado aqui; so serve pra
+    // decidir "skip_followup" acima e pra enrichLeadFromAI logo abaixo.
+    if (options.followUpTemplateName) {
+      const { sendWhatsAppTemplateFromUI } = await import('./whatsapp.service');
+      const firstName = (lead.name ?? '').trim().split(/\s+/)[0] || 'tudo bem';
+      await sendWhatsAppTemplateFromUI(lead.id, options.followUpTemplateName, [firstName]);
+      sent = true;
+    } else {
+      console.warn(`[AI-Followup] fora da janela de 24h e nenhum template configurado (AIAgent.followUpTemplateName) — follow-up não enviado para ${lead.email}`);
+    }
+  } else if (replyText) {
     await sendWhatsAppText({
       to: phone,
       text: replyText,
@@ -530,6 +563,7 @@ async function executeAIAndReply(
       getCredentials: getWhatsAppCredentials,
       recordOutgoing: recordOutgoingWhatsAppMessage,
     });
+    sent = true;
   }
 
   // If new contact, check if AI discovered the real email
@@ -561,11 +595,32 @@ async function executeAIAndReply(
       await applyRecommendedActions(actionLeadEmail, phone, newContactAllowedActions, result.tags ?? [])
         .catch(err => console.error('[AI-WPP] applyRecommendedActions for new contact failed:', err));
     }
-    return;
+    return { sent };
   }
 
   await enrichLeadFromAI(lead, effectiveResult, leadInboundText)
     .catch(err => console.error('[AI-WPP] enrichLeadFromAI failed:', err));
+
+  // CRM Lara — mapeia o fit da IA pra coluna do kanban de marketing. So roda
+  // em resposta a uma mensagem real do lead: no fluxo de follow-up
+  // (options.followUp) isso reclassificaria o lead de volta pra
+  // qualificacao/nutricao na mesma chamada que acabou de setar
+  // AGUARDANDO_FOLLOWUP, esvaziando essa coluna na pratica — ver
+  // sendFollowUpMessage mais abaixo, que so escreve AGUARDANDO_FOLLOWUP ou
+  // SEM_INTERESSE (via skip_followup), nunca isso aqui.
+  if (!options?.followUp) {
+    const { setMarketingStage } = await import('./lead-marketing-stage.service');
+    if (result.fit === 'disqualified') {
+      await setMarketingStage(lead.email, 'SEM_INTERESSE', 'ai').catch(() => {});
+    } else if (result.fit === 'nurture') {
+      const stage = result.estagioQualificacao === 'nutricao' ? 'NUTRICAO' : 'QUALIFICACAO';
+      await setMarketingStage(lead.email, stage, 'ai').catch(() => {});
+    }
+    // fit === 'qualified': nao seta nada aqui — se offer_meeting_slots
+    // disparar neste mesmo turno, AGENDA_ENVIADA e escrito abaixo por
+    // applyRecommendedActions e vence corretamente; se nao disparar ainda,
+    // o card simplesmente nao avanca neste turno, o que tambem esta certo.
+  }
 
   // Known lead: apply actions and persist memory
   await applyRecommendedActions(lead.email, phone, actionsToApply, result.tags ?? [])
@@ -580,6 +635,67 @@ async function executeAIAndReply(
     result: effectiveResult,
     lastMessageAt: new Date(),
   }).catch(err => console.error('[AI-WPP] persistAIAgentDecision failed:', err));
+
+  return { sent };
+}
+
+// ─── Follow-up automático (chamado por ai-followup.service.ts) ────────────────
+// Reaproveita o mesmo lock aiProcessing/aiProcessingAt do fluxo de resposta
+// normal (processAIReply) — evita mandar follow-up bem na hora em que uma
+// mensagem do lead acabou de chegar e já está sendo processada.
+export async function sendFollowUpMessage(phone: string): Promise<void> {
+  const lead = await findLeadByPhone(phone);
+  if (!lead) return;
+  if (lead.aiHandoff) return;
+
+  const now = new Date();
+  if (lead.aiProcessing && lead.aiProcessingAt && now.getTime() - lead.aiProcessingAt.getTime() < LOCK_TTL_MS) {
+    console.log(`[AI-Followup] aiProcessing lock ativo pra ${phone} — pula essa rodada`);
+    return;
+  }
+
+  // A Meta so libera mensagem de texto livre ate 24h depois da ULTIMA
+  // mensagem que o LEAD mandou — passado isso, so um template pre-aprovado
+  // pode reabrir a conversa. Por definicao um follow-up so dispara depois de
+  // um tempo de silencio, entao essa janela normalmente ja esta fechada.
+  const lastInbound = await (prisma as any).whatsAppMessage.findFirst({
+    where: { direction: 'inbound', OR: [{ leadId: lead.id }, { leadEmail: lead.email }] },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true },
+  });
+  const withinSessionWindow = !!lastInbound && (now.getTime() - lastInbound.createdAt.getTime()) < 24 * 60 * 60 * 1000;
+
+  let followUpTemplateName: string | null = null;
+  if (!withinSessionWindow) {
+    const agent = await (prisma as any).aIAgent.findFirst({ where: { isActive: true }, select: { followUpTemplateName: true } });
+    followUpTemplateName = agent?.followUpTemplateName ?? null;
+    if (!followUpTemplateName) {
+      console.warn(`[AI-Followup] ${phone} fora da janela de 24h e nenhum template configurado (AIAgent.followUpTemplateName) — pulando sem chamar a IA`);
+      return;
+    }
+  }
+
+  await prisma.lead.update({
+    where: { email: lead.email },
+    data: { aiProcessing: true, aiProcessingAt: now },
+  });
+
+  try {
+    const { sent } = await executeAIAndReply(lead, phone, { followUp: true, withinSessionWindow, followUpTemplateName });
+    if (sent) {
+      await prisma.lead.update({
+        where: { email: lead.email },
+        data: { followUpCount: { increment: 1 } },
+      });
+      console.log(`[AI-Followup] follow-up enviado para ${phone} lead=${lead.email} (canal=${withinSessionWindow ? 'texto livre' : 'template'})`);
+    }
+  } catch (err) {
+    console.error(`[AI-Followup] falha ao enviar follow-up para ${phone} lead=${lead.email}:`, err);
+  } finally {
+    await prisma.lead
+      .update({ where: { email: lead.email }, data: { aiProcessing: false, aiProcessingAt: null } })
+      .catch(() => {});
+  }
 }
 
 // ─── Upgrade generated email to real email ────────────────────────────────────
@@ -912,6 +1028,8 @@ async function handleOfferMeetingSlots(leadEmail: string, phone: string): Promis
         getCredentials: getWhatsAppCredentials,
         recordOutgoing: recordOutgoingWhatsAppMessage,
       });
+      const { setMarketingStage } = await import('./lead-marketing-stage.service');
+      await setMarketingStage(leadEmail, 'AGENDA_ENVIADA', 'system').catch(() => {});
       return;
     }
 
@@ -948,6 +1066,8 @@ async function handleOfferMeetingSlots(leadEmail: string, phone: string): Promis
       getCredentials: getWhatsAppCredentials,
       recordOutgoing: recordOutgoingWhatsAppMessage,
     });
+    const { setMarketingStage } = await import('./lead-marketing-stage.service');
+    await setMarketingStage(leadEmail, 'AGENDA_ENVIADA', 'system').catch(() => {});
   } catch (err) {
     console.error('[AI-WPP] Erro ao oferecer slots de reunião:', err);
     // Send fallback so the lead doesn't get silence
@@ -1067,6 +1187,8 @@ async function handleHandoffToHuman(leadEmail: string): Promise<void> {
       tags: Array.from(new Set([...(lead?.tags ?? []), HANDOFF_TAG])),
     },
   });
+  const { setMarketingStage } = await import('./lead-marketing-stage.service');
+  await setMarketingStage(leadEmail, 'TRANSFERIDO_HUMANO', 'system').catch(() => {});
 }
 
 async function handleSendDocument(leadEmail: string, phone: string): Promise<void> {

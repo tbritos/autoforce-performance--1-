@@ -31,7 +31,14 @@ export type AIPrequalificationResult = {
   openQuestions: string[];
   replyMessage?: string;
   promptSnapshot?: unknown;
+  // So preenchido quando fit === 'nurture' — usado pelo CRM Lara (kanban de
+  // marketing) pra decidir entre as colunas "Em qualificacao" e "Em
+  // nutricao". Ver mapeamento fit->marketingStage em executeAIAndReply,
+  // ai-whatsapp-reply.service.ts.
+  estagioQualificacao?: 'qualificacao' | 'nutricao';
 };
+
+const ALLOWED_ESTAGIO_QUALIFICACAO = new Set(['qualificacao', 'nutricao']);
 
 // So inclui acoes que tem codigo executando elas de verdade (ver
 // applyRecommendedActions em ai-whatsapp-reply.service.ts, e o tratamento
@@ -42,6 +49,10 @@ const ALLOWED_ACTION_TYPES = new Set([
   'register_lead',
   'offer_meeting_slots',
   'send_document',
+  // So tem efeito quando a chamada e de follow-up automatico (ver goal
+  // customizado em executeAIAndReply, ai-whatsapp-reply.service.ts) — fora
+  // desse contexto o switch em applyRecommendedActions simplesmente ignora.
+  'skip_followup',
 ]);
 
 const AI_RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
@@ -420,12 +431,15 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
         'register_lead',
         'offer_meeting_slots',
         'send_document',
+        'skip_followup',
       ],
       nota_sobre_tags: 'NAO use a acao apply_tag. O sistema de tags e gerenciado automaticamente. As tags de agendamento sao link_agendamento_enviado e reuniao_agendada.',
       nota_sobre_envio_de_documento: 'REGRA CRITICA — send_document: use APENAS quando o lead pedir explicitamente o ebook, material ou PDF (ex: "pode me mandar o ebook?", "tem algum material?"). NUNCA ofereca material por conta propria durante qualificacao/discovery -- isso e um pretexto pra fugir de perguntar, nao uma tatica de vendas. O material e SEMPRE entregue aqui mesmo pelo WhatsApp (send_document) -- nunca por email. Se precisar do email do lead, e SOMENTE para cadastro/registro (register_lead) -- nunca diga que o email e "para enviar o material", isso e falso e gera confusao.',
+      nota_sobre_skip_followup: 'A acao skip_followup so existe pra uso quando a instrucao (goal) explicitamente pedir uma avaliacao de follow-up automatico (reengajamento apos silencio do lead) — nunca use fora desse contexto. Quando pedida, use pra sinalizar que esse lead NAO deve ser reengajado (ja demonstrou desinteresse, pediu pra nao ser mais contatado, ou a conversa ja concluiu naturalmente) e, nesse caso, deixe reply_message vazio.',
     },
     formato_obrigatorio_de_saida: {
       fit: 'qualified | nurture | disqualified',
+      estagio_qualificacao: 'qualificacao | nutricao — OBRIGATORIO preencher quando fit for "nurture" (ignorado nos outros casos). "qualificacao": a conversa ainda esta em descoberta ativa, tentando entender dor/perfil/urgencia do lead. "nutricao": ja houve descoberta o suficiente, mas o lead ainda nao esta maduro pra reuniao — e um acompanhamento de longo prazo, sem urgencia de avancar agora. Usado pelo board interno de marketing (CRM Lara) pra organizar os leads.',
       score: 'number 0-100',
       confidence: 'number 0-1',
       pain: 'principal dor percebida',
@@ -436,7 +450,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
       recommended_next_step: 'proxima acao recomendada',
       recommended_actions: [
         {
-          type: 'handoff_to_human | register_lead | offer_meeting_slots | send_document',
+          type: 'handoff_to_human | register_lead | offer_meeting_slots | send_document | skip_followup',
           reason: 'por que essa acao faz sentido',
           payload: {},
         },
@@ -973,6 +987,10 @@ function normalizeAIPrequalificationResult(
     openQuestions,
     replyMessage: replyMessage?.slice(0, 1024),
     promptSnapshot,
+    estagioQualificacao: (() => {
+      const raw = String(data.estagio_qualificacao ?? data.estagioQualificacao ?? '').toLowerCase().trim();
+      return ALLOWED_ESTAGIO_QUALIFICACAO.has(raw) ? (raw as 'qualificacao' | 'nutricao') : undefined;
+    })(),
   };
 }
 

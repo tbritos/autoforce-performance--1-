@@ -177,6 +177,21 @@ export function startSyncScheduler(): void {
     }).catch(() => {});
   }, bookingSyncMs);
 
+  // Follow-up automatico do agente de WhatsApp: reengaja leads em silencio ha
+  // mais tempo que o configurado no agente ativo (ver ai-followup.service.ts).
+  const followUpMs = Number.parseInt(process.env.FOLLOWUP_CHECK_INTERVAL_MS ?? '', 10) || 30 * 60 * 1000;
+  setInterval(() => {
+    import('./ai-followup.service').then(({ sendFollowUpsForSilentLeads }) => {
+      sendFollowUpsForSilentLeads()
+        .then(result => {
+          if (result.sent > 0) {
+            console.log(`[ai-followup] sent=${result.sent} evaluated=${result.evaluated}`);
+          }
+        })
+        .catch(err => console.error('[ai-followup] scheduler error:', err));
+    }).catch(() => {});
+  }, followUpMs);
+
   // WhatsApp webhook health check every 30 minutes — catches Meta silently
   // dropping/changing the webhook subscription (no data sync, so it's not in ACTIVE_SYNC_PLATFORMS)
   import('./whatsapp-webhook-health.service').then(({ runWhatsAppWebhookHealthCheck }) => {

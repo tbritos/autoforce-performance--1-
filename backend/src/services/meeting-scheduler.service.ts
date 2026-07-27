@@ -376,7 +376,20 @@ export async function bookMeeting(
         tags: Array.from(new Set([...currentLead.tags, 'reuniao_agendada'])),
       },
     });
+    const { setMarketingStage } = await import('./lead-marketing-stage.service');
+    await setMarketingStage(lead.email, 'REUNIAO_AGENDADA', 'system').catch(() => {});
   }
+
+  const { sendGoogleChatNotification } = await import('./google-chat.service');
+  await sendGoogleChatNotification(
+    [
+      '🗓️ Nova reunião agendada!',
+      `Lead: ${lead.name ?? lead.phone ?? lead.email}`,
+      `Contato: ${lead.email}`,
+      `Especialista: ${slot.closerName}`,
+      `Horário: ${new Date(slot.startIso).toLocaleString('pt-BR', { timeZone: process.env.MEETING_TIMEZONE || DEFAULT_TIMEZONE })}`,
+    ].join('\n')
+  ).catch(err => console.error('[GoogleChat] falha ao notificar agendamento:', err));
 
   const meetLink = event.data.conferenceData?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri ?? null;
   return {
@@ -469,8 +482,22 @@ export async function syncAppointmentScheduleBookings(): Promise<{ synced: numbe
               .filter(t => t !== 'booking_link_sent' && t !== 'link_agendamento_enviado'),
           },
         });
+        const { setMarketingStage } = await import('./lead-marketing-stage.service');
+        await setMarketingStage(matchedLead.email, 'REUNIAO_AGENDADA', 'system').catch(() => {});
         syncedLeadEmails.add(matchedLead.email);
         synced++;
+
+        const { sendGoogleChatNotification } = await import('./google-chat.service');
+        const startsAt = event.start?.dateTime ?? event.start?.date;
+        await sendGoogleChatNotification(
+          [
+            '🗓️ Nova reunião agendada!',
+            `Lead: ${matchedLead.name ?? matchedLead.phone ?? matchedLead.email}`,
+            `Contato: ${matchedLead.email}`,
+            `Especialista: ${seller.name || seller.calendarId}`,
+            startsAt ? `Horário: ${new Date(startsAt).toLocaleString('pt-BR', { timeZone: process.env.MEETING_TIMEZONE || DEFAULT_TIMEZONE })}` : '',
+          ].filter(Boolean).join('\n')
+        ).catch(err => console.error('[GoogleChat] falha ao notificar agendamento:', err));
       }
     } catch (err) {
       errors++;

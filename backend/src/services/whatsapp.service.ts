@@ -492,6 +492,10 @@ async function recordInboundMessage(message: any, senderName: string | null, pho
 
   if (!lead) return;
 
+  // Qualquer mensagem do lead reseta o contador de follow-up automatico —
+  // ver ai-followup.service.ts.
+  await prisma.lead.update({ where: { id: lead.id }, data: { followUpCount: 0 } }).catch(() => {});
+
   const { type, text } = extractInboundText(message);
   const receivedAt = metaTimestamp(message.timestamp);
 

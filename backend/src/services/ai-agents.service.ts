@@ -84,6 +84,9 @@ export class AIAgentsService {
     if (input.fallbackModels !== undefined) data.fallbackModels = toStringArray(input.fallbackModels);
     if (input.isActive !== undefined) data.isActive = Boolean(input.isActive);
     if (input.whatsappPhoneNumberId !== undefined) data.whatsappPhoneNumberId = String(input.whatsappPhoneNumberId || '').trim() || null;
+    if (input.followUpDelayHours !== undefined) data.followUpDelayHours = Math.max(1, Number(input.followUpDelayHours) || 24);
+    if (input.followUpMaxAttempts !== undefined) data.followUpMaxAttempts = Math.max(0, Number(input.followUpMaxAttempts) || 0);
+    if (input.followUpTemplateName !== undefined) data.followUpTemplateName = String(input.followUpTemplateName || '').trim() || null;
 
     return (prisma as any).aIAgent.update({ where: { id }, data });
   }

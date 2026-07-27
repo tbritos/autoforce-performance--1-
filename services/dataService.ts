@@ -1145,6 +1145,14 @@ export const DataService = {
     return apiClient.get<FunnelCounts>('/lead-hub/funnel');
   },
 
+  getMarketingKanban: async (includeAll = false): Promise<import('../types').MarketingKanbanBoard> => {
+    return apiClient.get(`/lead-hub/marketing-kanban${includeAll ? '?includeAll=true' : ''}`);
+  },
+
+  updateLeadMarketingStage: async (id: string, stage: import('../types').MarketingStage): Promise<Lead> => {
+    return apiClient.patch<Lead>(`/lead-hub/id/${encodeURIComponent(id)}/marketing-stage`, { stage });
+  },
+
   getAllLeadTags: async (): Promise<string[]> => {
     return apiClient.get<string[]>('/lead-hub/tags');
   },

@@ -45,6 +45,21 @@ enum LeadStatus {
   DISQUALIFIED
 }
 
+// Kanban interno de marketing/nutricao (CRM Lara) — totalmente separado do
+// LeadStatus acima, que e sincronizado com o Pipedrive. So faz sentido
+// enquanto o lead ainda esta na fase de marketing, antes do handoff pro
+// comercial (REUNIAO_AGENDADA). Ver lead-marketing-stage.service.ts.
+enum MarketingStage {
+  NOVO
+  QUALIFICACAO
+  NUTRICAO
+  AGUARDANDO_FOLLOWUP
+  AGENDA_ENVIADA
+  REUNIAO_AGENDADA
+  SEM_INTERESSE
+  TRANSFERIDO_HUMANO
+}
+
 model Lead {
   id    String @id @default(uuid())
   email String @unique
@@ -77,6 +92,18 @@ model Lead {
   aiHandoff           Boolean   @default(false)
   bookingLinkSentAt   DateTime?
   pendingMeetingSlots Json?
+
+  // Quantos follow-ups automaticos ja foram enviados desde a ultima resposta
+  // do lead — zera quando uma mensagem inbound chega (ver
+  // ai-followup.service.ts / recordInboundMessage em whatsapp.service.ts).
+  followUpCount Int @default(0)
+
+  // CRM Lara — coluna do kanban interno de marketing. Ver
+  // lead-marketing-stage.service.ts (unico ponto que deve escrever nesses
+  // 3 campos) pra a maquina de estados completa.
+  marketingStage          MarketingStage @default(NOVO)
+  marketingStageChangedAt DateTime?
+  marketingStageSource    String? // 'ai' | 'system' | 'manual'
 
   // Pipedrive integration
   pipedrivePersonId String?
@@ -125,6 +152,7 @@ model Lead {
   @@index([aiHandoff])
   @@index([pipedriveDealStatus])
   @@index([pipedriveStageId])
+  @@index([marketingStage])
 }
 
 model LeadConversion {
@@ -328,6 +356,19 @@ model AIAgent {
   // responda mensagens recebidas no numero dele, nao em disparos de outros
   // numeros cadastrados.
   whatsappPhoneNumberId String?
+
+  // Follow-up automatico: depois de quantas horas sem resposta do lead (em
+  // qualquer ponto da conversa) o agente reengaja sozinho, e quantas vezes no
+  // maximo antes de desistir — ver ai-followup.service.ts.
+  followUpDelayHours  Int @default(24)
+  followUpMaxAttempts Int @default(2)
+
+  // Nome tecnico (+ idioma) do template pre-aprovado pela Meta usado quando o
+  // follow-up precisa disparar fora da janela de 24h da ultima mensagem do
+  // lead (WhatsApp so libera texto livre dentro da janela) — ver
+  // sendFollowUpMessage em ai-whatsapp-reply.service.ts. Sem isso configurado,
+  // follow-ups fora da janela sao pulados (sem chamar a IA).
+  followUpTemplateName String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

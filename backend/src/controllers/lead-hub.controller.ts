@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { LeadHubService, LeadFilter } from '../services/lead-hub.service';
 import { LeadScoringService } from '../services/lead-scoring.service';
-import { LeadStatus } from '@prisma/client';
+import { LeadStatus, MarketingStage } from '@prisma/client';
 import { prisma } from '../config/database';
 import { PlatformConnectionService } from '../services/platform-connection.service';
 
@@ -197,6 +197,34 @@ export class LeadHubController {
     try {
       const counts = await LeadHubService.getFunnelCounts();
       res.json(counts);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async marketingKanban(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { getMarketingKanban } = await import('../services/lead-marketing-stage.service');
+      const board = await getMarketingKanban(req.query.includeAll === 'true');
+      res.json(board);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async updateMarketingStageById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { stage } = req.body as { stage: MarketingStage };
+      const changedBy = (req as any).user?.email;
+      if (!id || !stage) {
+        res.status(400).json({ error: 'Lead ID and stage are required' });
+        return;
+      }
+      const { setMarketingStageById } = await import('../services/lead-marketing-stage.service');
+      await setMarketingStageById(id, stage, changedBy);
+      const lead = await prisma.lead.findUnique({ where: { id } });
+      res.json(lead);
     } catch (err) {
       next(err);
     }
