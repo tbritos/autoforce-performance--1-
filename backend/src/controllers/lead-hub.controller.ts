@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { LeadHubService, LeadFilter } from '../services/lead-hub.service';
+import { LeadScoringService } from '../services/lead-scoring.service';
 import { LeadStatus } from '@prisma/client';
 import { prisma } from '../config/database';
 import { PlatformConnectionService } from '../services/platform-connection.service';
@@ -244,6 +245,13 @@ export class LeadHubController {
   }
 
   // GET /api/lead-hub/field-values?field=firstSource — distinct values for segment builder
+  // Campos padrao do Lead que tem busca de valores distintos genérica —
+  // usado tanto por Segmentos quanto pelas regras de Lead Scoring.
+  private static readonly DISTINCT_STRING_FIELDS = [
+    'firstSource', 'firstMedium', 'company', 'assignedTo',
+    'jobTitle', 'city', 'state', 'firstCampaign', 'firstLandingPage',
+  ];
+
   static async getFieldValues(req: Request, res: Response, next: NextFunction) {
     try {
       const field = String(req.query.field ?? '');
@@ -255,20 +263,27 @@ export class LeadHubController {
           WHERE "deletedAt" IS NULL ORDER BY t LIMIT 300
         `;
         values = rows.map(r => r.t).filter(Boolean);
-      } else if (field === 'firstSource') {
-        const rows = await prisma.lead.findMany({ where: { deletedAt: null, firstSource: { not: null } }, select: { firstSource: true }, distinct: ['firstSource'], orderBy: { firstSource: 'asc' }, take: 300 });
-        values = rows.map(r => r.firstSource!).filter(Boolean);
-      } else if (field === 'firstMedium') {
-        const rows = await prisma.lead.findMany({ where: { deletedAt: null, firstMedium: { not: null } }, select: { firstMedium: true }, distinct: ['firstMedium'], orderBy: { firstMedium: 'asc' }, take: 300 });
-        values = rows.map(r => r.firstMedium!).filter(Boolean);
-      } else if (field === 'company') {
-        const rows = await prisma.lead.findMany({ where: { deletedAt: null, company: { not: null } }, select: { company: true }, distinct: ['company'], orderBy: { company: 'asc' }, take: 300 });
-        values = rows.map(r => r.company!).filter(Boolean);
-      } else if (field === 'assignedTo') {
-        const rows = await prisma.lead.findMany({ where: { deletedAt: null, assignedTo: { not: null } }, select: { assignedTo: true }, distinct: ['assignedTo'], orderBy: { assignedTo: 'asc' }, take: 300 });
-        values = rows.map(r => r.assignedTo!).filter(Boolean);
+      } else if (field === 'status') {
+        values = Object.values(LeadStatus);
+      } else if (LeadHubController.DISTINCT_STRING_FIELDS.includes(field)) {
+        const rows = await prisma.lead.findMany({
+          where: { deletedAt: null, [field]: { not: null } },
+          select: { [field]: true },
+          distinct: [field as any],
+          orderBy: { [field]: 'asc' },
+          take: 300,
+        });
+        values = rows.map((r: any) => r[field]).filter(Boolean);
       } else {
-        res.status(400).json({ error: 'campo inválido' }); return;
+        // Campo customizado? Busca valores distintos dentro do JSON customFields.
+        const def = await prisma.leadCustomFieldDef.findUnique({ where: { name: field } }).catch(() => null);
+        if (!def) { res.status(400).json({ error: 'campo inválido' }); return; }
+        const rows = await prisma.$queryRaw<{ v: string }[]>`
+          SELECT DISTINCT "customFields"->>${field} AS v FROM "Lead"
+          WHERE "deletedAt" IS NULL AND "customFields"->>${field} IS NOT NULL
+          ORDER BY v LIMIT 300
+        `;
+        values = rows.map(r => r.v).filter(Boolean);
       }
 
       res.json({ values });
@@ -357,9 +372,10 @@ export class LeadHubController {
         return;
       }
 
-      // Carrega nomes de campos customizados uma vez antes do loop
+      // Carrega nomes de campos customizados e regras de score uma vez antes do loop
       const customFieldDefs = await prisma.leadCustomFieldDef.findMany({ select: { name: true } });
       const cfNames = new Set(customFieldDefs.map((d: { name: string }) => d.name));
+      const scoringRules = await LeadScoringService.activeRules();
 
       let created = 0, updated = 0, errors = 0;
       const errorDetails: { row: number; email: string; error: string }[] = [];
@@ -403,7 +419,8 @@ export class LeadHubController {
               medium: undefined,
               campaign: undefined,
               landingPage: undefined,
-            }
+            },
+            scoringRules
           );
 
           // Se tem data histórica e é lead novo, atualiza firstSeenAt/lastSeenAt

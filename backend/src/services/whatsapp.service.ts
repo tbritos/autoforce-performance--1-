@@ -478,6 +478,10 @@ async function recordInboundMessage(message: any, senderName: string | null, pho
       },
       select: { id: true, email: true, phone: true, name: true },
     });
+    const { LeadScoringService } = await import('./lead-scoring.service');
+    await LeadScoringService.applyScoringRulesToLead(lead.id).catch(err => {
+      console.error('[LeadScoring] falha ao aplicar regras no lead criado via WhatsApp:', err);
+    });
   } else if (senderName && !lead.name) {
     // Update name on existing lead if it was blank
     await prisma.lead.update({

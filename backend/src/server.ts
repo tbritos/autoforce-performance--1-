@@ -39,6 +39,7 @@ import pipedriveRoutes from './routes/pipedrive.routes';
 import emailTemplatesRoutes from './routes/email-templates.routes';
 import emailBlastsRoutes, { recoverStuckBlasts } from './routes/email-blasts.routes';
 import segmentRoutes from './routes/segment.routes';
+import leadScoringRoutes from './routes/lead-scoring.routes';
 import reportsRoutes from './routes/reports.routes';
 
 dotenv.config();
@@ -142,7 +143,7 @@ async function recordResendReceivedEmail(db: any, data: ResendWebhookData, rawPa
             : { set: [...existingLead.tags, 'email_recebido'] },
           lastSeenAt: safeReceivedAt,
         },
-        select: { email: true },
+        select: { id: true, email: true },
       })
     : await db.lead.create({
         data: {
@@ -152,8 +153,15 @@ async function recordResendReceivedEmail(db: any, data: ResendWebhookData, rawPa
           tags: ['email_recebido'],
           lastSeenAt: safeReceivedAt,
         },
-        select: { email: true },
+        select: { id: true, email: true },
       });
+
+  if (!existingLead) {
+    const { LeadScoringService } = await import('./services/lead-scoring.service');
+    await LeadScoringService.applyScoringRulesToLead(lead.id).catch(err => {
+      console.error('[LeadScoring] falha ao aplicar regras no lead criado via e-mail recebido:', err);
+    });
+  }
 
   const emailData = {
     leadEmail: lead.email,
@@ -823,6 +831,7 @@ app.use('/api/reports', reportsRoutes);
 app.use('/api/email-templates', emailTemplatesRoutes);
 app.use('/api/email-blasts', emailBlastsRoutes);
 app.use('/api/segments', segmentRoutes);
+app.use('/api/lead-scoring', leadScoringRoutes);
 
 // Error handling middleware (deve ser o último)
 app.use(errorHandler);

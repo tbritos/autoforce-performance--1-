@@ -1756,4 +1756,44 @@ export async function getSegmentLeads(id: string, page = 1, pageSize = 25) {
   return apiClient.get<any>(`/segments/${id}/leads?page=${page}&pageSize=${pageSize}`);
 }
 
+// ─── Lead Scoring ───────────────────────────────────────────────────────────
+// Regras aplicadas automaticamente a todo lead novo que entra no sistema
+// (webhook, WhatsApp, CSV, criação manual, e-mail recebido).
+export type ScoringCondition = {
+  id: string;
+  field: string;
+  operator: 'equals' | 'not_equals' | 'contains' | 'is_set' | 'is_not_set';
+  value: string;
+};
+export type LeadScoringRule = {
+  id: string;
+  name: string;
+  logic: 'AND' | 'OR';
+  conditions: ScoringCondition[];
+  points: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function listLeadScoringRules(): Promise<LeadScoringRule[]> {
+  return apiClient.get<LeadScoringRule[]>('/lead-scoring');
+}
+
+export async function createLeadScoringRule(data: Omit<LeadScoringRule, 'id' | 'createdAt' | 'updatedAt'>): Promise<LeadScoringRule> {
+  return apiClient.post<LeadScoringRule>('/lead-scoring', data);
+}
+
+export async function updateLeadScoringRule(id: string, data: Partial<Omit<LeadScoringRule, 'id' | 'createdAt' | 'updatedAt'>>): Promise<LeadScoringRule> {
+  return apiClient.put<LeadScoringRule>(`/lead-scoring/${id}`, data);
+}
+
+export async function deleteLeadScoringRule(id: string): Promise<void> {
+  return apiClient.delete<void>(`/lead-scoring/${id}`);
+}
+
+export async function applyLeadScoringRulesToExisting(): Promise<{ message: string; updated: number; evaluated: number }> {
+  return apiClient.post<{ message: string; updated: number; evaluated: number }>('/lead-scoring/apply-existing', {});
+}
+
 

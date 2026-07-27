@@ -2,6 +2,9 @@ import { prisma } from '../config/database';
 import { LeadStatus, Prisma } from '@prisma/client';
 import { normalizePhoneE164 } from '../utils/phone';
 import { isLikelyBotLead } from './lead-spam-detection.service';
+import { LeadScoringService } from './lead-scoring.service';
+
+type ScoringRulesList = Awaited<ReturnType<typeof LeadScoringService.activeRules>>;
 
 // ============================================================
 // Helpers
@@ -116,14 +119,17 @@ export class LeadHubService {
       medium?: string;
       campaign?: string;
       landingPage?: string;
-    }
+    },
+    // Pre-carregado por quem chama em loop (ex: importacao de CSV) pra nao
+    // buscar as regras ativas de novo a cada lead — ver applyScoringRulesToLead.
+    scoringRules?: ScoringRulesList
   ) {
     const email = normalizeEmail(input.email);
 
     const existing = await prisma.lead.findUnique({ where: { email } });
 
     if (!existing) {
-      return prisma.lead.create({
+      const created = await prisma.lead.create({
         data: {
           email,
           name: input.name || null,
@@ -140,6 +146,15 @@ export class LeadHubService {
           lastSeenAt: new Date(),
         },
       });
+      // Regras de score rodam so na criacao (nao em toda atualizacao), com os
+      // campos de identidade disponiveis nesse momento (company/jobTitle/
+      // city/state/firstSource/etc). Tags/customFields que alguns fluxos de
+      // webhook so preenchem numa atualizacao logo em seguida nao entram
+      // nessa avaliacao inicial.
+      await LeadScoringService.applyScoringRulesToLead(created.id, scoringRules).catch(err => {
+        console.error('[LeadScoring] falha ao aplicar regras na criacao do lead:', err);
+      });
+      return created;
     }
 
     // Atualiza campos que chegarem preenchidos no webhook

@@ -1226,6 +1226,23 @@ model Segment {
   @@index([createdAt])
 }
 
+// Regras de pontuacao automatica: aplicadas a todo lead novo que entra no
+// sistema (webhook, WhatsApp, CSV, criacao manual, e-mail recebido — ver
+// applyScoringRulesToLead em lead-scoring.service.ts). "conditions" tem o
+// mesmo formato de Segment.rules.conditions: [{ id, field, operator, value }].
+model LeadScoringRule {
+  id         String   @id @default(uuid())
+  name       String
+  logic      String   @default("AND") // 'AND' | 'OR' entre as condicoes
+  conditions Json
+  points     Int
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([isActive])
+}
+
 // Rastreia quem satisfaz as regras de um segmento usado como gatilho de automacao
 // ("Entrou em segmento"). Segmentos sao dinamicos (regras, nao lista fixa), entao
 // precisamos guardar o ultimo estado conhecido para detectar quem "entrou" agora.
