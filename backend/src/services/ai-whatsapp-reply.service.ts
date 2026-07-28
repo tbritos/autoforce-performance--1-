@@ -700,35 +700,36 @@ export async function sendFollowUpMessage(phone: string): Promise<void> {
     }
   }
 
-  // Reconferencia de ultima hora: o lote de elegiveis foi calculado no inicio
-  // da rodada do job (ate 30min atras — ver ai-followup.service.ts), e o lock
-  // aiProcessing acima e apenas consultivo (expira sozinho apos LOCK_TTL_MS).
-  // Sem isso, um envio lento (retries da IA, fetch sem timeout) ou duas
-  // instancias do job rodando ao mesmo tempo poderiam mandar o mesmo lead
-  // mais de uma vez antes que o primeiro envio termine de gravar o
-  // incremento de followUpCount.
+  // Trava atomica (UPDATE...WHERE, nao read-then-write) que serve ao mesmo
+  // tempo de (a) reconferencia final de elegibilidade — o lote foi calculado
+  // no inicio da rodada do job, ate 30min atras, ver ai-followup.service.ts —
+  // e (b) claim do lock aiProcessing. As duas coisas precisam estar na MESMA
+  // query: se fossem passos separados (ler, decidir, so depois escrever),
+  // duas chamadas quase simultaneas (duas instancias do job, ou um envio
+  // anterior lento por causa de retries da IA/fetch sem timeout) poderiam
+  // ambas passar pela leitura antes de qualquer uma escrever o lock, e as
+  // duas mandariam o mesmo follow-up — foi exatamente esse race que fez
+  // alguns leads receberem 2-3 follow-ups em poucos minutos.
   const maxAttempts = agent?.followUpMaxAttempts ?? DEFAULT_FOLLOWUP_MAX_ATTEMPTS;
-  const freshLead = await prisma.lead.findUnique({
-    where: { email: lead.email },
-    select: { followUpCount: true, status: true, marketingStage: true, deletedAt: true, followUpNotBeforeDate: true, tags: true },
-  });
-  if (
-    !freshLead || freshLead.deletedAt ||
-    freshLead.status !== 'LEAD' ||
-    freshLead.marketingStage === 'SEM_INTERESSE' ||
-    freshLead.followUpCount >= maxAttempts ||
-    (freshLead.followUpNotBeforeDate && freshLead.followUpNotBeforeDate > now) ||
-    // Mesma lista de FOLLOWUP_EXCLUDED_TAGS em ai-followup.service.ts.
-    freshLead.tags.some(t => t === 'reuniao_agendada' || t === 'followup_desinteresse')
-  ) {
-    console.log(`[AI-Followup] ${phone} nao esta mais elegivel na reconferencia final — pulando (evita follow-up duplicado)`);
-    return;
-  }
-
-  await prisma.lead.update({
-    where: { email: lead.email },
+  const staleLockThreshold = new Date(now.getTime() - LOCK_TTL_MS);
+  const claim = await prisma.lead.updateMany({
+    where: {
+      email: lead.email,
+      deletedAt: null,
+      status: 'LEAD',
+      marketingStage: { not: 'SEM_INTERESSE' },
+      followUpCount: { lt: maxAttempts },
+      OR: [{ followUpNotBeforeDate: null }, { followUpNotBeforeDate: { lte: now } }],
+      // Mesma lista de EXCLUDED_TAGS em ai-followup.service.ts.
+      NOT: [{ tags: { has: 'reuniao_agendada' } }, { tags: { has: 'followup_desinteresse' } }],
+      AND: [{ OR: [{ aiProcessing: false }, { aiProcessingAt: { lt: staleLockThreshold } }] }],
+    },
     data: { aiProcessing: true, aiProcessingAt: now },
   });
+  if (claim.count === 0) {
+    console.log(`[AI-Followup] ${phone} nao esta mais elegivel (ou lock ja tomado por outra chamada) — pulando (evita follow-up duplicado)`);
+    return;
+  }
 
   try {
     const { sent } = await executeAIAndReply(lead, phone, { followUp: true, withinSessionWindow, followUpTemplateName });
