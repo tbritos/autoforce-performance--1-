@@ -1,9 +1,8 @@
 [phases.setup]
 nixPkgs = ["nodejs_22", "openssl_3"]
-aptPkgs = []
 
 [phases.install]
-cmds = ['npm install --include=dev']
+cmds = ['npm install --include=dev', 'npx playwright install --with-deps chromium']
 
 [phases.build]
 cmds = ['npx prisma generate', 'npm run build']

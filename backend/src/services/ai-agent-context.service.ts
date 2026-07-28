@@ -40,6 +40,16 @@ export type AIAgentRuntimeContext = {
     tags: string[];
     priority: number;
   }>;
+  // Resultado da checagem do site do lead com navegador real (ver
+  // website-verification.service.ts) — evidencia verificada de forma
+  // independente, separada do que o lead simplesmente afirma na conversa.
+  // null ate a checagem terminar com sucesso.
+  siteVerification: {
+    url: string;
+    fetchedAt: Date | null;
+    summary: string;
+    icpSignal: string | null;
+  } | null;
 };
 
 type LoadContextInput = {
@@ -142,13 +152,19 @@ const DEFAULT_AGENT = {
 export async function loadAIAgentContext(input: LoadContextInput): Promise<AIAgentRuntimeContext> {
   const channel = input.channel || 'whatsapp';
   const agent = await resolveAgent(input.agentId);
-  const [memory, knowledge] = await Promise.all([
+  const [memory, knowledge, siteLead] = await Promise.all([
     (input.skipMemory || !input.leadEmail)
       ? Promise.resolve(null)
       : (prisma as any).aIConversationMemory.findUnique({
           where: { agentId_leadEmail_channel: { agentId: agent.id, leadEmail: input.leadEmail, channel } },
         }),
     listKnowledge(agent.id, input.knowledgeCategories, input.knowledgeTags),
+    !input.leadEmail
+      ? Promise.resolve(null)
+      : prisma.lead.findUnique({
+          where: { email: input.leadEmail },
+          select: { siteUrl: true, siteCheckedAt: true, siteVerificationSummary: true, siteIcpSignal: true },
+        }),
   ]);
 
   return {
@@ -189,6 +205,12 @@ export async function loadAIAgentContext(input: LoadContextInput): Promise<AIAge
       tags: item.tags ?? [],
       priority: item.priority,
     })),
+    siteVerification: siteLead?.siteVerificationSummary ? {
+      url: siteLead.siteUrl ?? '',
+      fetchedAt: siteLead.siteCheckedAt,
+      summary: siteLead.siteVerificationSummary,
+      icpSignal: siteLead.siteIcpSignal,
+    } : null,
   };
 }
 

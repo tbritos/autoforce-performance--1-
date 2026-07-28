@@ -192,6 +192,22 @@ export function startSyncScheduler(): void {
     }).catch(() => {});
   }, followUpMs);
 
+  // Varredura de verificacao de site (CRM Lara / ICP) — rede de seguranca pra
+  // falhas transitorias da checagem em tempo real (site fora do ar, timeout,
+  // bloqueio de bot). Ver website-verification.service.ts.
+  const siteCheckSweepMs = Number.parseInt(process.env.SITE_CHECK_SWEEP_INTERVAL_MS ?? '', 10) || 10 * 60 * 1000;
+  setInterval(() => {
+    import('./website-verification.service').then(({ sweepUnverifiedSites }) => {
+      sweepUnverifiedSites()
+        .then(result => {
+          if (result.checked > 0) {
+            console.log(`[site-check] sweep checked=${result.checked}`);
+          }
+        })
+        .catch(err => console.error('[site-check] sweep error:', err));
+    }).catch(() => {});
+  }, siteCheckSweepMs);
+
   // WhatsApp webhook health check every 30 minutes — catches Meta silently
   // dropping/changing the webhook subscription (no data sync, so it's not in ACTIVE_SYNC_PLATFORMS)
   import('./whatsapp-webhook-health.service').then(({ runWhatsAppWebhookHealthCheck }) => {

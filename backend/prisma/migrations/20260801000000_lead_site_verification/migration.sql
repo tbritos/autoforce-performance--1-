@@ -1,0 +1,7 @@
+ALTER TABLE "Lead" ADD COLUMN "siteUrl" TEXT;
+ALTER TABLE "Lead" ADD COLUMN "siteCheckedAt" TIMESTAMP(3);
+ALTER TABLE "Lead" ADD COLUMN "siteCheckAttempts" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "Lead" ADD COLUMN "siteVerificationSummary" TEXT;
+ALTER TABLE "Lead" ADD COLUMN "siteIcpSignal" TEXT;
+ALTER TABLE "Lead" ADD COLUMN "siteCheckInProgress" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Lead" ADD COLUMN "siteCheckStartedAt" TIMESTAMP(3);

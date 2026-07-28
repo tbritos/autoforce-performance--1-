@@ -44,6 +44,7 @@
     "googleapis": "^128.0.0",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.2",
+    "playwright": "^1.62.0",
     "prisma": "^5.7.1",
     "resend": "^6.12.4",
     "tsx": "^4.7.0",

@@ -120,6 +120,21 @@ model Lead {
   // Custom fields — schema defined in LeadCustomFieldDef
   customFields Json?
 
+  // Verificacao automatica do site do lead (navegador real, ver
+  // website-verification.service.ts) — confirma de forma independente se a
+  // empresa parece genuinamente do ICP automotivo, em vez de confiar so no
+  // que o lead disse. Lock proprio (siteCheckInProgress/siteCheckStartedAt),
+  // separado de aiProcessing/aiProcessingAt: tem outro perfil de duracao e
+  // modo de falha (lancar/navegar um Chromium), misturar os dois faria uma
+  // checagem de site travada bloquear a resposta real do WhatsApp pro lead.
+  siteUrl                 String?
+  siteCheckedAt           DateTime?
+  siteCheckAttempts       Int       @default(0)
+  siteVerificationSummary String?   @db.Text
+  siteIcpSignal           String? // 'fits' | 'unclear' | 'does_not_fit'
+  siteCheckInProgress     Boolean   @default(false)
+  siteCheckStartedAt      DateTime?
+
   firstSeenAt DateTime  @default(now())
   lastSeenAt  DateTime  @default(now())
   qualifiedAt DateTime?
