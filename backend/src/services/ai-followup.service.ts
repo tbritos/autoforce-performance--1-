@@ -10,6 +10,12 @@ import { LeadStatus } from '@prisma/client';
 const EXCLUDED_STATUSES: LeadStatus[] = ['CLIENT', 'LOST', 'DISQUALIFIED', 'SCHEDULED'];
 const EXCLUDED_TAGS = ['reuniao_agendada', 'followup_desinteresse'];
 
+// SEM_INTERESSE tambem cobre o caso em que a IA confirmou, numa mensagem ao
+// vivo, que o lead esta fora do ICP automotivo (fit=disqualified) — ver o
+// mapeamento fit->marketingStage em executeAIAndReply. Sem essa exclusao, um
+// lead ja confirmado fora do ICP continuaria recebendo follow-up.
+const EXCLUDED_MARKETING_STAGES = ['SEM_INTERESSE'] as const;
+
 const DEFAULT_DELAY_HOURS = 24;
 const DEFAULT_MAX_ATTEMPTS = 2;
 
@@ -55,6 +61,7 @@ export async function sendFollowUpsForSilentLeads(): Promise<{ sent: number; eva
       aiHandoff: false,
       status: { notIn: EXCLUDED_STATUSES },
       followUpCount: { lt: maxAttempts },
+      marketingStage: { notIn: [...EXCLUDED_MARKETING_STAGES] },
       NOT: EXCLUDED_TAGS.map(tag => ({ tags: { has: tag } })),
       phone: { not: null },
     },

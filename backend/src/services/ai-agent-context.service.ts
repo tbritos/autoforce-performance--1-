@@ -84,7 +84,7 @@ const DEFAULT_AGENT = {
     'Nao prometer preco, desconto, prazo ou resultado garantido.',
   ].join('\n'),
   icp: {
-    segments: ['concessionarias oficiais de marca', 'grupos automotivos (multiplas unidades)', 'revendas de veiculos', 'montadoras'],
+    segments: ['concessionarias oficiais de marca', 'grupos automotivos (multiplas unidades)', 'revendas de veiculos com pelo menos 50 veiculos em estoque', 'montadoras'],
     roles: ['CEO', 'Socio', 'Diretor', 'Head', 'Gerente de Marketing', 'Gerente Comercial', 'Coordenador de Marketing'],
     pains: [
       'site sem geracao de leads ou dependente de agencia para qualquer mudanca',
@@ -102,7 +102,7 @@ const DEFAULT_AGENT = {
   qualificationCriteria: {
     sql: [
       'empresa identificada',
-      'segmento definido dentro do ICP (concessionaria / grupo automotivo / revenda / montadora)',
+      'segmento definido dentro do ICP (concessionaria / grupo automotivo / montadora / revenda com pelo menos 50 veiculos em estoque)',
       'dor principal mapeada com clareza — area do problema + causa raiz ou estado atual, nao so uma palavra vaga',
       'cargo decisor ou influenciador confirmado',
       'abertura para conhecer a solucao demonstrada',
@@ -110,7 +110,7 @@ const DEFAULT_AGENT = {
     nurture: ['interesse inicial sem dor clara', 'sem momento definido', 'precisa de educacao antes da abordagem comercial'],
   },
   disqualificationCriteria: {
-    examples: ['fora do mercado automotivo', 'agencia de marketing/publicidade (mesmo que atenda o setor automotivo)', 'fornecedor de tecnologia ou consultoria', 'desinteresse explicito', 'pedido fora do escopo', 'contato invalido'],
+    examples: ['fora do mercado automotivo', 'agencia de marketing/publicidade (mesmo que atenda o setor automotivo)', 'fornecedor de tecnologia ou consultoria', 'revenda de veiculos com menos de 50 veiculos em estoque', 'desinteresse explicito', 'pedido fora do escopo', 'contato invalido'],
   },
   toneOfVoice: ['consultivo', 'objetivo', 'humano', 'sem pressao excessiva'],
   safetyRules: [
