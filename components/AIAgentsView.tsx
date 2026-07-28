@@ -123,6 +123,13 @@ export default function AIAgentsView() {
     );
   }, [templates, templateQuery]);
 
+  // So templates aprovados podem de fato ser enviados pela Meta — sem isso,
+  // selecionar um template pendente/rejeitado no follow-up falharia no envio.
+  const approvedTemplates = useMemo(
+    () => templates.filter(t => t.status === 'APPROVED'),
+    [templates]
+  );
+
   const loadAll = async () => {
     setLoading(true);
     setError('');
@@ -539,10 +546,20 @@ export default function AIAgentsView() {
                 </Field>
               </div>
 
-              <Field label="Template de reengajamento (Meta)" note="(nome técnico do template aprovado, usado quando o follow-up cai fora da janela de 24h da última mensagem do lead — sem isso, esses follow-ups são pulados)">
-                <input type="text" placeholder="ex: reengajamento_lead" value={agentDraft.followUpTemplateName ?? ''}
+              <Field label="Template de reengajamento (Meta)" note="(usado quando o follow-up cai fora da janela de 24h da última mensagem do lead — sem isso, esses follow-ups são pulados)">
+                <select value={agentDraft.followUpTemplateName ?? ''}
                   onChange={e => setAgentDraft(d => ({ ...d, followUpTemplateName: e.target.value || null }))}
-                  style={iStyle} />
+                  style={{ ...iStyle, cursor: 'pointer' }}>
+                  <option value="">Nenhum selecionado</option>
+                  {approvedTemplates.map(t => (
+                    <option key={`${t.id}-${t.language}`} value={t.name}>{t.name} ({t.language})</option>
+                  ))}
+                </select>
+                {approvedTemplates.length === 0 && (
+                  <p style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--fg-subtle)' }}>
+                    Nenhum template aprovado encontrado. Crie e aprove um em "Templates da Meta" primeiro.
+                  </p>
+                )}
               </Field>
 
               <Field label="Modelos de fallback" note="(acionados em cascata se o principal falhar)">
