@@ -1513,7 +1513,7 @@ const AppContent: React.FC = () => {
       )}
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-h-screen" style={{ marginLeft: 0 }} >
+      <div className="flex-1 flex flex-col min-h-screen" style={{ marginLeft: 0, minWidth: 0 }} >
         <div className="hidden lg:block" style={{ marginLeft: sidebarWidth, transition: 'margin-left .2s ease' }} />
 
         {/* Mobile topbar */}
