@@ -119,7 +119,7 @@ export default function CRMLaraView() {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 12, overflowX: 'auto', flex: 1, paddingBottom: 8 }}>
+      <div style={{ display: 'flex', gap: 12, overflowX: 'auto', flex: 1, minWidth: 0, paddingBottom: 8 }}>
         {COLUMN_META.map(({ stage, label, hint }) => {
           const cards = board.columns[stage] ?? [];
           const total = board.totals[stage] ?? 0;
