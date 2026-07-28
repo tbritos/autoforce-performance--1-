@@ -1,13 +1,11 @@
 import { prisma } from '../config/database';
-import { LeadStatus } from '@prisma/client';
 
-// Leads nesses status/condicoes nunca recebem follow-up automatico: conversa
-// ja terminou (CLIENT/LOST/DISQUALIFIED), reuniao ja marcada (SCHEDULED ou
-// tag reuniao_agendada — ver meeting-scheduler.service.ts), um humano
-// assumiu a conversa (aiHandoff), ou a propria IA ja decidiu que esse lead
-// sinalizou desinteresse (tag followup_desinteresse — ver executeAIAndReply
-// em ai-whatsapp-reply.service.ts).
-const EXCLUDED_STATUSES: LeadStatus[] = ['CLIENT', 'LOST', 'DISQUALIFIED', 'SCHEDULED'];
+// So faz follow-up de lead com status LEAD — assim que o status vira MQL,
+// SQL, SCHEDULED, DEMO, PROPOSAL, OPPORTUNITY, CLIENT (ou LOST/DISQUALIFIED),
+// o time comercial ja assumiu o contato (ou o negocio ja encerrou), entao a
+// IA nao deve mais entrar em contato. Whitelist em vez de blacklist — mais
+// seguro do que manter uma lista crescente de status a excluir.
+const ELIGIBLE_STATUS = 'LEAD' as const;
 const EXCLUDED_TAGS = ['reuniao_agendada', 'followup_desinteresse'];
 
 // SEM_INTERESSE tambem cobre o caso em que a IA confirmou, numa mensagem ao
@@ -59,7 +57,7 @@ export async function sendFollowUpsForSilentLeads(): Promise<{ sent: number; eva
       id: { in: silentLeadIds },
       deletedAt: null,
       aiHandoff: false,
-      status: { notIn: EXCLUDED_STATUSES },
+      status: ELIGIBLE_STATUS,
       followUpCount: { lt: maxAttempts },
       marketingStage: { notIn: [...EXCLUDED_MARKETING_STAGES] },
       NOT: EXCLUDED_TAGS.map(tag => ({ tags: { has: tag } })),

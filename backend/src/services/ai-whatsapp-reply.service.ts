@@ -410,6 +410,11 @@ async function executeAIAndReply(
   const { recordOutgoingWhatsAppMessage, getWhatsAppCredentials } = await import('./whatsapp.service');
 
   const isNewContact = isGeneratedWppEmail(lead.email);
+  // Lead que ja avancou pra alem de LEAD (MQL, SQL, agendado, cliente etc.)
+  // ja tem um vendedor da equipe comercial cuidando do caso — a IA ainda
+  // responde (nao ignora a mensagem), mas so em modo suporte: tira duvida,
+  // nao qualifica, nao propoe reuniao, nao tenta avancar o funil comercial.
+  const isPastLead = !isNewContact && lead.status !== 'LEAD';
 
   const messages = await loadMessagesByPhone(phone, lead.id, lead.email);
   const transcript = buildTranscript(messages);
@@ -479,6 +484,8 @@ async function executeAIAndReply(
     ? `${agentContext.agent.objective}\n\nIMPORTANTE: Este contato é novo e ainda não tem email cadastrado. Durante a conversa, de forma natural, tente descobrir o nome e o e-mail da pessoa. Quando obtiver o e-mail, inclua a ação register_lead no recommended_actions com os campos email e name. Peça o email como parte natural do cadastro (ex: "pra eu deixar seu contato registrado certinho aqui") — NUNCA diga que o email é necessário para enviar algo (material, ebook, proposta); qualquer material é sempre entregue aqui mesmo pelo WhatsApp, nunca por email.`
     : options?.followUp
     ? `${agentContext.agent.objective}\n\nIMPORTANTE: o lead está em silêncio há um bom tempo (não respondeu a nenhuma mensagem recente). Antes de tudo, avalie o histórico da conversa: se em algum momento o lead demonstrou claramente que não tem mais interesse, pediu pra não ser mais contatado, ou a conversa já chegou a uma conclusão natural, NÃO gere uma mensagem — em vez disso, inclua a ação "skip_followup" em recommended_actions e deixe a resposta vazia. Caso contrário, gere uma mensagem curta e natural de reengajamento — pergunte se ainda tem interesse, se ficou alguma dúvida, ou se é um bom momento pra continuar a conversa. Não repita literalmente a última mensagem enviada, não pareça um robô insistindo, e não mencione que isso é um "follow-up" automático.`
+    : isPastLead
+    ? `${agentContext.agent.objective}\n\nIMPORTANTE: este lead já avançou no funil (status atual: ${lead.status}) e já tem um vendedor da equipe comercial em contato direto com ele — você NÃO deve mais qualificar, fazer perguntas de descoberta, propor reunião, ou tentar avançar o processo comercial; isso agora é responsabilidade exclusiva do vendedor. Responda apenas dúvidas genuínas, ajude com suporte (materiais, informações, direcionamento) quando fizer sentido, com tom natural — como uma continuidade educada da conversa, nunca um interrogatório. Se a pergunta for algo comercial específico (preço, condições, prazo, negociação), oriente a pessoa a falar diretamente com quem já está cuidando do caso dela, ou use a ação handoff_to_human se fizer sentido.`
     : agentContext.agent.objective;
 
   const result = await runAIPrequalification({
@@ -535,6 +542,15 @@ async function executeAIAndReply(
     actionsToApply = recovered.actions;
     console.warn(`[AI-WPP] AI returned empty reply for ${phone}; source=${result.source} model=${result.model}; recoveredIntent=${recovered.intent}`);
   }
+
+  if (isPastLead) {
+    // Nao confia so na instrucao do prompt — mesmo se a IA (ou o
+    // recoverAIReply por palavra-chave) sugerir marcar reuniao, um lead que
+    // ja passou de LEAD nao deve receber oferta de horario da IA; isso e
+    // responsabilidade do vendedor que ja esta com o caso.
+    actionsToApply = actionsToApply.filter(action => action.type !== 'offer_meeting_slots');
+  }
+
   const effectiveResult = {
     ...result,
     replyMessage: replyText,
@@ -607,8 +623,10 @@ async function executeAIAndReply(
   // qualificacao/nutricao na mesma chamada que acabou de setar
   // AGUARDANDO_FOLLOWUP, esvaziando essa coluna na pratica — ver
   // sendFollowUpMessage mais abaixo, que so escreve AGUARDANDO_FOLLOWUP ou
-  // SEM_INTERESSE (via skip_followup), nunca isso aqui.
-  if (!options?.followUp) {
+  // SEM_INTERESSE (via skip_followup), nunca isso aqui. Tambem nao roda pra
+  // lead que ja passou de LEAD (isPastLead) — o board de marketing nao devia
+  // mais reclassificar um lead que o vendedor ja assumiu.
+  if (!options?.followUp && !isPastLead) {
     const { setMarketingStage } = await import('./lead-marketing-stage.service');
     if (result.fit === 'disqualified') {
       await setMarketingStage(lead.email, 'SEM_INTERESSE', 'ai').catch(() => {});
