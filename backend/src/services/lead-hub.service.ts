@@ -459,6 +459,7 @@ export class LeadHubService {
         conversions:   { orderBy: { convertedAt: 'desc' }, take: this.PROFILE_CONVERSIONS_LIMIT },
         statusHistory: { orderBy: { changedAt:   'desc' }, take: this.PROFILE_STATUS_HISTORY_LIMIT },
         revenueEntries: { orderBy: { date: 'desc' } },
+        activities: { orderBy: { createdAt: 'desc' }, take: 50 },
       },
     });
     return this.enrichProfile(lead);
@@ -471,6 +472,7 @@ export class LeadHubService {
         conversions:   { orderBy: { convertedAt: 'desc' }, take: this.PROFILE_CONVERSIONS_LIMIT },
         statusHistory: { orderBy: { changedAt:   'desc' }, take: this.PROFILE_STATUS_HISTORY_LIMIT },
         revenueEntries: { orderBy: { date: 'desc' } },
+        activities: { orderBy: { createdAt: 'desc' }, take: 50 },
       },
     });
     return this.enrichProfile(lead);

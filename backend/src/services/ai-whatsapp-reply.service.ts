@@ -8,6 +8,9 @@ import { normalizePhoneE164, phoneSearchVariants } from '../utils/phone';
 
 const DEBOUNCE_MS = 5_000;
 const LOCK_TTL_MS = 120_000;
+// Mesmo default de ai-followup.service.ts — usado so como fallback na
+// reconferencia final caso nao haja AIAgent ativo com o campo configurado.
+const DEFAULT_FOLLOWUP_MAX_ATTEMPTS = 2;
 const MAX_TRANSCRIPT_MSGS = 40;
 const DEFAULT_DISCOVERY_REPLY = 'Oi! Tudo bem? Sou a Lara, da AutoForce.\n\nMe conta rapidinho: hoje o maior desafio da sua concessionaria esta em gerar mais leads qualificados ou em converter melhor os leads que ja chegam?';
 const DISCOVERY_QUESTION = 'Hoje, qual e o maior gargalo: gerar mais leads qualificados ou converter melhor os leads que ja chegam?';
@@ -503,13 +506,14 @@ async function executeAIAndReply(
   // follow-up (ja sinalizou desinteresse, pediu pra nao ser mais contatado
   // etc) — marca e para de considerar esse lead em follow-ups futuros, sem
   // mandar nada e sem contar como tentativa.
-  if (options?.followUp && result.recommendedActions?.some(a => a.type === 'skip_followup')) {
+  const skipFollowupAction = result.recommendedActions?.find(a => a.type === 'skip_followup');
+  if (options?.followUp && skipFollowupAction) {
     await prisma.lead.update({
       where: { email: lead.email },
       data: { tags: Array.from(new Set([...lead.tags, 'followup_desinteresse'])) },
     }).catch(() => {});
     const { setMarketingStage } = await import('./lead-marketing-stage.service');
-    await setMarketingStage(lead.email, 'SEM_INTERESSE', 'ai').catch(() => {});
+    await setMarketingStage(lead.email, 'SEM_INTERESSE', 'ai', undefined, skipFollowupAction.reason).catch(() => {});
     console.log(`[AI-Followup] IA decidiu não reengajar ${lead.email} (sinal de desinteresse) — lead excluído de futuros follow-ups`);
     return { sent: false };
   }
@@ -629,10 +633,10 @@ async function executeAIAndReply(
   if (!options?.followUp && !isPastLead) {
     const { setMarketingStage } = await import('./lead-marketing-stage.service');
     if (result.fit === 'disqualified') {
-      await setMarketingStage(lead.email, 'SEM_INTERESSE', 'ai').catch(() => {});
+      await setMarketingStage(lead.email, 'SEM_INTERESSE', 'ai', undefined, result.decisionReason).catch(() => {});
     } else if (result.fit === 'nurture') {
       const stage = result.estagioQualificacao === 'nutricao' ? 'NUTRICAO' : 'QUALIFICACAO';
-      await setMarketingStage(lead.email, stage, 'ai').catch(() => {});
+      await setMarketingStage(lead.email, stage, 'ai', undefined, result.decisionReason).catch(() => {});
     }
     // fit === 'qualified': nao seta nada aqui — se offer_meeting_slots
     // disparar neste mesmo turno, AGENDA_ENVIADA e escrito abaixo por
@@ -684,13 +688,41 @@ export async function sendFollowUpMessage(phone: string): Promise<void> {
   const withinSessionWindow = !!lastInbound && (now.getTime() - lastInbound.createdAt.getTime()) < 24 * 60 * 60 * 1000;
 
   let followUpTemplateName: string | null = null;
+  const agent = await (prisma as any).aIAgent.findFirst({
+    where: { isActive: true },
+    select: { followUpTemplateName: true, followUpMaxAttempts: true },
+  });
   if (!withinSessionWindow) {
-    const agent = await (prisma as any).aIAgent.findFirst({ where: { isActive: true }, select: { followUpTemplateName: true } });
     followUpTemplateName = agent?.followUpTemplateName ?? null;
     if (!followUpTemplateName) {
       console.warn(`[AI-Followup] ${phone} fora da janela de 24h e nenhum template configurado (AIAgent.followUpTemplateName) — pulando sem chamar a IA`);
       return;
     }
+  }
+
+  // Reconferencia de ultima hora: o lote de elegiveis foi calculado no inicio
+  // da rodada do job (ate 30min atras — ver ai-followup.service.ts), e o lock
+  // aiProcessing acima e apenas consultivo (expira sozinho apos LOCK_TTL_MS).
+  // Sem isso, um envio lento (retries da IA, fetch sem timeout) ou duas
+  // instancias do job rodando ao mesmo tempo poderiam mandar o mesmo lead
+  // mais de uma vez antes que o primeiro envio termine de gravar o
+  // incremento de followUpCount.
+  const maxAttempts = agent?.followUpMaxAttempts ?? DEFAULT_FOLLOWUP_MAX_ATTEMPTS;
+  const freshLead = await prisma.lead.findUnique({
+    where: { email: lead.email },
+    select: { followUpCount: true, status: true, marketingStage: true, deletedAt: true, followUpNotBeforeDate: true, tags: true },
+  });
+  if (
+    !freshLead || freshLead.deletedAt ||
+    freshLead.status !== 'LEAD' ||
+    freshLead.marketingStage === 'SEM_INTERESSE' ||
+    freshLead.followUpCount >= maxAttempts ||
+    (freshLead.followUpNotBeforeDate && freshLead.followUpNotBeforeDate > now) ||
+    // Mesma lista de FOLLOWUP_EXCLUDED_TAGS em ai-followup.service.ts.
+    freshLead.tags.some(t => t === 'reuniao_agendada' || t === 'followup_desinteresse')
+  ) {
+    console.log(`[AI-Followup] ${phone} nao esta mais elegivel na reconferencia final — pulando (evita follow-up duplicado)`);
+    return;
   }
 
   await prisma.lead.update({
@@ -706,6 +738,8 @@ export async function sendFollowUpMessage(phone: string): Promise<void> {
         data: { followUpCount: { increment: 1 } },
       });
       console.log(`[AI-Followup] follow-up enviado para ${phone} lead=${lead.email} (canal=${withinSessionWindow ? 'texto livre' : 'template'})`);
+      const { logLeadActivity } = await import('./lead-activity.service');
+      await logLeadActivity(lead.email, 'followup_sent', 'Follow-up automático enviado', undefined, 'system');
     }
   } catch (err) {
     console.error(`[AI-Followup] falha ao enviar follow-up para ${phone} lead=${lead.email}:`, err);
@@ -1195,16 +1229,60 @@ async function applyRecommendedActions(
   for (const action of actions) {
     switch (action.type) {
       case 'handoff_to_human':
-        await handleHandoffToHuman(leadEmail);
+        await handleHandoffToHuman(leadEmail, action.reason);
         break;
       case 'offer_meeting_slots':
         await handleOfferMeetingSlots(leadEmail, phone);
         break;
       case 'send_document':
-        await handleSendDocument(leadEmail, phone);
+        await handleSendDocument(leadEmail, phone, action.reason);
+        break;
+      case 'schedule_followup':
+        await handleScheduleFollowup(leadEmail, action.payload, action.reason);
         break;
     }
   }
+}
+
+// Lead ate 180 dias no futuro — evita que uma data absurda inventada pela IA
+// exclua o lead de follow-up automatico por tempo demais/indefinidamente.
+const MAX_FOLLOWUP_SCHEDULE_DAYS = 180;
+
+// Grava Lead.followUpNotBeforeDate a partir do payload.date da acao
+// schedule_followup — nunca confia cegamente na IA: descarta data ausente,
+// invalida, no passado, ou absurdamente distante no futuro.
+async function handleScheduleFollowup(leadEmail: string, payload?: Record<string, unknown>, reason?: string): Promise<void> {
+  const rawDate = typeof payload?.date === 'string' ? payload.date.trim() : undefined;
+  if (!rawDate) {
+    console.warn(`[AI-WPP] schedule_followup sem payload.date valido para ${leadEmail} — ignorando`);
+    return;
+  }
+
+  const parsed = new Date(rawDate);
+  if (isNaN(parsed.getTime())) {
+    console.warn(`[AI-WPP] schedule_followup com data invalida ("${rawDate}") para ${leadEmail} — ignorando`);
+    return;
+  }
+
+  const now = new Date();
+  const maxDate = new Date(now.getTime() + MAX_FOLLOWUP_SCHEDULE_DAYS * 24 * 60 * 60 * 1000);
+  if (parsed.getTime() <= now.getTime()) {
+    console.warn(`[AI-WPP] schedule_followup com data no passado ("${rawDate}") para ${leadEmail} — ignorando`);
+    return;
+  }
+  if (parsed.getTime() > maxDate.getTime()) {
+    console.warn(`[AI-WPP] schedule_followup com data distante demais ("${rawDate}", > ${MAX_FOLLOWUP_SCHEDULE_DAYS} dias) para ${leadEmail} — ignorando`);
+    return;
+  }
+
+  await prisma.lead
+    .update({ where: { email: leadEmail }, data: { followUpNotBeforeDate: parsed } })
+    .catch(err => console.error(`[AI-WPP] falha ao gravar followUpNotBeforeDate para ${leadEmail}:`, err));
+  console.log(`[AI-WPP] follow-up de ${leadEmail} so a partir de ${parsed.toISOString().slice(0, 10)}`);
+
+  const dateLabel = parsed.toISOString().slice(0, 10);
+  const { logLeadActivity } = await import('./lead-activity.service');
+  await logLeadActivity(leadEmail, 'followup_scheduled', `Follow-up agendado para não antes de ${dateLabel}`, reason);
 }
 
 const HANDOFF_TAG = 'transferido-para-humano';
@@ -1213,7 +1291,7 @@ const HANDOFF_TAG = 'transferido-para-humano';
 // notificacao ad-hoc, isso reaproveita o sistema de Automacao existente: uma
 // automacao com gatilho "tag adicionada" nessa tag pode criar o negocio no
 // Pipedrive, notificar o time comercial etc., sem precisar de codigo novo aqui.
-async function handleHandoffToHuman(leadEmail: string): Promise<void> {
+async function handleHandoffToHuman(leadEmail: string, reason?: string): Promise<void> {
   const lead = await prisma.lead.findUnique({ where: { email: leadEmail }, select: { tags: true } });
   await prisma.lead.update({
     where: { email: leadEmail },
@@ -1224,10 +1302,10 @@ async function handleHandoffToHuman(leadEmail: string): Promise<void> {
     },
   });
   const { setMarketingStage } = await import('./lead-marketing-stage.service');
-  await setMarketingStage(leadEmail, 'TRANSFERIDO_HUMANO', 'system').catch(() => {});
+  await setMarketingStage(leadEmail, 'TRANSFERIDO_HUMANO', 'system', undefined, reason).catch(() => {});
 }
 
-async function handleSendDocument(leadEmail: string, phone: string): Promise<void> {
+async function handleSendDocument(leadEmail: string, phone: string, reason?: string): Promise<void> {
   const { sendWhatsAppDocument, getEbookMaquinaDeVendasUrl, EBOOK_MAQUINA_DE_VENDAS } = await import('./whatsapp.service');
   const documentUrl = getEbookMaquinaDeVendasUrl();
   try {
@@ -1255,4 +1333,7 @@ async function handleSendDocument(leadEmail: string, phone: string): Promise<voi
       console.error('[AI-WPP] Fallback de texto do documento tambem falhou:', fallbackErr);
     }
   }
+
+  const { logLeadActivity } = await import('./lead-activity.service');
+  await logLeadActivity(leadEmail, 'document_sent', 'Material/ebook enviado ao lead', reason);
 }

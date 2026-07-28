@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Bot, Flame, RefreshCw, Settings, User } from 'lucide-react';
 import { DataService } from '../services/dataService';
 import type { MarketingKanbanBoard, MarketingKanbanCard, MarketingStage } from '../types';
@@ -43,6 +44,7 @@ function emptyBoard(): MarketingKanbanBoard {
 }
 
 export default function CRMLaraView() {
+  const navigate = useNavigate();
   const [board, setBoard] = useState<MarketingKanbanBoard>(emptyBoard());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -165,6 +167,7 @@ export default function CRMLaraView() {
                       key={card.id}
                       draggable
                       onDragStart={e => e.dataTransfer.setData('application/x-lead-card', JSON.stringify({ id: card.id, stage }))}
+                      onClick={() => navigate(`/leads/${encodeURIComponent(card.id)}`)}
                       style={{
                         background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 8,
                         padding: '8px 10px', cursor: 'grab', display: 'flex', flexDirection: 'column', gap: 4,

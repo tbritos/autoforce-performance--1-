@@ -109,6 +109,15 @@ export interface PipedriveDealEvent {
   createdAt: string;
 }
 
+export interface LeadActivity {
+  id: string;
+  type: string;
+  message: string;
+  reason: string | null;
+  source: 'ai' | 'system' | 'manual' | string;
+  createdAt: string;
+}
+
 export interface LeadRevenueEntry {
   id: string;
   date: string;
@@ -164,6 +173,7 @@ export interface LeadProfile {
   statusHistory: LeadStatusHistoryEntry[];
   statusHistoryTotal: number;
   revenueEntries: LeadRevenueEntry[];
+  activities: LeadActivity[];
   aiHandoff: boolean;
 }
 

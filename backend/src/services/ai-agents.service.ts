@@ -84,7 +84,11 @@ export class AIAgentsService {
     if (input.fallbackModels !== undefined) data.fallbackModels = toStringArray(input.fallbackModels);
     if (input.isActive !== undefined) data.isActive = Boolean(input.isActive);
     if (input.whatsappPhoneNumberId !== undefined) data.whatsappPhoneNumberId = String(input.whatsappPhoneNumberId || '').trim() || null;
-    if (input.followUpDelayHours !== undefined) data.followUpDelayHours = Math.max(1, Number(input.followUpDelayHours) || 24);
+    // Minimo de 6h: o job de follow-up roda a cada 30min e recalcula o
+    // "silencio" a partir da ULTIMA mensagem (inclusive um follow-up anterior),
+    // entao um valor baixo faz o mesmo lead levar um novo follow-up a cada
+    // poucos ciclos, ate bater followUpMaxAttempts — ver ai-followup.service.ts.
+    if (input.followUpDelayHours !== undefined) data.followUpDelayHours = Math.max(6, Number(input.followUpDelayHours) || 24);
     if (input.followUpMaxAttempts !== undefined) data.followUpMaxAttempts = Math.max(0, Number(input.followUpMaxAttempts) || 0);
     if (input.followUpTemplateName !== undefined) data.followUpTemplateName = String(input.followUpTemplateName || '').trim() || null;
 

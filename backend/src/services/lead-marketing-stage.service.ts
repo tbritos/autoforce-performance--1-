@@ -10,6 +10,21 @@ export type MarketingStageSource = 'ai' | 'system' | 'manual';
 // drag-and-drop manual pode tirar o lead desses dois estados.
 const LOCKED_STAGES: MarketingStage[] = ['REUNIAO_AGENDADA', 'TRANSFERIDO_HUMANO'];
 
+// Mensagem padrao de atividade por estagio — ver lead-activity.service.ts.
+// Cobre a maioria dos eventos pedidos pra timeline (fez follow-up, descartou
+// o lead, transferiu pra humano etc.) de uma vez so, ja que toda transicao
+// de coluna do CRM Lara passa por este mutador central.
+const STAGE_ACTIVITY_MESSAGE: Record<MarketingStage, string> = {
+  NOVO: 'Lead entrou no funil de marketing',
+  QUALIFICACAO: 'Lead classificado como "Em qualificação"',
+  NUTRICAO: 'Lead classificado como "Em nutrição"',
+  AGUARDANDO_FOLLOWUP: 'Lead entrou em espera de follow-up (silêncio)',
+  AGENDA_ENVIADA: 'Convite de agenda enviado ao lead',
+  REUNIAO_AGENDADA: 'Reunião agendada',
+  SEM_INTERESSE: 'Lead descartado (sem interesse / fora do ICP)',
+  TRANSFERIDO_HUMANO: 'Conversa transferida para atendimento humano',
+};
+
 // Unico ponto que deve escrever em marketingStage/marketingStageChangedAt/
 // marketingStageSource — ver plano "CRM Lara" pra a maquina de estados
 // completa (quem chama isso e com qual source, em cada arquivo).
@@ -22,7 +37,8 @@ export async function setMarketingStage(
   leadEmailRaw: string,
   newStage: MarketingStage,
   source: MarketingStageSource,
-  changedBy?: string
+  changedBy?: string,
+  reason?: string
 ): Promise<void> {
   const email = normalizeEmail(leadEmailRaw);
   const excludedForNonManual = source === 'manual' ? [] : LOCKED_STAGES;
@@ -44,6 +60,8 @@ export async function setMarketingStage(
 
   if (result.count > 0) {
     console.log(`[CRM-Lara] ${email} -> ${newStage} (source=${source}${changedBy ? `, by=${changedBy}` : ''})`);
+    const { logLeadActivity } = await import('./lead-activity.service');
+    await logLeadActivity(email, 'stage_changed', STAGE_ACTIVITY_MESSAGE[newStage], reason, source);
   }
 }
 

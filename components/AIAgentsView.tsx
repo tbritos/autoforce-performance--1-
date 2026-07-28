@@ -534,9 +534,9 @@ export default function AIAgentsView() {
               </Field>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <Field label="Follow-up automático" note="(horas de silêncio antes de reengajar)">
-                  <input type="number" min={1} value={agentDraft.followUpDelayHours ?? 24}
-                    onChange={e => setAgentDraft(d => ({ ...d, followUpDelayHours: Math.max(1, Number(e.target.value) || 1) }))}
+                <Field label="Follow-up automático" note="(horas de silêncio antes de reengajar — mínimo 6h, pra evitar repetir o follow-up a cada ciclo de verificação)">
+                  <input type="number" min={6} value={agentDraft.followUpDelayHours ?? 24}
+                    onChange={e => setAgentDraft(d => ({ ...d, followUpDelayHours: Math.max(6, Number(e.target.value) || 6) }))}
                     style={iStyle} />
                 </Field>
                 <Field label="Máximo de tentativas" note="(0 desativa o follow-up automático)">

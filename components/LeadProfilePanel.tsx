@@ -7,9 +7,9 @@ import {
   Trash2, FileText, Download, Wrench, Activity,
   ExternalLink, GitBranch, Flame, LayoutList,
   CheckCircle, XCircle, MessageCircle, Send, Bot, UserCheck, AlertCircle, Inbox,
-  Eye, MousePointerClick, Clock,
+  Eye, MousePointerClick, Clock, Settings,
 } from 'lucide-react';
-import { LeadProfile, LeadStatus, LeadCustomFieldDef, PipedriveDealEvent, LeadConversion, WhatsAppConversationMessage, WhatsAppNumberEntry, EmailSent, EmailReceived } from '../types';
+import { LeadProfile, LeadStatus, LeadCustomFieldDef, PipedriveDealEvent, LeadConversion, LeadActivity, WhatsAppConversationMessage, WhatsAppNumberEntry, EmailSent, EmailReceived } from '../types';
 import { DataService } from '../services/dataService';
 
 const isWppEmail = (email: string) => email.startsWith('wpp_') && email.endsWith('@autoforce.internal');
@@ -670,6 +670,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
       | { kind: 'status';     date: string; id: string; from: LeadStatus; to: LeadStatus; reason: string | null; lostReason: string | null; by: string | null }
       | { kind: 'conversion'; date: string; id: string; conversion: LeadConversion }
       | { kind: 'pipedrive';  date: string; id: string; event: PipedriveDealEvent }
+      | { kind: 'ai_activity'; date: string; id: string; activity: LeadActivity }
       | { kind: 'created';    date: string; id: string };
 
     const buildTimeline = (): ActivityEvent[] => {
@@ -680,6 +681,8 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
         events.push({ kind: 'conversion', date: c.convertedAt, id: c.id, conversion: c }));
       (pipedriveEvents ?? []).forEach(e =>
         events.push({ kind: 'pipedrive', date: e.occurredAt, id: e.id, event: e }));
+      (profile?.activities ?? []).forEach(a =>
+        events.push({ kind: 'ai_activity', date: a.createdAt, id: a.id, activity: a }));
       if (profile?.firstSeenAt)
         events.push({ kind: 'created', date: profile.firstSeenAt, id: 'created' });
       return events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -1108,6 +1111,14 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                   icon = cfg.icon;
                                   title = <span>{cfg.label(ev.event)}</span>;
                                   subtitle = ev.event.source ? <span>pipeline <strong>{ev.event.source}</strong></span> : null;
+                                } else if (ev.kind === 'ai_activity') {
+                                  const src = ev.activity.source === 'system' ? { icon: <Settings size={13} />, color: 'var(--fg-muted)', bg: 'var(--bg-muted)' }
+                                    : ev.activity.source === 'manual' ? { icon: <User size={13} />, color: 'var(--af-500)', bg: 'var(--af-50)' }
+                                    : { icon: <Bot size={13} />, color: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 15%, transparent)' };
+                                  iconColor = src.color; iconBg = src.bg;
+                                  icon = src.icon;
+                                  title = <span>{ev.activity.message}</span>;
+                                  subtitle = ev.activity.reason ? <span>Motivo: <strong>{ev.activity.reason}</strong></span> : null;
                                 } else {
                                   iconColor = 'var(--af-500)'; iconBg = 'var(--af-50)';
                                   icon = <User size={13} />;

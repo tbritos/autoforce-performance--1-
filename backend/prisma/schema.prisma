@@ -98,6 +98,14 @@ model Lead {
   // ai-followup.service.ts / recordInboundMessage em whatsapp.service.ts).
   followUpCount Int @default(0)
 
+  // Quando o lead pede pra ser recontatado numa data/prazo especifico (ex:
+  // "me chama so no inicio do mes que vem") — a IA converte isso pra uma
+  // data via a acao schedule_followup (ver applyRecommendedActions em
+  // ai-whatsapp-reply.service.ts). O follow-up automatico por silencio so
+  // pode tentar de novo a partir dessa data; null = sem restricao (atraso
+  // generico normal). Nao precisa resetar depois que a data passa.
+  followUpNotBeforeDate DateTime?
+
   // CRM Lara — coluna do kanban interno de marketing. Ver
   // lead-marketing-stage.service.ts (unico ponto que deve escrever nesses
   // 3 campos) pra a maquina de estados completa.
@@ -152,6 +160,7 @@ model Lead {
   aiInteractions   AIInteractionLog[]
   emailsSent       EmailSent[]
   emailsReceived   EmailReceived[]
+  activities       LeadActivity[]
 
   @@index([status])
   @@index([firstSource])
@@ -218,6 +227,25 @@ model LeadStatusHistory {
 
   @@index([leadEmail])
   @@index([changedAt])
+}
+
+// Registro de decisoes relevantes que o agente de IA (ou o sistema) toma
+// sobre um lead — aparece na aba "Linha do Tempo" do perfil (ver
+// lead-activity.service.ts). Deliberadamente separado de AIInteractionLog
+// (que registra toda troca de mensagem, nao so decisoes) pra nao poluir
+// essa timeline voltada ao usuario com uma linha por mensagem trocada.
+model LeadActivity {
+  id        String   @id @default(uuid())
+  leadEmail String
+  lead      Lead     @relation(fields: [leadEmail], references: [email])
+  type      String // 'stage_changed' | 'document_sent' | 'followup_scheduled' | 'followup_sent'
+  message   String
+  reason    String?  @db.Text
+  source    String // 'ai' | 'system' | 'manual'
+  createdAt DateTime @default(now())
+
+  @@index([leadEmail])
+  @@index([createdAt])
 }
 
 // ============================================================
