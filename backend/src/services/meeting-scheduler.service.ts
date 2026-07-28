@@ -133,7 +133,16 @@ export async function getSellerCalendars(): Promise<SellerCalendar[]> {
     .map(member => parseSellerEntry(`${member.name} <${member.email ?? ''}>`))
     .filter((seller): seller is SellerCalendar => Boolean(seller));
 
-  return dedupeSellers(fromTeam.length > 0 ? fromTeam : [parseSellerEntry('tallys.brito@autoforce.com')].filter(Boolean) as SellerCalendar[]);
+  if (fromTeam.length > 0) return dedupeSellers(fromTeam);
+
+  // Sem CLOSERS_CONFIG/CLOSER_EMAILS nem TeamMember com papel de vendedor/closer
+  // cadastrado — antes isso caia silenciosamente num e-mail fixo de
+  // desenvolvimento, fazendo a sincronizacao de agendamentos (e a checagem de
+  // horarios livres) verificar a agenda errada sem ninguem perceber. Melhor
+  // avisar alto e retornar vazio (sem agenda pra checar) do que fingir que
+  // esta tudo certo.
+  console.warn('[meeting-scheduler] Nenhuma agenda de vendedor configurada — defina CLOSER_EMAILS (ou CLOSERS_CONFIG) com o e-mail da conta do Google Calendar correta. Sincronizacao de agendamentos e consulta de horarios livres nao vao funcionar ate isso ser configurado.');
+  return [];
 }
 
 export function getAppointmentBookingUrl(): string | null {
