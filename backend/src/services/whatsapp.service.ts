@@ -394,14 +394,28 @@ export async function recordOutgoingWhatsAppMessage(input: {
   whatsAppBlastId?: string | null;
   status?: 'sent' | 'failed';
 }): Promise<void> {
-  const lead = input.leadEmail
+  let lead = input.leadEmail
     ? await prisma.lead.findUnique({ where: { email: input.leadEmail }, select: { id: true, email: true } })
     : null;
+
+  // leadEmail vem null de proposito pra leads com email gerado
+  // (wpp_...@autoforce.internal) — nao deve aparecer em nada voltado ao
+  // usuario. Mas isso nao pode significar leadId nulo: sem leadId, essa
+  // mensagem fica invisivel pra consulta de elegibilidade de follow-up
+  // (WHERE "leadId" IS NOT NULL, ver ai-followup.service.ts), e esse lead
+  // nunca mais recebe follow-up automatico. Resolve por telefone nesse caso
+  // — o leadEmail gravado continua null, so o leadId passa a ser correto.
+  if (!lead && input.phone) {
+    lead = await findLeadByPhone(input.phone);
+  }
 
   const status = input.status ?? 'sent';
   const data = {
     leadId: lead?.id ?? null,
-    leadEmail: lead?.email ?? input.leadEmail ?? null,
+    // So usa o email resolvido quando a busca partiu de um leadEmail de
+    // verdade — no fallback por telefone (leadEmail veio null de proposito),
+    // mantem null, sem vazar o email gerado.
+    leadEmail: (input.leadEmail ? lead?.email : null) ?? input.leadEmail ?? null,
     phone: normalizePhone(input.phone),
     direction: 'outbound',
     type: input.templateName ? 'template' : 'text',

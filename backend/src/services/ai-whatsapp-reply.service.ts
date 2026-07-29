@@ -576,14 +576,13 @@ async function executeAIAndReply(
       console.warn(`[AI-Followup] fora da janela de 24h e nenhum template configurado (AIAgent.followUpTemplateName) — follow-up não enviado para ${lead.email}`);
     }
   } else if (replyText) {
-    await sendWhatsAppText({
+    sent = await sendWhatsAppText({
       to: phone,
       text: replyText,
       leadEmail: lead.email,
       getCredentials: getWhatsAppCredentials,
       recordOutgoing: recordOutgoingWhatsAppMessage,
     });
-    sent = true;
   }
 
   // If new contact, check if AI discovered the real email
@@ -997,17 +996,22 @@ type SendTextParams = {
     text?: string | null;
     payload?: unknown;
     phoneNumberId?: string | null;
+    status?: 'sent' | 'failed';
   }) => Promise<void>;
 };
 
-async function sendWhatsAppText(params: SendTextParams): Promise<void> {
+// Retorna se o envio REALMENTE saiu (res.ok da Meta) — antes disso era
+// descartado e toda tentativa (sucesso ou falha) virava `status:'sent'` no
+// banco por padrao, mascarando falhas reais e inflando `followUpCount`/
+// atividades registradas por uma mensagem que nunca chegou ao lead.
+async function sendWhatsAppText(params: SendTextParams): Promise<boolean> {
   const { resolveDefaultPhoneNumberIdForLead } = await import('./whatsapp.service');
   let phoneNumberId: string;
   try {
     phoneNumberId = await resolveDefaultPhoneNumberIdForLead(params.to);
   } catch (err) {
     console.warn(`[AI-WPP] não foi possível resolver o número de envio — resposta não enviada: ${err instanceof Error ? err.message : err}`);
-    return;
+    return false;
   }
 
   const { accessToken } = await params.getCredentials();
@@ -1022,6 +1026,7 @@ async function sendWhatsAppText(params: SendTextParams): Promise<void> {
   };
 
   let messageId: string | null = null;
+  let ok = false;
 
   try {
     const res = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
@@ -1036,6 +1041,7 @@ async function sendWhatsAppText(params: SendTextParams): Promise<void> {
     if (res.ok) {
       const data = await res.json() as { messages?: Array<{ id?: string }> };
       messageId = data.messages?.[0]?.id ?? null;
+      ok = true;
       console.log(`[AI-WPP] WhatsApp reply sent to ${toE164} messageId=${messageId ?? 'none'}`);
     } else {
       const text = await res.text();
@@ -1052,7 +1058,10 @@ async function sendWhatsAppText(params: SendTextParams): Promise<void> {
     text: params.text,
     payload: body,
     phoneNumberId,
+    status: ok ? 'sent' : 'failed',
   });
+
+  return ok;
 }
 
 // ─── Meeting scheduler handlers ───────────────────────────────────────────────
