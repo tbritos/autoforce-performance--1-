@@ -122,8 +122,17 @@ export async function getMarketingKanban(includeAll = false): Promise<{
   columns: Record<MarketingStage, MarketingKanbanCard[]>;
 }> {
   // Filtro "de estado atual" — vale pra toda coluna, sempre (nao e sobre
-  // origem historica, e sobre o lead ter telefone HOJE).
-  const baseFilter = { deletedAt: null, phone: { not: null } };
+  // origem historica, e sobre o lead ter telefone HOJE, e sobre `status`
+  // ainda ser 'LEAD'). `status` (funil de vendas real: MQL/SQL/PROPOSAL/
+  // CLIENT/LOST/etc) e `marketingStage` (coluna do CRM Lara) sao campos
+  // totalmente independentes — nenhuma sincronizacao do Pipedrive nem troca
+  // manual de status em Lead Hub toca marketingStage. Um lead pode virar
+  // Proposta/Cliente/Perdido sem nunca ter conversado com o agente, e sem
+  // esse filtro ficaria com marketingStage='NOVO' pra sempre, aparecendo
+  // indefinidamente no board de marketing mesmo ja tendo saido dele pra
+  // virar oportunidade de vendas real ou ter encerrado. Mesma whitelist
+  // ELIGIBLE_STATUS='LEAD' ja usada em ai-followup.service.ts.
+  const baseFilter = { deletedAt: null, phone: { not: null }, status: 'LEAD' as const };
 
   // So se aplica a NOVO — ver comentario acima.
   const novoOnlyFilter = {
