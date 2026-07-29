@@ -17,6 +17,16 @@ const EXCLUDED_MARKETING_STAGES = ['SEM_INTERESSE'] as const;
 const DEFAULT_DELAY_HOURS = 24;
 const DEFAULT_MAX_ATTEMPTS = 2;
 
+// Corte deliberado: leads que JA estavam em silencio antes dessa data (ex: os
+// ~261 acumulados em AGUARDANDO_FOLLOWUP quando essa politica entrou) nunca
+// pediram pra receber follow-up automatico por template — mandar mensagem
+// paga em massa pra essa fila existente seria gasto desnecessario. So quem
+// ficar em silencio a PARTIR de agora entra no fluxo. Isso nao exclui um
+// lead pra sempre: assim que ele voltar a mandar mensagem, a nova janela de
+// silencio (a proxima "ultima mensagem") ja e depois do corte, e ele volta a
+// ser elegivel normalmente — ver o filtro por m.createdAt abaixo.
+export const FOLLOWUP_ACTIVE_SINCE = new Date('2026-07-29T00:00:00Z');
+
 interface LastMessageRow {
   leadId: string;
   direction: string;
@@ -47,7 +57,7 @@ export async function sendFollowUpsForSilentLeads(): Promise<{ sent: number; eva
   `;
 
   const silentLeadIds = lastMessages
-    .filter(m => m.direction === 'outbound' && m.createdAt <= cutoff)
+    .filter(m => m.direction === 'outbound' && m.createdAt <= cutoff && m.createdAt >= FOLLOWUP_ACTIVE_SINCE)
     .map(m => m.leadId);
 
   if (silentLeadIds.length === 0) return { sent: 0, evaluated: 0 };
