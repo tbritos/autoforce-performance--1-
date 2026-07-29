@@ -143,6 +143,19 @@ model Lead {
   siteCheckInProgress     Boolean   @default(false)
   siteCheckStartedAt      DateTime?
 
+  // Pesquisa automatica de informacao (coluna "Novo" do CRM Lara, ver
+  // lead-research.service.ts) — dispara uma unica vez na criacao do lead
+  // (webhook de campanha real ou primeira mensagem de WhatsApp, nunca em
+  // importacao em massa), busca dados publicos (web + CNPJ) SEM mandar
+  // mensagem, e decide sozinha se o lead avanca pra Qualificacao ou Sem
+  // Interesse. Mesmo padrao de lock atomico dos campos siteCheck* acima.
+  researchedAt       DateTime?
+  researchInProgress Boolean   @default(false)
+  researchStartedAt  DateTime?
+  researchAttempts   Int       @default(0)
+  researchSummary    String?   @db.Text // "Pesquisa de informação" no perfil do lead
+  researchIcpSignal  String? // 'qualified' | 'nurture' | 'disqualified'
+
   firstSeenAt DateTime  @default(now())
   lastSeenAt  DateTime  @default(now())
   qualifiedAt DateTime?

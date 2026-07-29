@@ -59,13 +59,13 @@ export async function sendFollowUpsForSilentLeads(): Promise<{ sent: number; eva
       aiHandoff: false,
       status: ELIGIBLE_STATUS,
       followUpCount: { lt: maxAttempts },
+      marketingStage: { notIn: [...EXCLUDED_MARKETING_STAGES] },
+      NOT: EXCLUDED_TAGS.map(tag => ({ tags: { has: tag } })),
+      phone: { not: null },
       // Lead pediu pra ser recontatado numa data especifica (ex: "so no mes
       // que vem") — ver acao schedule_followup em applyRecommendedActions.
       // Sem essa data ou ja passada dela, segue elegivel normalmente.
       OR: [{ followUpNotBeforeDate: null }, { followUpNotBeforeDate: { lte: new Date() } }],
-      marketingStage: { notIn: [...EXCLUDED_MARKETING_STAGES] },
-      NOT: EXCLUDED_TAGS.map(tag => ({ tags: { has: tag } })),
-      phone: { not: null },
     },
     select: { id: true, email: true, phone: true },
   });

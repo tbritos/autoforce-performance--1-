@@ -161,6 +161,10 @@ async function recordResendReceivedEmail(db: any, data: ResendWebhookData, rawPa
     await LeadScoringService.applyScoringRulesToLead(lead.id).catch(err => {
       console.error('[LeadScoring] falha ao aplicar regras no lead criado via e-mail recebido:', err);
     });
+    const { triggerLeadResearch } = await import('./services/lead-research.service');
+    await triggerLeadResearch(lead.id).catch(err => {
+      console.error('[LeadResearch] falha ao disparar pesquisa no lead criado via e-mail recebido:', err);
+    });
   }
 
   const emailData = {

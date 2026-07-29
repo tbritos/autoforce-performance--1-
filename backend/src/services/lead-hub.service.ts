@@ -154,6 +154,14 @@ export class LeadHubService {
       await LeadScoringService.applyScoringRulesToLead(created.id, scoringRules).catch(err => {
         console.error('[LeadScoring] falha ao aplicar regras na criacao do lead:', err);
       });
+      // Pesquisa automatica de informacao (coluna "Novo" do CRM Lara) — pula
+      // sozinha leads sem telefone e leads de importacao em massa (mesmo
+      // endpoint atende webhook de campanha real e importacao de CSV). Ver
+      // lead-research.service.ts.
+      const { triggerLeadResearch } = await import('./lead-research.service');
+      await triggerLeadResearch(created.id).catch(err => {
+        console.error('[LeadResearch] falha ao disparar pesquisa na criacao do lead:', err);
+      });
       return created;
     }
 

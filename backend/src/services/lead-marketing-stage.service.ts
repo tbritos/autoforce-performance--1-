@@ -98,26 +98,57 @@ export interface MarketingKanbanCard {
   marketingStageSource: string | null;
 }
 
+// marketingStage default e "NOVO" pra TODO lead criado, sem excecao (ver
+// @default(NOVO) no schema) — mas nem todo lead na base entrou pelo funil
+// ativo do agente (webhook de campanha ou WhatsApp direto): leads sem
+// telefone nunca vao ser trabalhados por WhatsApp, e leads com a tag
+// 'importacao' ou vindos de importacao em massa (mesmos sinais de
+// LeadHubService.EXCLUDED_LEAD_TAG/LEGACY_BULK_IMPORT_SOURCES,
+// lead-hub.service.ts) sao base historica que ninguem pediu pra reengajar.
+//
+// IMPORTANTE: origem (tag/firstSource) e um fato fixado na criacao do lead —
+// nao muda depois. Por isso so filtra a coluna NOVO (que representa "ainda
+// nao analisado, esperando o primeiro atendimento"): um lead importado que
+// depois conversou de verdade no WhatsApp e progrediu pra outro estagio
+// continua aparecendo normalmente ali, porque nesse ponto o que importa e o
+// engajamento real, nao como ele entrou na base originalmente. Aplicar esse
+// filtro em todas as colunas esconderia leads genuinamente ativos so por
+// causa da origem historica deles.
+const NOVO_EXCLUDED_TAG = 'importacao';
+const NOVO_EXCLUDED_SOURCES = ['importacao_csv', 'rdstation', 'rdstation_webhook'];
+
 export async function getMarketingKanban(includeAll = false): Promise<{
   totals: Record<MarketingStage, number>;
   columns: Record<MarketingStage, MarketingKanbanCard[]>;
 }> {
+  // Filtro "de estado atual" — vale pra toda coluna, sempre (nao e sobre
+  // origem historica, e sobre o lead ter telefone HOJE).
+  const baseFilter = { deletedAt: null, phone: { not: null } };
+
+  // So se aplica a NOVO — ver comentario acima.
+  const novoOnlyFilter = {
+    NOT: { tags: { has: NOVO_EXCLUDED_TAG } },
+    OR: [{ firstSource: null }, { firstSource: { notIn: NOVO_EXCLUDED_SOURCES } }],
+  };
+
   const counts = await prisma.lead.groupBy({
     by: ['marketingStage'],
-    where: { deletedAt: null },
+    where: baseFilter,
     _count: { _all: true },
   });
 
   const totals = Object.fromEntries(ALL_STAGES.map(stage => [stage, 0])) as Record<MarketingStage, number>;
   for (const row of counts) totals[row.marketingStage] = row._count._all;
+  totals.NOVO = await prisma.lead.count({ where: { ...baseFilter, marketingStage: 'NOVO', ...novoOnlyFilter } });
 
   const cutoff = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const columnEntries = await Promise.all(ALL_STAGES.map(async (stage) => {
     const windowed = !includeAll && WINDOWED_STAGES.includes(stage);
     const leads = await prisma.lead.findMany({
       where: {
-        deletedAt: null,
+        ...baseFilter,
         marketingStage: stage,
+        ...(stage === 'NOVO' ? novoOnlyFilter : {}),
         ...(windowed ? { marketingStageChangedAt: { gte: cutoff } } : {}),
       },
       orderBy: { marketingStageChangedAt: 'desc' },

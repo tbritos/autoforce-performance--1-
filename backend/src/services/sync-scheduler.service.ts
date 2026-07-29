@@ -208,6 +208,24 @@ export function startSyncScheduler(): void {
     }).catch(() => {});
   }, siteCheckSweepMs);
 
+  // Varredura de pesquisa automatica de informacao (coluna "Novo" do CRM
+  // Lara) — rede de seguranca pra falhas transitorias na pesquisa disparada
+  // na criacao do lead (API de busca fora do ar, timeout etc.). Nunca
+  // reprocessa leads antigos — so considera quem ainda esta em NOVO sem
+  // pesquisa concluida. Ver lead-research.service.ts.
+  const leadResearchSweepMs = Number.parseInt(process.env.LEAD_RESEARCH_SWEEP_INTERVAL_MS ?? '', 10) || 10 * 60 * 1000;
+  setInterval(() => {
+    import('./lead-research.service').then(({ sweepUnresearchedLeads }) => {
+      sweepUnresearchedLeads()
+        .then(result => {
+          if (result.checked > 0) {
+            console.log(`[lead-research] sweep checked=${result.checked}`);
+          }
+        })
+        .catch(err => console.error('[lead-research] sweep error:', err));
+    }).catch(() => {});
+  }, leadResearchSweepMs);
+
   // WhatsApp webhook health check every 30 minutes — catches Meta silently
   // dropping/changing the webhook subscription (no data sync, so it's not in ACTIVE_SYNC_PLATFORMS)
   import('./whatsapp-webhook-health.service').then(({ runWhatsAppWebhookHealthCheck }) => {

@@ -11,6 +11,8 @@ const LOCK_TTL_MS = 120_000;
 // Mesmo default de ai-followup.service.ts — usado so como fallback na
 // reconferencia final caso nao haja AIAgent ativo com o campo configurado.
 const DEFAULT_FOLLOWUP_MAX_ATTEMPTS = 2;
+// Mesma lista de EXCLUDED_TAGS em ai-followup.service.ts.
+const FOLLOWUP_EXCLUDED_TAGS = ['reuniao_agendada', 'followup_desinteresse'];
 const MAX_TRANSCRIPT_MSGS = 40;
 const DEFAULT_DISCOVERY_REPLY = 'Oi! Tudo bem? Sou a Lara, da AutoForce.\n\nMe conta rapidinho: hoje o maior desafio da sua concessionaria esta em gerar mais leads qualificados ou em converter melhor os leads que ja chegam?';
 const DISCOVERY_QUESTION = 'Hoje, qual e o maior gargalo: gerar mais leads qualificados ou converter melhor os leads que ja chegam?';
@@ -719,8 +721,7 @@ export async function sendFollowUpMessage(phone: string): Promise<void> {
       marketingStage: { not: 'SEM_INTERESSE' },
       followUpCount: { lt: maxAttempts },
       OR: [{ followUpNotBeforeDate: null }, { followUpNotBeforeDate: { lte: now } }],
-      // Mesma lista de EXCLUDED_TAGS em ai-followup.service.ts.
-      NOT: [{ tags: { has: 'reuniao_agendada' } }, { tags: { has: 'followup_desinteresse' } }],
+      NOT: FOLLOWUP_EXCLUDED_TAGS.map(tag => ({ tags: { has: tag } })),
       AND: [{ OR: [{ aiProcessing: false }, { aiProcessingAt: { lt: staleLockThreshold } }] }],
     },
     data: { aiProcessing: true, aiProcessingAt: now },

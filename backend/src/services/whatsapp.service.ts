@@ -496,6 +496,10 @@ async function recordInboundMessage(message: any, senderName: string | null, pho
     await LeadScoringService.applyScoringRulesToLead(lead.id).catch(err => {
       console.error('[LeadScoring] falha ao aplicar regras no lead criado via WhatsApp:', err);
     });
+    const { triggerLeadResearch } = await import('./lead-research.service');
+    await triggerLeadResearch(lead.id).catch(err => {
+      console.error('[LeadResearch] falha ao disparar pesquisa no lead criado via WhatsApp:', err);
+    });
   } else if (senderName && !lead.name) {
     // Update name on existing lead if it was blank
     await prisma.lead.update({

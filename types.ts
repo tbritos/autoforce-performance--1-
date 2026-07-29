@@ -174,6 +174,9 @@ export interface LeadProfile {
   statusHistoryTotal: number;
   revenueEntries: LeadRevenueEntry[];
   activities: LeadActivity[];
+  researchedAt: string | null;
+  researchSummary: string | null;
+  researchIcpSignal: string | null;
   aiHandoff: boolean;
 }
 

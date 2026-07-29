@@ -7,7 +7,7 @@ import {
   Trash2, FileText, Download, Wrench, Activity,
   ExternalLink, GitBranch, Flame, LayoutList,
   CheckCircle, XCircle, MessageCircle, Send, Bot, UserCheck, AlertCircle, Inbox,
-  Eye, MousePointerClick, Clock, Settings,
+  Eye, MousePointerClick, Clock, Settings, Search,
 } from 'lucide-react';
 import { LeadProfile, LeadStatus, LeadCustomFieldDef, PipedriveDealEvent, LeadConversion, LeadActivity, WhatsAppConversationMessage, WhatsAppNumberEntry, EmailSent, EmailReceived } from '../types';
 import { DataService } from '../services/dataService';
@@ -957,6 +957,38 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                 );
                               })}
                             </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Pesquisa de informação (pesquisa automática da IA na coluna Novo) */}
+                      <div style={cardStyle}>
+                        <div style={cardHead}>
+                          <span style={cardHeadTitle}><Search size={13} /> Pesquisa de informação</span>
+                          {profile.researchIcpSignal && (
+                            <span style={{
+                              fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 999,
+                              color: profile.researchIcpSignal === 'disqualified' ? 'var(--red-600)' : profile.researchIcpSignal === 'qualified' ? 'var(--green-600)' : 'var(--yellow-600)',
+                              background: profile.researchIcpSignal === 'disqualified' ? 'var(--red-50)' : profile.researchIcpSignal === 'qualified' ? 'var(--green-50)' : 'var(--yellow-50)',
+                            }}>
+                              {profile.researchIcpSignal === 'disqualified' ? 'Fora do ICP' : profile.researchIcpSignal === 'qualified' ? 'Dentro do ICP' : 'Em nutrição'}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ padding: 20 }}>
+                          {profile.researchSummary ? (
+                            <>
+                              <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-primary)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                                {profile.researchSummary}
+                              </p>
+                              <p style={{ margin: '10px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>
+                                Pesquisado automaticamente em {fmt(profile.researchedAt)}
+                              </p>
+                            </>
+                          ) : (
+                            <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-subtle)', fontStyle: 'italic' }}>
+                              {profile.researchedAt ? 'Nenhuma informação encontrada na pesquisa automática.' : 'Ainda não pesquisado.'}
+                            </p>
                           )}
                         </div>
                       </div>
