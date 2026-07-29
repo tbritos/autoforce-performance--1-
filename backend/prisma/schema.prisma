@@ -419,12 +419,15 @@ model AIAgent {
   followUpDelayHours  Int @default(24)
   followUpMaxAttempts Int @default(2)
 
-  // Nome tecnico (+ idioma) do template pre-aprovado pela Meta usado quando o
-  // follow-up precisa disparar fora da janela de 24h da ultima mensagem do
-  // lead (WhatsApp so libera texto livre dentro da janela) — ver
-  // sendFollowUpMessage em ai-whatsapp-reply.service.ts. Sem isso configurado,
-  // follow-ups fora da janela sao pulados (sem chamar a IA).
-  followUpTemplateName String?
+  // Sequencia de templates pre-aprovados pela Meta usados quando o follow-up
+  // precisa disparar fora da janela de 24h da ultima mensagem do lead
+  // (WhatsApp so libera texto livre dentro da janela) — ver
+  // sendFollowUpMessage em ai-whatsapp-reply.service.ts. Um por tentativa
+  // (indice 0 = 1a tentativa, indice 1 = 2a, etc.) pra nao repetir a mesma
+  // mensagem varias vezes pro mesmo lead; se a tentativa atual passar do
+  // ultimo template configurado, reusa o ultimo. Lista vazia = pula follow-up
+  // fora da janela (sem chamar a IA), mesmo comportamento de antes.
+  followUpTemplateNames String[] @default([])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

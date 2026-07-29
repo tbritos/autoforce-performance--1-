@@ -90,7 +90,11 @@ export class AIAgentsService {
     // poucos ciclos, ate bater followUpMaxAttempts — ver ai-followup.service.ts.
     if (input.followUpDelayHours !== undefined) data.followUpDelayHours = Math.max(6, Number(input.followUpDelayHours) || 24);
     if (input.followUpMaxAttempts !== undefined) data.followUpMaxAttempts = Math.max(0, Number(input.followUpMaxAttempts) || 0);
-    if (input.followUpTemplateName !== undefined) data.followUpTemplateName = String(input.followUpTemplateName || '').trim() || null;
+    if (input.followUpTemplateNames !== undefined) {
+      data.followUpTemplateNames = Array.isArray(input.followUpTemplateNames)
+        ? input.followUpTemplateNames.map(v => String(v || '').trim()).filter(Boolean)
+        : [];
+    }
 
     return (prisma as any).aIAgent.update({ where: { id }, data });
   }

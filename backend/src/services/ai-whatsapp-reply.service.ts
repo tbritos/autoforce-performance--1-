@@ -691,12 +691,19 @@ export async function sendFollowUpMessage(phone: string): Promise<void> {
   let followUpTemplateName: string | null = null;
   const agent = await (prisma as any).aIAgent.findFirst({
     where: { isActive: true },
-    select: { followUpTemplateName: true, followUpMaxAttempts: true },
+    select: { followUpTemplateNames: true, followUpMaxAttempts: true },
   });
   if (!withinSessionWindow) {
-    followUpTemplateName = agent?.followUpTemplateName ?? null;
+    const templates: string[] = agent?.followUpTemplateNames ?? [];
+    // Um template por tentativa (indice = followUpCount atual) — evita
+    // repetir a mesma mensagem pro mesmo lead a cada follow-up. Se a
+    // tentativa atual passar do ultimo configurado, reusa o ultimo em vez
+    // de pular (nao exige preencher um slot pra cada tentativa possivel).
+    followUpTemplateName = templates.length > 0
+      ? (templates[lead.followUpCount] ?? templates[templates.length - 1])
+      : null;
     if (!followUpTemplateName) {
-      console.warn(`[AI-Followup] ${phone} fora da janela de 24h e nenhum template configurado (AIAgent.followUpTemplateName) — pulando sem chamar a IA`);
+      console.warn(`[AI-Followup] ${phone} fora da janela de 24h e nenhum template configurado (AIAgent.followUpTemplateNames) — pulando sem chamar a IA`);
       return;
     }
   }
@@ -918,6 +925,7 @@ async function findLeadByPhone(phone: string) {
     firstSeenAt: true, lastSeenAt: true,
     aiHandoff: true, aiProcessing: true, aiProcessingAt: true,
     bookingLinkSentAt: true, pendingMeetingSlots: true,
+    followUpCount: true,
   };
 
   for (const value of candidates) {

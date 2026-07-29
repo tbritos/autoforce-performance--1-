@@ -596,7 +596,7 @@ export interface AIAgent {
   whatsappPhoneNumberId: string | null;
   followUpDelayHours: number;
   followUpMaxAttempts: number;
-  followUpTemplateName: string | null;
+  followUpTemplateNames: string[];
   createdAt: string;
   updatedAt: string;
   _count?: {

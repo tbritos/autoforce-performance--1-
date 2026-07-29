@@ -215,7 +215,7 @@ export default function AIAgentsView() {
         whatsappPhoneNumberId: agentDraft.whatsappPhoneNumberId ?? null,
         followUpDelayHours: agentDraft.followUpDelayHours ?? 24,
         followUpMaxAttempts: agentDraft.followUpMaxAttempts ?? 2,
-        followUpTemplateName: agentDraft.followUpTemplateName ?? null,
+        followUpTemplateNames: agentDraft.followUpTemplateNames ?? [],
       });
       setAgent(saved);
       setAgentDraft(saved);
@@ -546,15 +546,27 @@ export default function AIAgentsView() {
                 </Field>
               </div>
 
-              <Field label="Template de reengajamento (Meta)" note="(usado quando o follow-up cai fora da janela de 24h da última mensagem do lead — sem isso, esses follow-ups são pulados)">
-                <select value={agentDraft.followUpTemplateName ?? ''}
-                  onChange={e => setAgentDraft(d => ({ ...d, followUpTemplateName: e.target.value || null }))}
-                  style={{ ...iStyle, cursor: 'pointer' }}>
-                  <option value="">Nenhum selecionado</option>
-                  {approvedTemplates.map(t => (
-                    <option key={`${t.id}-${t.language}`} value={t.name}>{t.name} ({t.language})</option>
+              <Field label="Templates de reengajamento (Meta)" note="(um por tentativa, pra não repetir a mesma mensagem — usados quando o follow-up cai fora da janela de 24h da última mensagem do lead; sem nenhum, esses follow-ups são pulados. Se a tentativa passar do último preenchido, reusa o último)">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {Array.from({ length: Math.max(1, agentDraft.followUpMaxAttempts ?? 2) }).map((_, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11.5, color: 'var(--fg-subtle)', minWidth: 66, flexShrink: 0 }}>Tentativa {i + 1}</span>
+                      <select value={agentDraft.followUpTemplateNames?.[i] ?? ''}
+                        onChange={e => setAgentDraft(d => {
+                          const next = [...(d.followUpTemplateNames ?? [])];
+                          if (e.target.value) next[i] = e.target.value;
+                          else next.splice(i, 1);
+                          return { ...d, followUpTemplateNames: next };
+                        })}
+                        style={{ ...iStyle, cursor: 'pointer', flex: 1 }}>
+                        <option value="">Nenhum selecionado</option>
+                        {approvedTemplates.map(t => (
+                          <option key={`${t.id}-${t.language}`} value={t.name}>{t.name} ({t.language})</option>
+                        ))}
+                      </select>
+                    </div>
                   ))}
-                </select>
+                </div>
                 {approvedTemplates.length === 0 && (
                   <p style={{ margin: '6px 0 0', fontSize: 11.5, color: 'var(--fg-subtle)' }}>
                     Nenhum template aprovado encontrado. Crie e aprove um em "Templates da Meta" primeiro.
