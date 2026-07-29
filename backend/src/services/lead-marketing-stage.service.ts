@@ -1,6 +1,7 @@
 import { MarketingStage } from '@prisma/client';
 import { prisma } from '../config/database';
 import { normalizeEmail } from './lead-hub.service';
+import { FOLLOWUP_ACTIVE_SINCE } from './ai-followup.service';
 
 export type MarketingStageSource = 'ai' | 'system' | 'manual';
 
@@ -117,6 +118,31 @@ export interface MarketingKanbanCard {
 const NOVO_EXCLUDED_TAG = 'importacao';
 const NOVO_EXCLUDED_SOURCES = ['importacao_csv', 'rdstation', 'rdstation_webhook'];
 
+// So se aplica a NOVO — ver comentario logo acima de NOVO_EXCLUDED_TAG.
+const novoOnlyFilter = {
+  NOT: { tags: { has: NOVO_EXCLUDED_TAG } },
+  OR: [{ firstSource: null }, { firstSource: { notIn: NOVO_EXCLUDED_SOURCES } }],
+};
+
+// AGUARDANDO_FOLLOWUP so deveria mostrar leads que realmente vao receber um
+// follow-up automatico. Desde que FOLLOWUP_ACTIVE_SINCE entrou em vigor
+// (ai-followup.service.ts), setMarketingStage(..., 'AGUARDANDO_FOLLOWUP', ...)
+// so e chamado pra quem passa nesse corte — entao qualquer lead que JA
+// estava nessa coluna de antes (marketingStageChangedAt anterior ao corte,
+// ex: os ~261 acumulados quando o corte entrou) nunca mais vai ser
+// re-avaliado nem receber mensagem: ficaria "congelado" e enganoso mostrar
+// ele numa coluna que sugere uma acao futura que nao vai acontecer. Board
+// tem que ser fiel ao que realmente esta em andamento — esses leads somem
+// do board (nao sao apagados nem tem o marketingStage alterado; se um dia
+// voltarem a conversar, um novo ciclo os recoloca aqui normalmente, com
+// marketingStageChangedAt atualizado pra depois do corte).
+const aguardandoFollowupOnlyFilter = { marketingStageChangedAt: { gte: FOLLOWUP_ACTIVE_SINCE } };
+
+const STAGE_ONLY_FILTERS: Partial<Record<MarketingStage, object>> = {
+  NOVO: novoOnlyFilter,
+  AGUARDANDO_FOLLOWUP: aguardandoFollowupOnlyFilter,
+};
+
 export async function getMarketingKanban(includeAll = false): Promise<{
   totals: Record<MarketingStage, number>;
   columns: Record<MarketingStage, MarketingKanbanCard[]>;
@@ -134,12 +160,6 @@ export async function getMarketingKanban(includeAll = false): Promise<{
   // ELIGIBLE_STATUS='LEAD' ja usada em ai-followup.service.ts.
   const baseFilter = { deletedAt: null, phone: { not: null }, status: 'LEAD' as const };
 
-  // So se aplica a NOVO — ver comentario acima.
-  const novoOnlyFilter = {
-    NOT: { tags: { has: NOVO_EXCLUDED_TAG } },
-    OR: [{ firstSource: null }, { firstSource: { notIn: NOVO_EXCLUDED_SOURCES } }],
-  };
-
   const counts = await prisma.lead.groupBy({
     by: ['marketingStage'],
     where: baseFilter,
@@ -148,7 +168,12 @@ export async function getMarketingKanban(includeAll = false): Promise<{
 
   const totals = Object.fromEntries(ALL_STAGES.map(stage => [stage, 0])) as Record<MarketingStage, number>;
   for (const row of counts) totals[row.marketingStage] = row._count._all;
-  totals.NOVO = await prisma.lead.count({ where: { ...baseFilter, marketingStage: 'NOVO', ...novoOnlyFilter } });
+  // groupBy nao filtra por grupo — os estagios com filtro proprio (ver
+  // STAGE_ONLY_FILTERS) precisam de uma contagem dedicada, sobrescrevendo o
+  // total "cru" calculado acima.
+  for (const [stage, filter] of Object.entries(STAGE_ONLY_FILTERS) as [MarketingStage, object][]) {
+    totals[stage] = await prisma.lead.count({ where: { ...baseFilter, marketingStage: stage, ...filter } });
+  }
 
   const cutoff = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const columnEntries = await Promise.all(ALL_STAGES.map(async (stage) => {
@@ -157,7 +182,7 @@ export async function getMarketingKanban(includeAll = false): Promise<{
       where: {
         ...baseFilter,
         marketingStage: stage,
-        ...(stage === 'NOVO' ? novoOnlyFilter : {}),
+        ...(STAGE_ONLY_FILTERS[stage] ?? {}),
         ...(windowed ? { marketingStageChangedAt: { gte: cutoff } } : {}),
       },
       orderBy: { marketingStageChangedAt: 'desc' },
