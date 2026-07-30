@@ -178,6 +178,8 @@ export interface LeadProfile {
   researchSummary: string | null;
   researchIcpSignal: string | null;
   aiHandoff: boolean;
+  whatsappInvalidAt: string | null;
+  whatsappInvalidReason: string | null;
 }
 
 export interface LeadCustomFieldDef {

@@ -72,6 +72,11 @@ export async function sendFollowUpsForSilentLeads(): Promise<{ sent: number; eva
       marketingStage: { notIn: [...EXCLUDED_MARKETING_STAGES] },
       NOT: EXCLUDED_TAGS.map(tag => ({ tags: { has: tag } })),
       phone: { not: null },
+      // Numero classificado como invalido/nao-WhatsApp por uma falha real de
+      // envio (ver classifyWhatsAppError em whatsapp.service.ts) — continuar
+      // tentando so gastaria template a toa. Autocurativo: some sozinho se o
+      // lead responder ou um envio sair com sucesso depois.
+      whatsappInvalidAt: null,
       // Lead pediu pra ser recontatado numa data especifica (ex: "so no mes
       // que vem") — ver acao schedule_followup em applyRecommendedActions.
       // Sem essa data ou ja passada dela, segue elegivel normalmente.

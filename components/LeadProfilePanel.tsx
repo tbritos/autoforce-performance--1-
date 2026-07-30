@@ -825,6 +825,27 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                 </div>
               </div>
 
+              {/* Aviso: numero de WhatsApp classificado como invalido — para automaticamente
+                  quando um envio falha com um erro permanente da Meta (ver classifyWhatsAppError
+                  em whatsapp.service.ts). Some sozinho se o lead responder ou um envio for bem-sucedido. */}
+              {profile.whatsappInvalidAt && (
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 16px', marginBottom: 20,
+                  borderRadius: 12, background: 'var(--red-50)', border: '1px solid var(--red-200, #fecaca)',
+                }}>
+                  <AlertCircle size={16} style={{ color: 'var(--red-600)', flexShrink: 0, marginTop: 1 }} />
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: 'var(--red-600)' }}>
+                      Número de WhatsApp parece inválido
+                    </p>
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--fg-secondary)' }}>
+                      {profile.whatsappInvalidReason || 'A Meta recusou o envio com um erro permanente.'}
+                      {' '}Follow-up automático pausado para esse lead desde {fmt(profile.whatsappInvalidAt)} — confira o número manualmente.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* ── Body ── */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20, alignItems: 'start' }}>
 

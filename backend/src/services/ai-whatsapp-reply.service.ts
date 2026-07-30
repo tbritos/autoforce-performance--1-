@@ -727,6 +727,7 @@ export async function sendFollowUpMessage(phone: string): Promise<void> {
       status: 'LEAD',
       marketingStage: { not: 'SEM_INTERESSE' },
       followUpCount: { lt: maxAttempts },
+      whatsappInvalidAt: null,
       OR: [{ followUpNotBeforeDate: null }, { followUpNotBeforeDate: { lte: now } }],
       NOT: FOLLOWUP_EXCLUDED_TAGS.map(tag => ({ tags: { has: tag } })),
       AND: [{ OR: [{ aiProcessing: false }, { aiProcessingAt: { lt: staleLockThreshold } }] }],
@@ -1033,6 +1034,11 @@ async function sendWhatsAppText(params: SendTextParams): Promise<boolean> {
 
   let messageId: string | null = null;
   let ok = false;
+  // Erro real da Meta, quando o envio falha — antes descartado (so o texto
+  // cru ia pro console.error), agora vai pro banco (WhatsAppMessage.payload
+  // + errorCode/errorMessage) pra classifyWhatsAppError decidir se essa
+  // falha e permanente (numero invalido) ou so passageira.
+  let error: { code?: number; message?: string; error_data?: { details?: string } } | string | null = null;
 
   try {
     const res = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
@@ -1044,16 +1050,18 @@ async function sendWhatsAppText(params: SendTextParams): Promise<boolean> {
       body: JSON.stringify(body),
     });
 
-    if (res.ok) {
-      const data = await res.json() as { messages?: Array<{ id?: string }> };
-      messageId = data.messages?.[0]?.id ?? null;
+    const data = await res.json().catch(() => null) as { messages?: Array<{ id?: string }>; error?: { code?: number; message?: string; error_data?: { details?: string } } } | null;
+
+    if (res.ok && !data?.error) {
+      messageId = data?.messages?.[0]?.id ?? null;
       ok = true;
       console.log(`[AI-WPP] WhatsApp reply sent to ${toE164} messageId=${messageId ?? 'none'}`);
     } else {
-      const text = await res.text();
-      console.error(`[AI-WPP] WhatsApp API error ${res.status}: ${text.slice(0, 300)}`);
+      error = data?.error ?? `HTTP ${res.status}`;
+      console.error(`[AI-WPP] WhatsApp API error ${res.status}:`, JSON.stringify(error).slice(0, 300));
     }
   } catch (err) {
+    error = err instanceof Error ? err.message : String(err);
     console.error('[AI-WPP] fetch error sending reply:', err);
   }
 
@@ -1062,7 +1070,7 @@ async function sendWhatsAppText(params: SendTextParams): Promise<boolean> {
     phone: toE164,
     messageId,
     text: params.text,
-    payload: body,
+    payload: ok ? body : { request: body, error },
     phoneNumberId,
     status: ok ? 'sent' : 'failed',
   });

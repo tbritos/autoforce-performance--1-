@@ -111,12 +111,63 @@ async function findLeadByPhone(phone: string) {
   for (const value of candidates) {
     const lead = await prisma.lead.findFirst({
       where: { phone: { contains: value } },
-      select: { id: true, email: true, phone: true, name: true },
+      select: { id: true, email: true, phone: true, name: true, whatsappInvalidAt: true },
     });
     if (lead) return lead;
   }
 
   return null;
+}
+
+// Codigos da Meta que so ocorrem quando o proprio numero esta com problema
+// (nunca por rate limit, token expirado, indisponibilidade momentanea etc.)
+// — nesses casos tentar de novo mais tarde nunca vai funcionar, entao para o
+// follow-up automatico e avisa o time em vez de continuar gastando template.
+const PERMANENT_WHATSAPP_ERROR_CODES = new Set<number>([
+  133010, // conta/numero nao registrado no WhatsApp
+  131021, // destinatario nao pode ser o remetente (numero mal configurado/invalido)
+]);
+
+// Fallback por texto — a Meta as vezes muda o codigo usado pro mesmo motivo
+// (ex: 131026 "Message Undeliverable" e documentado como multi-causa, entao
+// so o codigo nao basta; mas quando o texto e explicito sobre o numero nao
+// existir no WhatsApp, e seguro classificar como permanente mesmo assim).
+const PERMANENT_WHATSAPP_ERROR_TEXT_PATTERNS: RegExp[] = [
+  /not a whatsapp user/i,
+  /not registered on whatsapp/i,
+  /n[aã]o\s+[eé]\s+(um\s+)?usu[aá]rio\s+(do|de)\s+whatsapp/i,
+  /n[uú]mero\s+(de\s+)?whatsapp\s+inv[aá]lido/i,
+  /invalid\s+whatsapp\s+number/i,
+  /recipient\s+phone\s+number\s+is\s+not\s+a?\s*valid/i,
+  /invalid.*wa_id|wa_id.*invalid/i,
+];
+
+export interface WhatsAppErrorClassification {
+  classification: 'permanent' | 'transient';
+  reason: string;
+}
+
+// Decide se uma falha de envio deve parar o follow-up automatico pra esse
+// lead (permanent) ou se e so uma instabilidade passageira que deve
+// continuar tentando no proximo ciclo (transient) — ver
+// ai-followup.service.ts. Por padrao (codigo desconhecido, sem match de
+// texto) classifica como transient: e mais seguro nao desistir de um lead
+// bom por engano do que continuar tentando por mais algumas rodadas um lead
+// realmente com numero invalido.
+export function classifyWhatsAppError(
+  error: { code?: number | null; message?: string | null; error_data?: { details?: string | null } | null } | null | undefined
+): WhatsAppErrorClassification | null {
+  if (!error) return null;
+  const code = typeof error.code === 'number' ? error.code : null;
+  const text = [error.message, error.error_data?.details].filter(Boolean).join(' — ');
+
+  if (code !== null && PERMANENT_WHATSAPP_ERROR_CODES.has(code)) {
+    return { classification: 'permanent', reason: text || `Erro ${code} da Meta` };
+  }
+  if (PERMANENT_WHATSAPP_ERROR_TEXT_PATTERNS.some(re => re.test(text))) {
+    return { classification: 'permanent', reason: text || 'Número inválido no WhatsApp' };
+  }
+  return { classification: 'transient', reason: text || (code !== null ? `Erro ${code} da Meta` : 'Falha no envio') };
 }
 
 export async function fetchWhatsAppPhoneNumbers(): Promise<WhatsAppPhoneNumber[]> {
@@ -395,7 +446,7 @@ export async function recordOutgoingWhatsAppMessage(input: {
   status?: 'sent' | 'failed';
 }): Promise<void> {
   let lead = input.leadEmail
-    ? await prisma.lead.findUnique({ where: { email: input.leadEmail }, select: { id: true, email: true } })
+    ? await prisma.lead.findUnique({ where: { email: input.leadEmail }, select: { id: true, email: true, whatsappInvalidAt: true } })
     : null;
 
   // leadEmail vem null de proposito pra leads com email gerado
@@ -410,6 +461,26 @@ export async function recordOutgoingWhatsAppMessage(input: {
   }
 
   const status = input.status ?? 'sent';
+
+  // Extrai o erro real da Meta pra classificar (ver classifyWhatsAppError
+  // acima) — payload chega como { request, error } no caminho sincrono
+  // (sendWhatsAppText, disparos avulsos) quando falha, ou como uma string
+  // crua quando o proprio fetch lancou excecao (sem resposta HTTP nenhuma).
+  let errorCode: number | null = null;
+  let errorTitle: string | null = null;
+  let errorMessage: string | null = null;
+  if (status === 'failed') {
+    const raw = (input.payload as { error?: unknown } | null)?.error;
+    if (typeof raw === 'string') {
+      errorMessage = raw;
+    } else if (raw && typeof raw === 'object') {
+      const e = raw as { code?: number; message?: string; title?: string; error_data?: { details?: string } };
+      errorCode = typeof e.code === 'number' ? e.code : null;
+      errorTitle = e.title ?? null;
+      errorMessage = e.message ?? e.error_data?.details ?? null;
+    }
+  }
+
   const data = {
     leadId: lead?.id ?? null,
     // So usa o email resolvido quando a busca partiu de um leadEmail de
@@ -424,6 +495,9 @@ export async function recordOutgoingWhatsAppMessage(input: {
     templateName: input.templateName ?? null,
     text: input.text ?? null,
     payload: input.payload ?? {},
+    errorCode,
+    errorTitle,
+    errorMessage,
     automationJourneyId: input.automationJourneyId ?? null,
     automationExecutionId: input.automationExecutionId ?? null,
     phoneNumberId: input.phoneNumberId ?? null,
@@ -438,10 +512,40 @@ export async function recordOutgoingWhatsAppMessage(input: {
       create: data,
       update: data,
     });
-    return;
+  } else {
+    await (prisma as any).whatsAppMessage.create({ data });
   }
 
-  await (prisma as any).whatsAppMessage.create({ data });
+  await applyWhatsAppFailureClassification(lead, status, { code: errorCode, message: errorMessage });
+}
+
+// Aplica o resultado de classifyWhatsAppError ao Lead — usado tanto pro
+// envio sincrono (aqui) quanto pro webhook de status assincrono
+// (recordStatus, mais abaixo). So escreve quando ha uma transicao real de
+// estado: marca em falha permanente nova, ou limpa quando um envio
+// realmente sai (autocurativo — nunca um veto de verdade).
+async function applyWhatsAppFailureClassification(
+  lead: { id: string; whatsappInvalidAt: Date | null } | null,
+  status: string,
+  error: { code: number | null; message: string | null }
+): Promise<void> {
+  if (!lead?.id) return;
+
+  if (status === 'failed') {
+    const verdict = classifyWhatsAppError(error);
+    if (verdict?.classification === 'permanent') {
+      await prisma.lead
+        .update({
+          where: { id: lead.id },
+          data: { whatsappInvalidAt: new Date(), whatsappInvalidReason: verdict.reason.slice(0, 500) },
+        })
+        .catch(() => {});
+    }
+  } else if (lead.whatsappInvalidAt) {
+    await prisma.lead
+      .update({ where: { id: lead.id }, data: { whatsappInvalidAt: null, whatsappInvalidReason: null } })
+      .catch(() => {});
+  }
 }
 
 function extractInboundText(message: any): { type: string; text: string | null } {
@@ -490,7 +594,7 @@ async function recordInboundMessage(message: any, senderName: string | null, pho
         // Fill in name if it was missing and now we have it
         ...(senderName ? { name: senderName } : {}),
       },
-      select: { id: true, email: true, phone: true, name: true },
+      select: { id: true, email: true, phone: true, name: true, whatsappInvalidAt: true },
     });
     const { LeadScoringService } = await import('./lead-scoring.service');
     await LeadScoringService.applyScoringRulesToLead(lead.id).catch(err => {
@@ -512,7 +616,11 @@ async function recordInboundMessage(message: any, senderName: string | null, pho
 
   // Qualquer mensagem do lead reseta o contador de follow-up automatico —
   // ver ai-followup.service.ts.
-  await prisma.lead.update({ where: { id: lead.id }, data: { followUpCount: 0 } }).catch(() => {});
+  // Mensagem recebida = prova definitiva de que o numero funciona — limpa
+  // qualquer marcacao anterior de falha permanente (autocurativo).
+  await prisma.lead
+    .update({ where: { id: lead.id }, data: { followUpCount: 0, whatsappInvalidAt: null, whatsappInvalidReason: null } })
+    .catch(() => {});
 
   const { type, text } = extractInboundText(message);
   const receivedAt = metaTimestamp(message.timestamp);
@@ -571,9 +679,19 @@ async function recordStatus(status: any, phoneNumberId: string | null): Promise<
 
   const state = String(status.status ?? 'sent');
   const at = metaTimestamp(status.timestamp);
+
+  // Falha assincrona (webhook) — a Meta manda o motivo real em errors[0],
+  // mesma info que a falha sincrona tem em payload.error (ver
+  // recordOutgoingWhatsAppMessage) so que num formato de array.
+  const firstError = Array.isArray(status.errors) ? status.errors[0] : null;
+  const errorCode = typeof firstError?.code === 'number' ? firstError.code : null;
+  const errorTitle = firstError?.title ?? null;
+  const errorMessage = firstError?.message ?? firstError?.error_data?.details ?? null;
+
   const data: Record<string, unknown> = {
     status: state,
     payload: status,
+    ...(state === 'failed' ? { errorCode, errorTitle, errorMessage } : {}),
   };
   if (state === 'sent') data.sentAt = at;
   if (state === 'delivered') data.deliveredAt = at;
@@ -602,10 +720,16 @@ async function recordStatus(status: any, phoneNumberId: string | null): Promise<
 
   if (state === 'failed') {
     const lead = await findLeadByPhone(String(status.recipient_id ?? ''));
+    await applyWhatsAppFailureClassification(lead, state, { code: errorCode, message: errorMessage });
     if (lead?.email) {
       const { resumeWaitingWhatsAppReply } = await import('./automation-engine.service');
       await resumeWaitingWhatsAppReply(lead.email, 'failed', 'failed');
     }
+  } else if (state === 'delivered' || state === 'read') {
+    // Confirmacao forte de que o numero funciona de verdade — limpa uma
+    // marcacao de falha permanente anterior (autocurativo).
+    const lead = await findLeadByPhone(String(status.recipient_id ?? ''));
+    await applyWhatsAppFailureClassification(lead, state, { code: null, message: null });
   }
 }
 

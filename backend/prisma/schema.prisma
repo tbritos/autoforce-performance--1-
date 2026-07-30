@@ -106,6 +106,17 @@ model Lead {
   // generico normal). Nao precisa resetar depois que a data passa.
   followUpNotBeforeDate DateTime?
 
+  // Preenchido quando um envio de WhatsApp (sincrono ou via webhook de
+  // status) falha com um erro classificado como PERMANENTE (ex: numero nao
+  // e usuario do WhatsApp, numero invalido) — ver classifyWhatsAppError em
+  // whatsapp.service.ts. Enquanto setado, o follow-up automatico para de
+  // tentar esse lead (ver ai-followup.service.ts) e o time de vendas ve o
+  // aviso no perfil. Autocurativo: qualquer envio bem-sucedido ou mensagem
+  // recebida desse lead limpa os dois campos (o numero claramente funciona),
+  // nunca e um veto permanente de verdade.
+  whatsappInvalidAt     DateTime?
+  whatsappInvalidReason String?   @db.Text
+
   // CRM Lara — coluna do kanban interno de marketing. Ver
   // lead-marketing-stage.service.ts (unico ponto que deve escrever nesses
   // 3 campos) pra a maquina de estados completa.
@@ -186,6 +197,7 @@ model Lead {
   @@index([pipedriveDealStatus])
   @@index([pipedriveStageId])
   @@index([marketingStage])
+  @@index([whatsappInvalidAt])
 }
 
 model LeadConversion {
@@ -546,6 +558,15 @@ model WhatsAppMessage {
   templateName String?
   text         String? @db.Text
   payload      Json    @default("{}")
+
+  // Detalhe do erro real da Meta quando status = 'failed' — extraido de
+  // payload.error (falha sincrona, no POST) ou payload.errors[0] (falha
+  // assincrona, via webhook de status). Guardado em colunas proprias (e nao
+  // so dentro de payload) pra classifyWhatsAppError (whatsapp.service.ts)
+  // poder decidir permanente/transitorio sem parsear JSON toda vez.
+  errorCode    Int?
+  errorTitle   String?
+  errorMessage String? @db.Text
 
   // Numero da Meta (phone_number_id) que enviou (outbound) ou recebeu (inbound) essa mensagem.
   // Nulo em mensagens antigas, de antes de existir mais de um numero.
