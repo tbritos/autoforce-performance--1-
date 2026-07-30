@@ -624,6 +624,7 @@ model WhatsAppNumber {
 
 enum Platform {
   META_ADS
+  INSTAGRAM
   GOOGLE_ADS
   GOOGLE_ANALYTICS
   RD_STATION

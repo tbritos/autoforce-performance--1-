@@ -1,16 +1,22 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  AlertCircle,
   ArrowRight,
   BarChart3,
+  CheckCircle2,
   CircleDashed,
   Instagram,
+  Loader2,
   MessageCircle,
   PlugZap,
   Sparkles,
+  Unplug,
   Users,
   Workflow,
   Zap,
 } from 'lucide-react';
+import { DataService } from '../services/dataService';
+import type { ConnectionRequirement, PlatformConnection } from '../types';
 
 type AutoChatTab = 'flows' | 'conversations' | 'contacts' | 'metrics' | 'integration';
 
@@ -76,8 +82,124 @@ function EmptySection({
 
 export default function AutoChatView() {
   const [activeTab, setActiveTab] = useState<AutoChatTab>('flows');
+  const [instagramConnection, setInstagramConnection] = useState<PlatformConnection | null>(null);
+  const [instagramRequirement, setInstagramRequirement] = useState<ConnectionRequirement | null>(null);
+  const [connectionLoading, setConnectionLoading] = useState(true);
+  const [connectionAction, setConnectionAction] = useState<'connect' | 'disconnect' | 'test' | null>(null);
+  const [connectionFeedback, setConnectionFeedback] = useState<{ type: 'ok' | 'error'; message: string } | null>(null);
 
   const openIntegration = () => setActiveTab('integration');
+  const isInstagramConnected = instagramConnection?.status === 'CONNECTED';
+  const instagramAccountName = instagramConnection?.accountName || 'Conta profissional';
+  const canStartOAuth = instagramRequirement?.readyForOAuth === true;
+
+  const loadInstagramConnection = useCallback(async (silent = false) => {
+    if (!silent) setConnectionLoading(true);
+    try {
+      const [connections, requirements] = await Promise.all([
+        DataService.listConnections(),
+        DataService.listConnectionRequirements(),
+      ]);
+      setInstagramConnection(connections.find(item => item.platform === 'INSTAGRAM') || null);
+      setInstagramRequirement(requirements.find(item => item.platform === 'INSTAGRAM') || null);
+    } catch (error) {
+      setConnectionFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Não foi possível consultar a conexão do Instagram.',
+      });
+    } finally {
+      if (!silent) setConnectionLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadInstagramConnection();
+  }, [loadInstagramConnection]);
+
+  useEffect(() => {
+    const apiOrigin = (import.meta.env.VITE_API_URL || '').replace(/\/api$/, '') || window.location.origin;
+    const handleOAuthMessage = (event: MessageEvent) => {
+      if (event.origin !== apiOrigin && event.origin !== window.location.origin) return;
+      if (event.data?.platform !== 'INSTAGRAM') return;
+      if (event.data?.type === 'oauth_success') {
+        setConnectionFeedback({ type: 'ok', message: 'Instagram conectado com sucesso.' });
+        loadInstagramConnection(true);
+      }
+      if (event.data?.type === 'oauth_error') {
+        setConnectionFeedback({
+          type: 'error',
+          message: event.data?.error || 'A Meta não concluiu a conexão.',
+        });
+      }
+    };
+    window.addEventListener('message', handleOAuthMessage);
+    return () => window.removeEventListener('message', handleOAuthMessage);
+  }, [loadInstagramConnection]);
+
+  const connectInstagram = async () => {
+    setConnectionAction('connect');
+    setConnectionFeedback(null);
+    try {
+      const { url } = await DataService.getConnectionAuthUrl('INSTAGRAM');
+      const width = 620;
+      const height = 720;
+      const left = Math.round(window.screenX + (window.outerWidth - width) / 2);
+      const top = Math.round(window.screenY + (window.outerHeight - height) / 2);
+      const popup = window.open(
+        url,
+        'instagram_oauth_popup',
+        `width=${width},height=${height},left=${left},top=${top},resizable=yes`,
+      );
+      if (!popup) throw new Error('O navegador bloqueou a janela de conexão. Libere pop-ups e tente novamente.');
+      const poll = window.setInterval(() => {
+        if (popup.closed) {
+          window.clearInterval(poll);
+          setConnectionAction(null);
+          loadInstagramConnection(true);
+        }
+      }, 800);
+    } catch (error) {
+      setConnectionFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Não foi possível iniciar a conexão.',
+      });
+      setConnectionAction(null);
+    }
+  };
+
+  const disconnectInstagram = async () => {
+    setConnectionAction('disconnect');
+    setConnectionFeedback(null);
+    try {
+      await DataService.disconnectPlatform('INSTAGRAM');
+      await loadInstagramConnection(true);
+      setConnectionFeedback({ type: 'ok', message: 'Instagram desconectado deste sistema.' });
+    } catch (error) {
+      setConnectionFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Não foi possível desconectar o Instagram.',
+      });
+    } finally {
+      setConnectionAction(null);
+    }
+  };
+
+  const testInstagram = async () => {
+    setConnectionAction('test');
+    setConnectionFeedback(null);
+    try {
+      const result = await DataService.testPlatformConnection('INSTAGRAM');
+      setConnectionFeedback({ type: result.ok ? 'ok' : 'error', message: result.message });
+      await loadInstagramConnection(true);
+    } catch (error) {
+      setConnectionFeedback({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Não foi possível testar a conexão.',
+      });
+    } finally {
+      setConnectionAction(null);
+    }
+  };
 
   return (
     <div className="autochat-page" data-testid="autochat-view">
@@ -119,6 +241,9 @@ export default function AutoChatView() {
           transition: transform .15s ease, filter .15s ease;
         }
         .autochat-primary:hover { transform: translateY(-1px); filter: brightness(1.05); }
+        .autochat-primary:disabled {
+          cursor: not-allowed; opacity: .62; transform: none; filter: none;
+        }
         .autochat-tabs {
           display: flex; gap: 4px; padding: 4px; margin-bottom: 16px; overflow-x: auto;
           border: 1px solid var(--border); border-radius: 11px; background: var(--bg-surface);
@@ -148,11 +273,16 @@ export default function AutoChatView() {
           padding: 16px 18px; margin-bottom: 16px; border: 1px solid rgba(236, 72, 153, 0.24);
           border-radius: 13px; background: linear-gradient(110deg, rgba(236,72,153,.08), rgba(124,58,237,.05));
         }
+        .autochat-connect-card.connected {
+          border-color: rgba(34, 197, 94, .26);
+          background: linear-gradient(110deg, rgba(34,197,94,.08), rgba(14,165,233,.04));
+        }
         .autochat-connect-copy { display: flex; align-items: center; gap: 12px; min-width: 0; }
         .autochat-status-icon {
           width: 34px; height: 34px; display: grid; place-items: center; flex-shrink: 0;
           border-radius: 10px; color: #db2777; background: rgba(236,72,153,.12);
         }
+        .autochat-status-icon.connected { color: #16a34a; background: rgba(34,197,94,.12); }
         .autochat-connect-copy strong { display: block; font-size: 13.5px; }
         .autochat-connect-copy span { display: block; margin-top: 3px; color: var(--fg-muted); font-size: 12px; line-height: 1.4; }
         .autochat-link-button {
@@ -228,6 +358,32 @@ export default function AutoChatView() {
           border-radius: 9px; color: var(--fg-subtle); background: var(--bg-elevated);
           font-size: 12px; font-weight: 700; cursor: not-allowed;
         }
+        .autochat-connection-box {
+          padding: 14px; margin-top: 18px; border: 1px solid var(--border);
+          border-radius: 11px; background: var(--bg-elevated);
+        }
+        .autochat-connection-box.connected { border-color: rgba(34,197,94,.28); background: rgba(34,197,94,.06); }
+        .autochat-connection-box strong { display: flex; align-items: center; gap: 7px; font-size: 12.5px; }
+        .autochat-connection-box p { margin: 5px 0 0; color: var(--fg-muted); font-size: 11.5px; line-height: 1.5; }
+        .autochat-connection-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+        .autochat-secondary, .autochat-danger {
+          min-height: 34px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+          border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+          color: var(--fg-secondary); background: var(--bg-surface); font-size: 11.5px; font-weight: 700;
+        }
+        .autochat-danger { color: #dc2626; border-color: rgba(239,68,68,.22); background: rgba(239,68,68,.06); }
+        .autochat-secondary:disabled, .autochat-danger:disabled { cursor: not-allowed; opacity: .55; }
+        .autochat-feedback {
+          display: flex; align-items: flex-start; gap: 7px; padding: 10px 11px; margin-top: 12px;
+          border: 1px solid; border-radius: 9px; font-size: 11.5px; line-height: 1.45;
+        }
+        .autochat-feedback.ok { color: #15803d; border-color: rgba(34,197,94,.24); background: rgba(34,197,94,.07); }
+        .autochat-feedback.error { color: #b91c1c; border-color: rgba(239,68,68,.24); background: rgba(239,68,68,.07); }
+        .autochat-feedback svg { flex-shrink: 0; margin-top: 1px; }
+        .autochat-missing-env {
+          margin-top: 10px; color: var(--fg-subtle); font: 10.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+          overflow-wrap: anywhere;
+        }
         @media (max-width: 1050px) {
           .autochat-template-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .autochat-template:nth-child(2) { border-right: 0; }
@@ -263,7 +419,16 @@ export default function AutoChatView() {
             </div>
           </div>
           <button type="button" className="autochat-primary" onClick={openIntegration}>
-            <Instagram size={15} /> Conectar Instagram
+            {connectionLoading
+              ? <Loader2 size={15} className="animate-spin" />
+              : isInstagramConnected
+                ? <CheckCircle2 size={15} />
+                : <Instagram size={15} />}
+            {connectionLoading
+              ? 'Verificando Instagram'
+              : isInstagramConnected
+                ? instagramAccountName
+                : 'Conectar Instagram'}
           </button>
         </header>
 
@@ -288,17 +453,26 @@ export default function AutoChatView() {
           <CircleDashed size={18} />
           <div>
             <strong>Esta área ainda está em construção</strong>
-            <span>Você está visualizando uma prévia do AutoChat. Nenhuma automação ou integração desta tela está ativa no momento.</span>
+            <span>
+              Você está visualizando uma prévia do AutoChat. Nenhuma automação está ativa
+              {isInstagramConnected ? '; a conta conectada ainda não recebe eventos.' : ' no momento.'}
+            </span>
           </div>
         </aside>
 
         {activeTab !== 'integration' && (
-          <section className="autochat-connect-card">
+          <section className={`autochat-connect-card${isInstagramConnected ? ' connected' : ''}`}>
             <div className="autochat-connect-copy">
-              <div className="autochat-status-icon"><CircleDashed size={18} /></div>
+              <div className={`autochat-status-icon${isInstagramConnected ? ' connected' : ''}`}>
+                {isInstagramConnected ? <CheckCircle2 size={18} /> : <CircleDashed size={18} />}
+              </div>
               <div>
-                <strong>Instagram ainda não conectado</strong>
-                <span>Conecte uma conta profissional para receber eventos e publicar os primeiros fluxos.</span>
+                <strong>{isInstagramConnected ? `Instagram conectado — ${instagramAccountName}` : 'Instagram ainda não conectado'}</strong>
+                <span>
+                  {isInstagramConnected
+                    ? 'A autorização está válida. A recepção de eventos será habilitada na próxima etapa.'
+                    : 'Conecte uma conta profissional para preparar os primeiros fluxos.'}
+                </span>
               </div>
             </div>
             <button type="button" className="autochat-link-button" onClick={openIntegration}>
@@ -376,20 +550,85 @@ export default function AutoChatView() {
           <section className="autochat-integration-grid">
             <article className="autochat-integration-card">
               <h2>Conectar Instagram profissional</h2>
-              <p>A integração será feita pelo fluxo oficial da Meta. Nenhuma conta está conectada nesta versão inicial da tela.</p>
+              <p>
+                A autorização usa o Instagram Login oficial e fica separada da conexão de Meta Ads.
+                Os tokens são armazenados criptografados no sistema.
+              </p>
               {[
-                ['Autorizar a conta', 'Entrar com a Meta e selecionar o perfil profissional correto.'],
-                ['Validar permissões', 'Confirmar mensagens, comentários e eventos disponíveis para a conta.'],
-                ['Publicar um fluxo', 'Escolher um gatilho compatível e ativar a primeira automação.'],
+                ['Autorizar a conta', isInstagramConnected ? `${instagramAccountName} autorizada.` : 'Entrar no Instagram e selecionar o perfil profissional correto.'],
+                ['Validar permissões', isInstagramConnected ? 'A conexão pode ser testada a qualquer momento.' : 'Confirmar acesso básico, mensagens e comentários.'],
+                ['Habilitar eventos', 'Será feito na próxima etapa, junto com o armazenamento das conversas.'],
               ].map(([title, description], index) => (
                 <div className="autochat-step" key={title}>
                   <div className="autochat-step-index">{index + 1}</div>
                   <div><strong>{title}</strong><span>{description}</span></div>
                 </div>
               ))}
-              <button type="button" className="autochat-disabled" disabled>
-                Configuração da Meta na próxima etapa
-              </button>
+
+              {connectionLoading ? (
+                <div className="autochat-connection-box">
+                  <strong><Loader2 size={15} className="animate-spin" /> Verificando configuração</strong>
+                  <p>Consultando o status da conexão com o backend.</p>
+                </div>
+              ) : isInstagramConnected ? (
+                <div className="autochat-connection-box connected">
+                  <strong><CheckCircle2 size={15} /> Instagram conectado — {instagramAccountName}</strong>
+                  <p>A conta foi autorizada. Webhooks e automações permanecem desligados nesta etapa.</p>
+                  <div className="autochat-connection-actions">
+                    <button
+                      type="button"
+                      className="autochat-secondary"
+                      onClick={testInstagram}
+                      disabled={connectionAction !== null}
+                    >
+                      {connectionAction === 'test' ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                      Testar conexão
+                    </button>
+                    <button
+                      type="button"
+                      className="autochat-danger"
+                      onClick={disconnectInstagram}
+                      disabled={connectionAction !== null}
+                    >
+                      {connectionAction === 'disconnect' ? <Loader2 size={13} className="animate-spin" /> : <Unplug size={13} />}
+                      Desconectar
+                    </button>
+                  </div>
+                </div>
+              ) : canStartOAuth ? (
+                <div className="autochat-connection-box">
+                  <strong><Instagram size={15} /> Pronto para conectar</strong>
+                  <p>Uma janela oficial do Instagram será aberta para você autorizar a conta profissional.</p>
+                  <div className="autochat-connection-actions">
+                    <button
+                      type="button"
+                      className="autochat-primary"
+                      onClick={connectInstagram}
+                      disabled={connectionAction !== null}
+                    >
+                      {connectionAction === 'connect' ? <Loader2 size={14} className="animate-spin" /> : <Instagram size={14} />}
+                      {connectionAction === 'connect' ? 'Aguardando autorização' : 'Conectar Instagram'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="autochat-connection-box">
+                  <strong><AlertCircle size={15} /> Configuração da Meta pendente</strong>
+                  <p>Adicione as credenciais do Instagram no ambiente de produção antes de iniciar o OAuth.</p>
+                  {instagramRequirement?.missingEnv?.length ? (
+                    <div className="autochat-missing-env">
+                      Faltando: {instagramRequirement.missingEnv.join(', ')}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {connectionFeedback && (
+                <div className={`autochat-feedback ${connectionFeedback.type}`}>
+                  {connectionFeedback.type === 'ok' ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                  <span>{connectionFeedback.message}</span>
+                </div>
+              )}
             </article>
 
             <article className="autochat-integration-card">

@@ -5,15 +5,49 @@ import { PlatformConnectionService } from '../services/platform-connection.servi
 import { getWhatsAppCredentials } from '../services/whatsapp.service';
 
 const VALID_PLATFORMS = [
-  'META_ADS', 'GOOGLE_ADS', 'GOOGLE_ANALYTICS', 'GOOGLE_CALENDAR', 'RD_STATION', 'PIPEDRIVE', 'CLARITY', 'WHATSAPP',
+  'META_ADS', 'INSTAGRAM', 'GOOGLE_ADS', 'GOOGLE_ANALYTICS', 'GOOGLE_CALENDAR', 'RD_STATION', 'PIPEDRIVE', 'CLARITY', 'WHATSAPP',
 ] as const satisfies readonly Platform[];
 
 function parsePlatform(raw: string): Platform | null {
   return VALID_PLATFORMS.includes(raw as (typeof VALID_PLATFORMS)[number]) ? (raw as Platform) : null;
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function oauthPopupHtml(
+  payload: { type: 'oauth_success' | 'oauth_error'; platform: Platform; error?: string },
+  message: string,
+): string {
+  const frontendOrigin = (
+    process.env.FRONTEND_URL
+    || (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',')[0]
+  ).trim().replace(/\/+$/, '');
+  // Escaping "<" prevents a malicious provider error from closing the script tag.
+  const safePayload = JSON.stringify(payload).replace(/</g, '\\u003c');
+  const safeOrigin = JSON.stringify(frontendOrigin).replace(/</g, '\\u003c');
+  return `<!doctype html>
+    <html lang="pt-BR">
+      <head><meta charset="utf-8"><title>Conexão OAuth</title></head>
+      <body>
+        <p>${escapeHtml(message)}</p>
+        <script>
+          window.opener?.postMessage(${safePayload}, ${safeOrigin});
+          setTimeout(() => window.close(), 1200);
+        </script>
+      </body>
+    </html>`;
+}
+
 const OAUTH_ENV_REQUIREMENTS: Record<(typeof VALID_PLATFORMS)[number], string[]> = {
   META_ADS:          ['META_APP_ID', 'META_APP_SECRET', 'APP_URL'],
+  INSTAGRAM:         ['INSTAGRAM_APP_ID', 'INSTAGRAM_APP_SECRET', 'APP_URL'],
   // GOOGLE_ADS_DEVELOPER_TOKEN is intentionally NOT required here — it's only needed to
   // call the Ads API (checked in testPlatformConnection below), not to complete the OAuth
   // handshake itself. Requiring it here would block "Conectar" while a token is pending approval.
@@ -48,6 +82,23 @@ async function testPlatformConnection(platform: Platform): Promise<{ ok: boolean
         const data = await res.json() as { name?: string; error?: { message: string } };
         if ((data as any).error) return { ok: false, message: (data as any).error.message };
         return { ok: true, message: `Conectado como ${data.name || 'conta desconhecida'}` };
+      }
+
+      case 'INSTAGRAM': {
+        const version = process.env.INSTAGRAM_GRAPH_API_VERSION || 'v24.0';
+        const url = new URL(`https://graph.instagram.com/${version}/me`);
+        url.searchParams.set('fields', 'user_id,username');
+        const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        const data = await response.json() as {
+          id?: string;
+          user_id?: string;
+          username?: string;
+          error?: { message?: string };
+        };
+        if (!response.ok || data.error) {
+          return { ok: false, message: data.error?.message || `Instagram respondeu HTTP ${response.status}` };
+        }
+        return { ok: true, message: `Instagram conectado — @${data.username || data.user_id || data.id || 'conta profissional'}` };
       }
 
       case 'RD_STATION': {
@@ -113,6 +164,7 @@ function hasEnvCredentials(platform: (typeof VALID_PLATFORMS)[number]): boolean 
   switch (platform) {
     case 'RD_STATION':      return !!(process.env.RD_STATION_REFRESH_TOKEN || process.env.RD_STATION_ACCESS_TOKEN);
     case 'META_ADS':        return !!process.env.META_ACCESS_TOKEN;
+    case 'INSTAGRAM':       return false;
     case 'PIPEDRIVE':       return !!(process.env.PIPEDRIVE_API_TOKEN && process.env.PIPEDRIVE_DOMAIN);
     case 'GOOGLE_ANALYTICS':return !!(process.env.GA4_CREDENTIALS_JSON || process.env.GA4_CREDENTIALS_PATH);
     case 'GOOGLE_ADS':      return !!(process.env.GOOGLE_ADS_CUSTOMER_ID && process.env.GOOGLE_ADS_DEVELOPER_TOKEN);
@@ -196,7 +248,10 @@ export class ConnectionsController {
       const error = typeof req.query.error === 'string' ? req.query.error : '';
 
       if (error) {
-        res.send(`<html><body><script>window.opener?.postMessage({type:'oauth_error',platform:'${platform}',error:'${error}'},'*');window.close();</script>Erro: ${error}</body></html>`);
+        res.send(oauthPopupHtml(
+          { type: 'oauth_error', platform, error },
+          `Erro ao conectar: ${error}`,
+        ));
         return;
       }
 
@@ -204,21 +259,21 @@ export class ConnectionsController {
 
       await OAuthService.handleCallback(platform, code, state);
 
-      // Close the popup and notify the parent window
-      res.send(`
-        <html>
-          <body>
-            <p>Conectado com sucesso! Esta janela vai fechar automaticamente.</p>
-            <script>
-              window.opener?.postMessage({ type: 'oauth_success', platform: '${platform}' }, '*');
-              setTimeout(() => window.close(), 1500);
-            </script>
-          </body>
-        </html>
-      `);
+      res.send(oauthPopupHtml(
+        { type: 'oauth_success', platform },
+        'Conectado com sucesso! Esta janela vai fechar automaticamente.',
+      ));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro desconhecido';
-      res.send(`<html><body><script>window.opener?.postMessage({type:'oauth_error',platform:'${req.params.platform}',error:'${message}'},'*');window.close();</script>Erro: ${message}</body></html>`);
+      const platform = parsePlatform(req.params.platform);
+      if (!platform) {
+        res.status(400).send('Plataforma inválida');
+        return;
+      }
+      res.send(oauthPopupHtml(
+        { type: 'oauth_error', platform, error: message },
+        `Erro ao conectar: ${message}`,
+      ));
     }
   }
 
