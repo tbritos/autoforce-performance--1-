@@ -8,6 +8,7 @@ const ROUTES = [
   { path: '/dashboard',      label: 'Dashboard' },
   { path: '/leads',          label: 'Leads' },
   { path: '/automation',     label: 'Automação' },
+  { path: '/autochat',       label: 'AutoChat' },
   { path: '/connections',    label: 'Conexões' },
   { path: '/utm-links',      label: 'UTM Links' },
   { path: '/revenue',        label: 'Receita' },
