@@ -5,7 +5,7 @@ import { runAIPrequalification } from './ai-provider.service';
 import type { WhatsAppConversationMessage } from './whatsapp.service';
 import { EBOOK_BENCHMARK_URL } from './whatsapp.service';
 import { normalizePhoneE164, phoneSearchVariants } from '../utils/phone';
-import { clampAIScore } from './lara-runtime.utils';
+import { clampAIScore, shouldPersistAIAnalysis } from './lara-runtime.utils';
 
 const DEBOUNCE_MS = 5_000;
 const LOCK_TTL_MS = 120_000;
@@ -628,8 +628,10 @@ async function executeAIAndReply(
         enrichmentLead.email = realEmail;
       }
     }
-    await enrichLeadFromAI(enrichmentLead, effectiveResult, leadInboundText)
-      .catch(err => console.error('[AI-WPP] enrichLeadFromAI for new contact failed:', err));
+    if (shouldPersistAIAnalysis(result.source)) {
+      await enrichLeadFromAI(enrichmentLead, effectiveResult, leadInboundText)
+        .catch(err => console.error('[AI-WPP] enrichLeadFromAI for new contact failed:', err));
+    }
     const newContactAllowedActions = actionsToApply.filter(action => action.type === 'offer_meeting_slots');
     if (newContactAllowedActions.length > 0) {
       await applyRecommendedActions(actionLeadEmail, phone, newContactAllowedActions, result.tags ?? [])
@@ -638,8 +640,10 @@ async function executeAIAndReply(
     return { sent };
   }
 
-  await enrichLeadFromAI(lead, effectiveResult, leadInboundText)
-    .catch(err => console.error('[AI-WPP] enrichLeadFromAI failed:', err));
+  if (shouldPersistAIAnalysis(result.source)) {
+    await enrichLeadFromAI(lead, effectiveResult, leadInboundText)
+      .catch(err => console.error('[AI-WPP] enrichLeadFromAI failed:', err));
+  }
 
   // CRM Lara — mapeia o fit da IA pra coluna do kanban de marketing. So roda
   // em resposta a uma mensagem real do lead: no fluxo de follow-up
@@ -650,7 +654,7 @@ async function executeAIAndReply(
   // SEM_INTERESSE (via skip_followup), nunca isso aqui. Tambem nao roda pra
   // lead que ja passou de LEAD (isPastLead) — o board de marketing nao devia
   // mais reclassificar um lead que o vendedor ja assumiu.
-  if (!options?.followUp && !isPastLead) {
+  if (!options?.followUp && !isPastLead && shouldPersistAIAnalysis(result.source)) {
     const { setMarketingStage } = await import('./lead-marketing-stage.service');
     if (result.fit === 'disqualified') {
       await setMarketingStage(lead.email, 'SEM_INTERESSE', 'ai', undefined, result.decisionReason).catch(() => {});

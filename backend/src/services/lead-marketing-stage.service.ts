@@ -2,15 +2,18 @@ import { MarketingStage } from '@prisma/client';
 import { prisma } from '../config/database';
 import { normalizeEmail } from './lead-hub.service';
 import { FOLLOWUP_ACTIVE_SINCE } from './ai-followup.service';
-import { isHumanHandoffStage, kanbanCardQueryLimit } from './lara-runtime.utils';
+import {
+  isHumanHandoffStage,
+  kanbanCardQueryLimit,
+  LaraMarketingStageSource,
+  protectedMarketingStagesForSource,
+} from './lara-runtime.utils';
 
-export type MarketingStageSource = 'ai' | 'system' | 'manual';
+export type MarketingStageSource = LaraMarketingStageSource;
 
-// Uma vez que um humano assumiu a conversa ou a reuniao ja foi marcada, uma
-// reclassificacao rotineira (IA reavaliando fit numa mensagem de rotina, ou o
-// job periodico de silencio) nao deve empurrar o card pra tras — so um
-// drag-and-drop manual pode tirar o lead desses dois estados.
-const LOCKED_STAGES: MarketingStage[] = ['REUNIAO_AGENDADA', 'TRANSFERIDO_HUMANO'];
+// A protecao varia conforme a origem da transicao. Regras de conversa ainda
+// podem reagir a uma mensagem explicita do lead depois de um convite, mas uma
+// pesquisa publica assincrona nao pode sobrescrever esse progresso.
 
 // Mensagem padrao de atividade por estagio — ver lead-activity.service.ts.
 // Cobre a maioria dos eventos pedidos pra timeline (fez follow-up, descartou
@@ -43,14 +46,14 @@ export async function setMarketingStage(
   reason?: string
 ): Promise<void> {
   const email = normalizeEmail(leadEmailRaw);
-  const excludedForNonManual = source === 'manual' ? [] : LOCKED_STAGES;
+  const protectedStages = protectedMarketingStagesForSource(source) as MarketingStage[];
 
   const result = await prisma.lead.updateMany({
     where: {
       email,
       marketingStage: {
         not: newStage,
-        ...(excludedForNonManual.length > 0 ? { notIn: excludedForNonManual } : {}),
+        ...(protectedStages.length > 0 ? { notIn: protectedStages } : {}),
       },
     },
     data: {

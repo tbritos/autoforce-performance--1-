@@ -159,9 +159,11 @@ function sanitizeExtractedText(raw: string): string {
 // desse texto e sempre feita pela IA (ver assessResearchFit em
 // lead-research.service.ts), nao por uma heuristica local aqui, pra nao ter
 // duas logicas de julgamento de ICP divergentes no sistema.
-export async function fetchAndSummarizeSite(rawUrl: string): Promise<{ summary: string }> {
+export async function fetchAndSummarizeSite(rawUrl: string, signal?: AbortSignal): Promise<{ summary: string }> {
+  if (signal?.aborted) throw new Error('Visita de site cancelada');
   const url = validateAndNormalizeUrl(rawUrl);
   const validatedIp = await withTimeout(resolveAndValidateHost(url.hostname), DNS_TIMEOUT_MS, 'resolucao DNS');
+  if (signal?.aborted) throw new Error('Visita de site cancelada');
 
   // Um processo de Chromium por checagem (nao um Browser compartilhado de
   // vida longa) — --host-resolver-rules e uma flag de lancamento do
@@ -182,7 +184,10 @@ export async function fetchAndSummarizeSite(rawUrl: string): Promise<{ summary: 
     ],
   });
 
+  const abortVisit = () => { void browser.close().catch(() => {}); };
+  signal?.addEventListener('abort', abortVisit, { once: true });
   try {
+    if (signal?.aborted) throw new Error('Visita de site cancelada');
     const context = await browser.newContext({
       acceptDownloads: false,
       userAgent: 'Mozilla/5.0 (compatible; AutoForceLeadCheck/1.0; +https://autoforce.com)',
@@ -228,6 +233,7 @@ export async function fetchAndSummarizeSite(rawUrl: string): Promise<{ summary: 
     const summary = sanitizeExtractedText(rawText);
     return { summary };
   } finally {
+    signal?.removeEventListener('abort', abortVisit);
     await browser.close().catch(() => {});
   }
 }

@@ -125,7 +125,7 @@ model Lead {
   // 3 campos) pra a maquina de estados completa.
   marketingStage          MarketingStage @default(NOVO)
   marketingStageChangedAt DateTime?
-  marketingStageSource    String? // 'ai' | 'system' | 'manual'
+  marketingStageSource    String? // 'ai' | 'system' | 'manual' | 'research'
   // Permite devolver o lead ao estagio anterior quando um humano encerra o
   // atendimento e reativa a Lara.
   marketingStageBeforeHandoff MarketingStage?

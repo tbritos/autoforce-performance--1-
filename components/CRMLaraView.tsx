@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bot, Flame, RefreshCw, Settings, User } from 'lucide-react';
+import { Bot, Flame, RefreshCw, Search, Settings, User } from 'lucide-react';
 import { DataService } from '../services/dataService';
 import type { MarketingKanbanBoard, MarketingKanbanCard, MarketingStage } from '../types';
 
@@ -17,6 +17,7 @@ const COLUMN_META: Array<{ stage: MarketingStage; label: string; hint?: string }
 
 const SOURCE_META: Record<string, { icon: React.ElementType; title: string }> = {
   ai: { icon: Bot, title: 'Movido pela IA' },
+  research: { icon: Search, title: 'Movido pela pesquisa da Lara' },
   system: { icon: Settings, title: 'Movido automaticamente pelo sistema' },
   manual: { icon: User, title: 'Movido manualmente' },
 };

@@ -13,6 +13,7 @@
     "prisma:studio": "prisma studio",
     "prisma:seed": "tsx prisma/seed.ts",
     "prisma:seed-knowledge": "tsx prisma/seed-knowledge.ts",
+    "prisma:repair-lara-crm": "tsx prisma/repair-lara-crm.ts",
     "prisma:clear": "tsx prisma/clear-fake-data.ts",
     "prisma:tag-importacao": "tsx prisma/tag-importacao-csv.ts",
     "docker:up": "docker-compose up -d",

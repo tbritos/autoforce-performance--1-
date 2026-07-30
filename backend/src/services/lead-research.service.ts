@@ -1,7 +1,13 @@
 import { prisma } from '../config/database';
 import { normalizeEmail } from './lead-hub.service';
-import { fetchAndSummarizeSite, withTimeout, OVERALL_SITE_FETCH_TIMEOUT_MS } from './website-verification.service';
-import { fetchWithAIRequestTimeout } from './lara-runtime.utils';
+import { fetchAndSummarizeSite, OVERALL_SITE_FETCH_TIMEOUT_MS } from './website-verification.service';
+import {
+  isResearchRetryDue,
+  marketingStageForResearchFit,
+  normalizeAIScoreForFit,
+  pendingResearchFailureData,
+  withAbortableTimeout,
+} from './lara-runtime.utils';
 
 // Pesquisa automatica de informacao (coluna "Novo" do CRM Lara) — dispara
 // UMA VEZ quando um lead novo chega (webhook de campanha real ou primeira
@@ -12,9 +18,13 @@ import { fetchWithAIRequestTimeout } from './lara-runtime.utils';
 // e a verificacao de site que existia em website-verification.service.ts
 // (agora so um utilitario de busca segura — ver esse arquivo).
 
-const LOCK_TTL_MS = 60_000;
+const LOCK_TTL_MS = 90_000;
 export const MAX_RESEARCH_ATTEMPTS = 3;
-const OVERALL_TIMEOUT_MS = 25_000;
+const OVERALL_TIMEOUT_MS = 50_000;
+const TAVILY_TIMEOUT_MS = 8_000;
+const BRASIL_API_TIMEOUT_MS = 5_000;
+const SITE_RESEARCH_TIMEOUT_MS = 20_000;
+const RESEARCH_AI_TIMEOUT_MS = 12_000;
 
 // Mesma lista usada em ai-followup.service.ts/lead-marketing-stage.service.ts
 // pra excluir importacao em massa — reforcado aqui porque upsertLead
@@ -28,22 +38,28 @@ interface WebSearchResult {
   results: Array<{ title?: string; url?: string; content?: string }>;
 }
 
-async function searchWeb(query: string): Promise<WebSearchResult> {
+async function searchWeb(query: string, parentSignal: AbortSignal): Promise<WebSearchResult> {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) return { text: null, results: [] };
 
   try {
-    const res = await fetch('https://api.tavily.com/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        api_key: apiKey,
-        query,
-        search_depth: 'basic',
-        max_results: 5,
-        include_answer: true,
+    const res = await withAbortableTimeout(
+      signal => fetch('https://api.tavily.com/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_key: apiKey,
+          query,
+          search_depth: 'basic',
+          max_results: 5,
+          include_answer: true,
+        }),
+        signal,
       }),
-    });
+      TAVILY_TIMEOUT_MS,
+      'busca Tavily',
+      parentSignal,
+    );
     if (!res.ok) {
       console.warn(`[LeadResearch] Tavily respondeu ${res.status} pra query "${query}"`);
       return { text: null, results: [] };
@@ -60,6 +76,7 @@ async function searchWeb(query: string): Promise<WebSearchResult> {
     }
     return { text: parts.length > 0 ? parts.join('\n') : null, results };
   } catch (err) {
+    if (parentSignal.aborted) throw err;
     console.warn('[LeadResearch] falha na busca web (Tavily):', err instanceof Error ? err.message : err);
     return { text: null, results: [] };
   }
@@ -74,9 +91,14 @@ function extractCnpj(text: string): string | null {
   return digits.length === 14 ? digits : null;
 }
 
-async function lookupCnpj(cnpj: string): Promise<string | null> {
+async function lookupCnpj(cnpj: string, parentSignal: AbortSignal): Promise<string | null> {
   try {
-    const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
+    const res = await withAbortableTimeout(
+      signal => fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`, { signal }),
+      BRASIL_API_TIMEOUT_MS,
+      'consulta BrasilAPI',
+      parentSignal,
+    );
     if (!res.ok) return null;
     const data = await res.json() as Record<string, unknown>;
     const razaoSocial = data.razao_social ?? data.nome_fantasia;
@@ -85,6 +107,7 @@ async function lookupCnpj(cnpj: string): Promise<string | null> {
     const porte = data.descricao_porte ?? '';
     return `Dados oficiais (CNPJ ${cnpj}): razão social "${razaoSocial}", situação cadastral "${situacao}", atividade principal "${atividade}", porte "${porte}".`;
   } catch (err) {
+    if (parentSignal.aborted) throw err;
     console.warn(`[LeadResearch] falha ao consultar CNPJ ${cnpj} na BrasilAPI:`, err instanceof Error ? err.message : err);
     return null;
   }
@@ -144,7 +167,8 @@ let inFlightSiteFetches = 0;
 async function discoverAndVisitSite(
   email: string,
   existingSiteUrl: string | null,
-  searchResults: Array<{ url?: string }>
+  searchResults: Array<{ url?: string }>,
+  parentSignal: AbortSignal,
 ): Promise<{ siteUrl: string; summary: string } | null> {
   const candidates = [
     existingSiteUrl,
@@ -160,18 +184,29 @@ async function discoverAndVisitSite(
 
   inFlightSiteFetches++;
   try {
-    for (const candidate of candidates) {
-      try {
-        const { summary } = await withTimeout(
-          fetchAndSummarizeSite(candidate),
-          OVERALL_SITE_FETCH_TIMEOUT_MS,
-          `visita de site (${candidate})`
-        );
-        if (summary) return { siteUrl: candidate, summary };
-      } catch (err) {
-        console.warn(`[LeadResearch] falha ao visitar candidato de site ${candidate} para ${email}:`, err instanceof Error ? err.message : err);
-      }
-    }
+    return await withAbortableTimeout(
+      async signal => {
+        for (const candidate of candidates) {
+          try {
+            const { summary } = await fetchAndSummarizeSite(candidate, signal);
+            if (summary) return { siteUrl: candidate, summary };
+          } catch (err) {
+            if (signal.aborted) throw err;
+            console.warn(`[LeadResearch] falha ao visitar candidato de site ${candidate} para ${email}:`, err instanceof Error ? err.message : err);
+          }
+        }
+        return null;
+      },
+      Math.min(SITE_RESEARCH_TIMEOUT_MS, OVERALL_SITE_FETCH_TIMEOUT_MS),
+      `rodada de verificacao de site (${email})`,
+      parentSignal,
+    );
+  } catch (err) {
+    if (parentSignal.aborted) throw err;
+    console.warn(
+      `[LeadResearch] rodada de verificacao de site encerrada para ${email}:`,
+      err instanceof Error ? err.message : err,
+    );
     return null;
   } finally {
     inFlightSiteFetches--;
@@ -187,8 +222,9 @@ async function discoverAndVisitSite(
 // config do agente, revisar tambem aqui.
 async function assessResearchFit(
   lead: { name: string | null; company: string | null; jobTitle: string | null },
-  findings: string
-): Promise<{ fit: 'qualified' | 'nurture' | 'disqualified'; summary: string; reason: string } | null> {
+  findings: string,
+  parentSignal: AbortSignal,
+): Promise<{ fit: 'qualified' | 'nurture' | 'disqualified'; score: number; summary: string; reason: string } | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
 
@@ -203,7 +239,8 @@ async function assessResearchFit(
       'Sua unica tarefa e decidir, a partir de dados publicos pesquisados (busca na web, dados oficiais da empresa, conteudo do site), se esse lead parece se encaixar no ICP da AutoForce.',
       'ICP: concessionaria oficial, grupo automotivo, montadora, ou revenda de veiculos com pelo menos 50 veiculos em estoque. Agencias de marketing/publicidade, fornecedores de tecnologia, consultorias e qualquer empresa que nao seja concessionaria/grupo/revenda/montadora NAO fazem parte do ICP, mesmo que atuem no mercado automotivo.',
       'Use fit="disqualified" SOMENTE quando os dados pesquisados indicarem claramente que a empresa NAO e do ICP (ex: e uma agencia, uma consultoria, um fornecedor de tecnologia). Na duvida ou com dado insuficiente, use "nurture" — nunca desqualifique por falta de informacao.',
-      'Retorne somente JSON valido: { "fit": "qualified"|"nurture"|"disqualified", "summary": "resumo curto do que a pesquisa encontrou sobre a empresa/pessoa", "reason": "motivo direto da decisao de fit" }.',
+      'Gere tambem score Lara de 0 a 100. qualified deve ficar entre 70-100; nurture entre 0-69; disqualified entre 0-39. O sistema validara essa coerencia.',
+      'Retorne somente JSON valido: { "fit": "qualified"|"nurture"|"disqualified", "score": 0-100, "summary": "resumo curto do que a pesquisa encontrou sobre a empresa/pessoa", "reason": "motivo direto da decisao de fit" }.',
     ],
     lead: { nome: lead.name, empresa: lead.company, cargo: lead.jobTitle },
     icp_configurado: agent?.icp ?? null,
@@ -214,16 +251,22 @@ async function assessResearchFit(
 
   try {
     const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-    const res = await fetchWithAIRequestTimeout(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-      {
+    const res = await withAbortableTimeout(
+      signal => fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+        {
         method: 'POST',
         headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: JSON.stringify(prompt) }] }],
           generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
         }),
-      }
+          signal,
+        },
+      ),
+      RESEARCH_AI_TIMEOUT_MS,
+      'avaliacao de fit via Gemini',
+      parentSignal,
     );
     if (!res.ok) {
       console.warn(`[LeadResearch] Gemini respondeu ${res.status} na avaliacao de fit`);
@@ -232,13 +275,16 @@ async function assessResearchFit(
     const payload = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
     const content = payload.candidates?.[0]?.content?.parts?.map(p => p.text ?? '').join('') ?? '{}';
     const parsed = JSON.parse(content);
-    const fit = ['qualified', 'nurture', 'disqualified'].includes(parsed.fit) ? parsed.fit : 'nurture';
+    const fit: 'qualified' | 'nurture' | 'disqualified' =
+      parsed.fit === 'qualified' || parsed.fit === 'disqualified' ? parsed.fit : 'nurture';
     return {
       fit,
+      score: normalizeAIScoreForFit(fit, parsed.score),
       summary: typeof parsed.summary === 'string' ? parsed.summary : findings.slice(0, 500),
       reason: typeof parsed.reason === 'string' ? parsed.reason : 'Pesquisa automática de informação',
     };
   } catch (err) {
+    if (parentSignal.aborted) throw err;
     console.warn('[LeadResearch] falha ao avaliar fit via Gemini:', err instanceof Error ? err.message : err);
     return null;
   }
@@ -273,11 +319,15 @@ export async function researchLead(leadEmailRaw: string): Promise<void> {
     });
     if (!lead) return;
 
-    await withTimeout(runResearch(email, lead), OVERALL_TIMEOUT_MS, `pesquisa de lead (${email})`);
+    await withAbortableTimeout(
+      signal => runResearch(email, lead, signal),
+      OVERALL_TIMEOUT_MS,
+      `pesquisa de lead (${email})`,
+    );
   } catch (err) {
     await prisma.lead.update({
       where: { email },
-      data: { researchedAt: new Date(), researchAttempts: { increment: 1 } },
+      data: pendingResearchFailureData(),
     }).catch(() => {});
     console.error(`[LeadResearch] falha ao pesquisar ${email}:`, err instanceof Error ? err.message : err);
   } finally {
@@ -287,7 +337,8 @@ export async function researchLead(leadEmailRaw: string): Promise<void> {
 
 async function runResearch(
   email: string,
-  lead: { name: string | null; company: string | null; jobTitle: string | null; siteUrl: string | null }
+  lead: { name: string | null; company: string | null; jobTitle: string | null; siteUrl: string | null },
+  signal: AbortSignal,
 ): Promise<void> {
   const queryTarget = lead.company || lead.name;
   if (!queryTarget) {
@@ -297,14 +348,14 @@ async function runResearch(
     return;
   }
 
-  const webSearch = await searchWeb(`${queryTarget} empresa CNPJ concessionária revenda de veículos`);
+  const webSearch = await searchWeb(`${queryTarget} empresa CNPJ concessionária revenda de veículos`, signal);
   const webFindings = webSearch.text;
 
   let cnpjFindings: string | null = null;
   const cnpj = webFindings ? extractCnpj(webFindings) : null;
-  if (cnpj) cnpjFindings = await lookupCnpj(cnpj);
+  if (cnpj) cnpjFindings = await lookupCnpj(cnpj, signal);
 
-  const siteResult = await discoverAndVisitSite(email, lead.siteUrl, webSearch.results);
+  const siteResult = await discoverAndVisitSite(email, lead.siteUrl, webSearch.results, signal);
   const siteFindings = siteResult ? `Conteúdo do site (${siteResult.siteUrl}): ${siteResult.summary}` : null;
 
   const findings = [webFindings, cnpjFindings, siteFindings].filter(Boolean).join('\n\n');
@@ -314,31 +365,48 @@ async function runResearch(
     // tentou, sem sinal de ICP (fica em Novo, sem decisao automatica).
     await prisma.lead.update({
       where: { email },
-      data: { researchedAt: new Date(), researchAttempts: { increment: 1 } },
+      data: pendingResearchFailureData(),
     });
     console.log(`[LeadResearch] ${email} — nenhuma fonte disponível ou nenhum resultado encontrado`);
     return;
   }
 
-  const assessment = await assessResearchFit(lead, findings);
+  const assessment = await assessResearchFit(lead, findings, signal);
+
+  if (!assessment) {
+    await prisma.lead.update({
+      where: { email },
+      data: {
+        ...pendingResearchFailureData(),
+        researchSummary: findings.slice(0, 1800),
+        ...(siteResult ? { siteUrl: siteResult.siteUrl } : {}),
+      },
+    });
+    console.log(`[LeadResearch] ${email} — avaliacao inconclusiva; nova tentativa sera agendada`);
+    return;
+  }
 
   await prisma.lead.update({
     where: { email },
     data: {
       researchedAt: new Date(),
-      researchSummary: assessment?.summary ?? findings.slice(0, 1800),
-      researchIcpSignal: assessment?.fit ?? null,
+      researchSummary: assessment.summary,
+      researchIcpSignal: assessment.fit,
       ...(siteResult ? { siteUrl: siteResult.siteUrl } : {}),
     },
   });
+  // Pesquisa preenche o score somente enquanto a Lara ainda nao avaliou a
+  // conversa. Se uma conversa gravar aiScore em paralelo ou antes, ela vence.
+  await prisma.lead.updateMany({
+    where: { email, aiScore: null },
+    data: { aiScore: assessment.score },
+  });
 
-  if (assessment) {
-    const { setMarketingStage } = await import('./lead-marketing-stage.service');
-    const stage = assessment.fit === 'disqualified' ? 'SEM_INTERESSE' : 'QUALIFICACAO';
-    await setMarketingStage(email, stage, 'ai', undefined, assessment.reason).catch(() => {});
-  }
+  const { setMarketingStage } = await import('./lead-marketing-stage.service');
+  const stage = marketingStageForResearchFit(assessment.fit);
+  await setMarketingStage(email, stage, 'research', undefined, assessment.reason).catch(() => {});
 
-  console.log(`[LeadResearch] ${email} — pesquisa concluída (fit=${assessment?.fit ?? 'sem decisão'}, site=${siteResult?.siteUrl ?? 'não encontrado'})`);
+  console.log(`[LeadResearch] ${email} — pesquisa concluída (fit=${assessment.fit}, site=${siteResult?.siteUrl ?? 'não encontrado'})`);
 }
 
 // Chamado nos 3 pontos de criacao de lead (upsertLead, resend inbound,
@@ -389,15 +457,19 @@ export async function refreshSiteResearch(leadEmailRaw: string, siteUrl: string)
     });
     if (!lead) return;
 
-    const { summary } = await withTimeout(
-      fetchAndSummarizeSite(siteUrl),
+    const { summary } = await withAbortableTimeout(
+      signal => fetchAndSummarizeSite(siteUrl, signal),
       OVERALL_SITE_FETCH_TIMEOUT_MS,
-      `visita de site (${siteUrl})`
+      `visita de site (${siteUrl})`,
     );
     const siteFindings = `Conteúdo do site (${siteUrl}): ${summary}`;
     const combinedFindings = [lead.researchSummary, siteFindings].filter(Boolean).join('\n\n');
 
-    const assessment = await assessResearchFit(lead, combinedFindings);
+    const assessment = await withAbortableTimeout(
+      signal => assessResearchFit(lead, combinedFindings, signal),
+      RESEARCH_AI_TIMEOUT_MS + 1_000,
+      `reavaliacao de site (${email})`,
+    );
 
     await prisma.lead.update({
       where: { email },
@@ -411,11 +483,17 @@ export async function refreshSiteResearch(leadEmailRaw: string, siteUrl: string)
         ...(assessment ? { researchIcpSignal: assessment.fit } : {}),
       },
     });
+    if (assessment) {
+      await prisma.lead.updateMany({
+        where: { email, aiScore: null },
+        data: { aiScore: assessment.score },
+      });
+    }
 
     if (assessment) {
       const { setMarketingStage } = await import('./lead-marketing-stage.service');
-      const stage = assessment.fit === 'disqualified' ? 'SEM_INTERESSE' : 'QUALIFICACAO';
-      await setMarketingStage(email, stage, 'ai', undefined, assessment.reason).catch(() => {});
+      const stage = marketingStageForResearchFit(assessment.fit);
+      await setMarketingStage(email, stage, 'research', undefined, assessment.reason).catch(() => {});
     }
     console.log(`[LeadResearch] ${email} — site atualizado durante conversa (fit=${assessment?.fit ?? 'sem decisão'})`);
   } catch (err) {
@@ -429,12 +507,6 @@ export async function refreshSiteResearch(leadEmailRaw: string, siteUrl: string)
 // So considera quem ainda esta em NOVO (quem ja progrediu nao precisa mais
 // de pesquisa) e nunca reprocessa leads antigos (o gatilho real e sempre a
 // criacao; isso so cobre quem falhou de forma transitoria logo apos criar).
-const BACKOFF_MS_BY_ATTEMPT: Record<number, number> = {
-  0: 0,
-  1: 5 * 60 * 1000,
-  2: 30 * 60 * 1000,
-};
-
 export async function sweepUnresearchedLeads(limit = 20): Promise<{ checked: number }> {
   const candidates = await prisma.lead.findMany({
     where: {
@@ -445,17 +517,19 @@ export async function sweepUnresearchedLeads(limit = 20): Promise<{ checked: num
       researchInProgress: false,
       NOT: { firstSource: { in: EXCLUDED_RESEARCH_SOURCES } },
     },
-    select: { email: true, researchAttempts: true, firstSeenAt: true },
+    select: { email: true, researchAttempts: true, firstSeenAt: true, researchStartedAt: true },
     take: limit * 3,
     orderBy: { firstSeenAt: 'asc' },
   });
 
   const now = Date.now();
   const eligible = candidates
-    .filter(c => {
-      const delay = BACKOFF_MS_BY_ATTEMPT[c.researchAttempts] ?? 2 * 60 * 60 * 1000;
-      return now - c.firstSeenAt.getTime() >= delay;
-    })
+    .filter(c => isResearchRetryDue(
+      c.researchAttempts,
+      c.firstSeenAt,
+      c.researchStartedAt,
+      now,
+    ))
     .slice(0, limit);
 
   let checked = 0;

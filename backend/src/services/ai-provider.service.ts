@@ -1,7 +1,7 @@
 import { LeadStatus } from '@prisma/client';
 import type { AIAgentRuntimeContext } from './ai-agent-context.service';
 import { EBOOK_BENCHMARK_URL } from './whatsapp.service';
-import { fetchWithAIRequestTimeout } from './lara-runtime.utils';
+import { fetchWithAIRequestTimeout, normalizeAIScoreForFit } from './lara-runtime.utils';
 
 export type AIProvider = 'gemini' | 'openai' | 'fallback';
 
@@ -919,7 +919,9 @@ function fallbackAIPrequalification(
   const lastLines = input.transcript.split('\n').slice(-6).join(' | ');
   return {
     fit: 'nurture',
-    score: Math.max(input.lead.score, 30),
+    // Fallback nao e uma avaliacao da Lara. O valor fica neutro no log e o
+    // fluxo de WhatsApp impede que ele sobrescreva aiScore/estagio.
+    score: 0,
     confidence: 0,
     pain: '',
     persona: '',
@@ -966,7 +968,7 @@ function normalizeAIPrequalificationResult(
   const fitRaw = String(data.fit ?? 'nurture').toLowerCase();
   const fit: AIPrequalificationResult['fit'] =
     fitRaw === 'qualified' || fitRaw === 'disqualified' ? fitRaw : 'nurture';
-  const score = Math.max(0, Math.min(100, Number(data.score ?? 0) || 0));
+  const score = normalizeAIScoreForFit(fit, data.score);
   const confidence = Math.max(0, Math.min(1, Number(data.confidence ?? 0) || 0));
   const tags = Array.isArray(data.tags)
     ? data.tags.map(tag => String(tag).trim()).filter(Boolean).slice(0, 12)
@@ -1006,7 +1008,9 @@ function normalizeAIPrequalificationResult(
     leadUpdates: isRecord(data.lead_updates) ? data.lead_updates : {},
     customFields: isRecord(data.custom_fields) ? data.custom_fields : (isRecord(data.customFields) ? data.customFields : undefined),
     notesSummary: firstStringValue(data, ['notes_summary', 'notesSummary', 'resumo_lead', 'lead_summary']),
-    isHot: typeof data.is_hot === 'boolean' ? data.is_hot : (typeof data.isHot === 'boolean' ? data.isHot : undefined),
+    isHot: fit === 'disqualified'
+      ? false
+      : (typeof data.is_hot === 'boolean' ? data.is_hot : (typeof data.isHot === 'boolean' ? data.isHot : undefined)),
     openQuestions,
     replyMessage: replyMessage?.slice(0, 1024),
     promptSnapshot,

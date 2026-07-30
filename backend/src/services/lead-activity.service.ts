@@ -1,7 +1,7 @@
 import { prisma } from '../config/database';
 import { normalizeEmail } from './lead-hub.service';
 
-export type LeadActivitySource = 'ai' | 'system' | 'manual';
+export type LeadActivitySource = 'ai' | 'system' | 'manual' | 'research';
 
 // Registro de decisoes relevantes que o agente de IA (ou o sistema) toma
 // sobre um lead — aparece na aba "Linha do Tempo" do perfil. Deliberadamente
