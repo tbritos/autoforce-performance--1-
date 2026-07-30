@@ -192,22 +192,6 @@ export function startSyncScheduler(): void {
     }).catch(() => {});
   }, followUpMs);
 
-  // Varredura de verificacao de site (CRM Lara / ICP) — rede de seguranca pra
-  // falhas transitorias da checagem em tempo real (site fora do ar, timeout,
-  // bloqueio de bot). Ver website-verification.service.ts.
-  const siteCheckSweepMs = Number.parseInt(process.env.SITE_CHECK_SWEEP_INTERVAL_MS ?? '', 10) || 10 * 60 * 1000;
-  setInterval(() => {
-    import('./website-verification.service').then(({ sweepUnverifiedSites }) => {
-      sweepUnverifiedSites()
-        .then(result => {
-          if (result.checked > 0) {
-            console.log(`[site-check] sweep checked=${result.checked}`);
-          }
-        })
-        .catch(err => console.error('[site-check] sweep error:', err));
-    }).catch(() => {});
-  }, siteCheckSweepMs);
-
   // Varredura de pesquisa automatica de informacao (coluna "Novo" do CRM
   // Lara) — rede de seguranca pra falhas transitorias na pesquisa disparada
   // na criacao do lead (API de busca fora do ar, timeout etc.). Nunca

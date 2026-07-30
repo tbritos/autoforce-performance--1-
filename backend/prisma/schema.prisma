@@ -128,27 +128,23 @@ model Lead {
   // Custom fields — schema defined in LeadCustomFieldDef
   customFields Json?
 
-  // Verificacao automatica do site do lead (navegador real, ver
-  // website-verification.service.ts) — confirma de forma independente se a
-  // empresa parece genuinamente do ICP automotivo, em vez de confiar so no
-  // que o lead disse. Lock proprio (siteCheckInProgress/siteCheckStartedAt),
-  // separado de aiProcessing/aiProcessingAt: tem outro perfil de duracao e
-  // modo de falha (lancar/navegar um Chromium), misturar os dois faria uma
-  // checagem de site travada bloquear a resposta real do WhatsApp pro lead.
-  siteUrl                 String?
-  siteCheckedAt           DateTime?
-  siteCheckAttempts       Int       @default(0)
-  siteVerificationSummary String?   @db.Text
-  siteIcpSignal           String? // 'fits' | 'unclear' | 'does_not_fit'
-  siteCheckInProgress     Boolean   @default(false)
-  siteCheckStartedAt      DateTime?
+  // URL do site do lead — preenchido pelo formulario/conversa OU descoberto
+  // sozinho pela pesquisa automatica (dominio do email institucional, ou
+  // resultado da busca — ver lead-research.service.ts).
+  siteUrl String?
 
   // Pesquisa automatica de informacao (coluna "Novo" do CRM Lara, ver
   // lead-research.service.ts) — dispara uma unica vez na criacao do lead
   // (webhook de campanha real ou primeira mensagem de WhatsApp, nunca em
-  // importacao em massa), busca dados publicos (web + CNPJ) SEM mandar
-  // mensagem, e decide sozinha se o lead avanca pra Qualificacao ou Sem
-  // Interesse. Mesmo padrao de lock atomico dos campos siteCheck* acima.
+  // importacao em massa), busca dados publicos (web, CNPJ, e o conteudo do
+  // site — descoberto ou ja conhecido) SEM mandar mensagem, e decide sozinha
+  // se o lead avanca pra Qualificacao ou Sem Interesse. Tambem atualizada
+  // (so a parte do site, sem repetir a busca paga) quando a IA aprende o
+  // site do lead numa conversa ao vivo. Lock proprio
+  // (researchInProgress/researchStartedAt), separado de
+  // aiProcessing/aiProcessingAt: tem outro perfil de duracao e modo de falha
+  // (chamadas de API externa, as vezes lancar/navegar um Chromium), misturar
+  // os dois faria uma pesquisa travada bloquear a resposta real do WhatsApp.
   researchedAt       DateTime?
   researchInProgress Boolean   @default(false)
   researchStartedAt  DateTime?

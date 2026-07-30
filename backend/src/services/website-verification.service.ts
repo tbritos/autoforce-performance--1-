@@ -1,33 +1,22 @@
 import dns from 'dns/promises';
 import { chromium } from 'playwright';
-import { prisma } from '../config/database';
-import { normalizeEmail } from './lead-hub.service';
 
-// Verifica de forma independente o site que o lead informou, visitando a
-// pagina com um navegador de verdade (Playwright/Chromium) — a primeira vez
-// que este backend busca uma URL controlada por um usuario externo (todo
-// outro fetch() do sistema aponta pra hosts fixos de API ou env vars
-// configuradas por um operador). Isso abre superficie real de SSRF, tratada
-// com varias camadas de defesa abaixo — nao e um detalhe cosmetico.
+// Utilitario reaproveitavel: visita uma URL controlada por um usuario
+// externo com um navegador de verdade (Playwright/Chromium) e devolve o
+// texto extraido, com defesa em profundidade contra SSRF (a primeira vez
+// que este backend busca uma URL fornecida por fora — todo outro fetch()
+// do sistema aponta pra hosts fixos de API ou env vars configuradas por um
+// operador). Consumido por lead-research.service.ts (pesquisa de
+// informacao — descoberta/verificacao de site do lead); a orquestracao
+// (quando chamar, onde salvar o resultado, decisao de fit) vive la, nao
+// aqui — este arquivo so garante que a busca em si e segura.
 
 const NAV_TIMEOUT_MS = 18_000;
 const DNS_TIMEOUT_MS = 5_000;
-const OVERALL_TIMEOUT_MS = 35_000;
+export const OVERALL_SITE_FETCH_TIMEOUT_MS = 35_000;
 const MAX_TEXT_LENGTH = 1800;
-const MAX_CONCURRENT_CHECKS = 2;
-export const MAX_SITE_CHECK_ATTEMPTS = 3;
 
-// TTL do lock siteCheckInProgress/siteCheckStartedAt — deliberadamente
-// separado de aiProcessing/aiProcessingAt (ver comentario no schema.prisma):
-// lancar/navegar um Chromium tem um perfil de duracao e modo de falha
-// diferente de uma chamada de LLM, e generoso o bastante pra cobrir
-// launch+navegacao+extracao com folga sem travar um lead pra sempre se o
-// processo realmente morrer no meio do caminho.
-const LOCK_TTL_MS = 90_000;
-
-let inFlightChecks = 0;
-
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`Timeout (${ms}ms): ${label}`)), ms)),
@@ -141,7 +130,7 @@ async function resolveAndValidateHost(hostname: string): Promise<string> {
 
 // ─── Validacao/normalizacao da URL ────────────────────────────────────────────
 
-function validateAndNormalizeUrl(raw: string): URL {
+export function validateAndNormalizeUrl(raw: string): URL {
   const url = new URL(raw.trim());
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new Error(`Protocolo nao permitido: ${url.protocol}`);
@@ -164,21 +153,13 @@ function sanitizeExtractedText(raw: string): string {
     .slice(0, MAX_TEXT_LENGTH);
 }
 
-// Heuristica local, aproximada — so um rotulo auxiliar guardado junto do
-// resumo. O julgamento de verdade acontece quando a IA le o texto extraido
-// na proxima mensagem da conversa (ver ai-provider.service.ts).
-function inferIcpSignal(text: string): 'fits' | 'unclear' | 'does_not_fit' {
-  const t = text.toLowerCase();
-  const positive = /(concession[aá]ria|revenda de ve[ií]culos|multimarcas|seminovos|montadora|showroom|estoque de ve[ií]culos)/;
-  const negative = /(ag[eê]ncia de marketing|marketing digital|consultoria empresarial|desenvolvimento de software|ag[eê]ncia digital)/;
-  if (negative.test(t) && !positive.test(t)) return 'does_not_fit';
-  if (positive.test(t)) return 'fits';
-  return 'unclear';
-}
-
 // ─── Busca da pagina (Chromium isolado por checagem) ──────────────────────────
 
-async function fetchAndSummarizeSite(rawUrl: string): Promise<{ summary: string; icpSignal: 'fits' | 'unclear' | 'does_not_fit' }> {
+// Retorna so o texto extraido e sanitizado — a decisao de fit/ICP a partir
+// desse texto e sempre feita pela IA (ver assessResearchFit em
+// lead-research.service.ts), nao por uma heuristica local aqui, pra nao ter
+// duas logicas de julgamento de ICP divergentes no sistema.
+export async function fetchAndSummarizeSite(rawUrl: string): Promise<{ summary: string }> {
   const url = validateAndNormalizeUrl(rawUrl);
   const validatedIp = await withTimeout(resolveAndValidateHost(url.hostname), DNS_TIMEOUT_MS, 'resolucao DNS');
 
@@ -245,118 +226,8 @@ async function fetchAndSummarizeSite(rawUrl: string): Promise<{ summary: string;
     // lib "dom" no tsconfig deste projeto backend.
     const rawText = await page.evaluate(() => (globalThis as any).document?.body?.innerText ?? '');
     const summary = sanitizeExtractedText(rawText);
-    const icpSignal = inferIcpSignal(summary);
-    return { summary, icpSignal };
+    return { summary };
   } finally {
     await browser.close().catch(() => {});
   }
-}
-
-// ─── Entrada principal ─────────────────────────────────────────────────────────
-
-export async function verifyLeadWebsite(leadEmailRaw: string): Promise<void> {
-  const email = normalizeEmail(leadEmailRaw);
-
-  if (inFlightChecks >= MAX_CONCURRENT_CHECKS) {
-    console.log(`[SiteCheck] limite de checagens simultaneas atingido — ${email} fica pra proxima varredura`);
-    return;
-  }
-
-  const now = new Date();
-  // Lock atomico (UPDATE...WHERE, nao ler-depois-escrever) — cobre o caso
-  // raro de duas mensagens seguidas do lead corrigindo a URL enquanto a
-  // primeira checagem ainda roda.
-  const acquired = await prisma.lead.updateMany({
-    where: {
-      email,
-      OR: [
-        { siteCheckInProgress: false },
-        { siteCheckStartedAt: { lt: new Date(now.getTime() - LOCK_TTL_MS) } },
-      ],
-    },
-    data: { siteCheckInProgress: true, siteCheckStartedAt: now },
-  });
-  if (acquired.count === 0) {
-    console.log(`[SiteCheck] checagem ja em andamento pra ${email} — pulando`);
-    return;
-  }
-
-  inFlightChecks++;
-  try {
-    const lead = await prisma.lead.findUnique({ where: { email }, select: { siteUrl: true } });
-    const siteUrl = lead?.siteUrl;
-    if (!siteUrl) return;
-
-    try {
-      const { summary, icpSignal } = await withTimeout(
-        fetchAndSummarizeSite(siteUrl),
-        OVERALL_TIMEOUT_MS,
-        `verificacao de site (${email})`
-      );
-      await prisma.lead.update({
-        where: { email },
-        data: {
-          siteCheckedAt: new Date(),
-          siteVerificationSummary: summary,
-          siteIcpSignal: icpSignal,
-        },
-      });
-      console.log(`[SiteCheck] ${email} — site verificado (icpSignal=${icpSignal})`);
-    } catch (err) {
-      await prisma.lead.update({
-        where: { email },
-        data: {
-          siteCheckedAt: new Date(),
-          siteCheckAttempts: { increment: 1 },
-        },
-      }).catch(() => {});
-      console.error(`[SiteCheck] falha ao verificar site de ${email} (${siteUrl}):`, err instanceof Error ? err.message : err);
-    }
-  } finally {
-    inFlightChecks--;
-    await prisma.lead
-      .update({ where: { email }, data: { siteCheckInProgress: false } })
-      .catch(() => {});
-  }
-}
-
-// ─── Varredura periodica (rede de seguranca pra falhas transitorias) ──────────
-// Sem biblioteca de fila neste backend — mesmo padrao de disparo direto +
-// varredura periodica ja usado pro follow-up automatico (ver
-// sync-scheduler.service.ts / ai-followup.service.ts). Backoff simples por
-// numero de tentativas em vez de retentar a cada tick.
-const BACKOFF_MS_BY_ATTEMPT: Record<number, number> = {
-  0: 0,
-  1: 5 * 60 * 1000,
-  2: 30 * 60 * 1000,
-};
-
-export async function sweepUnverifiedSites(limit = 20): Promise<{ checked: number }> {
-  const candidates = await prisma.lead.findMany({
-    where: {
-      siteUrl: { not: null },
-      siteVerificationSummary: null,
-      siteCheckAttempts: { lt: MAX_SITE_CHECK_ATTEMPTS },
-      siteCheckInProgress: false,
-    },
-    select: { email: true, siteCheckAttempts: true, siteCheckedAt: true },
-    take: limit * 3,
-    orderBy: { siteCheckedAt: 'asc' },
-  });
-
-  const now = Date.now();
-  const eligible = candidates
-    .filter(c => {
-      if (!c.siteCheckedAt) return true;
-      const delay = BACKOFF_MS_BY_ATTEMPT[c.siteCheckAttempts] ?? 2 * 60 * 60 * 1000;
-      return now - c.siteCheckedAt.getTime() >= delay;
-    })
-    .slice(0, limit);
-
-  let checked = 0;
-  for (const lead of eligible) {
-    await verifyLeadWebsite(lead.email);
-    checked++;
-  }
-  return { checked };
 }

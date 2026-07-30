@@ -1,13 +1,15 @@
 import { prisma } from '../config/database';
 import { normalizeEmail } from './lead-hub.service';
+import { fetchAndSummarizeSite, withTimeout, OVERALL_SITE_FETCH_TIMEOUT_MS } from './website-verification.service';
 
 // Pesquisa automatica de informacao (coluna "Novo" do CRM Lara) — dispara
 // UMA VEZ quando um lead novo chega (webhook de campanha real ou primeira
-// mensagem de WhatsApp), busca dados publicos sobre a empresa/pessoa (web +
-// CNPJ) e decide, sem mandar nenhuma mensagem, se o lead avanca pra
-// Qualificacao ou Sem Interesse. Mesmo padrao (lock atomico + sweep
-// periodico) de website-verification.service.ts — ver esse arquivo pro
-// desenho original que este reaproveita.
+// mensagem de WhatsApp), busca dados publicos sobre a empresa/pessoa (web,
+// CNPJ, e o site — descoberto sozinha se nao estiver preenchido) e decide,
+// sem mandar nenhuma mensagem, se o lead avanca pra Qualificacao ou Sem
+// Interesse. Unifica o que antes era duas features separadas: esta pesquisa
+// e a verificacao de site que existia em website-verification.service.ts
+// (agora so um utilitario de busca segura — ver esse arquivo).
 
 const LOCK_TTL_MS = 60_000;
 export const MAX_RESEARCH_ATTEMPTS = 3;
@@ -18,18 +20,16 @@ const OVERALL_TIMEOUT_MS = 25_000;
 // (webhook de campanha) e o mesmo caminho usado pela importacao de CSV.
 const EXCLUDED_RESEARCH_SOURCES = ['importacao_csv', 'rdstation', 'rdstation_webhook'];
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`Timeout (${ms}ms): ${label}`)), ms)),
-  ]);
-}
-
 // ─── Fonte 1: busca na web (Tavily) ────────────────────────────────────────────
 
-async function searchWeb(query: string): Promise<string | null> {
+interface WebSearchResult {
+  text: string | null;
+  results: Array<{ title?: string; url?: string; content?: string }>;
+}
+
+async function searchWeb(query: string): Promise<WebSearchResult> {
   const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) return { text: null, results: [] };
 
   try {
     const res = await fetch('https://api.tavily.com/search', {
@@ -45,21 +45,22 @@ async function searchWeb(query: string): Promise<string | null> {
     });
     if (!res.ok) {
       console.warn(`[LeadResearch] Tavily respondeu ${res.status} pra query "${query}"`);
-      return null;
+      return { text: null, results: [] };
     }
     const data = await res.json() as {
       answer?: string;
       results?: Array<{ title?: string; url?: string; content?: string }>;
     };
+    const results = data.results ?? [];
     const parts: string[] = [];
     if (data.answer) parts.push(`Resumo: ${data.answer}`);
-    for (const r of (data.results ?? []).slice(0, 5)) {
+    for (const r of results.slice(0, 5)) {
       if (r.title || r.content) parts.push(`- ${r.title ?? ''}: ${(r.content ?? '').slice(0, 300)} (${r.url ?? ''})`);
     }
-    return parts.length > 0 ? parts.join('\n') : null;
+    return { text: parts.length > 0 ? parts.join('\n') : null, results };
   } catch (err) {
     console.warn('[LeadResearch] falha na busca web (Tavily):', err instanceof Error ? err.message : err);
-    return null;
+    return { text: null, results: [] };
   }
 }
 
@@ -88,6 +89,94 @@ async function lookupCnpj(cnpj: string): Promise<string | null> {
   }
 }
 
+// ─── Fonte 3: descoberta + verificação do site ────────────────────────────────
+// Ordem de prioridade (para no primeiro candidato que carregar de verdade):
+// (1) site ja conhecido no cadastro; (2) dominio do email, se nao for um
+// provedor pessoal generico (o dominio corporativo costuma SER o site);
+// (3) um resultado da busca Tavily que nao seja rede social/diretorio/vaga.
+
+const PERSONAL_EMAIL_DOMAINS = new Set([
+  'gmail.com', 'googlemail.com', 'hotmail.com', 'outlook.com', 'live.com', 'msn.com',
+  'yahoo.com', 'yahoo.com.br', 'icloud.com', 'me.com', 'aol.com', 'protonmail.com',
+  'bol.com.br', 'uol.com.br', 'terra.com.br', 'ig.com.br', 'globo.com', 'globomail.com',
+  'r7.com', 'zipmail.com.br', 'oi.com.br', 'click21.com.br', 'superig.com.br',
+]);
+
+function candidateSiteFromEmail(email: string): string | null {
+  const domain = email.split('@')[1]?.toLowerCase().trim();
+  if (!domain || PERSONAL_EMAIL_DOMAINS.has(domain)) return null;
+  return `https://${domain}`;
+}
+
+// Domínios que aparecem com frequência em buscas por nome de empresa mas
+// quase nunca SÃO o site oficial dela — não é uma lista exaustiva, só o
+// suficiente pra não desperdiçar a tentativa de visita nesses casos óbvios.
+const NON_OFFICIAL_SITE_DOMAINS = [
+  'linkedin.com', 'facebook.com', 'instagram.com', 'twitter.com', 'x.com', 'youtube.com',
+  'reclameaqui.com.br', 'glassdoor.com', 'glassdoor.com.br', 'indeed.com', 'catho.com.br',
+  'google.com', 'wikipedia.org', 'econodata.com.br', 'empresascnpj.com', 'cnpj.biz',
+  'consultasocio.com', 'apontador.com.br', 'guiamais.com.br', 'telelistas.net', 'casadados.com.br',
+];
+
+function candidateSiteFromSearchResults(results: Array<{ url?: string }>): string | null {
+  for (const r of results) {
+    if (!r.url) continue;
+    let hostname: string;
+    try {
+      hostname = new URL(r.url).hostname.toLowerCase().replace(/^www\./, '');
+    } catch {
+      continue;
+    }
+    if (NON_OFFICIAL_SITE_DOMAINS.some(d => hostname === d || hostname.endsWith(`.${d}`))) continue;
+    return `https://${hostname}`;
+  }
+  return null;
+}
+
+// No máximo 2 visitas de site (Chromium) simultâneas em todo o processo —
+// mesmo espírito do limite que existia em website-verification.service.ts,
+// carregado pra cá porque agora a pesquisa roda a cada lead novo (bem mais
+// frequente que só quando a IA aprendia o site numa conversa ao vivo).
+const MAX_CONCURRENT_SITE_FETCHES = 2;
+let inFlightSiteFetches = 0;
+
+async function discoverAndVisitSite(
+  email: string,
+  existingSiteUrl: string | null,
+  searchResults: Array<{ url?: string }>
+): Promise<{ siteUrl: string; summary: string } | null> {
+  const candidates = [
+    existingSiteUrl,
+    candidateSiteFromEmail(email),
+    candidateSiteFromSearchResults(searchResults),
+  ].filter((c): c is string => !!c);
+  if (candidates.length === 0) return null;
+
+  if (inFlightSiteFetches >= MAX_CONCURRENT_SITE_FETCHES) {
+    console.log(`[LeadResearch] limite de visitas de site simultâneas atingido — ${email} sem verificação de site nessa rodada`);
+    return null;
+  }
+
+  inFlightSiteFetches++;
+  try {
+    for (const candidate of candidates) {
+      try {
+        const { summary } = await withTimeout(
+          fetchAndSummarizeSite(candidate),
+          OVERALL_SITE_FETCH_TIMEOUT_MS,
+          `visita de site (${candidate})`
+        );
+        if (summary) return { siteUrl: candidate, summary };
+      } catch (err) {
+        console.warn(`[LeadResearch] falha ao visitar candidato de site ${candidate} para ${email}:`, err instanceof Error ? err.message : err);
+      }
+    }
+    return null;
+  } finally {
+    inFlightSiteFetches--;
+  }
+}
+
 // ─── Decisão de fit a partir da pesquisa (sem conversa nenhuma) ───────────────
 // Prompt deliberadamente pequeno e separado do de qualificacao por conversa
 // (buildPrequalificationPrompt em ai-provider.service.ts) — aquele pressupoe
@@ -109,8 +198,8 @@ async function assessResearchFit(
 
   const prompt = {
     instrucao: [
-      'Voce esta analisando um lead que ACABOU de entrar no sistema — nenhuma conversa aconteceu ainda, e voce NAO vai mandar nenhuma mensagem.',
-      'Sua unica tarefa e decidir, a partir de dados publicos pesquisados (busca na web, dados oficiais da empresa), se esse lead parece se encaixar no ICP da AutoForce.',
+      'Voce esta analisando um lead — a pesquisa pode ter acontecido na entrada dele no sistema OU ser uma atualizacao depois que ele mencionou o site numa conversa. NAO envie nenhuma mensagem, essa etapa e so leitura/analise.',
+      'Sua unica tarefa e decidir, a partir de dados publicos pesquisados (busca na web, dados oficiais da empresa, conteudo do site), se esse lead parece se encaixar no ICP da AutoForce.',
       'ICP: concessionaria oficial, grupo automotivo, montadora, ou revenda de veiculos com pelo menos 50 veiculos em estoque. Agencias de marketing/publicidade, fornecedores de tecnologia, consultorias e qualquer empresa que nao seja concessionaria/grupo/revenda/montadora NAO fazem parte do ICP, mesmo que atuem no mercado automotivo.',
       'Use fit="disqualified" SOMENTE quando os dados pesquisados indicarem claramente que a empresa NAO e do ICP (ex: e uma agencia, uma consultoria, um fornecedor de tecnologia). Na duvida ou com dado insuficiente, use "nurture" — nunca desqualifique por falta de informacao.',
       'Retorne somente JSON valido: { "fit": "qualified"|"nurture"|"disqualified", "summary": "resumo curto do que a pesquisa encontrou sobre a empresa/pessoa", "reason": "motivo direto da decisao de fit" }.',
@@ -160,7 +249,7 @@ export async function researchLead(leadEmailRaw: string): Promise<void> {
   const email = normalizeEmail(leadEmailRaw);
   const now = new Date();
 
-  // Trava atomica (UPDATE...WHERE) — mesmo padrao de verifyLeadWebsite.
+  // Trava atomica (UPDATE...WHERE, nao ler-depois-escrever).
   const acquired = await prisma.lead.updateMany({
     where: {
       email,
@@ -179,7 +268,7 @@ export async function researchLead(leadEmailRaw: string): Promise<void> {
   try {
     const lead = await prisma.lead.findUnique({
       where: { email },
-      select: { name: true, company: true, jobTitle: true },
+      select: { name: true, company: true, jobTitle: true, siteUrl: true },
     });
     if (!lead) return;
 
@@ -197,7 +286,7 @@ export async function researchLead(leadEmailRaw: string): Promise<void> {
 
 async function runResearch(
   email: string,
-  lead: { name: string | null; company: string | null; jobTitle: string | null }
+  lead: { name: string | null; company: string | null; jobTitle: string | null; siteUrl: string | null }
 ): Promise<void> {
   const queryTarget = lead.company || lead.name;
   if (!queryTarget) {
@@ -207,13 +296,17 @@ async function runResearch(
     return;
   }
 
-  const webFindings = await searchWeb(`${queryTarget} empresa CNPJ concessionária revenda de veículos`);
+  const webSearch = await searchWeb(`${queryTarget} empresa CNPJ concessionária revenda de veículos`);
+  const webFindings = webSearch.text;
 
   let cnpjFindings: string | null = null;
   const cnpj = webFindings ? extractCnpj(webFindings) : null;
   if (cnpj) cnpjFindings = await lookupCnpj(cnpj);
 
-  const findings = [webFindings, cnpjFindings].filter(Boolean).join('\n\n');
+  const siteResult = await discoverAndVisitSite(email, lead.siteUrl, webSearch.results);
+  const siteFindings = siteResult ? `Conteúdo do site (${siteResult.siteUrl}): ${siteResult.summary}` : null;
+
+  const findings = [webFindings, cnpjFindings, siteFindings].filter(Boolean).join('\n\n');
 
   if (!findings) {
     // Nenhuma fonte configurada ou nenhum resultado encontrado — grava que
@@ -234,6 +327,7 @@ async function runResearch(
       researchedAt: new Date(),
       researchSummary: assessment?.summary ?? findings.slice(0, 1800),
       researchIcpSignal: assessment?.fit ?? null,
+      ...(siteResult ? { siteUrl: siteResult.siteUrl } : {}),
     },
   });
 
@@ -243,7 +337,7 @@ async function runResearch(
     await setMarketingStage(email, stage, 'ai', undefined, assessment.reason).catch(() => {});
   }
 
-  console.log(`[LeadResearch] ${email} — pesquisa concluída (fit=${assessment?.fit ?? 'sem decisão'})`);
+  console.log(`[LeadResearch] ${email} — pesquisa concluída (fit=${assessment?.fit ?? 'sem decisão'}, site=${siteResult?.siteUrl ?? 'não encontrado'})`);
 }
 
 // Chamado nos 3 pontos de criacao de lead (upsertLead, resend inbound,
@@ -263,9 +357,75 @@ export async function triggerLeadResearch(leadId: string): Promise<void> {
   await researchLead(lead.email);
 }
 
+// Chamado quando a IA aprende/atualiza o site do lead DURANTE uma conversa
+// ao vivo (enrichLeadFromAI, ai-whatsapp-reply.service.ts). So revisita o
+// site e funde o resultado na pesquisa existente — NAO repete a busca
+// Tavily/CNPJ, que ja rodou na criacao do lead, pra nao gastar credito de
+// API paga de novo so porque o site mudou.
+export async function refreshSiteResearch(leadEmailRaw: string, siteUrl: string): Promise<void> {
+  const email = normalizeEmail(leadEmailRaw);
+  const now = new Date();
+
+  const acquired = await prisma.lead.updateMany({
+    where: {
+      email,
+      OR: [
+        { researchInProgress: false },
+        { researchStartedAt: { lt: new Date(now.getTime() - LOCK_TTL_MS) } },
+      ],
+    },
+    data: { researchInProgress: true, researchStartedAt: now },
+  });
+  if (acquired.count === 0) {
+    console.log(`[LeadResearch] pesquisa ja em andamento pra ${email} — pulando atualização de site`);
+    return;
+  }
+
+  try {
+    const lead = await prisma.lead.findUnique({
+      where: { email },
+      select: { name: true, company: true, jobTitle: true, researchSummary: true },
+    });
+    if (!lead) return;
+
+    const { summary } = await withTimeout(
+      fetchAndSummarizeSite(siteUrl),
+      OVERALL_SITE_FETCH_TIMEOUT_MS,
+      `visita de site (${siteUrl})`
+    );
+    const siteFindings = `Conteúdo do site (${siteUrl}): ${summary}`;
+    const combinedFindings = [lead.researchSummary, siteFindings].filter(Boolean).join('\n\n');
+
+    const assessment = await assessResearchFit(lead, combinedFindings);
+
+    await prisma.lead.update({
+      where: { email },
+      data: {
+        siteUrl,
+        researchedAt: new Date(),
+        researchSummary: assessment?.summary ?? combinedFindings.slice(0, 1800),
+        // So sobrescreve o sinal de ICP se a reavaliacao realmente rodou —
+        // sem chave do Gemini configurada, mantem o sinal anterior em vez
+        // de apagar uma decisao boa que ja existia.
+        ...(assessment ? { researchIcpSignal: assessment.fit } : {}),
+      },
+    });
+
+    if (assessment) {
+      const { setMarketingStage } = await import('./lead-marketing-stage.service');
+      const stage = assessment.fit === 'disqualified' ? 'SEM_INTERESSE' : 'QUALIFICACAO';
+      await setMarketingStage(email, stage, 'ai', undefined, assessment.reason).catch(() => {});
+    }
+    console.log(`[LeadResearch] ${email} — site atualizado durante conversa (fit=${assessment?.fit ?? 'sem decisão'})`);
+  } catch (err) {
+    console.error(`[LeadResearch] falha ao atualizar pesquisa de site para ${email}:`, err instanceof Error ? err.message : err);
+  } finally {
+    await prisma.lead.update({ where: { email }, data: { researchInProgress: false } }).catch(() => {});
+  }
+}
+
 // ─── Varredura periodica (rede de seguranca pra falhas transitorias) ──────────
-// Mesmo padrao de sweepUnverifiedSites (website-verification.service.ts) —
-// so considera quem ainda esta em NOVO (quem ja progrediu nao precisa mais
+// So considera quem ainda esta em NOVO (quem ja progrediu nao precisa mais
 // de pesquisa) e nunca reprocessa leads antigos (o gatilho real e sempre a
 // criacao; isso so cobre quem falhou de forma transitoria logo apos criar).
 const BACKOFF_MS_BY_ATTEMPT: Record<number, number> = {

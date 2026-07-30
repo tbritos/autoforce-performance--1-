@@ -860,21 +860,18 @@ async function enrichLeadFromAI(
     data: updateData as any,
   });
 
-  // Verificacao independente do site (CRM Lara / ICP) — se a IA capturou um
-  // site novo ou diferente do que ja estava guardado nesta mensagem, dispara
-  // a checagem com navegador real em segundo plano (fire-and-forget, nunca
-  // bloqueia a resposta do WhatsApp). Ver website-verification.service.ts —
-  // inclui as defesas contra SSRF, essa chamada so entrega uma URL bruta.
+  // Pesquisa de informacao (CRM Lara / ICP) — se a IA capturou um site novo
+  // ou diferente do que ja estava guardado nesta mensagem, revisita o site
+  // com navegador real em segundo plano (fire-and-forget, nunca bloqueia a
+  // resposta do WhatsApp) e funde o resultado na pesquisa ja existente. Ver
+  // lead-research.service.ts — inclui as defesas contra SSRF (reaproveitadas
+  // de website-verification.service.ts), essa chamada so entrega uma URL bruta.
   const rawSite = typeof customUpdates.site_atual === 'string' ? customUpdates.site_atual.trim() : undefined;
   const newSiteUrl = rawSite ? (/^https?:\/\//i.test(rawSite) ? rawSite : `https://${rawSite}`) : undefined;
   const previousSiteUrl = typeof currentCustomFields.site_atual === 'string' ? currentCustomFields.site_atual.trim() : undefined;
   if (newSiteUrl && newSiteUrl !== previousSiteUrl) {
-    await prisma.lead.update({
-      where: { email: lead.email },
-      data: { siteUrl: newSiteUrl, siteCheckedAt: null, siteVerificationSummary: null, siteIcpSignal: null, siteCheckAttempts: 0 },
-    }).catch(() => {});
-    import('./website-verification.service').then(({ verifyLeadWebsite }) => {
-      verifyLeadWebsite(lead.email).catch(err => console.error('[AI-WPP] verifyLeadWebsite falhou:', err));
+    import('./lead-research.service').then(({ refreshSiteResearch }) => {
+      refreshSiteResearch(lead.email, newSiteUrl).catch(err => console.error('[AI-WPP] refreshSiteResearch falhou:', err));
     }).catch(() => {});
   }
 }

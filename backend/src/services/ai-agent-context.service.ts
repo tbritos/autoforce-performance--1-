@@ -40,13 +40,14 @@ export type AIAgentRuntimeContext = {
     tags: string[];
     priority: number;
   }>;
-  // Resultado da checagem do site do lead com navegador real (ver
-  // website-verification.service.ts) — evidencia verificada de forma
-  // independente, separada do que o lead simplesmente afirma na conversa.
-  // null ate a checagem terminar com sucesso.
-  siteVerification: {
-    url: string;
-    fetchedAt: Date | null;
+  // Resultado da "Pesquisa de informacao" (ver lead-research.service.ts) —
+  // busca na web, CNPJ e verificacao do site do lead (Playwright), tudo
+  // combinado num so resumo — evidencia levantada de forma independente,
+  // separada do que o lead simplesmente afirma na conversa. null ate a
+  // pesquisa terminar com algum resultado.
+  research: {
+    siteUrl: string | null;
+    researchedAt: Date | null;
     summary: string;
     icpSignal: string | null;
   } | null;
@@ -152,7 +153,7 @@ const DEFAULT_AGENT = {
 export async function loadAIAgentContext(input: LoadContextInput): Promise<AIAgentRuntimeContext> {
   const channel = input.channel || 'whatsapp';
   const agent = await resolveAgent(input.agentId);
-  const [memory, knowledge, siteLead] = await Promise.all([
+  const [memory, knowledge, researchLead] = await Promise.all([
     (input.skipMemory || !input.leadEmail)
       ? Promise.resolve(null)
       : (prisma as any).aIConversationMemory.findUnique({
@@ -163,7 +164,7 @@ export async function loadAIAgentContext(input: LoadContextInput): Promise<AIAge
       ? Promise.resolve(null)
       : prisma.lead.findUnique({
           where: { email: input.leadEmail },
-          select: { siteUrl: true, siteCheckedAt: true, siteVerificationSummary: true, siteIcpSignal: true },
+          select: { siteUrl: true, researchedAt: true, researchSummary: true, researchIcpSignal: true },
         }),
   ]);
 
@@ -205,11 +206,11 @@ export async function loadAIAgentContext(input: LoadContextInput): Promise<AIAge
       tags: item.tags ?? [],
       priority: item.priority,
     })),
-    siteVerification: siteLead?.siteVerificationSummary ? {
-      url: siteLead.siteUrl ?? '',
-      fetchedAt: siteLead.siteCheckedAt,
-      summary: siteLead.siteVerificationSummary,
-      icpSignal: siteLead.siteIcpSignal,
+    research: researchLead?.researchSummary ? {
+      siteUrl: researchLead.siteUrl,
+      researchedAt: researchLead.researchedAt,
+      summary: researchLead.researchSummary,
+      icpSignal: researchLead.researchIcpSignal,
     } : null,
   };
 }
