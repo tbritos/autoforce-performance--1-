@@ -13,6 +13,7 @@ export interface Lead {
   company: string | null;
   status: LeadStatus;
   score: number | null;
+  aiScore: number | null;
   isHot: boolean;
   tags: string[];
   assignedTo: string | null;
@@ -46,6 +47,7 @@ export interface MarketingKanbanCard {
   company: string | null;
   phone: string | null;
   score: number;
+  aiScore: number | null;
   isHot: boolean;
   marketingStageChangedAt: string | null;
   marketingStageSource: string | null;
@@ -146,6 +148,7 @@ export interface LeadProfile {
   state: string | null;
   status: LeadStatus;
   score: number | null;
+  aiScore: number | null;
   isHot: boolean;
   tags: string[];
   assignedTo: string | null;
@@ -480,6 +483,7 @@ export interface WhatsAppConversationMessage {
   readAt: string | null;
   receivedAt: string | null;
   failedAt: string | null;
+  aiProcessedAt: string | null;
   createdAt: string;
 }
 

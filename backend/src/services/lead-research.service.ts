@@ -1,6 +1,7 @@
 import { prisma } from '../config/database';
 import { normalizeEmail } from './lead-hub.service';
 import { fetchAndSummarizeSite, withTimeout, OVERALL_SITE_FETCH_TIMEOUT_MS } from './website-verification.service';
+import { fetchWithAIRequestTimeout } from './lara-runtime.utils';
 
 // Pesquisa automatica de informacao (coluna "Novo" do CRM Lara) — dispara
 // UMA VEZ quando um lead novo chega (webhook de campanha real ou primeira
@@ -213,7 +214,7 @@ async function assessResearchFit(
 
   try {
     const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-    const res = await fetch(
+    const res = await fetchWithAIRequestTimeout(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       {
         method: 'POST',

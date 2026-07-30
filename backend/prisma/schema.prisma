@@ -80,6 +80,9 @@ model Lead {
   firstLandingPage String?
 
   score Int     @default(0)
+  // Score calculado pela Lara, separado do score comercial baseado em regras.
+  // Atualizado a cada decisao da IA e exibido no CRM Lara.
+  aiScore Int?
   isHot Boolean @default(false)
 
   tags       String[]
@@ -123,6 +126,9 @@ model Lead {
   marketingStage          MarketingStage @default(NOVO)
   marketingStageChangedAt DateTime?
   marketingStageSource    String? // 'ai' | 'system' | 'manual'
+  // Permite devolver o lead ao estagio anterior quando um humano encerra o
+  // atendimento e reativa a Lara.
+  marketingStageBeforeHandoff MarketingStage?
 
   // Pipedrive integration
   pipedrivePersonId String?
@@ -186,6 +192,7 @@ model Lead {
   @@index([firstSource])
   @@index([isHot])
   @@index([score])
+  @@index([aiScore])
   @@index([assignedTo])
   @@index([lastSeenAt])
   @@index([firstSeenAt])
@@ -577,6 +584,9 @@ model WhatsAppMessage {
   readAt      DateTime?
   receivedAt  DateTime?
   failedAt    DateTime?
+  // Idempotencia da Lara: mensagens inbound ja tratadas nao geram uma segunda
+  // resposta quando a Meta reenvia o mesmo webhook.
+  aiProcessedAt DateTime?
   createdAt   DateTime @default(now())
 
   @@index([leadId])
@@ -588,6 +598,7 @@ model WhatsAppMessage {
   @@index([createdAt])
   @@index([phoneNumberId])
   @@index([whatsAppBlastId])
+  @@index([direction, aiProcessedAt])
 }
 
 // Diretorio de rotulos amigaveis para numeros da Meta WABA — nao duplica dados da Meta,

@@ -5,6 +5,7 @@ import { runAIPrequalification } from './ai-provider.service';
 import type { WhatsAppConversationMessage } from './whatsapp.service';
 import { EBOOK_BENCHMARK_URL } from './whatsapp.service';
 import { normalizePhoneE164, phoneSearchVariants } from '../utils/phone';
+import { clampAIScore } from './lara-runtime.utils';
 
 const DEBOUNCE_MS = 5_000;
 const LOCK_TTL_MS = 120_000;
@@ -39,7 +40,7 @@ export function scheduleAIReply(phone: string): void {
 
   const timer = setTimeout(() => {
     pendingTimers.delete(key);
-    void processAIReply(key).catch(err => {
+    void processAIReply(key, false).catch(err => {
       console.error(`[AI-WPP] processAIReply error for ${key}:`, err);
     });
   }, DEBOUNCE_MS);
@@ -52,7 +53,7 @@ export async function triggerAIReplyNow(phone: string): Promise<void> {
   const existing = pendingTimers.get(key);
   if (existing) clearTimeout(existing);
   pendingTimers.delete(key);
-  await processAIReply(key);
+  await processAIReply(key, true);
 }
 
 function normalizePhone(phone: string): string {
@@ -328,7 +329,7 @@ function deriveKnowledgeHints(input: {
   };
 }
 
-async function processAIReply(phone: string): Promise<void> {
+async function processAIReply(phone: string, force: boolean): Promise<void> {
   const lead = await findLeadByPhone(phone);
   if (!lead) {
     console.warn(`[AI-WPP] no lead found for ${phone}; skipping AI reply`);
@@ -341,25 +342,35 @@ async function processAIReply(phone: string): Promise<void> {
     return;
   }
 
-  // Acquire DB lock
+  // Claim atomico no banco. O debounce em memoria melhora a conversa, mas nao
+  // protege contra retries da Meta nem contra duas instancias do backend.
   const now = new Date();
-  if (lead.aiProcessing && lead.aiProcessingAt) {
-    if (now.getTime() - lead.aiProcessingAt.getTime() < LOCK_TTL_MS) {
-      // Nao descarta a mensagem: a chamada de IA anterior pode levar mais que o
-      // debounce (5s) pra terminar. Reagenda em vez de simplesmente ignorar, senao
-      // essa mensagem do lead nunca gera resposta (bug: "a IA ignorou o que eu disse").
-      console.log(`[AI-WPP] aiProcessing lock active for ${phone} — reagendando`);
-      scheduleAIReply(phone);
-      return;
-    }
-  }
-
-  await prisma.lead.update({
-    where: { email: lead.email },
+  const staleLockThreshold = new Date(now.getTime() - LOCK_TTL_MS);
+  const lock = await prisma.lead.updateMany({
+    where: {
+      email: lead.email,
+      aiHandoff: false,
+      OR: [{ aiProcessing: false }, { aiProcessingAt: null }, { aiProcessingAt: { lt: staleLockThreshold } }],
+    },
     data: { aiProcessing: true, aiProcessingAt: now },
   });
+  if (lock.count === 0) {
+    // Nao descarta uma mensagem nova que chegou enquanto outra resposta ainda
+    // estava sendo gerada. A proxima rodada vai encontrar somente as inbound
+    // que continuam sem aiProcessedAt.
+    console.log(`[AI-WPP] aiProcessing lock active for ${phone} — reagendando`);
+    scheduleAIReply(phone);
+    return;
+  }
 
+  let pendingInboundIds: string[] = [];
   try {
+    pendingInboundIds = await loadUnprocessedInboundIds(phone, lead.id, lead.email);
+    if (!force && pendingInboundIds.length === 0) {
+      console.log(`[AI-WPP] nenhuma mensagem inbound pendente para ${phone} — retry duplicado ignorado`);
+      return;
+    }
+
     // If lead is responding to a meeting slot offer, handle it without going through AI
     const messages = await loadMessagesByPhone(phone, lead.id, lead.email);
     const lastMsg  = messages.filter(m => m.direction === 'inbound').slice(-1)[0]?.text ?? '';
@@ -382,8 +393,16 @@ async function processAIReply(phone: string): Promise<void> {
       });
     }
   } finally {
+    if (pendingInboundIds.length > 0) {
+      await (prisma as any).whatsAppMessage.updateMany({
+        where: { id: { in: pendingInboundIds }, aiProcessedAt: null },
+        data: { aiProcessedAt: new Date() },
+      }).catch((err: unknown) => {
+        console.error(`[AI-WPP] falha ao confirmar mensagens processadas de ${phone}:`, err);
+      });
+    }
     await prisma.lead
-      .update({ where: { email: lead.email }, data: { aiProcessing: false, aiProcessingAt: null } })
+      .update({ where: { id: lead.id }, data: { aiProcessing: false, aiProcessingAt: null } })
       .catch(() => {});
   }
 }
@@ -666,15 +685,15 @@ async function executeAIAndReply(
 // Reaproveita o mesmo lock aiProcessing/aiProcessingAt do fluxo de resposta
 // normal (processAIReply) — evita mandar follow-up bem na hora em que uma
 // mensagem do lead acabou de chegar e já está sendo processada.
-export async function sendFollowUpMessage(phone: string): Promise<void> {
+export async function sendFollowUpMessage(phone: string): Promise<boolean> {
   const lead = await findLeadByPhone(phone);
-  if (!lead) return;
-  if (lead.aiHandoff) return;
+  if (!lead) return false;
+  if (lead.aiHandoff) return false;
 
   const now = new Date();
   if (lead.aiProcessing && lead.aiProcessingAt && now.getTime() - lead.aiProcessingAt.getTime() < LOCK_TTL_MS) {
     console.log(`[AI-Followup] aiProcessing lock ativo pra ${phone} — pula essa rodada`);
-    return;
+    return false;
   }
 
   // A Meta so libera mensagem de texto livre ate 24h depois da ULTIMA
@@ -704,7 +723,7 @@ export async function sendFollowUpMessage(phone: string): Promise<void> {
       : null;
     if (!followUpTemplateName) {
       console.warn(`[AI-Followup] ${phone} fora da janela de 24h e nenhum template configurado (AIAgent.followUpTemplateNames) — pulando sem chamar a IA`);
-      return;
+      return false;
     }
   }
 
@@ -714,7 +733,7 @@ export async function sendFollowUpMessage(phone: string): Promise<void> {
   // e (b) claim do lock aiProcessing. As duas coisas precisam estar na MESMA
   // query: se fossem passos separados (ler, decidir, so depois escrever),
   // duas chamadas quase simultaneas (duas instancias do job, ou um envio
-  // anterior lento por causa de retries da IA/fetch sem timeout) poderiam
+  // anterior lento por causa de retries da IA) poderiam
   // ambas passar pela leitura antes de qualquer uma escrever o lock, e as
   // duas mandariam o mesmo follow-up — foi exatamente esse race que fez
   // alguns leads receberem 2-3 follow-ups em poucos minutos.
@@ -736,7 +755,7 @@ export async function sendFollowUpMessage(phone: string): Promise<void> {
   });
   if (claim.count === 0) {
     console.log(`[AI-Followup] ${phone} nao esta mais elegivel (ou lock ja tomado por outra chamada) — pulando (evita follow-up duplicado)`);
-    return;
+    return false;
   }
 
   try {
@@ -749,9 +768,12 @@ export async function sendFollowUpMessage(phone: string): Promise<void> {
       console.log(`[AI-Followup] follow-up enviado para ${phone} lead=${lead.email} (canal=${withinSessionWindow ? 'texto livre' : 'template'})`);
       const { logLeadActivity } = await import('./lead-activity.service');
       await logLeadActivity(lead.email, 'followup_sent', 'Follow-up automático enviado', undefined, 'system');
+      return true;
     }
+    return false;
   } catch (err) {
     console.error(`[AI-Followup] falha ao enviar follow-up para ${phone} lead=${lead.email}:`, err);
+    return false;
   } finally {
     await prisma.lead
       .update({ where: { email: lead.email }, data: { aiProcessing: false, aiProcessingAt: null } })
@@ -846,6 +868,9 @@ async function enrichLeadFromAI(
     || Boolean(result.pain && ['alta', 'urgente'].includes(String(result.urgency).toLowerCase()));
 
   const updateData: Record<string, unknown> = {
+    // Nao sobrescreve Lead.score: ele pertence ao motor de regras comercial.
+    // O CRM Lara usa este score proprio, recalculado a cada resposta.
+    aiScore: clampAIScore(result.score),
     ...standardUpdates,
     ...(Object.keys(customUpdates).length > 0
       ? { customFields: { ...currentCustomFields, ...customUpdates } }
@@ -950,13 +975,7 @@ async function loadMessagesByPhone(
   leadId?: string,
   leadEmail?: string
 ): Promise<WhatsAppConversationMessage[]> {
-  const suffix = phone.replace(/\D/g, '').slice(-9);
-  // Prioriza leadId/leadEmail (identificador exclusivo) e usa o sufixo de telefone
-  // so como fallback pra mensagens antigas sem esses campos preenchidos — casar so
-  // por telefone arriscaria misturar a conversa de outro lead com o mesmo sufixo.
-  const where: Record<string, unknown>[] = [{ phone: { endsWith: suffix } }];
-  if (leadId) where.push({ leadId });
-  if (leadEmail) where.push({ leadEmail });
+  const where = messageIdentityWhere(phone, leadId, leadEmail);
 
   // orderBy 'asc' + take retornaria as MENSAGENS MAIS ANTIGAS da conversa (bug: em
   // qualquer conversa com mais de MAX_TRANSCRIPT_MSGS mensagens, o modelo nunca via
@@ -968,6 +987,34 @@ async function loadMessagesByPhone(
     take: MAX_TRANSCRIPT_MSGS,
   });
   return recent.reverse();
+}
+
+function messageIdentityWhere(phone: string, leadId?: string, leadEmail?: string): Record<string, unknown>[] {
+  const suffix = phone.replace(/\D/g, '').slice(-9);
+  const where: Record<string, unknown>[] = [];
+  if (leadId) where.push({ leadId });
+  if (leadEmail) where.push({ leadEmail });
+  // Telefone e apenas fallback para registros legados sem identidade de lead.
+  // Assim dois contatos com o mesmo sufixo nao misturam historico.
+  where.push({ leadId: null, leadEmail: null, phone: { endsWith: suffix } });
+  return where;
+}
+
+async function loadUnprocessedInboundIds(
+  phone: string,
+  leadId?: string,
+  leadEmail?: string
+): Promise<string[]> {
+  const pending = await (prisma as any).whatsAppMessage.findMany({
+    where: {
+      direction: 'inbound',
+      aiProcessedAt: null,
+      OR: messageIdentityWhere(phone, leadId, leadEmail),
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  }) as Array<{ id: string }>;
+  return pending.map(message => message.id);
 }
 
 // ─── Transcript builder ───────────────────────────────────────────────────────
@@ -1316,13 +1363,19 @@ const HANDOFF_TAG = 'transferido-para-humano';
 // automacao com gatilho "tag adicionada" nessa tag pode criar o negocio no
 // Pipedrive, notificar o time comercial etc., sem precisar de codigo novo aqui.
 async function handleHandoffToHuman(leadEmail: string, reason?: string): Promise<void> {
-  const lead = await prisma.lead.findUnique({ where: { email: leadEmail }, select: { tags: true } });
+  const lead = await prisma.lead.findUnique({
+    where: { email: leadEmail },
+    select: { tags: true, marketingStage: true },
+  });
   await prisma.lead.update({
     where: { email: leadEmail },
     data: {
       aiHandoff: true,
       isHot: true,
       tags: Array.from(new Set([...(lead?.tags ?? []), HANDOFF_TAG])),
+      ...(lead?.marketingStage && lead.marketingStage !== 'TRANSFERIDO_HUMANO'
+        ? { marketingStageBeforeHandoff: lead.marketingStage }
+        : {}),
     },
   });
   const { setMarketingStage } = await import('./lead-marketing-stage.service');

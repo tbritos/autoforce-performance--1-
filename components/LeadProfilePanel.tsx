@@ -867,7 +867,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                     <button type="button" style={tabBtn(activeTab === 'atividade')} onClick={() => setActiveTab('atividade')}>
                       <Activity size={14} /> Atividade
                     </button>
-                    <button type="button" style={tabBtn(activeTab === 'whatsapp')} onClick={() => setActiveTab('whatsapp')}>
+                    <button data-testid="lead-whatsapp-tab" type="button" style={tabBtn(activeTab === 'whatsapp')} onClick={() => setActiveTab('whatsapp')}>
                       <MessageCircle size={14} /> WhatsApp
                       {whatsAppMessages && whatsAppMessages.length > 0 && (
                         <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 'var(--r-full)', background: activeTab === 'whatsapp' ? 'var(--accent-soft)' : 'var(--bg-muted)', color: activeTab === 'whatsapp' ? 'var(--accent)' : 'var(--fg-muted)', fontWeight: 700 }}>
@@ -1265,9 +1265,8 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                           {/* Name + status */}
                           <div style={{ flex:1, minWidth:0 }}>
                             <p style={{ margin:0, fontSize:14, fontWeight:700, color:'var(--fg-primary)' }}>{profile.name ?? 'Sem nome'}</p>
-                            <p style={{ margin:0, fontSize:12, color:'var(--fg-muted)', display:'flex', alignItems:'center', gap:5 }}>
-                              <span style={{ width:7, height:7, borderRadius:'50%', background:'#25d366', display:'inline-block', flexShrink:0 }} />
-                              online agora{profile.phone ? ` · ${fmtPhoneDisplay(profile.phone)}` : ''}
+                            <p data-testid="lead-whatsapp-status" style={{ margin:0, fontSize:12, color:'var(--fg-muted)' }}>
+                              WhatsApp{profile.phone ? ` · ${fmtPhoneDisplay(profile.phone)}` : ''}
                             </p>
                           </div>
                           {/* Mode toggle */}

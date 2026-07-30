@@ -2,6 +2,7 @@ import { MarketingStage } from '@prisma/client';
 import { prisma } from '../config/database';
 import { normalizeEmail } from './lead-hub.service';
 import { FOLLOWUP_ACTIVE_SINCE } from './ai-followup.service';
+import { isHumanHandoffStage, kanbanCardQueryLimit } from './lara-runtime.utils';
 
 export type MarketingStageSource = 'ai' | 'system' | 'manual';
 
@@ -70,8 +71,31 @@ export async function setMarketingStage(
 // pro mutador central, sempre com source 'manual' (unico source que ignora a
 // guarda de estados travados).
 export async function setMarketingStageById(id: string, newStage: MarketingStage, changedBy?: string): Promise<void> {
-  const lead = await prisma.lead.findUnique({ where: { id }, select: { email: true } });
+  const lead = await prisma.lead.findUnique({
+    where: { id },
+    select: { email: true, tags: true, marketingStage: true },
+  });
   if (!lead) throw new Error('Lead nao encontrado');
+
+  const humanHandoff = isHumanHandoffStage(newStage);
+  await prisma.lead.update({
+    where: { id },
+    data: humanHandoff
+      ? {
+          aiHandoff: true,
+          tags: { set: Array.from(new Set([...lead.tags, 'transferido-para-humano'])) },
+          ...(lead.marketingStage !== 'TRANSFERIDO_HUMANO'
+            ? { marketingStageBeforeHandoff: lead.marketingStage }
+            : {}),
+        }
+      : {
+          aiHandoff: false,
+          aiProcessing: false,
+          aiProcessingAt: null,
+          marketingStageBeforeHandoff: null,
+          tags: { set: lead.tags.filter(tag => tag !== 'transferido-para-humano') },
+        },
+  });
   await setMarketingStage(lead.email, newStage, 'manual', changedBy);
 }
 
@@ -94,6 +118,7 @@ export interface MarketingKanbanCard {
   company: string | null;
   phone: string | null;
   score: number;
+  aiScore: number | null;
   isHot: boolean;
   marketingStageChangedAt: Date | null;
   marketingStageSource: string | null;
@@ -159,23 +184,21 @@ export async function getMarketingKanban(includeAll = false): Promise<{
   // virar oportunidade de vendas real ou ter encerrado. Mesma whitelist
   // ELIGIBLE_STATUS='LEAD' ja usada em ai-followup.service.ts.
   const baseFilter = { deletedAt: null, phone: { not: null }, status: 'LEAD' as const };
-
-  const counts = await prisma.lead.groupBy({
-    by: ['marketingStage'],
-    where: baseFilter,
-    _count: { _all: true },
-  });
-
-  const totals = Object.fromEntries(ALL_STAGES.map(stage => [stage, 0])) as Record<MarketingStage, number>;
-  for (const row of counts) totals[row.marketingStage] = row._count._all;
-  // groupBy nao filtra por grupo — os estagios com filtro proprio (ver
-  // STAGE_ONLY_FILTERS) precisam de uma contagem dedicada, sobrescrevendo o
-  // total "cru" calculado acima.
-  for (const [stage, filter] of Object.entries(STAGE_ONLY_FILTERS) as [MarketingStage, object][]) {
-    totals[stage] = await prisma.lead.count({ where: { ...baseFilter, marketingStage: stage, ...filter } });
-  }
-
   const cutoff = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const totalEntries = await Promise.all(ALL_STAGES.map(async stage => {
+    const windowed = !includeAll && WINDOWED_STAGES.includes(stage);
+    const total = await prisma.lead.count({
+      where: {
+        ...baseFilter,
+        marketingStage: stage,
+        ...(STAGE_ONLY_FILTERS[stage] ?? {}),
+        ...(windowed ? { marketingStageChangedAt: { gte: cutoff } } : {}),
+      },
+    });
+    return [stage, total] as const;
+  }));
+  const totals = Object.fromEntries(totalEntries) as Record<MarketingStage, number>;
+
   const columnEntries = await Promise.all(ALL_STAGES.map(async (stage) => {
     const windowed = !includeAll && WINDOWED_STAGES.includes(stage);
     const leads = await prisma.lead.findMany({
@@ -186,10 +209,13 @@ export async function getMarketingKanban(includeAll = false): Promise<{
         ...(windowed ? { marketingStageChangedAt: { gte: cutoff } } : {}),
       },
       orderBy: { marketingStageChangedAt: 'desc' },
-      take: CARDS_PER_COLUMN,
+      // "Ver tudo" precisa ser literal: sem janela historica e sem o corte de
+      // 50 cards usado para manter a abertura padrao leve.
+      ...kanbanCardQueryLimit(includeAll, CARDS_PER_COLUMN),
       select: {
         id: true, name: true, email: true, company: true, phone: true,
-        score: true, isHot: true, marketingStageChangedAt: true, marketingStageSource: true,
+        score: true, aiScore: true, isHot: true,
+        marketingStageChangedAt: true, marketingStageSource: true,
       },
     });
     return [stage, leads] as const;

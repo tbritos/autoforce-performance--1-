@@ -1,7 +1,10 @@
 import { PlatformConnectionService } from './platform-connection.service';
-import { Platform } from '@prisma/client';
+import { MarketingStage, Platform } from '@prisma/client';
 import { prisma } from '../config/database';
 import { normalizePhoneE164, phoneSearchVariants } from '../utils/phone';
+import { resolveHandoffReturnStage, shouldScheduleAIReply } from './lara-runtime.utils';
+
+const HUMAN_HANDOFF_TAG = 'transferido-para-humano';
 
 export interface WhatsAppTemplateComponent {
   type: 'HEADER' | 'BODY' | 'FOOTER' | 'BUTTONS';
@@ -93,6 +96,7 @@ export interface WhatsAppConversationMessage {
   readAt: Date | null;
   receivedAt: Date | null;
   failedAt: Date | null;
+  aiProcessedAt: Date | null;
   createdAt: Date;
 }
 
@@ -574,7 +578,11 @@ async function isAgentPhoneNumber(phoneNumberId: string | null): Promise<boolean
 
 async function recordInboundMessage(message: any, senderName: string | null, phoneNumberId: string | null): Promise<void> {
   const from = normalizePhone(message.from);
-  if (!from) return;
+  const messageId = typeof message.id === 'string' ? message.id.trim() : '';
+  if (!from || !messageId) {
+    console.warn('[WPP] inbound ignorado: telefone ou message.id ausente');
+    return;
+  }
 
   let lead = await findLeadByPhone(from);
 
@@ -600,10 +608,13 @@ async function recordInboundMessage(message: any, senderName: string | null, pho
     await LeadScoringService.applyScoringRulesToLead(lead.id).catch(err => {
       console.error('[LeadScoring] falha ao aplicar regras no lead criado via WhatsApp:', err);
     });
-    const { triggerLeadResearch } = await import('./lead-research.service');
-    await triggerLeadResearch(lead.id).catch(err => {
-      console.error('[LeadResearch] falha ao disparar pesquisa no lead criado via WhatsApp:', err);
-    });
+    // Pesquisa pode envolver busca externa e navegador. Nao bloqueia o ACK do
+    // webhook da Meta nem o registro/agendamento da resposta da Lara.
+    void import('./lead-research.service')
+      .then(({ triggerLeadResearch }) => triggerLeadResearch(lead!.id))
+      .catch(err => {
+        console.error('[LeadResearch] falha ao disparar pesquisa no lead criado via WhatsApp:', err);
+      });
   } else if (senderName && !lead.name) {
     // Update name on existing lead if it was blank
     await prisma.lead.update({
@@ -624,9 +635,10 @@ async function recordInboundMessage(message: any, senderName: string | null, pho
 
   const { type, text } = extractInboundText(message);
   const receivedAt = metaTimestamp(message.timestamp);
+  const agentNumber = await isAgentPhoneNumber(phoneNumberId);
 
-  await (prisma as any).whatsAppMessage.upsert({
-    where: { messageId: String(message.id) },
+  const storedMessage = await (prisma as any).whatsAppMessage.upsert({
+    where: { messageId },
     create: {
       leadId: lead.id,
       leadEmail: lead.email,
@@ -634,13 +646,16 @@ async function recordInboundMessage(message: any, senderName: string | null, pho
       direction: 'inbound',
       type,
       status: 'received',
-      messageId: String(message.id),
+      messageId,
       repliedToMessageId: message.context?.id ?? null,
       text,
       payload: message,
       phoneNumberId,
       receivedAt,
       createdAt: receivedAt,
+      // Mensagens de outros numeros sao historico da conversa, mas nao devem
+      // ficar pendentes para a Lara.
+      aiProcessedAt: agentNumber ? null : receivedAt,
     },
     update: {
       leadId: lead.id,
@@ -655,12 +670,15 @@ async function recordInboundMessage(message: any, senderName: string | null, pho
       phoneNumberId,
       receivedAt,
     },
+    select: { id: true, aiProcessedAt: true },
   });
 
-  if (await isAgentPhoneNumber(phoneNumberId)) {
+  if (shouldScheduleAIReply(agentNumber, storedMessage.aiProcessedAt)) {
     const { scheduleAIReply } = await import('./ai-whatsapp-reply.service');
     scheduleAIReply(from);
     console.log(`[WPP] inbound message recorded; AI reply scheduled phone=${from} lead=${lead.email} type=${type}`);
+  } else if (agentNumber) {
+    console.log(`[WPP] webhook duplicado ignorado; mensagem ja processada id=${messageId}`);
   } else {
     console.log(`[WPP] inbound message on non-agent number (phoneNumberId=${phoneNumberId}); AI reply skipped phone=${from} lead=${lead.email}`);
   }
@@ -1052,15 +1070,50 @@ export async function deleteWhatsAppTemplate(templateName: string, phoneNumberId
 }
 
 export async function setLeadAiHandoff(leadId: string, handoff: boolean): Promise<void> {
-  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true } });
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: {
+      id: true,
+      email: true,
+      tags: true,
+      marketingStage: true,
+      marketingStageBeforeHandoff: true,
+    },
+  });
   if (!lead) throw new Error('Lead não encontrado');
+
+  const { setMarketingStage } = await import('./lead-marketing-stage.service');
+  if (handoff) {
+    await prisma.lead.update({
+      where: { id: leadId },
+      data: {
+        aiHandoff: true,
+        tags: { set: Array.from(new Set([...lead.tags, HUMAN_HANDOFF_TAG])) },
+        ...(lead.marketingStage !== MarketingStage.TRANSFERIDO_HUMANO
+          ? { marketingStageBeforeHandoff: lead.marketingStage }
+          : {}),
+      },
+    });
+    await setMarketingStage(lead.email, MarketingStage.TRANSFERIDO_HUMANO, 'manual');
+    return;
+  }
+
+  const restoreStage = resolveHandoffReturnStage(lead.marketingStageBeforeHandoff);
   await prisma.lead.update({
     where: { id: leadId },
     data: {
-      aiHandoff: handoff,
-      // When re-enabling IA mode, clear any stuck processing lock
-      ...(handoff === false ? { aiProcessing: false, aiProcessingAt: null } : {}),
+      aiHandoff: false,
+      aiProcessing: false,
+      aiProcessingAt: null,
+      tags: { set: lead.tags.filter(tag => tag !== HUMAN_HANDOFF_TAG) },
     },
+  });
+  if (lead.marketingStage === MarketingStage.TRANSFERIDO_HUMANO) {
+    await setMarketingStage(lead.email, restoreStage, 'manual');
+  }
+  await prisma.lead.update({
+    where: { id: leadId },
+    data: { marketingStageBeforeHandoff: null },
   });
 }
 

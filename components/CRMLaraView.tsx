@@ -93,7 +93,7 @@ export default function CRMLaraView() {
   };
 
   return (
-    <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16, height: '100%' }}>
+    <div data-testid="crm-lara-board" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16, height: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--fg-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -105,7 +105,12 @@ export default function CRMLaraView() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--fg-muted)', cursor: 'pointer' }}>
-            <input type="checkbox" checked={includeAll} onChange={e => setIncludeAll(e.target.checked)} />
+            <input
+              data-testid="crm-lara-include-all"
+              type="checkbox"
+              checked={includeAll}
+              onChange={e => setIncludeAll(e.target.checked)}
+            />
             Ver tudo (inclui histórico antigo)
           </label>
           <button type="button" onClick={() => load(includeAll)} disabled={loading}
@@ -129,6 +134,7 @@ export default function CRMLaraView() {
           return (
             <div
               key={stage}
+              data-testid={`crm-lara-column-${stage}`}
               onDragOver={e => { e.preventDefault(); setDragOverStage(stage); }}
               onDragLeave={() => setDragOverStage(prev => (prev === stage ? null : prev))}
               onDrop={e => {
@@ -148,7 +154,7 @@ export default function CRMLaraView() {
               <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--fg-primary)' }}>{label}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-muted)', background: 'var(--bg-muted)', borderRadius: 99, padding: '1px 7px' }}>
+                  <span data-testid={`crm-lara-total-${stage}`} style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-muted)', background: 'var(--bg-muted)', borderRadius: 99, padding: '1px 7px' }}>
                     {total}
                   </span>
                 </div>
@@ -165,6 +171,7 @@ export default function CRMLaraView() {
                   return (
                     <div
                       key={card.id}
+                      data-testid="crm-lara-card"
                       draggable
                       onDragStart={e => e.dataTransfer.setData('application/x-lead-card', JSON.stringify({ id: card.id, stage }))}
                       onClick={() => navigate(`/leads/${encodeURIComponent(card.id)}`)}
@@ -185,7 +192,9 @@ export default function CRMLaraView() {
                         </span>
                       )}
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
-                        <span style={{ fontSize: 10.5, color: 'var(--fg-subtle)' }}>score {card.score}</span>
+                        <span style={{ fontSize: 10.5, color: 'var(--fg-subtle)' }}>
+                          score Lara {card.aiScore ?? '—'}
+                        </span>
                         <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10.5, color: 'var(--fg-subtle)' }} title={source?.title}>
                           {SourceIcon && <SourceIcon size={11} />}
                           {timeAgo(card.marketingStageChangedAt)}

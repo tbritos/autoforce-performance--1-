@@ -1,4 +1,5 @@
 import { prisma } from '../config/database';
+import { countSentFollowUp } from './lara-runtime.utils';
 
 // So faz follow-up de lead com status LEAD — assim que o status vira MQL,
 // SQL, SCHEDULED, DEMO, PROPOSAL, OPPORTUNITY, CLIENT (ou LOST/DISQUALIFIED),
@@ -96,8 +97,8 @@ export async function sendFollowUpsForSilentLeads(): Promise<{ sent: number; eva
       // pra refletir o board mesmo se o envio for pulado (ex: fora da janela
       // de 24h sem template configurado).
       await setMarketingStage(lead.email, 'AGUARDANDO_FOLLOWUP', 'system').catch(() => {});
-      await sendFollowUpMessage(lead.phone);
-      sent++;
+      const didSend = await sendFollowUpMessage(lead.phone);
+      sent = countSentFollowUp(sent, didSend);
     } catch (err) {
       console.error(`[AI-Followup] erro ao processar lead ${lead.id}:`, err);
     }

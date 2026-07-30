@@ -1,6 +1,7 @@
 import { LeadStatus } from '@prisma/client';
 import type { AIAgentRuntimeContext } from './ai-agent-context.service';
 import { EBOOK_BENCHMARK_URL } from './whatsapp.service';
+import { fetchWithAIRequestTimeout } from './lara-runtime.utils';
 
 export type AIProvider = 'gemini' | 'openai' | 'fallback';
 
@@ -129,7 +130,7 @@ async function runGeminiPrequalification(input: AIPrequalificationInput): Promis
 
     try {
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-        response = await fetch(
+        response = await fetchWithAIRequestTimeout(
           `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
           {
             method: 'POST',
@@ -197,7 +198,7 @@ async function runOpenAIPrequalification(input: AIPrequalificationInput): Promis
   const prompt = compactPrequalificationPrompt(buildPrequalificationPrompt(input));
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetchWithAIRequestTimeout('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
