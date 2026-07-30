@@ -6,6 +6,7 @@ import {
   fetchWithAIRequestTimeout,
   isHumanHandoffStage,
   kanbanCardQueryLimit,
+  LARA_NEW_LEADS_ACTIVE_SINCE,
   marketingStageForResearchFit,
   normalizeAIScoreForFit,
   pendingResearchFailureData,
@@ -90,6 +91,10 @@ test('retry da pesquisa usa a ultima tentativa como inicio do backoff', () => {
     isResearchRetryDue(2, firstSeenAt, lastAttemptAt, new Date('2026-07-30T10:40:00.000Z').getTime()),
     true,
   );
+});
+
+test('corte da Lara preserva a base antiga sem excluir novos leads por origem', () => {
+  assert.equal(LARA_NEW_LEADS_ACTIVE_SINCE.toISOString(), '2026-07-30T03:00:00.000Z');
 });
 
 test('falha de pesquisa permanece pendente para a proxima tentativa', () => {

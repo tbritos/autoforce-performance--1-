@@ -31,6 +31,11 @@ const MIN_AI_REQUEST_TIMEOUT_MS = 5_000;
 const MAX_AI_REQUEST_TIMEOUT_MS = 120_000;
 const RESEARCH_RETRY_BACKOFF_MS = [0, 5 * 60 * 1000, 30 * 60 * 1000];
 
+// A partir deste corte, todo lead novo pode entrar no CRM/pesquisa da Lara,
+// independentemente de tag ou origem (inclusive importacao e RD). O corte
+// evita que a liberacao reprocesse automaticamente toda a base historica.
+export const LARA_NEW_LEADS_ACTIVE_SINCE = new Date('2026-07-30T03:00:00.000Z');
+
 export async function withAbortableTimeout<T>(
   operation: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number,

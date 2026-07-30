@@ -3,6 +3,7 @@ import { normalizeEmail } from './lead-hub.service';
 import { fetchAndSummarizeSite, OVERALL_SITE_FETCH_TIMEOUT_MS } from './website-verification.service';
 import {
   isResearchRetryDue,
+  LARA_NEW_LEADS_ACTIVE_SINCE,
   marketingStageForResearchFit,
   normalizeAIScoreForFit,
   pendingResearchFailureData,
@@ -10,13 +11,13 @@ import {
 } from './lara-runtime.utils';
 
 // Pesquisa automatica de informacao (coluna "Novo" do CRM Lara) — dispara
-// UMA VEZ quando um lead novo chega (webhook de campanha real ou primeira
-// mensagem de WhatsApp), busca dados publicos sobre a empresa/pessoa (web,
-// CNPJ, e o site — descoberto sozinha se nao estiver preenchido) e decide,
-// sem mandar nenhuma mensagem, se o lead avanca pra Qualificacao ou Sem
-// Interesse. Unifica o que antes era duas features separadas: esta pesquisa
-// e a verificacao de site que existia em website-verification.service.ts
-// (agora so um utilitario de busca segura — ver esse arquivo).
+// quando um lead novo chega por qualquer origem (campanha, WhatsApp, RD,
+// importacao etc.), busca dados publicos sobre a empresa/pessoa (web, CNPJ e
+// o site — descoberto sozinha se nao estiver preenchido) e decide, sem mandar
+// mensagem, se o lead avanca pra Qualificacao, Nutricao ou Sem Interesse.
+// Unifica o que antes era duas features separadas: esta pesquisa e a
+// verificacao de site que existia em website-verification.service.ts (agora
+// so um utilitario de busca segura — ver esse arquivo).
 
 const LOCK_TTL_MS = 90_000;
 export const MAX_RESEARCH_ATTEMPTS = 3;
@@ -25,11 +26,42 @@ const TAVILY_TIMEOUT_MS = 8_000;
 const BRASIL_API_TIMEOUT_MS = 5_000;
 const SITE_RESEARCH_TIMEOUT_MS = 20_000;
 const RESEARCH_AI_TIMEOUT_MS = 12_000;
+const RESEARCH_QUEUE_CONCURRENCY = 3;
 
-// Mesma lista usada em ai-followup.service.ts/lead-marketing-stage.service.ts
-// pra excluir importacao em massa — reforcado aqui porque upsertLead
-// (webhook de campanha) e o mesmo caminho usado pela importacao de CSV.
-const EXCLUDED_RESEARCH_SOURCES = ['importacao_csv', 'rdstation', 'rdstation_webhook'];
+const pendingResearchQueue: string[] = [];
+const queuedResearchEmails = new Set<string>();
+let activeResearchWorkers = 0;
+
+function drainResearchQueue(): void {
+  while (
+    activeResearchWorkers < RESEARCH_QUEUE_CONCURRENCY
+    && pendingResearchQueue.length > 0
+  ) {
+    const email = pendingResearchQueue.shift();
+    if (!email) continue;
+
+    activeResearchWorkers++;
+    void researchLead(email)
+      .catch(err => {
+        console.error(
+          `[LeadResearch] falha na pesquisa enfileirada de ${email}:`,
+          err instanceof Error ? err.message : err,
+        );
+      })
+      .finally(() => {
+        activeResearchWorkers--;
+        queuedResearchEmails.delete(email);
+        drainResearchQueue();
+      });
+  }
+}
+
+function enqueueLeadResearch(email: string): void {
+  if (queuedResearchEmails.has(email)) return;
+  queuedResearchEmails.add(email);
+  pendingResearchQueue.push(email);
+  queueMicrotask(drainResearchQueue);
+}
 
 // ─── Fonte 1: busca na web (Tavily) ────────────────────────────────────────────
 
@@ -410,20 +442,18 @@ async function runResearch(
 }
 
 // Chamado nos 3 pontos de criacao de lead (upsertLead, resend inbound,
-// whatsapp inbound) — mesmo padrao fire-and-forget ja usado ali pra
-// LeadScoringService.applyScoringRulesToLead. So dispara pra lead com
-// telefone (sem WhatsApp nao ha canal pra eventualmente confirmar o
-// engajamento) e que NAO veio de importacao em massa (o mesmo endpoint de
-// upsertLead atende webhook de campanha real E importacao de CSV).
+// whatsapp inbound). So dispara pra lead com telefone (sem WhatsApp nao ha
+// canal pra eventualmente confirmar o engajamento). Origem/tag nao excluem
+// mais importacao ou RD: todos entram na mesma fila limitada, evitando que
+// uma importacao grande abra centenas de pesquisas externas em paralelo.
 export async function triggerLeadResearch(leadId: string): Promise<void> {
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
-    select: { email: true, phone: true, firstSource: true },
+    select: { email: true, phone: true },
   });
   if (!lead || !lead.phone) return;
-  if (lead.firstSource && EXCLUDED_RESEARCH_SOURCES.includes(lead.firstSource)) return;
 
-  await researchLead(lead.email);
+  enqueueLeadResearch(lead.email);
 }
 
 // Chamado quando a IA aprende/atualiza o site do lead DURANTE uma conversa
@@ -512,10 +542,10 @@ export async function sweepUnresearchedLeads(limit = 20): Promise<{ checked: num
     where: {
       marketingStage: 'NOVO',
       phone: { not: null },
+      firstSeenAt: { gte: LARA_NEW_LEADS_ACTIVE_SINCE },
       researchedAt: null,
       researchAttempts: { lt: MAX_RESEARCH_ATTEMPTS },
       researchInProgress: false,
-      NOT: { firstSource: { in: EXCLUDED_RESEARCH_SOURCES } },
     },
     select: { email: true, researchAttempts: true, firstSeenAt: true, researchStartedAt: true },
     take: limit * 3,

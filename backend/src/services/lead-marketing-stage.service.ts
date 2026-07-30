@@ -5,6 +5,7 @@ import { FOLLOWUP_ACTIVE_SINCE } from './ai-followup.service';
 import {
   isHumanHandoffStage,
   kanbanCardQueryLimit,
+  LARA_NEW_LEADS_ACTIVE_SINCE,
   LaraMarketingStageSource,
   protectedMarketingStagesForSource,
 } from './lara-runtime.utils';
@@ -127,30 +128,10 @@ export interface MarketingKanbanCard {
   marketingStageSource: string | null;
 }
 
-// marketingStage default e "NOVO" pra TODO lead criado, sem excecao (ver
-// @default(NOVO) no schema) — mas nem todo lead na base entrou pelo funil
-// ativo do agente (webhook de campanha ou WhatsApp direto): leads sem
-// telefone nunca vao ser trabalhados por WhatsApp, e leads com a tag
-// 'importacao' ou vindos de importacao em massa (mesmos sinais de
-// LeadHubService.EXCLUDED_LEAD_TAG/LEGACY_BULK_IMPORT_SOURCES,
-// lead-hub.service.ts) sao base historica que ninguem pediu pra reengajar.
-//
-// IMPORTANTE: origem (tag/firstSource) e um fato fixado na criacao do lead —
-// nao muda depois. Por isso so filtra a coluna NOVO (que representa "ainda
-// nao analisado, esperando o primeiro atendimento"): um lead importado que
-// depois conversou de verdade no WhatsApp e progrediu pra outro estagio
-// continua aparecendo normalmente ali, porque nesse ponto o que importa e o
-// engajamento real, nao como ele entrou na base originalmente. Aplicar esse
-// filtro em todas as colunas esconderia leads genuinamente ativos so por
-// causa da origem historica deles.
-const NOVO_EXCLUDED_TAG = 'importacao';
-const NOVO_EXCLUDED_SOURCES = ['importacao_csv', 'rdstation', 'rdstation_webhook'];
-
-// So se aplica a NOVO — ver comentario logo acima de NOVO_EXCLUDED_TAG.
-const novoOnlyFilter = {
-  NOT: { tags: { has: NOVO_EXCLUDED_TAG } },
-  OR: [{ firstSource: null }, { firstSource: { notIn: NOVO_EXCLUDED_SOURCES } }],
-};
+// Origem e tag nao excluem mais um lead novo do CRM Lara: importacao, CSV e
+// RD seguem a mesma regra dos demais canais. O unico corte e temporal para
+// nao despejar a base historica inteira na coluna quando a regra e ativada.
+const novoOnlyFilter = { firstSeenAt: { gte: LARA_NEW_LEADS_ACTIVE_SINCE } };
 
 // AGUARDANDO_FOLLOWUP so deveria mostrar leads que realmente vao receber um
 // follow-up automatico. Desde que FOLLOWUP_ACTIVE_SINCE entrou em vigor
