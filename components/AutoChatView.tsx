@@ -9,7 +9,6 @@ import {
   Loader2,
   MessageCircle,
   PlugZap,
-  Sparkles,
   Unplug,
   Users,
   Workflow,
@@ -218,12 +217,6 @@ export default function AutoChatView() {
           gap: 20px; margin-bottom: 22px;
         }
         .autochat-title-row { display: flex; align-items: center; gap: 13px; }
-        .autochat-logo {
-          width: 44px; height: 44px; border-radius: 13px; display: grid; place-items: center;
-          color: white; flex-shrink: 0;
-          background: linear-gradient(135deg, #7c3aed 0%, #db2777 55%, #f97316 100%);
-          box-shadow: 0 10px 26px rgba(219, 39, 119, 0.22);
-        }
         .autochat-header h1 { margin: 0; font-size: 25px; line-height: 1.15; font-weight: 800; letter-spacing: -0.025em; }
         .autochat-header p { margin: 5px 0 0; font-size: 13px; color: var(--fg-muted); }
         .autochat-title-line { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
@@ -409,7 +402,6 @@ export default function AutoChatView() {
       <div className="autochat-shell">
         <header className="autochat-header">
           <div className="autochat-title-row">
-            <div className="autochat-logo"><Sparkles size={21} /></div>
             <div>
               <div className="autochat-title-line">
                 <h1>AutoChat</h1>
