@@ -49,14 +49,13 @@ export default function CRMLaraView() {
   const [board, setBoard] = useState<MarketingKanbanBoard>(emptyBoard());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [includeAll, setIncludeAll] = useState(false);
   const [dragOverStage, setDragOverStage] = useState<MarketingStage | null>(null);
 
-  const load = async (all: boolean) => {
+  const load = async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await DataService.getMarketingKanban(all);
+      const data = await DataService.getMarketingKanban(false);
       setBoard(data);
     } catch {
       setError('Erro ao carregar o board.');
@@ -65,7 +64,7 @@ export default function CRMLaraView() {
     }
   };
 
-  useEffect(() => { void load(includeAll); }, [includeAll]);
+  useEffect(() => { void load(); }, []);
 
   const moveCard = async (cardId: string, fromStage: MarketingStage, toStage: MarketingStage) => {
     if (fromStage === toStage) return;
@@ -89,7 +88,7 @@ export default function CRMLaraView() {
       await DataService.updateLeadMarketingStage(cardId, toStage);
     } catch {
       setError('Erro ao mover o card — recarregando o board.');
-      await load(includeAll);
+      await load();
     }
   };
 
@@ -105,16 +104,7 @@ export default function CRMLaraView() {
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--fg-muted)', cursor: 'pointer' }}>
-            <input
-              data-testid="crm-lara-include-all"
-              type="checkbox"
-              checked={includeAll}
-              onChange={e => setIncludeAll(e.target.checked)}
-            />
-            Ver tudo (inclui histórico antigo)
-          </label>
-          <button type="button" onClick={() => load(includeAll)} disabled={loading}
+          <button type="button" onClick={() => load()} disabled={loading}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--fg-primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Atualizar
           </button>
