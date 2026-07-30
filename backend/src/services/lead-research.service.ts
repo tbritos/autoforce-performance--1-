@@ -5,7 +5,6 @@ import {
   isResearchRetryDue,
   LARA_NEW_LEADS_ACTIVE_SINCE,
   marketingStageForResearchFit,
-  nonDecisionSalesRoleDecision,
   normalizeAIScoreForFit,
   pendingResearchFailureData,
   withAbortableTimeout,
@@ -258,16 +257,6 @@ async function assessResearchFit(
   findings: string,
   parentSignal: AbortSignal,
 ): Promise<{ fit: 'qualified' | 'nurture' | 'disqualified'; score: number; summary: string; reason: string } | null> {
-  const roleDecision = nonDecisionSalesRoleDecision(lead.jobTitle, 20);
-  if (roleDecision) {
-    return {
-      fit: roleDecision.fit,
-      score: roleDecision.score,
-      summary: `Cargo identificado: ${lead.jobTitle}. O contato atua em vendas, sem poder de decisao para a contratacao.`,
-      reason: roleDecision.reason,
-    };
-  }
-
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
 
@@ -436,6 +425,7 @@ async function runResearch(
       researchedAt: new Date(),
       researchSummary: assessment.summary,
       researchIcpSignal: assessment.fit,
+      ...(assessment.fit === 'disqualified' ? { isHot: false } : {}),
       ...(siteResult ? { siteUrl: siteResult.siteUrl } : {}),
     },
   });

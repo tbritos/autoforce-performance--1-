@@ -3,7 +3,6 @@ import type { AIAgentRuntimeContext } from './ai-agent-context.service';
 import { EBOOK_BENCHMARK_URL } from './whatsapp.service';
 import {
   fetchWithAIRequestTimeout,
-  nonDecisionSalesRoleDecision,
   normalizeAIScoreForFit,
 } from './lara-runtime.utils';
 
@@ -99,22 +98,7 @@ export async function runAIPrequalification(
     result = fallbackAIPrequalification(input, 'Nenhum provedor de IA configurado');
   }
 
-  const leadData = input.lead as unknown as Record<string, unknown>;
-  const identification = isRecord(leadData.identificacao) ? leadData.identificacao : {};
-  const jobTitle = leadData.jobTitle ?? identification.cargo;
-  const roleDecision = nonDecisionSalesRoleDecision(jobTitle, result.score);
-  if (!roleDecision || result.source === 'fallback') return result;
-
-  return {
-    ...result,
-    fit: roleDecision.fit,
-    score: roleDecision.score,
-    decisionReason: roleDecision.reason,
-    recommendedNextStep: 'Encerrar a qualificacao comercial sem oferecer reuniao.',
-    recommendedActions: result.recommendedActions.filter(action => action.type !== 'offer_meeting_slots'),
-    isHot: false,
-    estagioQualificacao: undefined,
-  };
+  return result;
 }
 
 function resolveProvider(requestedProvider?: string): AIProvider {

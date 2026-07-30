@@ -5,11 +5,10 @@ import {
   countSentFollowUp,
   fetchWithAIRequestTimeout,
   isHumanHandoffStage,
-  isNonDecisionSalesRole,
   kanbanCardQueryLimit,
   LARA_NEW_LEADS_ACTIVE_SINCE,
   marketingStageForResearchFit,
-  nonDecisionSalesRoleDecision,
+  marketingStageForAIConversation,
   normalizeAIScoreForFit,
   pendingResearchFailureData,
   protectedMarketingStagesForSource,
@@ -17,6 +16,7 @@ import {
   researchRetryDelayMs,
   resolveAIRequestTimeout,
   resolveHandoffReturnStage,
+  resolveAIHotState,
   shouldPersistAIAnalysis,
   shouldScheduleAIReply,
   withAbortableTimeout,
@@ -54,6 +54,19 @@ test('pesquisa traduz cada fit para a etapa correta do CRM', () => {
   assert.equal(marketingStageForResearchFit('qualified'), 'QUALIFICACAO');
   assert.equal(marketingStageForResearchFit('nurture'), 'NUTRICAO');
   assert.equal(marketingStageForResearchFit('disqualified'), 'SEM_INTERESSE');
+});
+
+test('primeiro contato traduz a classificacao da Lara para a coluna correta', () => {
+  assert.equal(marketingStageForAIConversation('disqualified'), 'SEM_INTERESSE');
+  assert.equal(marketingStageForAIConversation('nurture', 'qualificacao'), 'QUALIFICACAO');
+  assert.equal(marketingStageForAIConversation('nurture', 'nutricao'), 'NUTRICAO');
+  assert.equal(marketingStageForAIConversation('qualified'), null);
+});
+
+test('lead quente e recalculado e sai do destaque ao ser desqualificado', () => {
+  assert.equal(resolveAIHotState({ fit: 'qualified', score: 80 }), true);
+  assert.equal(resolveAIHotState({ fit: 'nurture', score: 35, isHot: false }), false);
+  assert.equal(resolveAIHotState({ fit: 'disqualified', score: 39, isHot: true }), false);
 });
 
 test('pesquisa nao sobrescreve progresso comprovado pela conversa', () => {
@@ -97,22 +110,6 @@ test('retry da pesquisa usa a ultima tentativa como inicio do backoff', () => {
 
 test('corte da Lara preserva a base antiga sem excluir novos leads por origem', () => {
   assert.equal(LARA_NEW_LEADS_ACTIVE_SINCE.toISOString(), '2026-07-30T03:00:00.000Z');
-});
-
-test('vendedor e consultor de vendas ficam fora do ICP por falta de poder de decisao', () => {
-  assert.equal(isNonDecisionSalesRole('Vendedor'), true);
-  assert.equal(isNonDecisionSalesRole('Vendedora de veículos'), true);
-  assert.equal(isNonDecisionSalesRole('Consultora de Vendas'), true);
-  assert.equal(isNonDecisionSalesRole('Consultor comercial'), true);
-  assert.equal(isNonDecisionSalesRole('Gerente Comercial'), false);
-  assert.equal(isNonDecisionSalesRole('Diretor de Vendas'), false);
-  assert.equal(isNonDecisionSalesRole('Consultor Técnico'), false);
-  assert.deepEqual(nonDecisionSalesRoleDecision('Consultora de Vendas', 95), {
-    fit: 'disqualified',
-    score: 39,
-    reason: 'Consultores de vendas e vendedores nao fazem parte do ICP porque nao possuem poder de decisao.',
-  });
-  assert.equal(nonDecisionSalesRoleDecision('Gerente Comercial', 95), null);
 });
 
 test('falha de pesquisa permanece pendente para a proxima tentativa', () => {

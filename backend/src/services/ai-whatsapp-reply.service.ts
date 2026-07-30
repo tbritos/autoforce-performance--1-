@@ -5,7 +5,12 @@ import { runAIPrequalification } from './ai-provider.service';
 import type { WhatsAppConversationMessage } from './whatsapp.service';
 import { EBOOK_BENCHMARK_URL } from './whatsapp.service';
 import { normalizePhoneE164, phoneSearchVariants } from '../utils/phone';
-import { clampAIScore, shouldPersistAIAnalysis } from './lara-runtime.utils';
+import {
+  clampAIScore,
+  marketingStageForAIConversation,
+  resolveAIHotState,
+  shouldPersistAIAnalysis,
+} from './lara-runtime.utils';
 
 const DEBOUNCE_MS = 5_000;
 const LOCK_TTL_MS = 120_000;
@@ -631,6 +636,10 @@ async function executeAIAndReply(
     if (shouldPersistAIAnalysis(result.source)) {
       await enrichLeadFromAI(enrichmentLead, effectiveResult, leadInboundText)
         .catch(err => console.error('[AI-WPP] enrichLeadFromAI for new contact failed:', err));
+      if (!options?.followUp && !isPastLead) {
+        await applyMarketingStageFromAI(actionLeadEmail, result)
+          .catch(err => console.error('[AI-WPP] marketing stage for new contact failed:', err));
+      }
     }
     const newContactAllowedActions = actionsToApply.filter(action => action.type === 'offer_meeting_slots');
     if (newContactAllowedActions.length > 0) {
@@ -655,13 +664,7 @@ async function executeAIAndReply(
   // lead que ja passou de LEAD (isPastLead) — o board de marketing nao devia
   // mais reclassificar um lead que o vendedor ja assumiu.
   if (!options?.followUp && !isPastLead && shouldPersistAIAnalysis(result.source)) {
-    const { setMarketingStage } = await import('./lead-marketing-stage.service');
-    if (result.fit === 'disqualified') {
-      await setMarketingStage(lead.email, 'SEM_INTERESSE', 'ai', undefined, result.decisionReason).catch(() => {});
-    } else if (result.fit === 'nurture') {
-      const stage = result.estagioQualificacao === 'nutricao' ? 'NUTRICAO' : 'QUALIFICACAO';
-      await setMarketingStage(lead.email, stage, 'ai', undefined, result.decisionReason).catch(() => {});
-    }
+    await applyMarketingStageFromAI(lead.email, result).catch(() => {});
     // fit === 'qualified': nao seta nada aqui — se offer_meeting_slots
     // disparar neste mesmo turno, AGENDA_ENVIADA e escrito abaixo por
     // applyRecommendedActions e vence corretamente; se nao disparar ainda,
@@ -866,10 +869,7 @@ async function enrichLeadFromAI(
     ].filter(Boolean).join(' | ');
 
   const nextNotes = mergeAINotes(currentLead.notes, notesSummary);
-  const shouldMarkHot = result.isHot === true
-    || result.score >= 70
-    || result.fit === 'qualified'
-    || Boolean(result.pain && ['alta', 'urgente'].includes(String(result.urgency).toLowerCase()));
+  const shouldMarkHot = resolveAIHotState(result);
 
   const updateData: Record<string, unknown> = {
     // Nao sobrescreve Lead.score: ele pertence ao motor de regras comercial.
@@ -880,7 +880,10 @@ async function enrichLeadFromAI(
       ? { customFields: { ...currentCustomFields, ...customUpdates } }
       : {}),
     ...(nextNotes ? { notes: nextNotes } : {}),
-    ...(shouldMarkHot && !currentLead.isHot ? { isHot: true } : {}),
+    // O indicador da Lara representa a classificacao atual, nao um selo
+    // permanente. Isso tambem limpa leads que eram quentes e depois foram
+    // confirmados como fora do ICP.
+    isHot: shouldMarkHot,
   };
 
   if (Object.keys(updateData).length === 0) return;
@@ -970,6 +973,21 @@ async function findLeadByPhone(phone: string) {
     where: { email: `wpp_${toE164}@autoforce.internal` },
     select: selectFields,
   });
+}
+
+async function applyMarketingStageFromAI(
+  leadEmail: string,
+  result: {
+    fit: 'qualified' | 'nurture' | 'disqualified';
+    estagioQualificacao?: 'qualificacao' | 'nutricao';
+    decisionReason: string;
+  },
+): Promise<void> {
+  const stage = marketingStageForAIConversation(result.fit, result.estagioQualificacao);
+  if (!stage) return;
+
+  const { setMarketingStage } = await import('./lead-marketing-stage.service');
+  await setMarketingStage(leadEmail, stage, 'ai', undefined, result.decisionReason);
 }
 
 // ─── Load messages by phone ───────────────────────────────────────────────────
