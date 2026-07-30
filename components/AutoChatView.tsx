@@ -104,6 +104,13 @@ export default function AutoChatView() {
         }
         .autochat-header h1 { margin: 0; font-size: 25px; line-height: 1.15; font-weight: 800; letter-spacing: -0.025em; }
         .autochat-header p { margin: 5px 0 0; font-size: 13px; color: var(--fg-muted); }
+        .autochat-title-line { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+        .autochat-building-badge {
+          min-height: 22px; padding: 0 8px; display: inline-flex; align-items: center;
+          border: 1px solid rgba(245, 158, 11, .28); border-radius: 999px;
+          color: #b45309; background: rgba(245, 158, 11, .1);
+          font-size: 10px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase;
+        }
         .autochat-primary {
           display: inline-flex; align-items: center; justify-content: center; gap: 8px;
           min-height: 38px; padding: 0 15px; border: 0; border-radius: 9px; cursor: pointer;
@@ -116,6 +123,16 @@ export default function AutoChatView() {
           display: flex; gap: 4px; padding: 4px; margin-bottom: 16px; overflow-x: auto;
           border: 1px solid var(--border); border-radius: 11px; background: var(--bg-surface);
           width: fit-content; max-width: 100%;
+        }
+        .autochat-building-notice {
+          display: flex; align-items: flex-start; gap: 11px; padding: 13px 15px; margin-bottom: 16px;
+          border: 1px solid rgba(245, 158, 11, .28); border-radius: 11px;
+          color: var(--fg-primary); background: rgba(245, 158, 11, .08);
+        }
+        .autochat-building-notice svg { flex-shrink: 0; margin-top: 1px; color: #d97706; }
+        .autochat-building-notice strong { display: block; font-size: 12.5px; }
+        .autochat-building-notice span {
+          display: block; margin-top: 3px; color: var(--fg-muted); font-size: 11.5px; line-height: 1.5;
         }
         .autochat-tab {
           min-height: 34px; padding: 0 12px; display: inline-flex; align-items: center; gap: 7px;
@@ -238,7 +255,10 @@ export default function AutoChatView() {
           <div className="autochat-title-row">
             <div className="autochat-logo"><Sparkles size={21} /></div>
             <div>
-              <h1>AutoChat</h1>
+              <div className="autochat-title-line">
+                <h1>AutoChat</h1>
+                <span className="autochat-building-badge">Em construção</span>
+              </div>
               <p>Automação de conversas e relacionamento nos canais da AutoForce.</p>
             </div>
           </div>
@@ -263,6 +283,14 @@ export default function AutoChatView() {
             );
           })}
         </nav>
+
+        <aside className="autochat-building-notice" aria-label="AutoChat em construção">
+          <CircleDashed size={18} />
+          <div>
+            <strong>Esta área ainda está em construção</strong>
+            <span>Você está visualizando uma prévia do AutoChat. Nenhuma automação ou integração desta tela está ativa no momento.</span>
+          </div>
+        </aside>
 
         {activeTab !== 'integration' && (
           <section className="autochat-connect-card">
