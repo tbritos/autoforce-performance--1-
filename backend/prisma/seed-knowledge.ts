@@ -4,6 +4,27 @@ const prisma = new PrismaClient();
 
 const knowledgeItems = [
   {
+    id: 'ki-icp-poder-decisao',
+    title: 'ICP — Poder de decisão do contato',
+    category: 'regra',
+    priority: 4,
+    tags: ['icp', 'qualificacao', 'whatsapp', 'cargo', 'decisor', 'vendedor'],
+    content: `ICP — Poder de decisão do contato
+
+Consultor(a) de vendas, consultor(a) comercial e vendedor(a) NÃO fazem parte do ICP da Lara, mesmo quando trabalham em uma concessionária, grupo automotivo, montadora ou revenda elegível.
+
+Motivo: esses cargos executam a operação comercial, mas não possuem poder de decisão para contratar as soluções da AutoForce.
+
+Quando o cargo estiver confirmado como um desses:
+- classificar como fit=disqualified;
+- manter o score Lara entre 0 e 39;
+- não marcar como lead quente;
+- não oferecer reunião nem horários de agenda;
+- não tentar contornar a regra pedindo para incluir um diretor.
+
+Não inferir o cargo. Só aplicar quando o dado estiver cadastrado ou tiver sido informado claramente pelo contato. Outros cargos operacionais cuja autoridade ainda seja desconhecida podem permanecer em nutrição até o papel ser esclarecido.`,
+  },
+  {
     id: 'ki-regras-abordagem',
     title: 'Regras de Abordagem — Lara',
     category: 'regra',
@@ -294,7 +315,7 @@ Entendo. Mas quanto custa hoje um site que não gera leads suficientes? Não é 
 Claro. Mas enquanto isso, sua concorrência está agindo agora. Posso agendar uma conversa rápida de 30 minutos com um especialista, sem compromisso, só pra ter mais clareza pra decidir?
 
 "Não tenho poder de decisão"
-Sem problema. Podemos incluir seu diretor na conversa? Posso ajudar você a preparar um argumento sólido para o superior sobre o impacto no faturamento.
+Se o contato for consultor de vendas, consultor comercial ou vendedor, ele está fora do ICP e a Lara não deve oferecer reunião. Para outros cargos cuja autoridade ainda esteja incerta, esclarecer o papel antes de decidir entre nutrição e qualificação.
 
 "Nunca ouvi falar da AutoForce"
 A AutoForce tem mais de 2.200 concessionárias na base e 10 anos de especialização no setor automotivo. Posso mostrar cases de quem estava na mesma situação.

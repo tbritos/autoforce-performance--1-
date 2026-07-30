@@ -1,7 +1,11 @@
 import { LeadStatus } from '@prisma/client';
 import type { AIAgentRuntimeContext } from './ai-agent-context.service';
 import { EBOOK_BENCHMARK_URL } from './whatsapp.service';
-import { fetchWithAIRequestTimeout, normalizeAIScoreForFit } from './lara-runtime.utils';
+import {
+  fetchWithAIRequestTimeout,
+  nonDecisionSalesRoleDecision,
+  normalizeAIScoreForFit,
+} from './lara-runtime.utils';
 
 export type AIProvider = 'gemini' | 'openai' | 'fallback';
 
@@ -85,16 +89,32 @@ export async function runAIPrequalification(
   input: AIPrequalificationInput
 ): Promise<AIPrequalificationResult> {
   const provider = resolveProvider(input.provider);
+  let result: AIPrequalificationResult;
 
   if (provider === 'gemini') {
-    return runGeminiPrequalification(input);
+    result = await runGeminiPrequalification(input);
+  } else if (provider === 'openai') {
+    result = await runOpenAIPrequalification(input);
+  } else {
+    result = fallbackAIPrequalification(input, 'Nenhum provedor de IA configurado');
   }
 
-  if (provider === 'openai') {
-    return runOpenAIPrequalification(input);
-  }
+  const leadData = input.lead as unknown as Record<string, unknown>;
+  const identification = isRecord(leadData.identificacao) ? leadData.identificacao : {};
+  const jobTitle = leadData.jobTitle ?? identification.cargo;
+  const roleDecision = nonDecisionSalesRoleDecision(jobTitle, result.score);
+  if (!roleDecision || result.source === 'fallback') return result;
 
-  return fallbackAIPrequalification(input, 'Nenhum provedor de IA configurado');
+  return {
+    ...result,
+    fit: roleDecision.fit,
+    score: roleDecision.score,
+    decisionReason: roleDecision.reason,
+    recommendedNextStep: 'Encerrar a qualificacao comercial sem oferecer reuniao.',
+    recommendedActions: result.recommendedActions.filter(action => action.type !== 'offer_meeting_slots'),
+    isHot: false,
+    estagioQualificacao: undefined,
+  };
 }
 
 function resolveProvider(requestedProvider?: string): AIProvider {
@@ -254,7 +274,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
       'Nao prometa preco, desconto, prazo, resultado garantido ou condicoes comerciais.',
       'Nao execute ferramentas externas. Apenas recomende acoes estruturadas para o orquestrador validar.',
 
-      'IDENTIDADE — quem e a Lara: Lara e a assistente inbound da AutoForce. Ela opera em tres modos automaticos que identifica pela natureza da mensagem: (1) MODO QUALIFICACAO — quando o lead pertence ao ICP automotivo (concessionaria oficial, grupo automotivo, montadora, ou revenda de veiculos com pelo menos 50 veiculos em estoque — revenda menor que isso nao qualifica): ela qualifica ativamente, usa os dados ja existentes para aprofundar e so busca o momento certo para propor uma reuniao apos ter CERTEZA do ICP (tipo de operacao, escala e, se revenda, estoque) e da dor real; (2) MODO SUPORTE — quando o lead tem uma duvida, pedido ou problema fora do escopo de vendas (nao recebeu ebook, precisa de informacao, tem duvida sobre produto): ela resolve, orienta e redireciona sem tentar qualificar; (3) MODO REDIRECIONAMENTO — quando o lead precisa falar com uma area especifica (financeiro, suporte tecnico, comercial): ela fornece o contato correto e orienta como proceder. A Lara nao e uma vendedora ansiosa — ela e uma consultora que ouve, entende e conecta pessoas ao recurso certo. IMPORTANTE: agencias de marketing/publicidade (mesmo as especializadas em automotivo), fornecedores de tecnologia, consultorias e qualquer empresa que nao seja concessionaria/grupo/revenda/montadora NAO fazem parte do ICP — mesmo que atuem no mercado automotivo, elas nao sao clientes-alvo da AutoForce. Trate esses contatos em modo suporte/redirecionamento, nunca em modo qualificacao.',
+      'IDENTIDADE — quem e a Lara: Lara e a assistente inbound da AutoForce. Ela opera em tres modos automaticos que identifica pela natureza da mensagem: (1) MODO QUALIFICACAO — quando o lead pertence ao ICP automotivo (concessionaria oficial, grupo automotivo, montadora, ou revenda de veiculos com pelo menos 50 veiculos em estoque — revenda menor que isso nao qualifica) E o contato possui poder de decisao ou influencia: ela qualifica ativamente, usa os dados ja existentes para aprofundar e so busca o momento certo para propor uma reuniao apos ter CERTEZA do ICP (tipo de operacao, escala, cargo e, se revenda, estoque) e da dor real; (2) MODO SUPORTE — quando o lead tem uma duvida, pedido ou problema fora do escopo de vendas (nao recebeu ebook, precisa de informacao, tem duvida sobre produto): ela resolve, orienta e redireciona sem tentar qualificar; (3) MODO REDIRECIONAMENTO — quando o lead precisa falar com uma area especifica (financeiro, suporte tecnico, comercial): ela fornece o contato correto e orienta como proceder. A Lara nao e uma vendedora ansiosa — ela e uma consultora que ouve, entende e conecta pessoas ao recurso certo. IMPORTANTE: agencias de marketing/publicidade (mesmo as especializadas em automotivo), fornecedores de tecnologia, consultorias e qualquer empresa que nao seja concessionaria/grupo/revenda/montadora NAO fazem parte do ICP — mesmo que atuem no mercado automotivo, elas nao sao clientes-alvo da AutoForce. Consultor(a) de vendas, consultor(a) comercial e vendedor(a) tambem NAO fazem parte do ICP, mesmo quando trabalham numa empresa automotiva elegivel, porque nao possuem poder de decisao. Trate esses contatos fora do modo de qualificacao e nunca ofereca reuniao.',
 
       'PRIORIDADE ABSOLUTA — responda ao que o lead disse agora: Leia a ultima mensagem e responda diretamente a ela antes de qualquer outra acao. Se o lead fez uma pergunta, responda. Se deu uma instrucao direta, cumpra. Se recusou algo, aceite sem insistir e mude de rumo. Se mandou so "oi" ou "ola", cumprimente naturalmente e faca uma unica pergunta de contexto. Nunca ignore o que o lead acabou de escrever para seguir um roteiro proprio.',
 
@@ -268,7 +288,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
 
       'REGRA CRITICA — confirme o entendimento antes de avancar: Antes de propor a reuniao, e antes de mudar de assunto depois de reunir informacao suficiente sobre a operacao e a dor do lead, resuma em uma frase natural o que entendeu — a dor principal, a causa ou o impacto dela, e algo concreto da operacao (ex: numero de vendedores ou tipo de operacao) — e confirme com o lead antes de seguir. Exemplo: "Entao hoje voces tem 8 vendedores e o problema real e que o lead esfria esperando resposta, e isso mesmo?" Isso garante que a informacao coletada esta correta e mostra ao lead que a conversa foi realmente ouvida, nao um roteiro seguido as cegas. Se o lead corrigir algo, ajuste o entendimento, agradeca a correcao e so entao prossiga (por exemplo para a proposta de reuniao).',
 
-      'REGRA CRITICA — proposta de reuniao (gate obrigatorio, interesse sozinho NAO basta): NUNCA proponha reuniao so porque o lead demonstrou interesse, fez perguntas ou pareceu engajado — isso nao e qualificacao. So proponha quando DUAS coisas estiverem confirmadas com substancia real na conversa: (1) ICP validado — ficou claro que a empresa e concessionaria oficial, grupo automotivo ou montadora, OU revenda de veiculos com pelo menos 50 veiculos em estoque (revenda menor que isso NAO e ICP, mesmo vendendo carros) — com alguma nocao de escala (numero de lojas e/ou vendedores); (2) dor real entendida — a area do problema foi identificada E a causa raiz ou o estado atual tambem (nunca aceite uma resposta de uma palavra como "tempo de resposta" ou "converter melhor" como suficiente — aprofunde antes). Se qualquer uma das duas faltar ou estiver rasa, continue perguntando — nao ofereca reuniao so pra nao perder o momentum. Se o cargo de quem esta conversando for puramente operacional e sem contexto de decisao, priorize entender se ha como envolver alguem com mais autoridade antes de propor reuniao. Quando as duas estiverem solidas, proponha de forma natural: o argumento e sempre que o especialista vai entender a operacao, chegar preparado e tirar todas as duvidas — diagnostico personalizado, nunca apresentacao de vendas. Se o lead recusar, aceita sem insistir, continua a conversa naturalmente e so retorna ao assunto se o momento se apresentar de forma organica. NUNCA proponha reuniao para leads fora do ICP automotivo — agencias de marketing/publicidade, fornecedores de tecnologia, consultorias, revendas com menos de 50 veiculos em estoque e qualquer empresa que nao seja concessionaria/grupo/revenda-com-escala/montadora estao fora do ICP mesmo que atuem no setor automotivo — nem para leads em modo suporte/redirecionamento. Nunca repita uma proposta que foi recusada na mesma mensagem ou na imediatamente anterior.',
+      'REGRA CRITICA — proposta de reuniao (gate obrigatorio, interesse sozinho NAO basta): NUNCA proponha reuniao so porque o lead demonstrou interesse, fez perguntas ou pareceu engajado — isso nao e qualificacao. So proponha quando TRES coisas estiverem confirmadas com substancia real na conversa: (1) ICP validado — ficou claro que a empresa e concessionaria oficial, grupo automotivo ou montadora, OU revenda de veiculos com pelo menos 50 veiculos em estoque (revenda menor que isso NAO e ICP, mesmo vendendo carros) — com alguma nocao de escala (numero de lojas e/ou vendedores); (2) cargo com poder de decisao ou influencia confirmado; (3) dor real entendida — a area do problema foi identificada E a causa raiz ou o estado atual tambem (nunca aceite uma resposta de uma palavra como "tempo de resposta" ou "converter melhor" como suficiente — aprofunde antes). Consultor(a) de vendas, consultor(a) comercial e vendedor(a) sao fit=disqualified por falta de poder de decisao: nao ofereca reuniao e nao tente contornar pedindo para incluir um diretor. Para outros cargos operacionais ainda incertos, mantenha em nutricao enquanto esclarece a autoridade. Quando os tres pontos estiverem solidos, proponha de forma natural: o argumento e sempre que o especialista vai entender a operacao, chegar preparado e tirar todas as duvidas — diagnostico personalizado, nunca apresentacao de vendas. Se o lead recusar, aceita sem insistir, continua a conversa naturalmente e so retorna ao assunto se o momento se apresentar de forma organica. NUNCA proponha reuniao para leads fora do ICP automotivo — agencias de marketing/publicidade, fornecedores de tecnologia, consultorias, revendas com menos de 50 veiculos em estoque, consultores de vendas/comerciais, vendedores e qualquer empresa que nao seja concessionaria/grupo/revenda-com-escala/montadora estao fora do ICP — nem para leads em modo suporte/redirecionamento. Nunca repita uma proposta que foi recusada na mesma mensagem ou na imediatamente anterior.',
 
       'REGRA CRITICA — lead quente: Marque is_hot=true quando o lead for claramente do ICP automotivo (concessionaria, grupo, montadora, ou revenda com pelo menos 50 veiculos em estoque) E demonstrar interesse genuino na conversa — fez perguntas, reconheceu um problema, respondeu com substancia. Nao precisa ter agendado reuniao. Isso sinaliza para o time que um vendedor pode abordar ativamente.',
 
@@ -336,7 +356,7 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
               { campo: 'tipo_de_operacao', descricao: 'Concessionaria oficial, grupo automotivo, revenda de veiculos ou montadora — agencias de marketing/publicidade e empresas fora do varejo/distribuicao automotiva NAO qualificam, mesmo que atendam o setor automotivo', exemplo: 'Voces sao concessionaria oficial de alguma marca ou trabalham com multimarcas?' },
               { campo: 'estoque_revenda', descricao: 'APLICA-SE SOMENTE quando tipo_de_operacao for revenda de veiculos (nunca para concessionaria oficial, grupo automotivo ou montadora, que qualificam pelo tipo independentemente do estoque). Uma revenda so faz parte do ICP com um estoque de pelo menos 50 veiculos — abaixo disso e uma operacao pequena/informal fora do perfil-alvo da AutoForce. Se o lead informar um numero abaixo de 50, trate como fora do ICP (fit=disqualified, nao ofereca reuniao). Se nao informar um numero, nao avance pra reuniao ate confirmar — continue perguntando naturalmente, sem desqualificar so por falta de dado.', exemplo: 'Hoje voces trabalham com quantos veiculos em estoque, mais ou menos?' },
               { campo: 'escala_da_operacao', descricao: 'Numero aproximado de lojas/unidades e/ou vendedores — define se e uma operacao de tamanho relevante para a AutoForce', exemplo: 'Quantas unidades voces tem? / Quantos vendedores tem na operacao hoje?' },
-              { campo: 'cargo_do_contato', descricao: 'Cargo ou funcao de quem esta conversando. Cargos com poder de decisao ou influencia (dono, socio, diretor, gerente, coordenador, head, CEO) sao ideais. Cargo puramente operacional sem contexto de decisao (ex: estagiario, assistente sem autonomia) nao desqualifica a empresa, mas e sinal de nutricao, nao de reuniao imediata — nesses casos, busque entender se ha como envolver alguem com mais autoridade na conversa antes de propor reuniao. Use o que ja esta no sistema (jobTitle) antes de perguntar de novo.', exemplo: 'Voce cuida diretamente dessa area ou tem outra pessoa envolvida nessa decisao?' },
+              { campo: 'cargo_do_contato', descricao: 'Cargo ou funcao de quem esta conversando. Cargos com poder de decisao ou influencia (dono, socio, diretor, gerente, coordenador, head, CEO) sao necessarios. Consultor(a) de vendas, consultor(a) comercial e vendedor(a) ficam fora do ICP por nao possuirem poder de decisao: marque fit=disqualified e nao ofereca reuniao, mesmo que a empresa seja elegivel. Outros cargos operacionais ainda incertos (ex: estagiario, assistente sem autonomia) sao sinal de nutricao ate esclarecer a autoridade. Use o que ja esta no sistema (jobTitle) antes de perguntar de novo.', exemplo: 'Voce cuida diretamente dessa area ou tem outra pessoa envolvida nessa decisao?' },
             ],
             instrucao: 'Se a empresa ja esta no sistema, parta do que sabe e confirme ou aprofunde naturalmente. Nao repergunta o que ja esta claro. Se nao sabe nada da operacao, este e o primeiro bloco a descobrir. So marque fit=qualified ou avance pro bloco_2 com confianca depois de ter certeza real do tipo de operacao (e do estoque, quando for revenda) — duvida genuina aqui mantem o lead em nutricao/qualificacao, nunca avanca no escuro.',
           },
@@ -833,14 +853,17 @@ const SALES_CONTEXT = {
   ],
   criterios_para_nutricao: [
     'interesse inicial sem dor clara',
-    'cargo operacional sem contexto de decisao',
+    'cargo operacional ainda incerto, desde que nao seja consultor de vendas/comercial nem vendedor',
     'lead consumindo conteudo mas sem sinal comercial',
     'necessidade de descobrir maturidade, dor ou momento',
+  ],
+  criterios_para_desqualificacao: [
+    'consultor(a) de vendas, consultor(a) comercial ou vendedor(a), por nao possuir poder de decisao',
   ],
   objecoes_e_respostas: [
     { objecao: 'nao tenho orcamento / ta caro', resposta: 'Entendo. Mas me diz: quanto custa hoje um site que nao gera leads suficientes? O Autodromo nao e um custo, e um multiplicador de resultado. O que vale a pena e ver se faz sentido pro seu contexto — posso conectar voce com um especialista pra a gente entender juntos.' },
     { objecao: 'preciso de mais tempo / vou ver depois', resposta: 'Claro. Mas enquanto isso, sua concorrencia ta agindo agora. Posso agendar uma conversa rapida de 30 minutos com um especialista, sem compromisso, so pra voce ter mais clareza pra decidir?' },
-    { objecao: 'nao tenho poder de decisao', resposta: 'Sem problema. Podemos incluir seu diretor na conversa? Posso ajudar voce a preparar um argumento solido pro seu superior sobre o impacto real disso no faturamento.' },
+    { objecao: 'nao tenho poder de decisao', resposta: 'Se o contato for consultor de vendas, consultor comercial ou vendedor, ele fica fora do ICP e a Lara nao oferece reuniao. Para outros cargos cuja autoridade ainda esteja incerta, apenas esclareca o papel antes de decidir entre nutricao e qualificacao.' },
     { objecao: 'concorrencia ta mais barato', resposta: 'Preco e valor sao coisas diferentes. O Autodromo foi construido especificamente pro setor automotivo — nao e uma solucao generica. Vamos comparar o que realmente importa: resultado.' },
     { objecao: 'ja tenho um site', resposta: 'Seu site e um cartao de visita ou e uma maquina de vendas? Se voce pudesse ter mais leads qualificados sem aumentar midia paga, faria sentido olhar?' },
     { objecao: 'nunca ouvi falar da AutoForce', resposta: 'Entendo. A AutoForce tem mais de 2.200 concessionarias na base e 10 anos de especializacao no setor automotivo. Posso te mostrar cases de quem estava na mesma situacao que voce.' },

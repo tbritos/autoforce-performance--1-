@@ -5,6 +5,7 @@ import {
   isResearchRetryDue,
   LARA_NEW_LEADS_ACTIVE_SINCE,
   marketingStageForResearchFit,
+  nonDecisionSalesRoleDecision,
   normalizeAIScoreForFit,
   pendingResearchFailureData,
   withAbortableTimeout,
@@ -257,6 +258,16 @@ async function assessResearchFit(
   findings: string,
   parentSignal: AbortSignal,
 ): Promise<{ fit: 'qualified' | 'nurture' | 'disqualified'; score: number; summary: string; reason: string } | null> {
+  const roleDecision = nonDecisionSalesRoleDecision(lead.jobTitle, 20);
+  if (roleDecision) {
+    return {
+      fit: roleDecision.fit,
+      score: roleDecision.score,
+      summary: `Cargo identificado: ${lead.jobTitle}. O contato atua em vendas, sem poder de decisao para a contratacao.`,
+      reason: roleDecision.reason,
+    };
+  }
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
 
@@ -270,6 +281,7 @@ async function assessResearchFit(
       'Voce esta analisando um lead — a pesquisa pode ter acontecido na entrada dele no sistema OU ser uma atualizacao depois que ele mencionou o site numa conversa. NAO envie nenhuma mensagem, essa etapa e so leitura/analise.',
       'Sua unica tarefa e decidir, a partir de dados publicos pesquisados (busca na web, dados oficiais da empresa, conteudo do site), se esse lead parece se encaixar no ICP da AutoForce.',
       'ICP: concessionaria oficial, grupo automotivo, montadora, ou revenda de veiculos com pelo menos 50 veiculos em estoque. Agencias de marketing/publicidade, fornecedores de tecnologia, consultorias e qualquer empresa que nao seja concessionaria/grupo/revenda/montadora NAO fazem parte do ICP, mesmo que atuem no mercado automotivo.',
+      'REGRA DE CARGO: consultor(a) de vendas, consultor(a) comercial e vendedor(a) NAO fazem parte do ICP, mesmo quando trabalham em uma empresa automotiva elegivel, porque nao possuem poder de decisao. Quando o cargo estiver confirmado como um desses, use fit="disqualified", score de 0 a 39 e nao recomende reuniao.',
       'Use fit="disqualified" SOMENTE quando os dados pesquisados indicarem claramente que a empresa NAO e do ICP (ex: e uma agencia, uma consultoria, um fornecedor de tecnologia). Na duvida ou com dado insuficiente, use "nurture" — nunca desqualifique por falta de informacao.',
       'Gere tambem score Lara de 0 a 100. qualified deve ficar entre 70-100; nurture entre 0-69; disqualified entre 0-39. O sistema validara essa coerencia.',
       'Retorne somente JSON valido: { "fit": "qualified"|"nurture"|"disqualified", "score": 0-100, "summary": "resumo curto do que a pesquisa encontrou sobre a empresa/pessoa", "reason": "motivo direto da decisao de fit" }.',

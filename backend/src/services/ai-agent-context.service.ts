@@ -91,7 +91,7 @@ const DEFAULT_AGENT = {
     'A pre-qualificacao deve diagnosticar antes de vender. Entenda a dor antes de apresentar solucao.',
     'Use o que ja sabe sobre o lead (empresa, cargo, campanha de origem) para contextualizar as perguntas — nunca peca informacao que ja esta no sistema.',
     'Para considerar um lead qualificado (SQL), o agente precisa saber: empresa identificada, segmento definido, dor principal mapeada, abertura para conhecer a solucao.',
-    'Leads com interesse inicial mas sem dor clara ou autoridade continuam em nutricao.',
+    'Leads com interesse inicial mas sem dor clara continuam em nutricao. Consultores de vendas, consultores comerciais e vendedores ficam fora do ICP por nao terem poder de decisao.',
     'Nao prometer preco, desconto, prazo ou resultado garantido.',
   ].join('\n'),
   icp: {
@@ -121,7 +121,7 @@ const DEFAULT_AGENT = {
     nurture: ['interesse inicial sem dor clara', 'sem momento definido', 'precisa de educacao antes da abordagem comercial'],
   },
   disqualificationCriteria: {
-    examples: ['fora do mercado automotivo', 'agencia de marketing/publicidade (mesmo que atenda o setor automotivo)', 'fornecedor de tecnologia ou consultoria', 'revenda de veiculos com menos de 50 veiculos em estoque', 'desinteresse explicito', 'pedido fora do escopo', 'contato invalido'],
+    examples: ['fora do mercado automotivo', 'agencia de marketing/publicidade (mesmo que atenda o setor automotivo)', 'fornecedor de tecnologia ou consultoria', 'revenda de veiculos com menos de 50 veiculos em estoque', 'consultor(a) de vendas, consultor(a) comercial ou vendedor(a), por nao possuir poder de decisao', 'desinteresse explicito', 'pedido fora do escopo', 'contato invalido'],
   },
   toneOfVoice: ['consultivo', 'objetivo', 'humano', 'sem pressao excessiva'],
   safetyRules: [

@@ -11,6 +11,9 @@ export type LaraMarketingStage =
 export type LaraMarketingStageSource = 'ai' | 'system' | 'manual' | 'research';
 export type LaraResearchFit = 'qualified' | 'nurture' | 'disqualified';
 
+export const NON_DECISION_SALES_ROLE_REASON =
+  'Consultores de vendas e vendedores nao fazem parte do ICP porque nao possuem poder de decisao.';
+
 const TERMINAL_AUTOMATION_STAGES: LaraMarketingStage[] = [
   'REUNIAO_AGENDADA',
   'TRANSFERIDO_HUMANO',
@@ -35,6 +38,29 @@ const RESEARCH_RETRY_BACKOFF_MS = [0, 5 * 60 * 1000, 30 * 60 * 1000];
 // independentemente de tag ou origem (inclusive importacao e RD). O corte
 // evita que a liberacao reprocesse automaticamente toda a base historica.
 export const LARA_NEW_LEADS_ACTIVE_SINCE = new Date('2026-07-30T03:00:00.000Z');
+
+export function isNonDecisionSalesRole(jobTitle: unknown): boolean {
+  const normalized = String(jobTitle ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+  if (!normalized) return false;
+
+  return /\b(?:vendedor(?:a|es|as)?|consultor(?:a|es|as)?\s+(?:de\s+)?vendas?|consultor(?:a|es|as)?\s+comercial(?:is)?)\b/.test(normalized);
+}
+
+export function nonDecisionSalesRoleDecision(
+  jobTitle: unknown,
+  proposedScore: unknown = 20,
+): { fit: 'disqualified'; score: number; reason: string } | null {
+  if (!isNonDecisionSalesRole(jobTitle)) return null;
+  return {
+    fit: 'disqualified',
+    score: normalizeAIScoreForFit('disqualified', proposedScore),
+    reason: NON_DECISION_SALES_ROLE_REASON,
+  };
+}
 
 export async function withAbortableTimeout<T>(
   operation: (signal: AbortSignal) => Promise<T>,

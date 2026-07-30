@@ -5,9 +5,11 @@ import {
   countSentFollowUp,
   fetchWithAIRequestTimeout,
   isHumanHandoffStage,
+  isNonDecisionSalesRole,
   kanbanCardQueryLimit,
   LARA_NEW_LEADS_ACTIVE_SINCE,
   marketingStageForResearchFit,
+  nonDecisionSalesRoleDecision,
   normalizeAIScoreForFit,
   pendingResearchFailureData,
   protectedMarketingStagesForSource,
@@ -95,6 +97,22 @@ test('retry da pesquisa usa a ultima tentativa como inicio do backoff', () => {
 
 test('corte da Lara preserva a base antiga sem excluir novos leads por origem', () => {
   assert.equal(LARA_NEW_LEADS_ACTIVE_SINCE.toISOString(), '2026-07-30T03:00:00.000Z');
+});
+
+test('vendedor e consultor de vendas ficam fora do ICP por falta de poder de decisao', () => {
+  assert.equal(isNonDecisionSalesRole('Vendedor'), true);
+  assert.equal(isNonDecisionSalesRole('Vendedora de veículos'), true);
+  assert.equal(isNonDecisionSalesRole('Consultora de Vendas'), true);
+  assert.equal(isNonDecisionSalesRole('Consultor comercial'), true);
+  assert.equal(isNonDecisionSalesRole('Gerente Comercial'), false);
+  assert.equal(isNonDecisionSalesRole('Diretor de Vendas'), false);
+  assert.equal(isNonDecisionSalesRole('Consultor Técnico'), false);
+  assert.deepEqual(nonDecisionSalesRoleDecision('Consultora de Vendas', 95), {
+    fit: 'disqualified',
+    score: 39,
+    reason: 'Consultores de vendas e vendedores nao fazem parte do ICP porque nao possuem poder de decisao.',
+  });
+  assert.equal(nonDecisionSalesRoleDecision('Gerente Comercial', 95), null);
 });
 
 test('falha de pesquisa permanece pendente para a proxima tentativa', () => {
