@@ -15,6 +15,16 @@ export type SegmentRules = {
 
 export class SegmentService {
 
+  private static csvCell(value: unknown): string {
+    if (value === null || value === undefined) return '';
+    const text = Array.isArray(value)
+      ? value.join(', ')
+      : typeof value === 'object'
+        ? JSON.stringify(value)
+        : String(value);
+    return /[;"\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  }
+
   static buildWhere(rules: SegmentRules): Prisma.LeadWhereInput {
     const base: Prisma.LeadWhereInput = { deletedAt: null };
     if (!rules.conditions || !rules.conditions.length) return base;
@@ -154,5 +164,41 @@ export class SegmentService {
       }),
     ]);
     return { total, page, pageSize, leads };
+  }
+
+  static async exportSegment(id: string) {
+    const seg = await prisma.segment.findUniqueOrThrow({ where: { id } });
+    const where = SegmentService.buildWhere(seg.rules as unknown as SegmentRules);
+    const leads = await prisma.lead.findMany({
+      where,
+      orderBy: { lastSeenAt: 'desc' },
+      select: {
+        name: true, email: true, phone: true, company: true, jobTitle: true,
+        city: true, state: true, status: true, score: true, aiScore: true,
+        isHot: true, firstSource: true, firstMedium: true, firstCampaign: true,
+        assignedTo: true, tags: true, firstSeenAt: true, lastSeenAt: true,
+        siteUrl: true, customFields: true,
+      },
+    });
+
+    const headers = [
+      'Nome', 'E-mail', 'Telefone', 'Empresa', 'Cargo', 'Cidade', 'Estado',
+      'Status', 'Score', 'Score Lara', 'Lead quente', 'Fonte', 'UTM Medium',
+      'Campanha', 'Responsável', 'Tags', 'Site', 'Criado em', 'Última atividade',
+      'Campos personalizados',
+    ];
+    const rows = leads.map(lead => [
+      lead.name, lead.email, lead.phone, lead.company, lead.jobTitle, lead.city,
+      lead.state, lead.status, lead.score, lead.aiScore, lead.isHot ? 'Sim' : 'Não',
+      lead.firstSource, lead.firstMedium, lead.firstCampaign, lead.assignedTo,
+      lead.tags, lead.siteUrl, lead.firstSeenAt.toISOString(), lead.lastSeenAt.toISOString(),
+      lead.customFields,
+    ].map(SegmentService.csvCell));
+
+    return {
+      filename: `segmento-${seg.name.trim().toLowerCase().replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || id}.csv`,
+      count: leads.length,
+      csv: '\uFEFF' + [headers, ...rows].map(row => row.join(';')).join('\r\n'),
+    };
   }
 }

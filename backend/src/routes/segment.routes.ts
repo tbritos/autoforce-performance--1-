@@ -6,6 +6,7 @@ const router = Router();
 router.get('/',          SegmentController.list);
 router.post('/',         SegmentController.create);
 router.post('/preview',  SegmentController.preview);
+router.get('/:id/export', SegmentController.export);
 router.get('/:id',       SegmentController.get);
 router.put('/:id',       SegmentController.update);
 router.delete('/:id',    SegmentController.remove);

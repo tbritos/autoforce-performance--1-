@@ -1765,6 +1765,10 @@ export async function getSegmentLeads(id: string, page = 1, pageSize = 25) {
   return apiClient.get<any>(`/segments/${id}/leads?page=${page}&pageSize=${pageSize}`);
 }
 
+export async function exportSegment(id: string): Promise<{ filename: string; count: number; csv: string }> {
+  return apiClient.get<{ filename: string; count: number; csv: string }>(`/segments/${id}/export`);
+}
+
 // ─── Lead Scoring ───────────────────────────────────────────────────────────
 // Regras aplicadas automaticamente a todo lead novo que entra no sistema
 // (webhook, WhatsApp, CSV, criação manual, e-mail recebido).
@@ -1804,4 +1808,3 @@ export async function deleteLeadScoringRule(id: string): Promise<void> {
 export async function applyLeadScoringRulesToExisting(): Promise<{ message: string; updated: number; evaluated: number }> {
   return apiClient.post<{ message: string; updated: number; evaluated: number }>('/lead-scoring/apply-existing', {});
 }
-

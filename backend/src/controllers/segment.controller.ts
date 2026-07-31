@@ -47,4 +47,8 @@ export class SegmentController {
       ));
     } catch (e) { next(e); }
   }
+
+  static async export(req: Request, res: Response, next: NextFunction) {
+    try { res.json(await SegmentService.exportSegment(req.params.id)); } catch (e) { next(e); }
+  }
 }

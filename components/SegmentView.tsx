@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Edit2, Trash2, Users, X } from 'lucide-react';
+import { Plus, Edit2, Trash2, Users, X, Download } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import * as DataService from '../services/dataService';
 
@@ -661,6 +661,7 @@ export const SegmentView: React.FC = () => {
   const [editingSegment, setEditingSegment] = useState<DataService.SegmentType|null>(null);
   const [viewingSegment, setViewingSegment] = useState<DataService.SegmentType|null>(null);
   const [deletingId, setDeletingId]     = useState<string|null>(null);
+  const [exportingId, setExportingId]   = useState<string|null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -680,6 +681,24 @@ export const SegmentView: React.FC = () => {
     try { await DataService.deleteSegment(id); await load(); }
     catch { alert('Erro ao excluir segmento'); }
     finally { setDeletingId(null); }
+  };
+
+  const handleExport = async (seg: DataService.SegmentType) => {
+    setExportingId(seg.id);
+    try {
+      const result = await DataService.exportSegment(seg.id);
+      const blob = new Blob([result.csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = result.filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Não foi possível exportar este segmento.');
+    } finally {
+      setExportingId(null);
+    }
   };
 
   return (
@@ -783,6 +802,9 @@ export const SegmentView: React.FC = () => {
                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                 }}>
                   <Users size={12} /> Ver leads
+                </button>
+                <button onClick={() => handleExport(seg)} disabled={exportingId === seg.id} title="Exportar leads deste segmento" style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', fontSize: 12, color: exportingId === seg.id ? '#d1d5db' : 'var(--fg-muted)', cursor: exportingId === seg.id ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center' }}>
+                  <Download size={13} />
                 </button>
                 <button onClick={() => openEdit(seg)} title="Editar" style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', fontSize: 12, color: 'var(--fg-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
                   <Edit2 size={13} />
