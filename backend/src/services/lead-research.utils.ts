@@ -33,6 +33,7 @@ export interface NormalizedResearchAssessment {
   summary: string;
   reason: string;
   businessType: ResearchBusinessType;
+  vehicleStock: number | null;
   evidence: ResearchEvidence[];
 }
 
@@ -118,6 +119,14 @@ export function normalizeResearchAssessment(
     ? rawBusinessType as ResearchBusinessType
     : 'unknown';
   const evidence = parseEvidence(raw.evidence);
+  const rawVehicleStock = raw.vehicle_stock === null
+    || raw.vehicle_stock === undefined
+    || raw.vehicle_stock === ''
+    ? Number.NaN
+    : Number(raw.vehicle_stock);
+  const vehicleStock = Number.isFinite(rawVehicleStock) && rawVehicleStock >= 0
+    ? Math.floor(rawVehicleStock)
+    : null;
   const requestedFit: LaraResearchFit = raw.fit === 'qualified' || raw.fit === 'disqualified'
     ? raw.fit
     : 'nurture';
@@ -128,14 +137,14 @@ export function normalizeResearchAssessment(
   } else if (fit === 'disqualified' && evidence.length === 0) {
     fit = 'nurture';
   } else if (fit === 'qualified') {
-    const stock = Number(raw.vehicle_stock);
+    const hasStrongBusinessEvidence = evidence.some(item => item.source === 'official_site' || item.source === 'cnpj');
     const eligibleType = businessType === 'dealership'
       || businessType === 'automotive_group'
       || businessType === 'automaker'
-      || (businessType === 'vehicle_reseller' && Number.isFinite(stock) && stock >= 50);
+      || (businessType === 'vehicle_reseller' && vehicleStock !== null && vehicleStock >= 50);
     // Uma resposta "qualified" sem identificar uma empresa elegível nunca
     // avança sozinha. Falta de evidência vira nurture, não desqualificação.
-    if (!eligibleType || evidence.length === 0) fit = 'nurture';
+    if (!eligibleType || !hasStrongBusinessEvidence) fit = 'nurture';
   }
 
   return {
@@ -148,6 +157,7 @@ export function normalizeResearchAssessment(
       ? raw.reason.trim().slice(0, 1000)
       : 'Pesquisa automática de informação',
     businessType,
+    vehicleStock,
     evidence,
   };
 }

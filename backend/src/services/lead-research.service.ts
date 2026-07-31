@@ -11,7 +11,9 @@ import {
 import {
   buildLeadResearchQuery,
   normalizeResearchAssessment,
+  type NormalizedResearchAssessment,
 } from './lead-research.utils';
+import { normalizeWebsiteUrl } from './lead-site.utils';
 
 // Pesquisa automatica de informacao (coluna "Novo" do CRM Lara) — dispara
 // quando um lead novo chega por qualquer origem (campanha, WhatsApp, RD,
@@ -27,7 +29,7 @@ export const MAX_RESEARCH_ATTEMPTS = 3;
 const OVERALL_TIMEOUT_MS = 50_000;
 const TAVILY_TIMEOUT_MS = 8_000;
 const BRASIL_API_TIMEOUT_MS = 5_000;
-const SITE_RESEARCH_TIMEOUT_MS = 20_000;
+const SITE_RESEARCH_TIMEOUT_MS = 26_000;
 const RESEARCH_AI_TIMEOUT_MS = 12_000;
 const RESEARCH_QUEUE_CONCURRENCY = 3;
 
@@ -177,7 +179,25 @@ const NON_OFFICIAL_SITE_DOMAINS = [
   'consultasocio.com', 'apontador.com.br', 'guiamais.com.br', 'telelistas.net', 'casadados.com.br',
 ];
 
-function candidateSiteFromSearchResults(results: Array<{ url?: string }>): string | null {
+function identityTokens(value: string | null | undefined): string[] {
+  if (!value) return [];
+  const ignored = new Set(['grupo', 'empresa', 'comercio', 'comercial', 'automoveis', 'veiculos', 'ltda', 'sa']);
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(token => token.length >= 4 && !ignored.has(token));
+}
+
+function candidateSitesFromSearchResults(
+  results: Array<{ title?: string; url?: string; content?: string }>,
+  company: string | null,
+): string[] {
+  const companyTokens = identityTokens(company);
+  if (companyTokens.length === 0) return [];
+  const candidates: string[] = [];
+
   for (const r of results) {
     if (!r.url) continue;
     let hostname: string;
@@ -187,9 +207,16 @@ function candidateSiteFromSearchResults(results: Array<{ url?: string }>): strin
       continue;
     }
     if (NON_OFFICIAL_SITE_DOMAINS.some(d => hostname === d || hostname.endsWith(`.${d}`))) continue;
-    return `https://${hostname}`;
+    const context = `${hostname} ${r.title ?? ''} ${r.content ?? ''}`
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+    if (!companyTokens.some(token => context.includes(token))) continue;
+    const candidate = `https://${hostname}`;
+    if (!candidates.includes(candidate)) candidates.push(candidate);
+    if (candidates.length >= 3) break;
   }
-  return null;
+  return candidates;
 }
 
 // No máximo 2 visitas de site (Chromium) simultâneas em todo o processo —
@@ -198,36 +225,89 @@ function candidateSiteFromSearchResults(results: Array<{ url?: string }>): strin
 // frequente que só quando a IA aprendia o site numa conversa ao vivo).
 const MAX_CONCURRENT_SITE_FETCHES = 2;
 let inFlightSiteFetches = 0;
+const siteFetchWaiters: Array<{
+  resolve: () => void;
+  reject: (error: Error) => void;
+  signal: AbortSignal;
+  onAbort: () => void;
+}> = [];
+
+async function acquireSiteFetchSlot(signal: AbortSignal): Promise<void> {
+  if (signal.aborted) throw new Error('Visita de site cancelada');
+  if (inFlightSiteFetches < MAX_CONCURRENT_SITE_FETCHES) {
+    inFlightSiteFetches++;
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const waiter = {
+      resolve,
+      reject,
+      signal,
+      onAbort: () => reject(new Error('Visita de site cancelada enquanto aguardava a fila')),
+    };
+    signal.addEventListener('abort', waiter.onAbort, { once: true });
+    siteFetchWaiters.push(waiter);
+  });
+}
+
+function releaseSiteFetchSlot(): void {
+  while (siteFetchWaiters.length > 0) {
+    const waiter = siteFetchWaiters.shift()!;
+    waiter.signal.removeEventListener('abort', waiter.onAbort);
+    if (waiter.signal.aborted) continue;
+    // A vaga e transferida diretamente; inFlight continua igual.
+    waiter.resolve();
+    return;
+  }
+  inFlightSiteFetches = Math.max(0, inFlightSiteFetches - 1);
+}
+
+type SiteDiscoverySource = 'lead_provided' | 'corporate_email' | 'web_search';
+
+interface DiscoveredSite {
+  siteUrl: string;
+  summary: string;
+  visitedUrls: string[];
+  source: SiteDiscoverySource;
+}
 
 async function discoverAndVisitSite(
   email: string,
+  company: string | null,
   existingSiteUrl: string | null,
-  searchResults: Array<{ url?: string }>,
+  searchResults: Array<{ title?: string; url?: string; content?: string }>,
   parentSignal: AbortSignal,
-): Promise<{ siteUrl: string; summary: string } | null> {
-  const candidates = [
-    existingSiteUrl,
-    candidateSiteFromEmail(email),
-    candidateSiteFromSearchResults(searchResults),
-  ].filter((c): c is string => !!c);
-  if (candidates.length === 0) return null;
+): Promise<DiscoveredSite | null> {
+  const candidates: Array<{ url: string; source: SiteDiscoverySource }> = [
+    ...(existingSiteUrl ? [{ url: existingSiteUrl, source: 'lead_provided' as const }] : []),
+    ...(candidateSiteFromEmail(email) ? [{ url: candidateSiteFromEmail(email)!, source: 'corporate_email' as const }] : []),
+    ...candidateSitesFromSearchResults(searchResults, company).map(url => ({ url, source: 'web_search' as const })),
+  ];
+  const uniqueCandidates = candidates.filter((candidate, index, all) => {
+    const normalized = normalizeWebsiteUrl(candidate.url);
+    return normalized && all.findIndex(other => normalizeWebsiteUrl(other.url) === normalized) === index;
+  });
+  if (uniqueCandidates.length === 0) return null;
 
-  if (inFlightSiteFetches >= MAX_CONCURRENT_SITE_FETCHES) {
-    console.log(`[LeadResearch] limite de visitas de site simultâneas atingido — ${email} sem verificação de site nessa rodada`);
-    return null;
-  }
-
-  inFlightSiteFetches++;
+  await acquireSiteFetchSlot(parentSignal);
   try {
     return await withAbortableTimeout(
       async signal => {
-        for (const candidate of candidates) {
+        for (const candidate of uniqueCandidates) {
           try {
-            const { summary } = await fetchAndSummarizeSite(candidate, signal);
-            if (summary) return { siteUrl: candidate, summary };
+            const normalizedUrl = normalizeWebsiteUrl(candidate.url);
+            if (!normalizedUrl) continue;
+            const { summary, visitedUrls } = await fetchAndSummarizeSite(normalizedUrl, signal);
+            if (summary) return {
+              siteUrl: visitedUrls[0] ?? normalizedUrl,
+              summary,
+              visitedUrls,
+              source: candidate.source,
+            };
           } catch (err) {
             if (signal.aborted) throw err;
-            console.warn(`[LeadResearch] falha ao visitar candidato de site ${candidate} para ${email}:`, err instanceof Error ? err.message : err);
+            console.warn(`[LeadResearch] falha ao visitar candidato de site ${candidate.url} para ${email}:`, err instanceof Error ? err.message : err);
           }
         }
         return null;
@@ -244,7 +324,7 @@ async function discoverAndVisitSite(
     );
     return null;
   } finally {
-    inFlightSiteFetches--;
+    releaseSiteFetchSlot();
   }
 }
 
@@ -264,7 +344,7 @@ async function assessResearchFit(
     previousResearch?: string | null;
   },
   parentSignal: AbortSignal,
-): Promise<{ fit: 'qualified' | 'nurture' | 'disqualified'; score: number; summary: string; reason: string } | null> {
+): Promise<NormalizedResearchAssessment | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
 
@@ -280,7 +360,11 @@ async function assessResearchFit(
       'ICP: concessionaria oficial, grupo automotivo, montadora, ou revenda de veiculos com pelo menos 50 veiculos em estoque. Agencias de marketing/publicidade, fornecedores de tecnologia, consultorias e qualquer empresa que nao seja concessionaria/grupo/revenda/montadora NAO fazem parte do ICP, mesmo que atuem no mercado automotivo.',
       'Comece identificando O QUE A EMPRESA VENDE OU FAZ. Uma empresa que vende software, BI, CRM, marketing, consultoria ou outros servicos PARA concessionarias e fornecedora, nao concessionaria. Palavras automotivas, logos de clientes, noticias do setor e frases como "para sua concessionaria" nao provam que a propria empresa venda veiculos.',
       'O conteudo do site oficial informado pelo lead e a fonte principal sobre a atividade da empresa. Se nome, cargo, resumo anterior ou resultados genericos da web entrarem em conflito com o site oficial, prefira o site. O nome digitado pelo lead pode ser falso ou sem sentido.',
+      'Observe a linha "Origem da descoberta". lead_provided e corporate_email sao sinais fortes do dominio. web_search e apenas um candidato: confirme pelo conteudo que ele representa a empresa pesquisada; se essa correspondencia nao estiver clara, nao o trate como site oficial.',
       'Nao invente CNPJ, estoque, atividade, cargo ou tipo de empresa. Cada afirmacao da decisao deve estar apoiada em evidence. Se nao houver evidencia suficiente para afirmar que a empresa e do ICP, use nurture.',
+      'Para vehicle_stock, informe um numero somente quando a quantidade estiver comprovada pelo site (contador de resultados, total de anuncios ou listagem inequivoca). Nunca estime estoque por fotos, marcas, numero de lojas ou frases promocionais.',
+      'Uma concessionaria oficial pode ser qualified sem contagem de estoque quando o site comprovar claramente a representacao/venda oficial de uma marca. Uma revenda independente exige estoque comprovado de pelo menos 50 veiculos.',
+      'Cada item de evidence deve repetir um fato concreto presente nas fontes recebidas. Nao use conhecimento previo do modelo e nao cite uma fonte que nao esteja preenchida.',
       'REGRA DE CARGO: consultor(a) de vendas, consultor(a) comercial e vendedor(a) NAO fazem parte do ICP, mesmo quando trabalham em uma empresa automotiva elegivel, porque nao possuem poder de decisao. Quando o cargo estiver confirmado como um desses, use fit="disqualified", score de 0 a 39 e nao recomende reuniao.',
       'Use fit="disqualified" SOMENTE quando os dados pesquisados indicarem claramente que a empresa NAO e do ICP (ex: e uma agencia, uma consultoria, um fornecedor de tecnologia). Na duvida ou com dado insuficiente, use "nurture" — nunca desqualifique por falta de informacao.',
       'Gere tambem score Lara de 0 a 100. qualified deve ficar entre 70-100; nurture entre 0-69; disqualified entre 0-39. O sistema validara essa coerencia.',
@@ -432,8 +516,15 @@ async function runResearch(
   const webSearch = await searchWeb(researchQuery, signal);
   const webFindings = webSearch.text;
 
-  const siteResult = await discoverAndVisitSite(email, lead.siteUrl, webSearch.results, signal);
-  const siteFindings = siteResult ? `Conteúdo do site (${siteResult.siteUrl}): ${siteResult.summary}` : null;
+  const siteResult = await discoverAndVisitSite(email, lead.company, lead.siteUrl, webSearch.results, signal);
+  const siteFindings = siteResult
+    ? [
+        `Site consultado: ${siteResult.siteUrl}`,
+        `Origem da descoberta: ${siteResult.source}`,
+        `Páginas consultadas: ${siteResult.visitedUrls.join(', ')}`,
+        `Conteúdo extraído: ${siteResult.summary}`,
+      ].join('\n')
+    : null;
 
   let cnpjFindings: string | null = null;
   // Um CNPJ publicado no próprio site é mais confiável que o primeiro número
@@ -466,7 +557,11 @@ async function runResearch(
       data: {
         ...pendingResearchFailureData(),
         researchSummary: findings.slice(0, 1800),
-        ...(siteResult ? { siteUrl: siteResult.siteUrl } : {}),
+        ...(siteResult ? {
+          siteUrl: siteResult.siteUrl,
+          researchVisitedUrls: siteResult.visitedUrls,
+          researchSiteSource: siteResult.source,
+        } : {}),
       },
     });
     console.log(`[LeadResearch] ${email} — avaliacao inconclusiva; nova tentativa sera agendada`);
@@ -479,8 +574,15 @@ async function runResearch(
       researchedAt: new Date(),
       researchSummary: assessment.summary,
       researchIcpSignal: assessment.fit,
+      researchBusinessType: assessment.businessType,
+      researchVehicleStock: assessment.vehicleStock,
+      researchEvidence: assessment.evidence as any,
       ...(assessment.fit === 'disqualified' ? { isHot: false } : {}),
-      ...(siteResult ? { siteUrl: siteResult.siteUrl } : {}),
+      ...(siteResult ? {
+        siteUrl: siteResult.siteUrl,
+        researchVisitedUrls: siteResult.visitedUrls,
+        researchSiteSource: siteResult.source,
+      } : {}),
     },
   });
   // Pesquisa preenche o score somente enquanto a Lara ainda nao avaliou a
@@ -543,12 +645,12 @@ export async function refreshSiteResearch(leadEmailRaw: string, siteUrl: string)
     });
     if (!lead) return;
 
-    const { summary } = await withAbortableTimeout(
+    const { summary, visitedUrls } = await withAbortableTimeout(
       signal => fetchAndSummarizeSite(siteUrl, signal),
       OVERALL_SITE_FETCH_TIMEOUT_MS,
       `visita de site (${siteUrl})`,
     );
-    const siteFindings = `Conteúdo do site (${siteUrl}): ${summary}`;
+    const siteFindings = `Site informado pelo lead: ${siteUrl}\nPáginas consultadas: ${visitedUrls.join(', ')}\nConteúdo extraído: ${summary}`;
     const combinedFindings = [lead.researchSummary, siteFindings].filter(Boolean).join('\n\n');
 
     const assessment = await withAbortableTimeout(
@@ -572,6 +674,13 @@ export async function refreshSiteResearch(leadEmailRaw: string, siteUrl: string)
         // sem chave do Gemini configurada, mantem o sinal anterior em vez
         // de apagar uma decisao boa que ja existia.
         ...(assessment ? { researchIcpSignal: assessment.fit } : {}),
+        ...(assessment ? {
+          researchBusinessType: assessment.businessType,
+          researchVehicleStock: assessment.vehicleStock,
+          researchEvidence: assessment.evidence as any,
+        } : {}),
+        researchVisitedUrls: visitedUrls,
+        researchSiteSource: 'lead_provided',
       },
     });
     if (assessment) {

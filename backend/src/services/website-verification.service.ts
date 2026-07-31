@@ -11,10 +11,19 @@ import { chromium } from 'playwright';
 // (quando chamar, onde salvar o resultado, decisao de fit) vive la, nao
 // aqui — este arquivo so garante que a busca em si e segura.
 
-const NAV_TIMEOUT_MS = 18_000;
+const HOME_NAV_TIMEOUT_MS = 10_000;
+const SECONDARY_NAV_TIMEOUT_MS = 5_000;
 const DNS_TIMEOUT_MS = 5_000;
 export const OVERALL_SITE_FETCH_TIMEOUT_MS = 35_000;
-const MAX_TEXT_LENGTH = 1800;
+const MAX_TEXT_PER_PAGE = 2600;
+const MAX_TOTAL_TEXT_LENGTH = 9000;
+const MAX_PAGES_PER_SITE = 4;
+
+const RELEVANT_PAGE_TERMS = [
+  'estoque', 'veiculos', 'veículos', 'seminovos', 'usados', 'novos',
+  'lojas', 'unidades', 'concessionarias', 'concessionárias', 'marcas',
+  'sobre', 'quem-somos', 'quem somos', 'empresa', 'produtos', 'servicos', 'serviços',
+];
 
 export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -131,7 +140,11 @@ async function resolveAndValidateHost(hostname: string): Promise<string> {
 // ─── Validacao/normalizacao da URL ────────────────────────────────────────────
 
 export function validateAndNormalizeUrl(raw: string): URL {
-  const url = new URL(raw.trim());
+  const trimmed = raw.trim();
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) && !/^https?:\/\//i.test(trimmed)) {
+    throw new Error('Protocolo nao permitido');
+  }
+  const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new Error(`Protocolo nao permitido: ${url.protocol}`);
   }
@@ -143,14 +156,52 @@ export function validateAndNormalizeUrl(raw: string): URL {
 
 // ─── Extracao de texto + defesa contra prompt injection ───────────────────────
 
-function sanitizeExtractedText(raw: string): string {
+function sanitizeExtractedText(raw: string, maxLength = MAX_TEXT_PER_PAGE): string {
   return raw
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/ignore\s+(all\s+|previous\s+|prior\s+|above\s+)*instructions?/gi, '[trecho removido]')
     .replace(/system\s+prompt/gi, '[trecho removido]')
     .replace(/you\s+are\s+now/gi, '[trecho removido]')
-    .slice(0, MAX_TEXT_LENGTH);
+    .slice(0, maxLength);
+}
+
+function alternateWwwHostname(hostname: string): string {
+  return hostname.toLowerCase().startsWith('www.')
+    ? hostname.slice(4)
+    : `www.${hostname}`;
+}
+
+async function resolveAllowedHosts(primaryHostname: string): Promise<Map<string, string>> {
+  const primary = primaryHostname.toLowerCase();
+  const hosts = [primary, alternateWwwHostname(primary)];
+  const resolved = new Map<string, string>();
+
+  const results = await Promise.allSettled(hosts.map(hostname =>
+    withTimeout(resolveAndValidateHost(hostname), DNS_TIMEOUT_MS, `resolucao DNS de ${hostname}`),
+  ));
+  if (results[0].status === 'rejected') throw results[0].reason;
+  resolved.set(primary, results[0].value);
+  if (results[1].status === 'fulfilled') {
+    resolved.set(hosts[1], results[1].value);
+  }
+  return resolved;
+}
+
+function relevantLinkScore(href: string, label: string): number {
+  const haystack = `${href} ${label}`.toLowerCase();
+  const index = RELEVANT_PAGE_TERMS.findIndex(term => haystack.includes(term));
+  return index === -1 ? -1 : RELEVANT_PAGE_TERMS.length - index;
+}
+
+function relevantLinkCategory(href: string, label: string): string {
+  const haystack = `${href} ${label}`.toLowerCase();
+  if (/estoque|ve[ií]culos|seminovos|usados|\bnovos\b/.test(haystack)) return 'inventory';
+  if (/lojas|unidades|concession[aá]rias/.test(haystack)) return 'locations';
+  if (/sobre|quem[-\s]?somos|empresa/.test(haystack)) return 'about';
+  if (/marcas/.test(haystack)) return 'brands';
+  if (/produtos|servi[cç]os/.test(haystack)) return 'products';
+  return href;
 }
 
 // ─── Busca da pagina (Chromium isolado por checagem) ──────────────────────────
@@ -159,10 +210,13 @@ function sanitizeExtractedText(raw: string): string {
 // desse texto e sempre feita pela IA (ver assessResearchFit em
 // lead-research.service.ts), nao por uma heuristica local aqui, pra nao ter
 // duas logicas de julgamento de ICP divergentes no sistema.
-export async function fetchAndSummarizeSite(rawUrl: string, signal?: AbortSignal): Promise<{ summary: string }> {
+export async function fetchAndSummarizeSite(
+  rawUrl: string,
+  signal?: AbortSignal,
+): Promise<{ summary: string; visitedUrls: string[] }> {
   if (signal?.aborted) throw new Error('Visita de site cancelada');
   const url = validateAndNormalizeUrl(rawUrl);
-  const validatedIp = await withTimeout(resolveAndValidateHost(url.hostname), DNS_TIMEOUT_MS, 'resolucao DNS');
+  const allowedHosts = await resolveAllowedHosts(url.hostname);
   if (signal?.aborted) throw new Error('Visita de site cancelada');
 
   // Um processo de Chromium por checagem (nao um Browser compartilhado de
@@ -180,7 +234,7 @@ export async function fetchAndSummarizeSite(rawUrl: string, signal?: AbortSignal
       '--disable-extensions',
       '--disable-background-networking',
       '--disable-default-apps',
-      `--host-resolver-rules=MAP ${url.hostname} ${validatedIp},MAP * 0.0.0.0`,
+      `--host-resolver-rules=${Array.from(allowedHosts.entries()).map(([host, ip]) => `MAP ${host} ${ip}`).join(',')},MAP * 0.0.0.0`,
     ],
   });
 
@@ -212,33 +266,77 @@ export async function fetchAndSummarizeSite(rawUrl: string, signal?: AbortSignal
         return route.abort();
       }
       if (reqUrl.protocol !== 'http:' && reqUrl.protocol !== 'https:') return route.abort();
-      if (reqUrl.hostname.toLowerCase() !== url.hostname.toLowerCase()) return route.abort();
+      if (!allowedHosts.has(reqUrl.hostname.toLowerCase())) return route.abort();
       return route.continue();
     });
 
-    const response = await page.goto(url.toString(), {
-      timeout: NAV_TIMEOUT_MS,
-      waitUntil: 'domcontentloaded',
-    });
+    const visitedUrls: string[] = [];
+    const pageSummaries: string[] = [];
 
-    const contentType = response?.headers()['content-type'] ?? '';
-    if (contentType && !contentType.toLowerCase().includes('text/html')) {
-      throw new Error(`Conteudo nao e HTML (content-type: ${contentType})`);
+    const visit = async (target: string, includeLinks: boolean, timeout: number) => {
+      if (signal?.aborted) throw new Error('Visita de site cancelada');
+      const response = await page.goto(target, { timeout, waitUntil: 'domcontentloaded' });
+      const contentType = response?.headers()['content-type'] ?? '';
+      if (contentType && !contentType.toLowerCase().includes('text/html')) {
+        throw new Error(`Conteudo nao e HTML (content-type: ${contentType})`);
+      }
+
+      const finalUrl = new URL(page.url());
+      if (!allowedHosts.has(finalUrl.hostname.toLowerCase())) {
+        throw new Error(`Redirecionamento para dominio nao permitido: ${finalUrl.hostname}`);
+      }
+
+      const extracted = await page.evaluate((shouldIncludeLinks: boolean) => {
+        const doc = (globalThis as any).document;
+        if (!doc) return { text: '', links: [] as Array<{ href: string; label: string }> };
+        const title = doc.title ?? '';
+        const description = doc.querySelector('meta[name="description"]')?.content ?? '';
+        const body = doc.body?.innerText ?? '';
+        const links = shouldIncludeLinks
+          ? Array.from(doc.querySelectorAll('a[href]')).map((anchor: any) => ({
+              href: anchor.href ?? '',
+              label: anchor.innerText ?? anchor.textContent ?? '',
+            }))
+          : [];
+        return { text: `Titulo: ${title}\nDescricao: ${description}\nConteudo: ${body}`, links };
+      }, includeLinks);
+
+      const normalizedFinalUrl = finalUrl.toString();
+      visitedUrls.push(normalizedFinalUrl);
+      pageSummaries.push(`Pagina consultada: ${normalizedFinalUrl}\n${sanitizeExtractedText(extracted.text)}`);
+      return extracted.links;
+    };
+
+    const homepageLinks = await visit(url.toString(), true, HOME_NAV_TIMEOUT_MS);
+    const rankedLinks = homepageLinks
+      .flatMap(link => {
+        try {
+          const parsed = new URL(link.href, page.url());
+          if (!allowedHosts.has(parsed.hostname.toLowerCase())) return [];
+          parsed.hash = '';
+          const score = relevantLinkScore(parsed.pathname, link.label);
+          return score >= 0 ? [{ url: parsed.toString(), score, category: relevantLinkCategory(parsed.pathname, link.label) }] : [];
+        } catch {
+          return [];
+        }
+      })
+      .sort((a, b) => b.score - a.score)
+      .filter((item, index, all) => all.findIndex(other => other.url === item.url) === index)
+      .filter((item, index, all) => all.findIndex(other => other.category === item.category) === index)
+      .filter(item => !visitedUrls.includes(item.url))
+      .slice(0, MAX_PAGES_PER_SITE - 1);
+
+    for (const link of rankedLinks) {
+      try {
+        await visit(link.url, false, SECONDARY_NAV_TIMEOUT_MS);
+      } catch (err) {
+        if (signal?.aborted) throw err;
+        // Uma pagina secundaria quebrada nao invalida a pagina inicial.
+      }
     }
 
-    // Roda dentro do navegador (Playwright serializa a funcao pro contexto da
-    // pagina) — `document` so existe la, nao no Node; cast evita precisar da
-    // lib "dom" no tsconfig deste projeto backend.
-    const rawText = await page.evaluate(() => {
-      const doc = (globalThis as any).document;
-      if (!doc) return '';
-      const title = doc.title ?? '';
-      const description = doc.querySelector('meta[name="description"]')?.content ?? '';
-      const body = doc.body?.innerText ?? '';
-      return `Titulo: ${title}\nDescricao: ${description}\nConteudo: ${body}`;
-    });
-    const summary = sanitizeExtractedText(rawText);
-    return { summary };
+    const summary = sanitizeExtractedText(pageSummaries.join('\n\n'), MAX_TOTAL_TEXT_LENGTH);
+    return { summary, visitedUrls };
   } finally {
     signal?.removeEventListener('abort', abortVisit);
     await browser.close().catch(() => {});

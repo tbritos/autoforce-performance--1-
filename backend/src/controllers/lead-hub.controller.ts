@@ -441,6 +441,7 @@ export class LeadHubController {
               jobTitle: row.jobTitle?.trim() || row.cargo?.trim() || undefined,
               city: row.city?.trim() || row.cidade?.trim() || undefined,
               state: row.state?.trim() || row.estado?.trim() || undefined,
+              siteUrl: row.site?.trim() || row.website?.trim() || row.site_atual?.trim() || row.url_empresa?.trim() || undefined,
             },
             {
               source: row.source?.trim() || 'importacao_csv',

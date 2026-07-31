@@ -171,6 +171,7 @@ export interface LeadProfile {
   pipedriveDealValue: number | null;
   pipedriveSetupValue: number | null;
   customFields: Record<string, unknown> | null;
+  siteUrl: string | null;
   notes: string | null;
   conversions: LeadConversion[];
   conversionsTotal: number;
@@ -181,6 +182,11 @@ export interface LeadProfile {
   researchedAt: string | null;
   researchSummary: string | null;
   researchIcpSignal: string | null;
+  researchBusinessType: string | null;
+  researchVehicleStock: number | null;
+  researchEvidence: Array<{ source: string; fact: string }> | null;
+  researchVisitedUrls: string[];
+  researchSiteSource: string | null;
   aiHandoff: boolean;
   whatsappInvalidAt: string | null;
   whatsappInvalidReason: string | null;

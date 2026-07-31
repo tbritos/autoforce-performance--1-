@@ -172,6 +172,11 @@ model Lead {
   researchAttempts   Int       @default(0)
   researchSummary    String?   @db.Text // "Pesquisa de informação" no perfil do lead
   researchIcpSignal  String? // 'qualified' | 'nurture' | 'disqualified'
+  researchBusinessType String?
+  researchVehicleStock Int?
+  researchEvidence     Json?
+  researchVisitedUrls  String[] @default([])
+  researchSiteSource   String? // 'lead_provided' | 'corporate_email' | 'web_search'
 
   firstSeenAt DateTime  @default(now())
   lastSeenAt  DateTime  @default(now())

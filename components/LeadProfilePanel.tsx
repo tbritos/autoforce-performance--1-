@@ -61,6 +61,42 @@ function brl(value: number): string {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+const RESEARCH_BUSINESS_TYPE_LABELS: Record<string, string> = {
+  dealership: 'Concessionária',
+  automotive_group: 'Grupo automotivo',
+  automaker: 'Montadora',
+  vehicle_reseller: 'Revenda de veículos',
+  technology_supplier: 'Fornecedor de tecnologia',
+  marketing_agency: 'Agência de marketing',
+  consultancy: 'Consultoria',
+  non_automotive_company: 'Empresa não automotiva',
+  other: 'Outro tipo de empresa',
+  unknown: 'Não identificado',
+};
+
+const RESEARCH_SOURCE_LABELS: Record<string, string> = {
+  lead_provided: 'Informado pelo lead',
+  corporate_email: 'Domínio do e-mail corporativo',
+  web_search: 'Encontrado na busca',
+};
+
+const EVIDENCE_SOURCE_LABELS: Record<string, string> = {
+  official_site: 'Site',
+  cnpj: 'CNPJ',
+  web_search: 'Busca',
+  lead_record: 'Cadastro',
+};
+
+function displayHost(value: string): string {
+  try { return new URL(value).hostname.replace(/^www\./, ''); }
+  catch { return value; }
+}
+
+function displayPagePath(value: string): string {
+  try { return new URL(value).pathname === '/' ? '' : new URL(value).pathname; }
+  catch { return ''; }
+}
+
 function getConversionMeta(c: LeadConversion): { label: string; color: string; bg: string; icon: React.ReactNode } {
   const n = (c.formName || c.source || '').toLowerCase();
   if (/newsletter|inscri[çc]/.test(n)) return { label: 'Inscrição', color: '#3b82f6', bg: '#eff6ff', icon: <Mail size={12} /> };
@@ -408,7 +444,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
 
   // Edit form state
   const [form, setForm] = useState({
-    name: '', phone: '', company: '', jobTitle: '', city: '', state: '', assignedTo: '', score: '', pipedriveDealId: '',
+    name: '', phone: '', company: '', jobTitle: '', city: '', state: '', siteUrl: '', assignedTo: '', score: '', pipedriveDealId: '',
   });
   const [customForm, setCustomForm] = useState<Record<string, unknown>>({});
 
@@ -436,6 +472,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
       setForm({
         name: p.name ?? '', phone: p.phone ?? '', company: p.company ?? '',
         jobTitle: p.jobTitle ?? '', city: p.city ?? '', state: p.state ?? '',
+        siteUrl: p.siteUrl ?? '',
         assignedTo: p.assignedTo ?? '', score: p.score != null ? String(p.score) : '',
         pipedriveDealId: p.pipedriveDealId ?? '',
       });
@@ -615,6 +652,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
         jobTitle: form.jobTitle || undefined,
         city: form.city || undefined,
         state: form.state || undefined,
+        siteUrl: form.siteUrl.trim() === '' ? null : form.siteUrl.trim(),
         assignedTo: form.assignedTo || undefined,
         score: form.score.trim() === '' ? null : Number(form.score),
         pipedriveDealId: form.pipedriveDealId.trim() === '' ? null : form.pipedriveDealId.trim(),
@@ -927,6 +965,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                 { key: 'name', label: 'Nome' }, { key: 'phone', label: 'Telefone' },
                                 { key: 'company', label: 'Empresa' }, { key: 'jobTitle', label: 'Cargo' },
                                 { key: 'city', label: 'Cidade' }, { key: 'state', label: 'Estado' },
+                                { key: 'siteUrl', label: 'Site da empresa' },
                                 { key: 'assignedTo', label: 'Responsável' }, { key: 'score', label: 'Score', type: 'number' },
                               ] as { key: keyof typeof form; label: string; type?: string }[]).map(({ key, label, type }) => (
                                 <label key={key} style={{ display: 'block', minWidth: 0 }}>
@@ -957,6 +996,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                 { key: 'jobTitle', label: 'Cargo', value: profile.jobTitle },
                                 { key: 'city', label: 'Cidade', value: profile.city },
                                 { key: 'state', label: 'Estado', value: profile.state },
+                                { key: 'siteUrl', label: 'Site da empresa', value: profile.siteUrl },
                                 { key: 'assignedTo', label: 'Responsável', value: profile.assignedTo },
                               ]).map(({ key, label, value }) => (
                                 <div key={key} style={{ minWidth: 0 }}>
@@ -997,11 +1037,71 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                           )}
                         </div>
                         <div style={{ padding: 20 }}>
+                          {(profile.siteUrl || profile.researchBusinessType || profile.researchVehicleStock != null) && (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 16 }}>
+                              {profile.siteUrl && (
+                                <div style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--bg-subtle)', border: '1px solid var(--border)' }}>
+                                  <span style={fieldLabel}>Site identificado</span>
+                                  <a href={safeUrl(profile.siteUrl)} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--accent)', fontSize: 12, fontWeight: 700, wordBreak: 'break-all' }}>
+                                    {displayHost(profile.siteUrl)} <ExternalLink size={11} />
+                                  </a>
+                                  {profile.researchSiteSource && (
+                                    <div style={{ marginTop: 3, fontSize: 10, color: 'var(--fg-subtle)' }}>
+                                      {RESEARCH_SOURCE_LABELS[profile.researchSiteSource] ?? profile.researchSiteSource}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              {profile.researchBusinessType && (
+                                <div style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--bg-subtle)', border: '1px solid var(--border)' }}>
+                                  <span style={fieldLabel}>Tipo de empresa</span>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--fg-primary)' }}>
+                                    {RESEARCH_BUSINESS_TYPE_LABELS[profile.researchBusinessType] ?? profile.researchBusinessType}
+                                  </div>
+                                </div>
+                              )}
+                              {profile.researchVehicleStock != null && (
+                                <div style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--bg-subtle)', border: '1px solid var(--border)' }}>
+                                  <span style={fieldLabel}>Estoque comprovado</span>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--fg-primary)' }}>
+                                    {profile.researchVehicleStock.toLocaleString('pt-BR')} veículos
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                           {profile.researchSummary ? (
                             <>
                               <p style={{ margin: 0, fontSize: 13, color: 'var(--fg-primary)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
                                 {profile.researchSummary}
                               </p>
+                              {Array.isArray(profile.researchEvidence) && profile.researchEvidence.length > 0 && (
+                                <div style={{ marginTop: 14 }}>
+                                  <span style={fieldLabel}>Evidências encontradas</span>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    {profile.researchEvidence.map((evidence, index) => (
+                                      <div key={`${evidence.source}-${index}`} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, lineHeight: 1.45, color: 'var(--fg-muted)' }}>
+                                        <span style={{ flexShrink: 0, padding: '1px 6px', borderRadius: 999, background: 'var(--bg-muted)', color: 'var(--fg-secondary)', fontSize: 10, fontWeight: 700 }}>
+                                          {EVIDENCE_SOURCE_LABELS[evidence.source] ?? evidence.source}
+                                        </span>
+                                        <span>{evidence.fact}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {Array.isArray(profile.researchVisitedUrls) && profile.researchVisitedUrls.length > 0 && (
+                                <div style={{ marginTop: 14 }}>
+                                  <span style={fieldLabel}>Páginas consultadas</span>
+                                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                    {profile.researchVisitedUrls.map((url, index) => (
+                                      <a key={`${url}-${index}`} href={safeUrl(url)} target="_blank" rel="noreferrer" style={{ fontSize: 10, color: 'var(--accent)', padding: '3px 7px', borderRadius: 999, background: 'var(--bg-subtle)', border: '1px solid var(--border)', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {displayHost(url)}{index > 0 ? displayPagePath(url) : ''}
+                                      </a>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                               <p style={{ margin: '10px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>
                                 Pesquisado automaticamente em {fmt(profile.researchedAt)}
                               </p>

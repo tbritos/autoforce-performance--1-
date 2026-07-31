@@ -80,4 +80,32 @@ test('revenda so e qualified quando o estoque minimo esta comprovado', () => {
 
   assert.equal(withoutStock.fit, 'nurture');
   assert.equal(withStock.fit, 'qualified');
+  assert.equal(withStock.vehicleStock, 75);
+});
+
+test('concessionaria oficial avanca com evidencia forte sem exigir estoque', () => {
+  const assessment = normalizeResearchAssessment({
+    business_type: 'dealership',
+    vehicle_stock: null,
+    fit: 'qualified',
+    score: 86,
+    evidence: [{
+      source: 'official_site',
+      fact: 'O site apresenta a empresa como concessionária autorizada da marca e anuncia veículos novos.',
+    }],
+  }, 'fallback');
+
+  assert.equal(assessment.fit, 'qualified');
+  assert.equal(assessment.vehicleStock, null);
+});
+
+test('resultado generico da web sozinho nao qualifica empresa automotiva', () => {
+  const assessment = normalizeResearchAssessment({
+    business_type: 'dealership',
+    fit: 'qualified',
+    score: 90,
+    evidence: [{ source: 'web_search', fact: 'Um diretório chama a empresa de concessionária.' }],
+  }, 'fallback');
+
+  assert.equal(assessment.fit, 'nurture');
 });

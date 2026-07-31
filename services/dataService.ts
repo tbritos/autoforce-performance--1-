@@ -1124,6 +1124,7 @@ export const DataService = {
     jobTitle?: string | null;
     city?: string | null;
     state?: string | null;
+    siteUrl?: string | null;
     assignedTo?: string | null;
     isHot?: boolean;
     score?: number | null;
@@ -1803,5 +1804,4 @@ export async function deleteLeadScoringRule(id: string): Promise<void> {
 export async function applyLeadScoringRulesToExisting(): Promise<{ message: string; updated: number; evaluated: number }> {
   return apiClient.post<{ message: string; updated: number; evaluated: number }>('/lead-scoring/apply-existing', {});
 }
-
 

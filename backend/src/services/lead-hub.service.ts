@@ -4,6 +4,7 @@ import { normalizePhoneE164 } from '../utils/phone';
 import { isLikelyBotLead } from './lead-spam-detection.service';
 import { LeadScoringService } from './lead-scoring.service';
 import { pipedriveForecastLeadWhere } from './pipedrive-link.utils';
+import { normalizeWebsiteUrl } from './lead-site.utils';
 
 type ScoringRulesList = Awaited<ReturnType<typeof LeadScoringService.activeRules>>;
 
@@ -42,6 +43,7 @@ export interface UpsertLeadInput {
   jobTitle?: string;
   city?: string;
   state?: string;
+  siteUrl?: string;
 }
 
 export interface RecordConversionInput {
@@ -92,6 +94,7 @@ export interface UpdateLeadProfileInput {
   jobTitle?: string | null;
   city?: string | null;
   state?: string | null;
+  siteUrl?: string | null;
   assignedTo?: string | null;
   isHot?: boolean;
   score?: number | null;
@@ -127,6 +130,7 @@ export class LeadHubService {
     scoringRules?: ScoringRulesList
   ) {
     const email = normalizeEmail(input.email);
+    const siteUrl = normalizeWebsiteUrl(input.siteUrl);
 
     const existing = await prisma.lead.findUnique({ where: { email } });
 
@@ -140,6 +144,7 @@ export class LeadHubService {
           jobTitle: input.jobTitle || null,
           city: input.city || null,
           state: input.state || null,
+          siteUrl: siteUrl || null,
           firstSource: firstTouchData?.source || null,
           firstMedium: firstTouchData?.medium || null,
           firstCampaign: firstTouchData?.campaign || null,
@@ -174,20 +179,36 @@ export class LeadHubService {
     // 99905-7455"), o que quebra a busca por telefone do WhatsApp mais tarde
     // (ela compara so digitos, e o "contains" nao acha substring quebrada por
     // parenteses/espaco/hifen) -- causa real de leads duplicados.
-    const fields = { name: input.name, phone: normalizePhoneE164(input.phone), company: input.company, jobTitle: input.jobTitle, city: input.city, state: input.state };
+    const fields = {
+      name: input.name,
+      phone: normalizePhoneE164(input.phone),
+      company: input.company,
+      jobTitle: input.jobTitle,
+      city: input.city,
+      state: input.state,
+      siteUrl,
+    };
     for (const [key, value] of Object.entries(fields)) {
       if (value !== undefined && value !== null && value !== '') {
         profileUpdate[key] = value;
       }
     }
 
-    return prisma.lead.update({
+    const updated = await prisma.lead.update({
       where: { email },
       data: {
         ...profileUpdate,
         lastSeenAt: new Date(),
       },
     });
+
+    if (siteUrl && siteUrl !== existing.siteUrl) {
+      void import('./lead-research.service')
+        .then(({ refreshSiteResearch }) => refreshSiteResearch(email, siteUrl))
+        .catch(err => console.error('[LeadResearch] falha ao atualizar pesquisa com site recebido:', err));
+    }
+
+    return updated;
   }
 
   // ----------------------------------------------------------
@@ -510,6 +531,13 @@ export class LeadHubService {
       firstSeenAt = parsed;
     }
 
+    const normalizedSiteUrl = input.siteUrl === undefined
+      ? undefined
+      : normalizeWebsiteUrl(input.siteUrl) ?? null;
+    const previousSite = input.siteUrl === undefined
+      ? null
+      : await prisma.lead.findUnique({ where: { id }, select: { siteUrl: true } });
+
     const data: Prisma.LeadUpdateInput = {
       ...(input.name !== undefined ? { name: cleanString(input.name) } : {}),
       ...(input.phone !== undefined ? { phone: normalizePhoneE164(input.phone) } : {}),
@@ -517,6 +545,7 @@ export class LeadHubService {
       ...(input.jobTitle !== undefined ? { jobTitle: cleanString(input.jobTitle) } : {}),
       ...(input.city !== undefined ? { city: cleanString(input.city) } : {}),
       ...(input.state !== undefined ? { state: cleanString(input.state) } : {}),
+      ...(input.siteUrl !== undefined ? { siteUrl: normalizedSiteUrl } : {}),
       ...(input.assignedTo !== undefined ? { assignedTo: cleanString(input.assignedTo) } : {}),
       ...(input.isHot !== undefined ? { isHot: input.isHot } : {}),
       ...(input.score !== undefined ? { score: input.score ?? 0 } : {}),
@@ -534,6 +563,12 @@ export class LeadHubService {
       import('./automation-engine.service').then(({ fireTrigger }) => {
         fireTrigger('score_updated', updated.email, { score: updated.score });
       }).catch(() => {});
+    }
+
+    if (normalizedSiteUrl && normalizedSiteUrl !== previousSite?.siteUrl) {
+      void import('./lead-research.service')
+        .then(({ refreshSiteResearch }) => refreshSiteResearch(updated.email, normalizedSiteUrl))
+        .catch(err => console.error('[LeadResearch] falha ao atualizar site editado no perfil:', err));
     }
 
     return updated;

@@ -4,6 +4,7 @@ import { prisma } from '../config/database';
 import { LeadHubService, normalizeEmail } from './lead-hub.service';
 import { LeadClassificationRulesService } from './lead-classification-rules.service';
 import { isLikelyBotLead } from './lead-spam-detection.service';
+import { findWebsiteValue, isLeadWebsiteFieldName } from './lead-site.utils';
 
 type FieldMappings = Record<string, string>;
 type AnyRecord = Record<string, any>;
@@ -92,6 +93,7 @@ const fallbackLead = (payload: AnyRecord): AnyRecord => {
     jobTitle: cleanString(source.jobTitle || source.job_title || source.cargo || payload.jobTitle || payload.cargo),
     city: cleanString(source.city || source.cidade || payload.city || payload.cidade),
     state: cleanString(source.state || source.estado || payload.state || payload.estado),
+    siteUrl: findWebsiteValue(source, payload),
   };
 };
 
@@ -236,6 +238,7 @@ const detectTargetForField = (field: string): string => {
   if (['cargo', 'jobtitle', 'job_title', 'role'].includes(lastPart.replace(/_/g, ''))) return 'lead.jobTitle';
   if (['cidade', 'city'].includes(lastPart)) return 'lead.city';
   if (['estado', 'state', 'uf'].includes(lastPart)) return 'lead.state';
+  if (isLeadWebsiteFieldName(field)) return 'lead.siteUrl';
   if (lastPart === 'utm_source' || normalized.endsWith('utmsource')) return 'conversion.utmSource';
   if (lastPart === 'utm_medium' || normalized.endsWith('utmmedium')) return 'conversion.utmMedium';
   if (lastPart === 'utm_campaign' || normalized.endsWith('utmcampaign')) return 'conversion.utmCampaign';
@@ -480,6 +483,7 @@ export class LeadWebhooksService {
           jobTitle: cleanString(normalized.lead.jobTitle),
           city: cleanString(normalized.lead.city),
           state: cleanString(normalized.lead.state),
+          siteUrl: cleanString(normalized.lead.siteUrl),
         },
         {
           source: firstSource,

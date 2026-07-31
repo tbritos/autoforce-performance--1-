@@ -2864,6 +2864,14 @@ const LeadWebhooksPanel: React.FC = () => {
     if (normalized.includes('telefone') || normalized.includes('phone') || normalized.includes('whatsapp')) return 'lead.phone';
     if (normalized.includes('empresa') || normalized.includes('company')) return 'lead.company';
     if (normalized.includes('cargo') || normalized.includes('jobtitle')) return 'lead.jobTitle';
+    if (
+      normalized === 'site'
+      || normalized.includes('siteempresa')
+      || normalized.includes('sitedaempresa')
+      || normalized.includes('website')
+      || normalized.includes('urlempresa')
+      || normalized.includes('dominioempresa')
+    ) return 'lead.siteUrl';
     if (normalized.includes('segmento')) return 'answers.segmento';
     if (normalized.includes('utmsource')) return 'conversion.utmSource';
     if (normalized.includes('utmmedium')) return 'conversion.utmMedium';
@@ -3037,6 +3045,7 @@ const LeadWebhooksPanel: React.FC = () => {
     { value: 'lead.jobTitle', label: 'Cargo' },
     { value: 'lead.city', label: 'Cidade' },
     { value: 'lead.state', label: 'Estado' },
+    { value: 'lead.siteUrl', label: 'Site da empresa' },
     { value: 'conversion.externalId', label: 'ID externo da conversao' },
     { value: 'conversion.formName', label: 'Nome do formulario' },
     { value: 'conversion.landingPage', label: 'Landing page' },
