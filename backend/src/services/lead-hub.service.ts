@@ -925,9 +925,7 @@ export class LeadHubService {
     // Case 6: Pipedrive pipeline + stage filter (Forecast drill-down per stage)
     if (params.pipelineId != null && params.stageId != null) {
       const where = {
-        deletedAt: null as null,
-        pipedriveDealId: { not: null },
-        pipedriveDealStatus: 'open',
+        ...pipedriveForecastLeadWhere(),
         pipedrivePipelineId: params.pipelineId,
         pipedriveStageId: params.stageId,
       };

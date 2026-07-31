@@ -11,10 +11,11 @@ test('negocio ja vinculado nao e substituido por outro negocio da mesma pessoa',
   assert.equal(canApplyPipedriveDealToLead('4916', '5574'), false);
 });
 
-test('Forecast aceita somente pipelines comerciais e leads ainda em negociacao', () => {
+test('Forecast aceita somente pipelines comerciais, leads em negociacao e MRR positivo', () => {
   const where = pipedriveForecastLeadWhere() as any;
   assert.deepEqual(where.pipedrivePipelineId, { in: [2, 5] });
   assert.equal(where.pipedriveDealStatus, 'open');
+  assert.deepEqual(where.pipedriveDealValue, { gt: 0 });
   assert.equal(where.status.in.includes('CLIENT'), false);
   assert.equal(where.status.in.includes('LOST'), false);
   assert.equal(where.status.in.includes('SQL'), true);

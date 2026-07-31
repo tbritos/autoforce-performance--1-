@@ -27,6 +27,7 @@ export function pipedriveForecastLeadWhere(): Record<string, unknown> {
     deletedAt: null,
     pipedriveDealId: { not: null },
     pipedriveDealStatus: 'open',
+    pipedriveDealValue: { gt: 0 },
     pipedrivePipelineId: { in: [...PIPEDRIVE_SALES_PIPELINE_IDS] },
     status: { in: [...PIPEDRIVE_FORECAST_LEAD_STATUSES] },
   };
