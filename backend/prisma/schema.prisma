@@ -716,6 +716,21 @@ model InstagramMessage {
   @@index([createdAt])
 }
 
+// Comprovante sem dados pessoais para o fluxo de exclusão exigido pela Meta.
+model InstagramDataDeletionRequest {
+  id                  String   @id @default(uuid())
+  confirmationCode    String   @unique
+  userIdHash          String
+  status              String   @default("completed")
+  deletedEventCount   Int      @default(0)
+  deletedMessageCount Int      @default(0)
+  requestedAt         DateTime @default(now())
+  completedAt         DateTime?
+
+  @@index([status])
+  @@index([requestedAt])
+}
+
 // ============================================================
 // CAMPANHAS
 // ============================================================
