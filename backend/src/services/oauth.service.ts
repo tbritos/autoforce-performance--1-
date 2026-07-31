@@ -16,6 +16,14 @@ import { PlatformConnectionService } from './platform-connection.service';
 
 const APP_URL = process.env.APP_URL || 'http://localhost:5000';
 
+function getInstagramAppId(): string {
+  return (process.env.INSTAGRAM_APP_ID || process.env.Instagram_App_ID || '').trim();
+}
+
+function getInstagramAppSecret(): string {
+  return (process.env.INSTAGRAM_APP_SECRET || process.env.Instagram_App_Secret || '').trim();
+}
+
 function withNgrokSkipParam(url: string): string {
   if (!url.includes('ngrok-free.')) return url;
   const parsed = new URL(url);
@@ -52,7 +60,7 @@ function consumeState(state: string): Platform | null {
 // Instagram uses a signed, stateless OAuth state so the callback keeps working
 // across Railway restarts and multiple backend instances.
 function generateInstagramState(): string {
-  const secret = process.env.INSTAGRAM_APP_SECRET;
+  const secret = getInstagramAppSecret();
   if (!secret) throw new Error('INSTAGRAM_APP_SECRET não configurado no .env');
 
   const payload = Buffer.from(JSON.stringify({
@@ -65,7 +73,7 @@ function generateInstagramState(): string {
 }
 
 function consumeInstagramState(state: string): boolean {
-  const secret = process.env.INSTAGRAM_APP_SECRET;
+  const secret = getInstagramAppSecret();
   if (!secret) return false;
 
   const [payload, receivedSignature] = state.split('.');
@@ -211,7 +219,7 @@ function getInstagramGraphApiVersion(): string {
 }
 
 function getInstagramAuthUrl(): string {
-  const clientId = process.env.INSTAGRAM_APP_ID;
+  const clientId = getInstagramAppId();
   if (!clientId) throw new Error('INSTAGRAM_APP_ID não configurado no .env');
 
   const params = new URLSearchParams({
@@ -243,8 +251,8 @@ async function instagramJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 async function handleInstagramCallback(rawCode: string): Promise<void> {
-  const clientId = process.env.INSTAGRAM_APP_ID;
-  const clientSecret = process.env.INSTAGRAM_APP_SECRET;
+  const clientId = getInstagramAppId();
+  const clientSecret = getInstagramAppSecret();
   if (!clientId || !clientSecret) {
     throw new Error('INSTAGRAM_APP_ID e INSTAGRAM_APP_SECRET não configurados');
   }

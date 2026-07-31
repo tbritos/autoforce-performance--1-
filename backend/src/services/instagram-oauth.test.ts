@@ -18,6 +18,29 @@ async function withInstagramEnv<T>(run: () => T | Promise<T>): Promise<T> {
   }
 }
 
+async function withInstagramAliasEnv<T>(run: () => T | Promise<T>): Promise<T> {
+  const names = [
+    'INSTAGRAM_APP_ID',
+    'INSTAGRAM_APP_SECRET',
+    'Instagram_App_ID',
+    'Instagram_App_Secret',
+  ] as const;
+  const previous = new Map(names.map(name => [name, process.env[name]]));
+  delete process.env.INSTAGRAM_APP_ID;
+  delete process.env.INSTAGRAM_APP_SECRET;
+  process.env.Instagram_App_ID = 'instagram-alias-id-test';
+  process.env.Instagram_App_Secret = 'instagram-alias-secret-test';
+  try {
+    return await run();
+  } finally {
+    for (const name of names) {
+      const value = previous.get(name);
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+}
+
 test('OAuth do Instagram usa login oficial, escopos mínimos e state assinado', async () => {
   await withInstagramEnv(() => {
     const authUrl = new URL(OAuthService.getAuthUrl('INSTAGRAM'));
@@ -60,5 +83,20 @@ test('callback do Instagram rejeita state adulterado antes de chamar a Meta', as
       OAuthService.handleCallback('INSTAGRAM', 'codigo-nao-utilizado', 'payload.assinatura-invalida'),
       /State OAuth inválido ou expirado/,
     );
+  });
+});
+
+test('OAuth do Instagram aceita os nomes de variavel cadastrados no Railway', async () => {
+  await withInstagramAliasEnv(() => {
+    const authUrl = new URL(OAuthService.getAuthUrl('INSTAGRAM'));
+    assert.equal(authUrl.searchParams.get('client_id'), 'instagram-alias-id-test');
+
+    const state = authUrl.searchParams.get('state') || '';
+    const [payload, signature] = state.split('.');
+    const expected = crypto
+      .createHmac('sha256', 'instagram-alias-secret-test')
+      .update(payload)
+      .digest('base64url');
+    assert.equal(signature, expected);
   });
 });

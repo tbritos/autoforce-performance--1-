@@ -60,6 +60,16 @@ const OAUTH_ENV_REQUIREMENTS: Record<(typeof VALID_PLATFORMS)[number], string[]>
   WHATSAPP:          [],
 };
 
+const ENV_ALIASES: Partial<Record<string, string[]>> = {
+  INSTAGRAM_APP_ID: ['Instagram_App_ID'],
+  INSTAGRAM_APP_SECRET: ['Instagram_App_Secret'],
+};
+
+function hasRequiredEnv(name: string): boolean {
+  return [name, ...(ENV_ALIASES[name] || [])]
+    .some(candidate => Boolean(process.env[candidate]?.trim()));
+}
+
 async function testPlatformConnection(platform: Platform): Promise<{ ok: boolean; message: string }> {
   try {
     if ((platform as string) === 'WHATSAPP') {
@@ -211,7 +221,7 @@ export class ConnectionsController {
     try {
       const result = VALID_PLATFORMS.map(platform => {
         const requiredEnv = OAUTH_ENV_REQUIREMENTS[platform];
-        let missingEnv = requiredEnv.filter(name => !process.env[name] || !String(process.env[name]).trim());
+        let missingEnv = requiredEnv.filter(name => !hasRequiredEnv(name));
         let readyForOAuth = missingEnv.length === 0;
 
         if (platform === 'PIPEDRIVE' && process.env.PIPEDRIVE_API_TOKEN && process.env.PIPEDRIVE_DOMAIN) {
