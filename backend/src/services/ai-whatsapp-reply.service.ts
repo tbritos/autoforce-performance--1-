@@ -15,7 +15,11 @@ import {
 } from './lara-runtime.utils';
 
 const DEBOUNCE_MS = 5_000;
-const LOCK_TTL_MS = 120_000;
+// A resposta pode levar alguns minutos quando a pesquisa de contexto/IA está
+// lenta. O lock é renovado por heartbeat enquanto a execução está viva; o TTL
+// continua sendo o fallback para recuperar uma instância realmente travada.
+const LOCK_TTL_MS = 10 * 60_000;
+const LOCK_HEARTBEAT_MS = 30_000;
 // Mesmo default de ai-followup.service.ts — usado so como fallback na
 // reconferencia final caso nao haja AIAgent ativo com o campo configurado.
 const DEFAULT_FOLLOWUP_MAX_ATTEMPTS = 2;
@@ -26,6 +30,15 @@ const DEFAULT_DISCOVERY_REPLY = 'Oi! Tudo bem? Sou a Lara, da AutoForce.\n\nMe c
 const DISCOVERY_QUESTION = 'Hoje, qual e o maior gargalo: gerar mais leads qualificados ou converter melhor os leads que ja chegam?';
 
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function startProcessingHeartbeat(email: string): ReturnType<typeof setInterval> {
+  return setInterval(() => {
+    void prisma.lead.updateMany({
+      where: { email, aiProcessing: true },
+      data: { aiProcessingAt: new Date() },
+    }).catch(err => console.error(`[AI-WPP] falha ao renovar lock de ${email}:`, err));
+  }, LOCK_HEARTBEAT_MS);
+}
 
 type AIAction = { type: string; reason: string; payload?: Record<string, unknown> };
 
@@ -357,7 +370,10 @@ async function processAIReply(phone: string, force: boolean): Promise<void> {
     where: {
       email: lead.email,
       aiHandoff: false,
-      OR: [{ aiProcessing: false }, { aiProcessingAt: null }, { aiProcessingAt: { lt: staleLockThreshold } }],
+      OR: [
+        { aiProcessing: false },
+        { aiProcessing: true, aiProcessingAt: { lt: staleLockThreshold } },
+      ],
     },
     data: { aiProcessing: true, aiProcessingAt: now },
   });
@@ -369,6 +385,8 @@ async function processAIReply(phone: string, force: boolean): Promise<void> {
     scheduleAIReply(phone);
     return;
   }
+
+  const lockHeartbeat = startProcessingHeartbeat(lead.email);
 
   let pendingInboundIds: string[] = [];
   try {
@@ -400,6 +418,7 @@ async function processAIReply(phone: string, force: boolean): Promise<void> {
       });
     }
   } finally {
+    clearInterval(lockHeartbeat);
     if (pendingInboundIds.length > 0) {
       await (prisma as any).whatsAppMessage.updateMany({
         where: { id: { in: pendingInboundIds }, aiProcessedAt: null },
@@ -788,7 +807,10 @@ export async function sendFollowUpMessage(phone: string): Promise<boolean> {
       whatsappInvalidAt: null,
       OR: [{ followUpNotBeforeDate: null }, { followUpNotBeforeDate: { lte: now } }],
       NOT: FOLLOWUP_EXCLUDED_TAGS.map(tag => ({ tags: { has: tag } })),
-      AND: [{ OR: [{ aiProcessing: false }, { aiProcessingAt: { lt: staleLockThreshold } }] }],
+      AND: [{ OR: [
+        { aiProcessing: false },
+        { aiProcessing: true, aiProcessingAt: { lt: staleLockThreshold } },
+      ] }],
     },
     data: { aiProcessing: true, aiProcessingAt: now },
   });
@@ -796,6 +818,8 @@ export async function sendFollowUpMessage(phone: string): Promise<boolean> {
     console.log(`[AI-Followup] ${phone} nao esta mais elegivel (ou lock ja tomado por outra chamada) — pulando (evita follow-up duplicado)`);
     return false;
   }
+
+  const lockHeartbeat = startProcessingHeartbeat(lead.email);
 
   try {
     const { sent } = await executeAIAndReply(lead, phone, { followUp: true, withinSessionWindow, followUpTemplateName });
@@ -822,6 +846,7 @@ export async function sendFollowUpMessage(phone: string): Promise<boolean> {
     console.error(`[AI-Followup] falha ao enviar follow-up para ${phone} lead=${lead.email}:`, err);
     return false;
   } finally {
+    clearInterval(lockHeartbeat);
     await prisma.lead
       .update({ where: { email: lead.email }, data: { aiProcessing: false, aiProcessingAt: null } })
       .catch(() => {});
