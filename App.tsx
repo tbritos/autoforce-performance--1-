@@ -423,9 +423,9 @@ const DrillDownDrawer: React.FC<{ config: DrillDownConfig | null; onClose: () =>
                       {lead.lostReason}
                     </div>
                   )}
-                  {(lead.pipedriveDealValue != null || lead.pipedriveSetupValue != null) && (
+                  {lead.pipedriveDealValue != null && (
                     <div style={{ fontSize: 11, fontWeight: 700, color: '#111827', marginTop: 4, whiteSpace: 'nowrap' }}>
-                      {formatCurrency((lead.pipedriveDealValue ?? 0) + (lead.pipedriveSetupValue ?? 0))}
+                      MRR {formatCurrency(lead.pipedriveDealValue)}
                     </div>
                   )}
                 </div>
