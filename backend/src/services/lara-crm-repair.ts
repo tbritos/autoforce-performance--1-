@@ -5,6 +5,7 @@ import {
 
 const RESEARCH_STAGE_PROXIMITY_MS = 15 * 60 * 1000;
 const TERMINAL_STAGES = new Set<LaraMarketingStage>([
+  'CONVERSA_RESOLVIDA',
   'REUNIAO_AGENDADA',
   'TRANSFERIDO_HUMANO',
 ]);

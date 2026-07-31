@@ -54,6 +54,7 @@ enum MarketingStage {
   QUALIFICACAO
   NUTRICAO
   AGUARDANDO_FOLLOWUP
+  CONVERSA_RESOLVIDA
   AGENDA_ENVIADA
   REUNIAO_AGENDADA
   SEM_INTERESSE
@@ -129,6 +130,9 @@ model Lead {
   // Permite devolver o lead ao estagio anterior quando um humano encerra o
   // atendimento e reativa a Lara.
   marketingStageBeforeHandoff MarketingStage?
+  // Permite reabrir uma conversa resolvida na etapa em que ela estava quando
+  // o proprio lead volta a escrever.
+  marketingStageBeforeResolved MarketingStage?
 
   // Pipedrive integration
   pipedrivePersonId String?

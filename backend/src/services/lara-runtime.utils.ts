@@ -3,6 +3,7 @@ export type LaraMarketingStage =
   | 'QUALIFICACAO'
   | 'NUTRICAO'
   | 'AGUARDANDO_FOLLOWUP'
+  | 'CONVERSA_RESOLVIDA'
   | 'AGENDA_ENVIADA'
   | 'REUNIAO_AGENDADA'
   | 'SEM_INTERESSE'
@@ -10,6 +11,69 @@ export type LaraMarketingStage =
 
 export type LaraMarketingStageSource = 'ai' | 'system' | 'manual' | 'research';
 export type LaraResearchFit = 'qualified' | 'nurture' | 'disqualified';
+
+export const FOLLOWUP_RESOLVED_TAG = 'followup_conversa_resolvida';
+
+type FollowUpDecisionAction = {
+  type: string;
+  reason?: string;
+  payload?: Record<string, unknown>;
+};
+
+export type AIFollowUpDecision =
+  | { kind: 'send'; reason: string }
+  | { kind: 'skip_resolved'; reason: string }
+  | { kind: 'skip_disinterest'; reason: string }
+  | { kind: 'undecided'; reason: string };
+
+// Follow-up e uma acao potencialmente intrusiva: a Lara precisa autorizar o
+// reengajamento explicitamente. Ausencia de decisao, fallback da IA ou saida
+// malformada nunca viram envio por padrao. O skip ganha do send caso o modelo
+// devolva as duas acoes por engano.
+export function resolveAIFollowUpDecision(
+  source: string,
+  actions: FollowUpDecisionAction[],
+): AIFollowUpDecision {
+  if (source === 'fallback') {
+    return { kind: 'undecided', reason: 'A IA nao conseguiu avaliar se ainda existe uma pendencia real.' };
+  }
+
+  const skip = actions.find(action => action.type === 'skip_followup');
+  if (skip) {
+    const outcome = String(skip.payload?.outcome ?? skip.payload?.motivo ?? '')
+      .trim()
+      .toLowerCase();
+    const disinterestOutcomes = new Set([
+      'not_interested',
+      'do_not_contact',
+      'disqualified',
+      'sem_interesse',
+      'nao_contatar',
+      'fora_do_icp',
+    ]);
+    return {
+      kind: disinterestOutcomes.has(outcome) ? 'skip_disinterest' : 'skip_resolved',
+      reason: skip.reason?.trim() || 'A ultima troca nao deixou uma pendencia que justifique novo contato.',
+    };
+  }
+
+  const send = actions.find(action => action.type === 'send_followup');
+  if (send) {
+    return {
+      kind: 'send',
+      reason: send.reason?.trim() || 'A ultima mensagem deixou uma pergunta ou proximo passo relevante em aberto.',
+    };
+  }
+
+  return { kind: 'undecided', reason: 'A IA nao confirmou explicitamente que o lead merece follow-up.' };
+}
+
+// Uma conversa resolvida pode recomecar se o proprio lead voltar a escrever.
+// Nesse caso, remove apenas o bloqueio contextual; um pedido explicito de nao
+// contato/desinteresse continua protegido.
+export function resetResolvedFollowUpOnInbound(tags: string[]): string[] {
+  return tags.filter(tag => tag !== FOLLOWUP_RESOLVED_TAG);
+}
 
 const TERMINAL_AUTOMATION_STAGES: LaraMarketingStage[] = [
   'REUNIAO_AGENDADA',
@@ -22,6 +86,7 @@ const TERMINAL_AUTOMATION_STAGES: LaraMarketingStage[] = [
 // atendimento humano).
 const RESEARCH_PROTECTED_STAGES: LaraMarketingStage[] = [
   'AGUARDANDO_FOLLOWUP',
+  'CONVERSA_RESOLVIDA',
   'AGENDA_ENVIADA',
   ...TERMINAL_AUTOMATION_STAGES,
 ];
@@ -184,6 +249,22 @@ export function resolveHandoffReturnStage(
   previousStage: LaraMarketingStage | null,
 ): LaraMarketingStage {
   if (!previousStage || previousStage === 'TRANSFERIDO_HUMANO') {
+    return 'QUALIFICACAO';
+  }
+  return previousStage;
+}
+
+export function resolveResolvedConversationReturnStage(
+  previousStage: LaraMarketingStage | null,
+): LaraMarketingStage {
+  if (
+    !previousStage
+    || previousStage === 'CONVERSA_RESOLVIDA'
+    || previousStage === 'AGUARDANDO_FOLLOWUP'
+    || previousStage === 'REUNIAO_AGENDADA'
+    || previousStage === 'SEM_INTERESSE'
+    || previousStage === 'TRANSFERIDO_HUMANO'
+  ) {
     return 'QUALIFICACAO';
   }
   return previousStage;

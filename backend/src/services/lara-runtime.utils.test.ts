@@ -12,10 +12,13 @@ import {
   normalizeAIScoreForFit,
   pendingResearchFailureData,
   protectedMarketingStagesForSource,
+  resetResolvedFollowUpOnInbound,
+  resolveAIFollowUpDecision,
   isResearchRetryDue,
   researchRetryDelayMs,
   resolveAIRequestTimeout,
   resolveHandoffReturnStage,
+  resolveResolvedConversationReturnStage,
   resolveAIHotState,
   shouldPersistAIAnalysis,
   shouldScheduleAIReply,
@@ -73,6 +76,7 @@ test('pesquisa nao sobrescreve progresso comprovado pela conversa', () => {
   const protectedStages = protectedMarketingStagesForSource('research');
   assert.deepEqual(protectedStages, [
     'AGUARDANDO_FOLLOWUP',
+    'CONVERSA_RESOLVIDA',
     'AGENDA_ENVIADA',
     'REUNIAO_AGENDADA',
     'TRANSFERIDO_HUMANO',
@@ -146,6 +150,14 @@ test('Eu respondo restaura a etapa anterior ao handoff', () => {
   assert.equal(resolveHandoffReturnStage('TRANSFERIDO_HUMANO'), 'QUALIFICACAO');
 });
 
+test('nova mensagem reabre conversa resolvida na etapa anterior', () => {
+  assert.equal(resolveResolvedConversationReturnStage('NUTRICAO'), 'NUTRICAO');
+  assert.equal(resolveResolvedConversationReturnStage('NOVO'), 'NOVO');
+  assert.equal(resolveResolvedConversationReturnStage(null), 'QUALIFICACAO');
+  assert.equal(resolveResolvedConversationReturnStage('CONVERSA_RESOLVIDA'), 'QUALIFICACAO');
+  assert.equal(resolveResolvedConversationReturnStage('AGUARDANDO_FOLLOWUP'), 'QUALIFICACAO');
+});
+
 test('Ver tudo remove o limite de cards do CRM', () => {
   assert.deepEqual(kanbanCardQueryLimit(false), { take: 50 });
   assert.deepEqual(kanbanCardQueryLimit(true), {});
@@ -154,6 +166,40 @@ test('Ver tudo remove o limite de cards do CRM', () => {
 test('contagem de follow-ups sobe somente quando houve envio', () => {
   assert.equal(countSentFollowUp(3, false), 3);
   assert.equal(countSentFollowUp(3, true), 4);
+});
+
+test('follow-up so envia com confirmacao positiva explicita da Lara', () => {
+  assert.equal(resolveAIFollowUpDecision('gemini', []).kind, 'undecided');
+  assert.equal(resolveAIFollowUpDecision('fallback', [
+    { type: 'send_followup', reason: 'Ha uma pergunta pendente.' },
+  ]).kind, 'undecided');
+  assert.equal(resolveAIFollowUpDecision('gemini', [
+    { type: 'send_followup', reason: 'A Lara perguntou quantos vendedores a operacao possui.' },
+  ]).kind, 'send');
+});
+
+test('conversa resolvida vence uma confirmacao de envio conflitante', () => {
+  const decision = resolveAIFollowUpDecision('openai', [
+    { type: 'send_followup', reason: 'Tentar novamente.' },
+    { type: 'skip_followup', reason: 'A Lara apenas respondeu a duvida.', payload: { outcome: 'resolved' } },
+  ]);
+  assert.equal(decision.kind, 'skip_resolved');
+});
+
+test('desinteresse explicito continua separado de conversa apenas resolvida', () => {
+  assert.equal(resolveAIFollowUpDecision('gemini', [
+    { type: 'skip_followup', reason: 'Pediu para nao receber mensagens.', payload: { outcome: 'do_not_contact' } },
+  ]).kind, 'skip_disinterest');
+  assert.equal(resolveAIFollowUpDecision('gemini', [
+    { type: 'skip_followup', reason: 'Duvida respondida.' },
+  ]).kind, 'skip_resolved');
+});
+
+test('nova mensagem do lead reabre apenas um ciclo encerrado por conversa resolvida', () => {
+  assert.deepEqual(
+    resetResolvedFollowUpOnInbound(['cliente_site', 'followup_conversa_resolvida', 'followup_desinteresse']),
+    ['cliente_site', 'followup_desinteresse'],
+  );
 });
 
 test('timeout da IA tem default e limites seguros', () => {

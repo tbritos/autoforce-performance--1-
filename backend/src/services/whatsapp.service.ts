@@ -2,7 +2,13 @@ import { PlatformConnectionService } from './platform-connection.service';
 import { MarketingStage, Platform } from '@prisma/client';
 import { prisma } from '../config/database';
 import { normalizePhoneE164, phoneSearchVariants } from '../utils/phone';
-import { resolveHandoffReturnStage, shouldScheduleAIReply } from './lara-runtime.utils';
+import {
+  FOLLOWUP_RESOLVED_TAG,
+  resetResolvedFollowUpOnInbound,
+  resolveHandoffReturnStage,
+  resolveResolvedConversationReturnStage,
+  shouldScheduleAIReply,
+} from './lara-runtime.utils';
 
 const HUMAN_HANDOFF_TAG = 'transferido-para-humano';
 
@@ -115,7 +121,16 @@ async function findLeadByPhone(phone: string) {
   for (const value of candidates) {
     const lead = await prisma.lead.findFirst({
       where: { phone: { contains: value } },
-      select: { id: true, email: true, phone: true, name: true, whatsappInvalidAt: true },
+      select: {
+        id: true,
+        email: true,
+        phone: true,
+        name: true,
+        tags: true,
+        marketingStage: true,
+        marketingStageBeforeResolved: true,
+        whatsappInvalidAt: true,
+      },
     });
     if (lead) return lead;
   }
@@ -602,7 +617,16 @@ async function recordInboundMessage(message: any, senderName: string | null, pho
         // Fill in name if it was missing and now we have it
         ...(senderName ? { name: senderName } : {}),
       },
-      select: { id: true, email: true, phone: true, name: true, whatsappInvalidAt: true },
+      select: {
+        id: true,
+        email: true,
+        phone: true,
+        name: true,
+        tags: true,
+        marketingStage: true,
+        marketingStageBeforeResolved: true,
+        whatsappInvalidAt: true,
+      },
     });
     const { LeadScoringService } = await import('./lead-scoring.service');
     await LeadScoringService.applyScoringRulesToLead(lead.id).catch(err => {
@@ -630,8 +654,23 @@ async function recordInboundMessage(message: any, senderName: string | null, pho
   // Mensagem recebida = prova definitiva de que o numero funciona — limpa
   // qualquer marcacao anterior de falha permanente (autocurativo).
   await prisma.lead
-    .update({ where: { id: lead.id }, data: { followUpCount: 0, whatsappInvalidAt: null, whatsappInvalidReason: null } })
+    .update({
+      where: { id: lead.id },
+      data: {
+        followUpCount: 0,
+        tags: { set: resetResolvedFollowUpOnInbound(lead.tags) },
+        whatsappInvalidAt: null,
+        whatsappInvalidReason: null,
+      },
+    })
     .catch(() => {});
+
+  if (lead.marketingStage === 'CONVERSA_RESOLVIDA') {
+    const { reopenResolvedConversation } = await import('./lead-marketing-stage.service');
+    await reopenResolvedConversation(lead.email).catch(err => {
+      console.error(`[CRM-Lara] falha ao reabrir conversa resolvida de ${lead!.email}:`, err);
+    });
+  }
 
   const { type, text } = extractInboundText(message);
   const receivedAt = metaTimestamp(message.timestamp);
@@ -1078,6 +1117,7 @@ export async function setLeadAiHandoff(leadId: string, handoff: boolean): Promis
       tags: true,
       marketingStage: true,
       marketingStageBeforeHandoff: true,
+      marketingStageBeforeResolved: true,
     },
   });
   if (!lead) throw new Error('Lead não encontrado');
@@ -1088,9 +1128,19 @@ export async function setLeadAiHandoff(leadId: string, handoff: boolean): Promis
       where: { id: leadId },
       data: {
         aiHandoff: true,
-        tags: { set: Array.from(new Set([...lead.tags, HUMAN_HANDOFF_TAG])) },
+        tags: {
+          set: Array.from(new Set([
+            ...lead.tags.filter(tag => tag !== FOLLOWUP_RESOLVED_TAG),
+            HUMAN_HANDOFF_TAG,
+          ])),
+        },
+        marketingStageBeforeResolved: null,
         ...(lead.marketingStage !== MarketingStage.TRANSFERIDO_HUMANO
-          ? { marketingStageBeforeHandoff: lead.marketingStage }
+          ? {
+              marketingStageBeforeHandoff: lead.marketingStage === MarketingStage.CONVERSA_RESOLVIDA
+                ? resolveResolvedConversationReturnStage(lead.marketingStageBeforeResolved) as MarketingStage
+                : lead.marketingStage,
+            }
           : {}),
       },
     });

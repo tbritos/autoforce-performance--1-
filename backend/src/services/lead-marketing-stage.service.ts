@@ -8,6 +8,9 @@ import {
   LARA_NEW_LEADS_ACTIVE_SINCE,
   LaraMarketingStageSource,
   protectedMarketingStagesForSource,
+  FOLLOWUP_RESOLVED_TAG,
+  resetResolvedFollowUpOnInbound,
+  resolveResolvedConversationReturnStage,
 } from './lara-runtime.utils';
 
 export type MarketingStageSource = LaraMarketingStageSource;
@@ -25,6 +28,7 @@ const STAGE_ACTIVITY_MESSAGE: Record<MarketingStage, string> = {
   QUALIFICACAO: 'Lead classificado como "Em qualificação"',
   NUTRICAO: 'Lead classificado como "Em nutrição"',
   AGUARDANDO_FOLLOWUP: 'Lead entrou em espera de follow-up (silêncio)',
+  CONVERSA_RESOLVIDA: 'Conversa encerrada sem pendência de follow-up',
   AGENDA_ENVIADA: 'Convite de agenda enviado ao lead',
   REUNIAO_AGENDADA: 'Reunião agendada',
   SEM_INTERESSE: 'Lead descartado (sem interesse / fora do ICP)',
@@ -77,19 +81,38 @@ export async function setMarketingStage(
 export async function setMarketingStageById(id: string, newStage: MarketingStage, changedBy?: string): Promise<void> {
   const lead = await prisma.lead.findUnique({
     where: { id },
-    select: { email: true, tags: true, marketingStage: true },
+    select: {
+      email: true,
+      tags: true,
+      marketingStage: true,
+      marketingStageBeforeResolved: true,
+    },
   });
   if (!lead) throw new Error('Lead nao encontrado');
 
   const humanHandoff = isHumanHandoffStage(newStage);
+  const conversationResolved = newStage === 'CONVERSA_RESOLVIDA';
+  const tagsWithoutState = lead.tags.filter(tag => (
+    tag !== 'transferido-para-humano' && tag !== FOLLOWUP_RESOLVED_TAG
+  ));
   await prisma.lead.update({
     where: { id },
     data: humanHandoff
       ? {
           aiHandoff: true,
-          tags: { set: Array.from(new Set([...lead.tags, 'transferido-para-humano'])) },
+          tags: {
+            set: Array.from(new Set([
+              ...lead.tags.filter(tag => tag !== FOLLOWUP_RESOLVED_TAG),
+              'transferido-para-humano',
+            ])),
+          },
+          marketingStageBeforeResolved: null,
           ...(lead.marketingStage !== 'TRANSFERIDO_HUMANO'
-            ? { marketingStageBeforeHandoff: lead.marketingStage }
+            ? {
+                marketingStageBeforeHandoff: lead.marketingStage === 'CONVERSA_RESOLVIDA'
+                  ? resolveResolvedConversationReturnStage(lead.marketingStageBeforeResolved) as MarketingStage
+                  : lead.marketingStage,
+              }
             : {}),
         }
       : {
@@ -97,21 +120,93 @@ export async function setMarketingStageById(id: string, newStage: MarketingStage
           aiProcessing: false,
           aiProcessingAt: null,
           marketingStageBeforeHandoff: null,
-          tags: { set: lead.tags.filter(tag => tag !== 'transferido-para-humano') },
+          marketingStageBeforeResolved: conversationResolved
+            ? (lead.marketingStage !== 'CONVERSA_RESOLVIDA'
+              ? lead.marketingStage
+              : lead.marketingStageBeforeResolved)
+            : null,
+          tags: {
+            set: conversationResolved
+              ? [...tagsWithoutState, FOLLOWUP_RESOLVED_TAG]
+              : tagsWithoutState,
+          },
         },
   });
   await setMarketingStage(lead.email, newStage, 'manual', changedBy);
 }
 
+export async function markConversationResolved(
+  leadEmailRaw: string,
+  reason?: string,
+  source: MarketingStageSource = 'ai',
+): Promise<void> {
+  const email = normalizeEmail(leadEmailRaw);
+  const lead = await prisma.lead.findUnique({
+    where: { email },
+    select: {
+      tags: true,
+      marketingStage: true,
+      marketingStageBeforeResolved: true,
+    },
+  });
+  if (!lead) return;
+
+  await prisma.lead.update({
+    where: { email },
+    data: {
+      tags: { set: Array.from(new Set([...lead.tags, FOLLOWUP_RESOLVED_TAG])) },
+      ...(lead.marketingStage !== 'CONVERSA_RESOLVIDA'
+        ? { marketingStageBeforeResolved: lead.marketingStage }
+        : {}),
+    },
+  });
+  await setMarketingStage(email, 'CONVERSA_RESOLVIDA', source, undefined, reason);
+}
+
+export async function reopenResolvedConversation(leadEmailRaw: string): Promise<void> {
+  const email = normalizeEmail(leadEmailRaw);
+  const lead = await prisma.lead.findUnique({
+    where: { email },
+    select: {
+      tags: true,
+      marketingStage: true,
+      marketingStageBeforeResolved: true,
+    },
+  });
+  if (!lead) return;
+
+  const restoreStage = resolveResolvedConversationReturnStage(lead.marketingStageBeforeResolved);
+  await prisma.lead.update({
+    where: { email },
+    data: {
+      tags: { set: resetResolvedFollowUpOnInbound(lead.tags) },
+      marketingStageBeforeResolved: null,
+    },
+  });
+  if (lead.marketingStage === 'CONVERSA_RESOLVIDA') {
+    await setMarketingStage(
+      email,
+      restoreStage as MarketingStage,
+      'system',
+      undefined,
+      'O lead voltou a escrever e reabriu a conversa.',
+    );
+  }
+}
+
 const ALL_STAGES: MarketingStage[] = [
   'NOVO', 'QUALIFICACAO', 'NUTRICAO', 'AGUARDANDO_FOLLOWUP',
-  'AGENDA_ENVIADA', 'REUNIAO_AGENDADA', 'SEM_INTERESSE', 'TRANSFERIDO_HUMANO',
+  'CONVERSA_RESOLVIDA', 'AGENDA_ENVIADA', 'REUNIAO_AGENDADA',
+  'SEM_INTERESSE', 'TRANSFERIDO_HUMANO',
 ];
 
 // Colunas que so recebem e nunca esvaziam sozinhas (nada move um lead pra
 // fora delas automaticamente) — sem limite, cresceriam sem parar. Janela de
 // atividade recente por padrao; `includeAll` deixa ver tudo sob demanda.
-const WINDOWED_STAGES: MarketingStage[] = ['AGENDA_ENVIADA', 'REUNIAO_AGENDADA', 'SEM_INTERESSE', 'TRANSFERIDO_HUMANO'];
+const WINDOWED_STAGES: MarketingStage[] = [
+  'CONVERSA_RESOLVIDA', 'AGENDA_ENVIADA', 'REUNIAO_AGENDADA',
+  'SEM_INTERESSE', 'TRANSFERIDO_HUMANO',
+];
 const WINDOW_DAYS = 60;
 const CARDS_PER_COLUMN = 50;
 
@@ -136,7 +231,8 @@ const novoOnlyFilter = { firstSeenAt: { gte: LARA_NEW_LEADS_ACTIVE_SINCE } };
 // AGUARDANDO_FOLLOWUP so deveria mostrar leads que realmente vao receber um
 // follow-up automatico. Desde que FOLLOWUP_ACTIVE_SINCE entrou em vigor
 // (ai-followup.service.ts), setMarketingStage(..., 'AGUARDANDO_FOLLOWUP', ...)
-// so e chamado pra quem passa nesse corte — entao qualquer lead que JA
+// so e chamado depois que a Lara confirma a necessidade e o envio realmente
+// acontece — entao qualquer lead que JA
 // estava nessa coluna de antes (marketingStageChangedAt anterior ao corte,
 // ex: os ~261 acumulados quando o corte entrou) nunca mais vai ser
 // re-avaliado nem receber mensagem: ficaria "congelado" e enganoso mostrar

@@ -1,5 +1,5 @@
 import { prisma } from '../config/database';
-import { countSentFollowUp } from './lara-runtime.utils';
+import { countSentFollowUp, FOLLOWUP_RESOLVED_TAG } from './lara-runtime.utils';
 
 // So faz follow-up de lead com status LEAD — assim que o status vira MQL,
 // SQL, SCHEDULED, DEMO, PROPOSAL, OPPORTUNITY, CLIENT (ou LOST/DISQUALIFIED),
@@ -7,13 +7,13 @@ import { countSentFollowUp } from './lara-runtime.utils';
 // IA nao deve mais entrar em contato. Whitelist em vez de blacklist — mais
 // seguro do que manter uma lista crescente de status a excluir.
 const ELIGIBLE_STATUS = 'LEAD' as const;
-const EXCLUDED_TAGS = ['reuniao_agendada', 'followup_desinteresse'];
+const EXCLUDED_TAGS = ['reuniao_agendada', 'followup_desinteresse', FOLLOWUP_RESOLVED_TAG];
 
 // SEM_INTERESSE tambem cobre o caso em que a IA confirmou, numa mensagem ao
 // vivo, que o lead esta fora do ICP automotivo (fit=disqualified) — ver o
 // mapeamento fit->marketingStage em executeAIAndReply. Sem essa exclusao, um
 // lead ja confirmado fora do ICP continuaria recebendo follow-up.
-const EXCLUDED_MARKETING_STAGES = ['SEM_INTERESSE'] as const;
+const EXCLUDED_MARKETING_STAGES = ['SEM_INTERESSE', 'CONVERSA_RESOLVIDA'] as const;
 
 const DEFAULT_DELAY_HOURS = 24;
 const DEFAULT_MAX_ATTEMPTS = 2;
@@ -87,16 +87,13 @@ export async function sendFollowUpsForSilentLeads(): Promise<{ sent: number; eva
   });
 
   const { sendFollowUpMessage } = await import('./ai-whatsapp-reply.service');
-  const { setMarketingStage } = await import('./lead-marketing-stage.service');
   let sent = 0;
   for (const lead of eligibleLeads) {
     if (!lead.phone) continue;
     try {
-      // Reavaliacao periodica (CRM Lara) — lead silencioso "esfria" pra essa
-      // coluna mesmo sem responder nada. Antes de tentar mandar o follow-up,
-      // pra refletir o board mesmo se o envio for pulado (ex: fora da janela
-      // de 24h sem template configurado).
-      await setMarketingStage(lead.email, 'AGUARDANDO_FOLLOWUP', 'system').catch(() => {});
+      // A avaliacao de silencio, sozinha, nao muda a etapa do CRM. O lead so
+      // entra em AGUARDANDO_FOLLOWUP depois que a Lara confirmar que existe
+      // uma pendencia real e o envio realmente sair.
       const didSend = await sendFollowUpMessage(lead.phone);
       sent = countSentFollowUp(sent, didSend);
     } catch (err) {

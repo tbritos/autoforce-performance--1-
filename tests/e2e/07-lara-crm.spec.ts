@@ -9,6 +9,7 @@ const STAGES = [
   'QUALIFICACAO',
   'NUTRICAO',
   'AGUARDANDO_FOLLOWUP',
+  'CONVERSA_RESOLVIDA',
   'AGENDA_ENVIADA',
   'REUNIAO_AGENDADA',
   'SEM_INTERESSE',
@@ -16,7 +17,7 @@ const STAGES = [
 ];
 
 test.describe('Lara e CRM', () => {
-  test('board exibe as oito etapas e o score proprio da Lara', async ({ page }) => {
+  test('board exibe as nove etapas e o score proprio da Lara', async ({ page }) => {
     await goto(page, '/crm-lara');
     await assertNoError(page);
     await expect(page.getByTestId('crm-lara-board')).toBeVisible();

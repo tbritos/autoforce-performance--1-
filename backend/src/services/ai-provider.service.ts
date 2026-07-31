@@ -57,6 +57,9 @@ const ALLOWED_ACTION_TYPES = new Set([
   // customizado em executeAIAndReply, ai-whatsapp-reply.service.ts) — fora
   // desse contexto o switch em applyRecommendedActions simplesmente ignora.
   'skip_followup',
+  // Confirmacao positiva obrigatoria para o follow-up. Sem esta acao o fluxo
+  // falha pelo lado seguro e nao envia mensagem.
+  'send_followup',
   // Lead pediu pra ser recontatado numa data/prazo especifico (mesmo vago) —
   // ver payload.date, validado em applyRecommendedActions antes de gravar.
   'schedule_followup',
@@ -453,11 +456,12 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
         'offer_meeting_slots',
         'send_document',
         'skip_followup',
+        'send_followup',
         'schedule_followup',
       ],
       nota_sobre_tags: 'NAO use a acao apply_tag. O sistema de tags e gerenciado automaticamente. As tags de agendamento sao link_agendamento_enviado e reuniao_agendada.',
       nota_sobre_envio_de_documento: 'REGRA CRITICA — send_document: use APENAS quando o lead pedir explicitamente o ebook, material ou PDF (ex: "pode me mandar o ebook?", "tem algum material?"). NUNCA ofereca material por conta propria durante qualificacao/discovery -- isso e um pretexto pra fugir de perguntar, nao uma tatica de vendas. O material e SEMPRE entregue aqui mesmo pelo WhatsApp (send_document) -- nunca por email. Se precisar do email do lead, e SOMENTE para cadastro/registro (register_lead) -- nunca diga que o email e "para enviar o material", isso e falso e gera confusao.',
-      nota_sobre_skip_followup: 'A acao skip_followup so existe pra uso quando a instrucao (goal) explicitamente pedir uma avaliacao de follow-up automatico (reengajamento apos silencio do lead) — nunca use fora desse contexto. Quando pedida, use pra sinalizar que esse lead NAO deve ser reengajado (ja demonstrou desinteresse, pediu pra nao ser mais contatado, ou a conversa ja concluiu naturalmente) e, nesse caso, deixe reply_message vazio.',
+      nota_sobre_skip_followup: 'As acoes skip_followup e send_followup so existem quando a instrucao (goal) pedir uma avaliacao de follow-up automatico. Retorne EXATAMENTE UMA delas. Use skip_followup quando a ultima troca concluiu uma duvida/solicitacao sem pendencia, quando houve desinteresse, pedido de nao contato ou conclusao natural; deixe reply_message vazio e informe payload.outcome como resolved, not_interested, do_not_contact ou disqualified. Use send_followup somente quando a ultima mensagem da Lara deixou uma pergunta comercial, decisao ou proximo passo concreto aguardando resposta.',
       nota_sobre_schedule_followup: `Use a acao schedule_followup sempre que o lead pedir, em qualquer momento da conversa (nao so no fluxo de follow-up automatico), pra ser recontatado numa data ou prazo especifico — mesmo vago (ex: "nao esse mes, me chama no comeco do mes que vem", "so ano que vem", "me chama daqui umas duas semanas"). Converta a data mencionada (mesmo vaga) pra uma data absoluta usando data_de_hoje como referencia, e inclua em payload no formato {"date": "YYYY-MM-DD"}. Nunca invente uma data se o lead nao deu nenhuma indicacao de prazo — so use essa acao quando houver um pedido real de esperar ate um momento futuro.`,
     },
     formato_obrigatorio_de_saida: {
@@ -473,9 +477,9 @@ function buildPrequalificationPrompt(input: AIPrequalificationInput): Record<str
       recommended_next_step: 'proxima acao recomendada',
       recommended_actions: [
         {
-          type: 'handoff_to_human | register_lead | offer_meeting_slots | send_document | skip_followup | schedule_followup',
+          type: 'handoff_to_human | register_lead | offer_meeting_slots | send_document | skip_followup | send_followup | schedule_followup',
           reason: 'por que essa acao faz sentido',
-          payload: 'para schedule_followup, sempre { "date": "YYYY-MM-DD" }',
+          payload: 'para schedule_followup, sempre { "date": "YYYY-MM-DD" }; para skip_followup, { "outcome": "resolved | not_interested | do_not_contact | disqualified" }',
         },
       ],
       tags: ['tag_exemplo'],

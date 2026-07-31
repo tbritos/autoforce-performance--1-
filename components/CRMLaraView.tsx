@@ -9,6 +9,7 @@ const COLUMN_META: Array<{ stage: MarketingStage; label: string; hint?: string }
   { stage: 'QUALIFICACAO', label: 'Em qualificação' },
   { stage: 'NUTRICAO', label: 'Em nutrição' },
   { stage: 'AGUARDANDO_FOLLOWUP', label: 'Aguardando follow-up' },
+  { stage: 'CONVERSA_RESOLVIDA', label: 'Conversa resolvida' },
   { stage: 'AGENDA_ENVIADA', label: 'Convite de agenda enviado' },
   { stage: 'REUNIAO_AGENDADA', label: 'Reunião agendada', hint: 'segue no Pipedrive a partir daqui' },
   { stage: 'SEM_INTERESSE', label: 'Sem interesse / desqualificado' },

@@ -7,7 +7,9 @@ import { EBOOK_BENCHMARK_URL } from './whatsapp.service';
 import { normalizePhoneE164, phoneSearchVariants } from '../utils/phone';
 import {
   clampAIScore,
+  FOLLOWUP_RESOLVED_TAG,
   marketingStageForAIConversation,
+  resolveAIFollowUpDecision,
   resolveAIHotState,
   shouldPersistAIAnalysis,
 } from './lara-runtime.utils';
@@ -18,7 +20,7 @@ const LOCK_TTL_MS = 120_000;
 // reconferencia final caso nao haja AIAgent ativo com o campo configurado.
 const DEFAULT_FOLLOWUP_MAX_ATTEMPTS = 2;
 // Mesma lista de EXCLUDED_TAGS em ai-followup.service.ts.
-const FOLLOWUP_EXCLUDED_TAGS = ['reuniao_agendada', 'followup_desinteresse'];
+const FOLLOWUP_EXCLUDED_TAGS = ['reuniao_agendada', 'followup_desinteresse', FOLLOWUP_RESOLVED_TAG];
 const MAX_TRANSCRIPT_MSGS = 40;
 const DEFAULT_DISCOVERY_REPLY = 'Oi! Tudo bem? Sou a Lara, da AutoForce.\n\nMe conta rapidinho: hoje o maior desafio da sua concessionaria esta em gerar mais leads qualificados ou em converter melhor os leads que ja chegam?';
 const DISCOVERY_QUESTION = 'Hoje, qual e o maior gargalo: gerar mais leads qualificados ou converter melhor os leads que ja chegam?';
@@ -512,7 +514,7 @@ async function executeAIAndReply(
   const goal = isNewContact
     ? `${agentContext.agent.objective}\n\nIMPORTANTE: Este contato é novo e ainda não tem email cadastrado. Durante a conversa, de forma natural, tente descobrir o nome e o e-mail da pessoa. Quando obtiver o e-mail, inclua a ação register_lead no recommended_actions com os campos email e name. Peça o email como parte natural do cadastro (ex: "pra eu deixar seu contato registrado certinho aqui") — NUNCA diga que o email é necessário para enviar algo (material, ebook, proposta); qualquer material é sempre entregue aqui mesmo pelo WhatsApp, nunca por email.`
     : options?.followUp
-    ? `${agentContext.agent.objective}\n\nIMPORTANTE: o lead está em silêncio há um bom tempo (não respondeu a nenhuma mensagem recente). Antes de tudo, avalie o histórico da conversa: se em algum momento o lead demonstrou claramente que não tem mais interesse, pediu pra não ser mais contatado, ou a conversa já chegou a uma conclusão natural, NÃO gere uma mensagem — em vez disso, inclua a ação "skip_followup" em recommended_actions e deixe a resposta vazia. Caso contrário, gere uma mensagem curta e natural de reengajamento — pergunte se ainda tem interesse, se ficou alguma dúvida, ou se é um bom momento pra continuar a conversa. Não repita literalmente a última mensagem enviada, não pareça um robô insistindo, e não mencione que isso é um "follow-up" automático.`
+    ? `${agentContext.agent.objective}\n\nDECISAO OBRIGATORIA DE FOLLOW-UP: decida se este contato realmente merece ser reengajado. Baseie a decisao principalmente na ULTIMA TROCA e, em especial, na ultima mensagem marcada como BOT (a mensagem mais recente enviada pela Lara). Retorne EXATAMENTE UMA acao: (1) send_followup, somente se a Lara deixou uma pergunta comercial relevante, uma decisao, informacao necessaria ou proximo passo concreto aguardando resposta; ou (2) skip_followup, se a Lara apenas respondeu uma duvida, entregou uma informacao/material, orientou o contato, agradeceu, se despediu, encerrou naturalmente ou nao deixou nenhuma pendencia real. Uma pergunta generica de cortesia como "ficou alguma duvida?" ou "posso ajudar em algo mais?" NAO justifica follow-up. Se houver duvida sobre a necessidade, use skip_followup. Em skip_followup, deixe reply_message vazio e informe payload.outcome: resolved para conversa resolvida; not_interested para desinteresse; do_not_contact para pedido de nao contato; disqualified para fora do ICP. Em send_followup, gere uma mensagem curta e natural ligada exatamente a pendencia; nao repita a ultima mensagem, nao pareca insistente e nao mencione automacao.`
     : isPastLead
     ? `${agentContext.agent.objective}\n\nIMPORTANTE: este lead já avançou no funil (status atual: ${lead.status}) e já tem um vendedor da equipe comercial em contato direto com ele — você NÃO deve mais qualificar, fazer perguntas de descoberta, propor reunião, ou tentar avançar o processo comercial; isso agora é responsabilidade exclusiva do vendedor. Responda apenas dúvidas genuínas, ajude com suporte (materiais, informações, direcionamento) quando fizer sentido, com tom natural — como uma continuidade educada da conversa, nunca um interrogatório. Se a pergunta for algo comercial específico (preço, condições, prazo, negociação), oriente a pessoa a falar diretamente com quem já está cuidando do caso dela, ou use a ação handoff_to_human se fizer sentido.`
     : agentContext.agent.objective;
@@ -532,24 +534,43 @@ async function executeAIAndReply(
   // follow-up (ja sinalizou desinteresse, pediu pra nao ser mais contatado
   // etc) — marca e para de considerar esse lead em follow-ups futuros, sem
   // mandar nada e sem contar como tentativa.
-  const skipFollowupAction = result.recommendedActions?.find(a => a.type === 'skip_followup');
-  if (options?.followUp && skipFollowupAction) {
+  const followUpDecision = options?.followUp
+    ? resolveAIFollowUpDecision(result.source, result.recommendedActions ?? [])
+    : null;
+  if (options?.followUp && followUpDecision?.kind === 'skip_disinterest') {
     await prisma.lead.update({
       where: { email: lead.email },
       data: { tags: Array.from(new Set([...lead.tags, 'followup_desinteresse'])) },
     }).catch(() => {});
     const { setMarketingStage } = await import('./lead-marketing-stage.service');
-    await setMarketingStage(lead.email, 'SEM_INTERESSE', 'ai', undefined, skipFollowupAction.reason).catch(() => {});
+    await setMarketingStage(lead.email, 'SEM_INTERESSE', 'ai', undefined, followUpDecision.reason).catch(() => {});
     console.log(`[AI-Followup] IA decidiu não reengajar ${lead.email} (sinal de desinteresse) — lead excluído de futuros follow-ups`);
+    return { sent: false };
+  }
+  if (options?.followUp && followUpDecision?.kind === 'skip_resolved') {
+    const { markConversationResolved } = await import('./lead-marketing-stage.service');
+    await markConversationResolved(lead.email, followUpDecision.reason, 'ai').catch(() => {});
+    const { logLeadActivity } = await import('./lead-activity.service');
+    await logLeadActivity(
+      lead.email,
+      'followup_skipped',
+      'Lara decidiu não fazer follow-up: conversa resolvida',
+      followUpDecision.reason,
+      'ai',
+    );
+    console.log(`[AI-Followup] IA decidiu não reengajar ${lead.email} (conversa resolvida) — aguarda nova mensagem do lead`);
+    return { sent: false };
+  }
+  if (options?.followUp && followUpDecision?.kind !== 'send') {
+    console.warn(`[AI-Followup] ${lead.email} sem confirmacao explicita da IA — follow-up nao enviado (${followUpDecision?.reason ?? 'decisao ausente'})`);
     return { sent: false };
   }
 
   // recoverAIReply e um classificador por palavra-chave -- deliberadamente cru,
-  // sem entender contexto real da conversa. So deve substituir a decisao da IA
-  // quando ela genuinamente falhou (sem resposta usavel). Quando a IA respondeu
-  // bem, usar as acoes do regex por cima so serve pra reintroduzir bugs (ex:
-  // "horario" numa mensagem de auto-resposta de OUTRO bot disparando oferta de
-  // reuniao mesmo com a IA ja tendo dado uma resposta correta pra situacao).
+  // sem entender contexto real da conversa. Ele nunca participa do follow-up:
+  // nesse fluxo a decisao e o texto precisam vir explicitamente da Lara.
+  // Nas respostas inbound normais, so substitui a decisao quando a IA
+  // genuinamente falhou (sem resposta usavel).
   const aiHasUsableReply = result.source !== 'fallback' && !!result.replyMessage?.trim();
 
   if (result.source === 'fallback') {
@@ -558,7 +579,17 @@ async function executeAIAndReply(
 
   let replyText: string;
   let actionsToApply: AIAction[];
-  if (aiHasUsableReply) {
+  if (options?.followUp) {
+    replyText = result.replyMessage?.trim() ?? '';
+    // A avaliacao pediu exatamente send_followup ou skip_followup. O skip ja
+    // retornou acima; qualquer outra acao inesperada nao deve provocar efeitos
+    // colaterais (agenda, documento, handoff) durante um reengajamento.
+    actionsToApply = (result.recommendedActions ?? []).filter(action => action.type === 'send_followup');
+    if (options.withinSessionWindow !== false && !replyText) {
+      console.warn(`[AI-Followup] ${lead.email} confirmou reengajamento, mas nao gerou mensagem valida — envio cancelado`);
+      return { sent: false };
+    }
+  } else if (aiHasUsableReply) {
     replyText = result.replyMessage!.trim();
     actionsToApply = result.recommendedActions ?? [];
   } else {
@@ -659,8 +690,9 @@ async function executeAIAndReply(
   // (options.followUp) isso reclassificaria o lead de volta pra
   // qualificacao/nutricao na mesma chamada que acabou de setar
   // AGUARDANDO_FOLLOWUP, esvaziando essa coluna na pratica — ver
-  // sendFollowUpMessage mais abaixo, que so escreve AGUARDANDO_FOLLOWUP ou
-  // SEM_INTERESSE (via skip_followup), nunca isso aqui. Tambem nao roda pra
+  // sendFollowUpMessage mais abaixo, que escreve AGUARDANDO_FOLLOWUP,
+  // CONVERSA_RESOLVIDA ou SEM_INTERESSE (via decisao de follow-up), nunca
+  // reclassifica pelo fit generico aqui. Tambem nao roda pra
   // lead que ja passou de LEAD (isPastLead) — o board de marketing nao devia
   // mais reclassificar um lead que o vendedor ja assumiu.
   if (!options?.followUp && !isPastLead && shouldPersistAIAnalysis(result.source)) {
@@ -751,7 +783,7 @@ export async function sendFollowUpMessage(phone: string): Promise<boolean> {
       email: lead.email,
       deletedAt: null,
       status: 'LEAD',
-      marketingStage: { not: 'SEM_INTERESSE' },
+      marketingStage: { notIn: ['SEM_INTERESSE', 'CONVERSA_RESOLVIDA'] },
       followUpCount: { lt: maxAttempts },
       whatsappInvalidAt: null,
       OR: [{ followUpNotBeforeDate: null }, { followUpNotBeforeDate: { lte: now } }],
@@ -772,6 +804,14 @@ export async function sendFollowUpMessage(phone: string): Promise<boolean> {
         where: { email: lead.email },
         data: { followUpCount: { increment: 1 } },
       });
+      const { setMarketingStage } = await import('./lead-marketing-stage.service');
+      await setMarketingStage(
+        lead.email,
+        'AGUARDANDO_FOLLOWUP',
+        'system',
+        undefined,
+        'Lara confirmou uma pendencia real e enviou o follow-up.',
+      ).catch(() => {});
       console.log(`[AI-Followup] follow-up enviado para ${phone} lead=${lead.email} (canal=${withinSessionWindow ? 'texto livre' : 'template'})`);
       const { logLeadActivity } = await import('./lead-activity.service');
       await logLeadActivity(lead.email, 'followup_sent', 'Follow-up automático enviado', undefined, 'system');
