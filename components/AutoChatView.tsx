@@ -90,6 +90,7 @@ export default function AutoChatView() {
   const openIntegration = () => setActiveTab('integration');
   const isInstagramConnected = instagramConnection?.status === 'CONNECTED';
   const instagramAccountName = instagramConnection?.accountName || 'Conta profissional';
+  const isInstagramWebhookActive = instagramConnection?.metadata?.webhookSubscription === 'active';
   const canStartOAuth = instagramRequirement?.readyForOAuth === true;
 
   const loadInstagramConnection = useCallback(async (silent = false) => {
@@ -549,7 +550,7 @@ export default function AutoChatView() {
               {[
                 ['Autorizar a conta', isInstagramConnected ? `${instagramAccountName} autorizada.` : 'Entrar no Instagram e selecionar o perfil profissional correto.'],
                 ['Validar permissões', isInstagramConnected ? 'A conexão pode ser testada a qualquer momento.' : 'Confirmar acesso básico, mensagens e comentários.'],
-                ['Habilitar eventos', 'Será feito na próxima etapa, junto com o armazenamento das conversas.'],
+                ['Habilitar eventos', isInstagramWebhookActive ? 'Recebimento de mensagens ativo.' : 'Ativação automática em andamento.'],
               ].map(([title, description], index) => (
                 <div className="autochat-step" key={title}>
                   <div className="autochat-step-index">{index + 1}</div>
@@ -565,7 +566,11 @@ export default function AutoChatView() {
               ) : isInstagramConnected ? (
                 <div className="autochat-connection-box connected">
                   <strong><CheckCircle2 size={15} /> Instagram conectado — {instagramAccountName}</strong>
-                  <p>A conta foi autorizada. Webhooks e automações permanecem desligados nesta etapa.</p>
+                  <p>
+                    {isInstagramWebhookActive
+                      ? 'O recebimento de mensagens está ativo. As respostas automáticas continuam desligadas.'
+                      : 'A conta foi autorizada. O sistema está ativando o recebimento de mensagens.'}
+                  </p>
                   <div className="autochat-connection-actions">
                     <button
                       type="button"

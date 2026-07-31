@@ -493,6 +493,16 @@ export class ConnectionsController {
 // Called once on server startup — migrates env var tokens to DB and tests each platform.
 // Platforms already with a non-DISCONNECTED DB record are skipped.
 export async function startupConnectionCheck(): Promise<void> {
+  try {
+    const instagram = await PlatformConnectionService.getInternalConnection('INSTAGRAM');
+    if (instagram?.status === 'CONNECTED' && instagram.accountId) {
+      const subscription = await OAuthService.ensureInstagramWebhookSubscription();
+      console.log(`[connections] INSTAGRAM: webhook ativo — ${subscription.fields.join(', ')}`);
+    }
+  } catch (err) {
+    console.error('[connections] INSTAGRAM: não foi possível ativar o webhook:', err);
+  }
+
   const platforms = ['META_ADS', 'PIPEDRIVE', 'GOOGLE_ANALYTICS', 'RD_STATION', 'GOOGLE_ADS'] as const;
 
   for (const platform of platforms) {

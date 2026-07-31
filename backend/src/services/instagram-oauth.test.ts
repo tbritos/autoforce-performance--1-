@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import test from 'node:test';
-import { OAuthService } from './oauth.service';
+import { buildInstagramWebhookSubscriptionUrl, OAuthService } from './oauth.service';
 
 async function withInstagramEnv<T>(run: () => T | Promise<T>): Promise<T> {
   const previousId = process.env.INSTAGRAM_APP_ID;
@@ -99,4 +99,11 @@ test('OAuth do Instagram aceita os nomes de variavel cadastrados no Railway', as
       .digest('base64url');
     assert.equal(signature, expected);
   });
+});
+
+test('assinatura de eventos usa a conta profissional e o campo messages', () => {
+  const url = buildInstagramWebhookSubscriptionUrl('17841400012345678', 'v24.0');
+  assert.equal(url.origin, 'https://graph.instagram.com');
+  assert.equal(url.pathname, '/v24.0/17841400012345678/subscribed_apps');
+  assert.equal(url.searchParams.get('subscribed_fields'), 'messages');
 });

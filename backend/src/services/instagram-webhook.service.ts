@@ -243,8 +243,14 @@ export async function getInstagramWebhookStatus(): Promise<{
   messageCount: number;
   lastEvent: { type: string; receivedAt: Date } | null;
   lastMessage: { direction: string; type: string; receivedAt: Date } | null;
+  subscription: {
+    status: string;
+    fields: string[];
+    subscribedAt: string | null;
+    error: string | null;
+  };
 }> {
-  const [eventCount, messageCount, lastEvent, lastMessage] = await Promise.all([
+  const [eventCount, messageCount, lastEvent, lastMessage, connection] = await Promise.all([
     prisma.instagramWebhookEvent.count(),
     prisma.instagramMessage.count(),
     prisma.instagramWebhookEvent.findFirst({
@@ -255,7 +261,20 @@ export async function getInstagramWebhookStatus(): Promise<{
       orderBy: { receivedAt: 'desc' },
       select: { direction: true, type: true, receivedAt: true },
     }),
+    prisma.platformConnection.findUnique({
+      where: { platform: 'INSTAGRAM' },
+      select: { metadata: true },
+    }),
   ]);
+
+  const metadata = connection?.metadata
+    && typeof connection.metadata === 'object'
+    && !Array.isArray(connection.metadata)
+    ? connection.metadata as JsonRecord
+    : {};
+  const fields = Array.isArray(metadata.webhookFields)
+    ? metadata.webhookFields.filter((field): field is string => typeof field === 'string')
+    : [];
 
   return {
     eventCount,
@@ -264,5 +283,11 @@ export async function getInstagramWebhookStatus(): Promise<{
       ? { type: lastEvent.eventType, receivedAt: lastEvent.createdAt }
       : null,
     lastMessage,
+    subscription: {
+      status: asString(metadata.webhookSubscription) || 'not_started',
+      fields,
+      subscribedAt: asString(metadata.webhookSubscribedAt),
+      error: asString(metadata.webhookSubscriptionError),
+    },
   };
 }

@@ -201,6 +201,8 @@ const INSTAGRAM_SCOPES = [
   'instagram_business_manage_comments',
 ].join(',');
 
+export const INSTAGRAM_WEBHOOK_FIELDS = ['messages'] as const;
+
 function getInstagramRedirectUri(): string {
   // Read at request time because dotenv is initialized by server.ts after imports.
   const appUrl = process.env.APP_URL || APP_URL;
@@ -209,6 +211,15 @@ function getInstagramRedirectUri(): string {
 
 function getInstagramGraphApiVersion(): string {
   return process.env.INSTAGRAM_GRAPH_API_VERSION || 'v24.0';
+}
+
+export function buildInstagramWebhookSubscriptionUrl(
+  accountId: string,
+  graphApiVersion = getInstagramGraphApiVersion(),
+): URL {
+  const url = new URL(`https://graph.instagram.com/${graphApiVersion}/${encodeURIComponent(accountId)}/subscribed_apps`);
+  url.searchParams.set('subscribed_fields', INSTAGRAM_WEBHOOK_FIELDS.join(','));
+  return url;
 }
 
 function getInstagramAuthUrl(): string {
@@ -305,6 +316,14 @@ async function handleInstagramCallback(rawCode: string): Promise<void> {
       webhookSubscription: 'not_started',
     },
   });
+
+  try {
+    await ensureInstagramWebhookSubscription();
+  } catch (error) {
+    // A autorização da conta continua válida; a interface mostra o erro de eventos
+    // e uma nova inicialização tenta a assinatura novamente.
+    console.error('[instagram] Conta conectada, mas a assinatura do webhook falhou:', error);
+  }
 }
 
 async function getInstagramToken(): Promise<string> {
@@ -317,6 +336,60 @@ async function getInstagramToken(): Promise<string> {
     throw new Error('Token do Instagram expirado. Reconecte a conta no AutoChat.');
   }
   return tokens.accessToken;
+}
+
+async function updateInstagramWebhookMetadata(patch: Record<string, unknown>): Promise<void> {
+  const connection = await PlatformConnectionService.getInternalConnection('INSTAGRAM');
+  const metadata = connection?.metadata
+    && typeof connection.metadata === 'object'
+    && !Array.isArray(connection.metadata)
+    ? connection.metadata as Record<string, unknown>
+    : {};
+  await PlatformConnectionService.updateConnectionConfig({
+    platform: 'INSTAGRAM',
+    metadata: { ...metadata, ...patch },
+  });
+}
+
+async function ensureInstagramWebhookSubscription(): Promise<{
+  active: true;
+  fields: string[];
+}> {
+  const connection = await PlatformConnectionService.getInternalConnection('INSTAGRAM');
+  if (!connection?.accountId || connection.status !== 'CONNECTED') {
+    throw new Error('Instagram não conectado para ativar os eventos');
+  }
+
+  const accessToken = await getInstagramToken();
+  const url = buildInstagramWebhookSubscriptionUrl(connection.accountId);
+
+  try {
+    const result = await instagramJson<{ success?: boolean }>(url.toString(), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (result.success !== true) {
+      throw new Error('Instagram não confirmou a assinatura de eventos');
+    }
+
+    const subscribedAt = new Date().toISOString();
+    await updateInstagramWebhookMetadata({
+      webhookSubscription: 'active',
+      webhookFields: [...INSTAGRAM_WEBHOOK_FIELDS],
+      webhookSubscribedAt: subscribedAt,
+      webhookSubscriptionError: null,
+    });
+    return { active: true, fields: [...INSTAGRAM_WEBHOOK_FIELDS] };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Falha desconhecida ao assinar eventos';
+    await updateInstagramWebhookMetadata({
+      webhookSubscription: 'error',
+      webhookSubscriptionError: message,
+      webhookSubscriptionAttemptedAt: new Date().toISOString(),
+    });
+    throw error;
+  }
 }
 
 // ============================================================
@@ -746,4 +819,6 @@ export const OAuthService = {
       default: throw new Error(`Platform ${platform} não suportado`);
     }
   },
+
+  ensureInstagramWebhookSubscription,
 };
