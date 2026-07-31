@@ -96,6 +96,7 @@ export interface UpdateLeadProfileInput {
   score?: number | null;
   pipedriveDealId?: string | null;
   pipedrivePersonId?: string | null;
+  firstSeenAt?: string | Date;
 }
 
 // ============================================================
@@ -499,6 +500,15 @@ export class LeadHubService {
       return trimmed === '' ? null : trimmed;
     };
 
+    let firstSeenAt: Date | undefined;
+    if (input.firstSeenAt !== undefined) {
+      const parsed = input.firstSeenAt instanceof Date
+        ? input.firstSeenAt
+        : new Date(input.firstSeenAt);
+      if (Number.isNaN(parsed.getTime())) throw new Error('Data de criação inválida');
+      firstSeenAt = parsed;
+    }
+
     const data: Prisma.LeadUpdateInput = {
       ...(input.name !== undefined ? { name: cleanString(input.name) } : {}),
       ...(input.phone !== undefined ? { phone: normalizePhoneE164(input.phone) } : {}),
@@ -511,6 +521,7 @@ export class LeadHubService {
       ...(input.score !== undefined ? { score: input.score ?? 0 } : {}),
       ...(input.pipedriveDealId !== undefined ? { pipedriveDealId: cleanString(input.pipedriveDealId) } : {}),
       ...(input.pipedrivePersonId !== undefined ? { pipedrivePersonId: cleanString(input.pipedrivePersonId) } : {}),
+      ...(firstSeenAt !== undefined ? { firstSeenAt } : {}),
     };
 
     const updated = await prisma.lead.update({
