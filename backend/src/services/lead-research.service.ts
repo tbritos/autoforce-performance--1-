@@ -5,10 +5,13 @@ import {
   isResearchRetryDue,
   LARA_NEW_LEADS_ACTIVE_SINCE,
   marketingStageForResearchFit,
-  normalizeAIScoreForFit,
   pendingResearchFailureData,
   withAbortableTimeout,
 } from './lara-runtime.utils';
+import {
+  buildLeadResearchQuery,
+  normalizeResearchAssessment,
+} from './lead-research.utils';
 
 // Pesquisa automatica de informacao (coluna "Novo" do CRM Lara) — dispara
 // quando um lead novo chega por qualquer origem (campanha, WhatsApp, RD,
@@ -254,7 +257,12 @@ async function discoverAndVisitSite(
 // config do agente, revisar tambem aqui.
 async function assessResearchFit(
   lead: { name: string | null; company: string | null; jobTitle: string | null },
-  findings: string,
+  findings: {
+    officialSite: string | null;
+    cnpj: string | null;
+    webSearch: string | null;
+    previousResearch?: string | null;
+  },
   parentSignal: AbortSignal,
 ): Promise<{ fit: 'qualified' | 'nurture' | 'disqualified'; score: number; summary: string; reason: string } | null> {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -270,16 +278,24 @@ async function assessResearchFit(
       'Voce esta analisando um lead — a pesquisa pode ter acontecido na entrada dele no sistema OU ser uma atualizacao depois que ele mencionou o site numa conversa. NAO envie nenhuma mensagem, essa etapa e so leitura/analise.',
       'Sua unica tarefa e decidir, a partir de dados publicos pesquisados (busca na web, dados oficiais da empresa, conteudo do site), se esse lead parece se encaixar no ICP da AutoForce.',
       'ICP: concessionaria oficial, grupo automotivo, montadora, ou revenda de veiculos com pelo menos 50 veiculos em estoque. Agencias de marketing/publicidade, fornecedores de tecnologia, consultorias e qualquer empresa que nao seja concessionaria/grupo/revenda/montadora NAO fazem parte do ICP, mesmo que atuem no mercado automotivo.',
+      'Comece identificando O QUE A EMPRESA VENDE OU FAZ. Uma empresa que vende software, BI, CRM, marketing, consultoria ou outros servicos PARA concessionarias e fornecedora, nao concessionaria. Palavras automotivas, logos de clientes, noticias do setor e frases como "para sua concessionaria" nao provam que a propria empresa venda veiculos.',
+      'O conteudo do site oficial informado pelo lead e a fonte principal sobre a atividade da empresa. Se nome, cargo, resumo anterior ou resultados genericos da web entrarem em conflito com o site oficial, prefira o site. O nome digitado pelo lead pode ser falso ou sem sentido.',
+      'Nao invente CNPJ, estoque, atividade, cargo ou tipo de empresa. Cada afirmacao da decisao deve estar apoiada em evidence. Se nao houver evidencia suficiente para afirmar que a empresa e do ICP, use nurture.',
       'REGRA DE CARGO: consultor(a) de vendas, consultor(a) comercial e vendedor(a) NAO fazem parte do ICP, mesmo quando trabalham em uma empresa automotiva elegivel, porque nao possuem poder de decisao. Quando o cargo estiver confirmado como um desses, use fit="disqualified", score de 0 a 39 e nao recomende reuniao.',
       'Use fit="disqualified" SOMENTE quando os dados pesquisados indicarem claramente que a empresa NAO e do ICP (ex: e uma agencia, uma consultoria, um fornecedor de tecnologia). Na duvida ou com dado insuficiente, use "nurture" — nunca desqualifique por falta de informacao.',
       'Gere tambem score Lara de 0 a 100. qualified deve ficar entre 70-100; nurture entre 0-69; disqualified entre 0-39. O sistema validara essa coerencia.',
-      'Retorne somente JSON valido: { "fit": "qualified"|"nurture"|"disqualified", "score": 0-100, "summary": "resumo curto do que a pesquisa encontrou sobre a empresa/pessoa", "reason": "motivo direto da decisao de fit" }.',
+      'Retorne somente JSON valido: { "business_type": "dealership"|"automotive_group"|"automaker"|"vehicle_reseller"|"technology_supplier"|"marketing_agency"|"consultancy"|"non_automotive_company"|"other"|"unknown", "vehicle_stock": numero|null, "fit": "qualified"|"nurture"|"disqualified", "score": 0-100, "summary": "resumo curto, factual e sem suposicoes", "reason": "motivo direto da decisao", "evidence": [{ "source": "official_site"|"cnpj"|"web_search"|"lead_record", "fact": "fato que sustenta a decisao" }] }.',
     ],
     lead: { nome: lead.name, empresa: lead.company, cargo: lead.jobTitle },
     icp_configurado: agent?.icp ?? null,
     criterios_qualificacao: agent?.qualificationCriteria ?? null,
     criterios_desqualificacao: agent?.disqualificationCriteria ?? null,
-    dados_pesquisados: findings,
+    fontes_em_ordem_de_prioridade: {
+      site_oficial: findings.officialSite,
+      dados_oficiais_cnpj: findings.cnpj,
+      busca_web_secundaria: findings.webSearch,
+      resumo_anterior_nao_primario: findings.previousResearch ?? null,
+    },
   };
 
   try {
@@ -292,7 +308,43 @@ async function assessResearchFit(
         headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ role: 'user', parts: [{ text: JSON.stringify(prompt) }] }],
-          generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
+          generationConfig: {
+            temperature: 0.2,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'OBJECT',
+              properties: {
+                business_type: {
+                  type: 'STRING',
+                  enum: [
+                    'dealership', 'automotive_group', 'automaker', 'vehicle_reseller',
+                    'technology_supplier', 'marketing_agency', 'consultancy',
+                    'non_automotive_company', 'other', 'unknown',
+                  ],
+                },
+                vehicle_stock: { type: 'NUMBER', nullable: true },
+                fit: { type: 'STRING', enum: ['qualified', 'nurture', 'disqualified'] },
+                score: { type: 'NUMBER' },
+                summary: { type: 'STRING' },
+                reason: { type: 'STRING' },
+                evidence: {
+                  type: 'ARRAY',
+                  items: {
+                    type: 'OBJECT',
+                    properties: {
+                      source: {
+                        type: 'STRING',
+                        enum: ['official_site', 'cnpj', 'web_search', 'lead_record'],
+                      },
+                      fact: { type: 'STRING' },
+                    },
+                    required: ['source', 'fact'],
+                  },
+                },
+              },
+              required: ['business_type', 'fit', 'score', 'summary', 'reason', 'evidence'],
+            },
+          },
         }),
           signal,
         },
@@ -308,14 +360,10 @@ async function assessResearchFit(
     const payload = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
     const content = payload.candidates?.[0]?.content?.parts?.map(p => p.text ?? '').join('') ?? '{}';
     const parsed = JSON.parse(content);
-    const fit: 'qualified' | 'nurture' | 'disqualified' =
-      parsed.fit === 'qualified' || parsed.fit === 'disqualified' ? parsed.fit : 'nurture';
-    return {
-      fit,
-      score: normalizeAIScoreForFit(fit, parsed.score),
-      summary: typeof parsed.summary === 'string' ? parsed.summary : findings.slice(0, 500),
-      reason: typeof parsed.reason === 'string' ? parsed.reason : 'Pesquisa automática de informação',
-    };
+    const fallbackSummary = [findings.officialSite, findings.cnpj, findings.webSearch]
+      .filter(Boolean)
+      .join('\n\n');
+    return normalizeResearchAssessment(parsed, fallbackSummary);
   } catch (err) {
     if (parentSignal.aborted) throw err;
     console.warn('[LeadResearch] falha ao avaliar fit via Gemini:', err instanceof Error ? err.message : err);
@@ -373,23 +421,25 @@ async function runResearch(
   lead: { name: string | null; company: string | null; jobTitle: string | null; siteUrl: string | null },
   signal: AbortSignal,
 ): Promise<void> {
-  const queryTarget = lead.company || lead.name;
-  if (!queryTarget) {
+  const researchQuery = buildLeadResearchQuery(lead);
+  if (!researchQuery) {
     // Sem empresa nem nome, nao ha o que pesquisar — marca como concluido
     // (sem resultado) pra nao ficar tentando pra sempre.
     await prisma.lead.update({ where: { email }, data: { researchedAt: new Date() } });
     return;
   }
 
-  const webSearch = await searchWeb(`${queryTarget} empresa CNPJ concessionária revenda de veículos`, signal);
+  const webSearch = await searchWeb(researchQuery, signal);
   const webFindings = webSearch.text;
-
-  let cnpjFindings: string | null = null;
-  const cnpj = webFindings ? extractCnpj(webFindings) : null;
-  if (cnpj) cnpjFindings = await lookupCnpj(cnpj, signal);
 
   const siteResult = await discoverAndVisitSite(email, lead.siteUrl, webSearch.results, signal);
   const siteFindings = siteResult ? `Conteúdo do site (${siteResult.siteUrl}): ${siteResult.summary}` : null;
+
+  let cnpjFindings: string | null = null;
+  // Um CNPJ publicado no próprio site é mais confiável que o primeiro número
+  // encontrado em resultados genéricos da busca.
+  const cnpj = extractCnpj(siteFindings ?? '') ?? extractCnpj(webFindings ?? '');
+  if (cnpj) cnpjFindings = await lookupCnpj(cnpj, signal);
 
   const findings = [webFindings, cnpjFindings, siteFindings].filter(Boolean).join('\n\n');
 
@@ -404,7 +454,11 @@ async function runResearch(
     return;
   }
 
-  const assessment = await assessResearchFit(lead, findings, signal);
+  const assessment = await assessResearchFit(lead, {
+    officialSite: siteFindings,
+    cnpj: cnpjFindings,
+    webSearch: webFindings,
+  }, signal);
 
   if (!assessment) {
     await prisma.lead.update({
@@ -498,7 +552,12 @@ export async function refreshSiteResearch(leadEmailRaw: string, siteUrl: string)
     const combinedFindings = [lead.researchSummary, siteFindings].filter(Boolean).join('\n\n');
 
     const assessment = await withAbortableTimeout(
-      signal => assessResearchFit(lead, combinedFindings, signal),
+      signal => assessResearchFit(lead, {
+        officialSite: siteFindings,
+        cnpj: null,
+        webSearch: null,
+        previousResearch: lead.researchSummary,
+      }, signal),
       RESEARCH_AI_TIMEOUT_MS + 1_000,
       `reavaliacao de site (${email})`,
     );

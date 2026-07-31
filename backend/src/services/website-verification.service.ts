@@ -229,7 +229,14 @@ export async function fetchAndSummarizeSite(rawUrl: string, signal?: AbortSignal
     // Roda dentro do navegador (Playwright serializa a funcao pro contexto da
     // pagina) — `document` so existe la, nao no Node; cast evita precisar da
     // lib "dom" no tsconfig deste projeto backend.
-    const rawText = await page.evaluate(() => (globalThis as any).document?.body?.innerText ?? '');
+    const rawText = await page.evaluate(() => {
+      const doc = (globalThis as any).document;
+      if (!doc) return '';
+      const title = doc.title ?? '';
+      const description = doc.querySelector('meta[name="description"]')?.content ?? '';
+      const body = doc.body?.innerText ?? '';
+      return `Titulo: ${title}\nDescricao: ${description}\nConteudo: ${body}`;
+    });
     const summary = sanitizeExtractedText(rawText);
     return { summary };
   } finally {
