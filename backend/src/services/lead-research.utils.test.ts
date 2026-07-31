@@ -109,3 +109,27 @@ test('resultado generico da web sozinho nao qualifica empresa automotiva', () =>
 
   assert.equal(assessment.fit, 'nurture');
 });
+
+test('fornecedor do site so e salvo com credito observavel', () => {
+  const identified = normalizeResearchAssessment({
+    business_type: 'dealership',
+    fit: 'qualified',
+    score: 85,
+    website_provider: 'AutoForce',
+    website_provider_evidence: 'O rodapé contém o texto "Desenvolvido por AutoForce" com link para autoforce.com.',
+    evidence: [{ source: 'official_site', fact: 'Site de concessionária autorizada.' }],
+  }, 'fallback');
+  const guessed = normalizeResearchAssessment({
+    business_type: 'dealership',
+    fit: 'qualified',
+    score: 85,
+    website_provider: 'Fornecedor presumido',
+    website_provider_evidence: null,
+    evidence: [{ source: 'official_site', fact: 'Site de concessionária autorizada.' }],
+  }, 'fallback');
+
+  assert.equal(identified.websiteProvider, 'AutoForce');
+  assert.match(identified.websiteProviderEvidence ?? '', /rodapé/i);
+  assert.equal(guessed.websiteProvider, null);
+  assert.equal(guessed.websiteProviderEvidence, null);
+});

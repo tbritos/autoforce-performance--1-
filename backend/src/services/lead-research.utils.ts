@@ -24,6 +24,8 @@ export interface RawResearchAssessment {
   reason?: unknown;
   business_type?: unknown;
   vehicle_stock?: unknown;
+  website_provider?: unknown;
+  website_provider_evidence?: unknown;
   evidence?: unknown;
 }
 
@@ -34,6 +36,8 @@ export interface NormalizedResearchAssessment {
   reason: string;
   businessType: ResearchBusinessType;
   vehicleStock: number | null;
+  websiteProvider: string | null;
+  websiteProviderEvidence: string | null;
   evidence: ResearchEvidence[];
 }
 
@@ -127,6 +131,26 @@ export function normalizeResearchAssessment(
   const vehicleStock = Number.isFinite(rawVehicleStock) && rawVehicleStock >= 0
     ? Math.floor(rawVehicleStock)
     : null;
+  const rawWebsiteProvider = typeof raw.website_provider === 'string'
+    ? raw.website_provider.trim()
+    : '';
+  const rawWebsiteProviderEvidence = typeof raw.website_provider_evidence === 'string'
+    ? raw.website_provider_evidence.trim()
+    : '';
+  const normalizedProvider = rawWebsiteProvider
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  const providerIsUnknown = !rawWebsiteProvider
+    || ['unknown', 'desconhecido', 'nao identificado', 'nenhum', 'null'].includes(normalizedProvider);
+  // Nome sem credito observavel nao e fornecedor comprovado. Mantem vazio
+  // para a Lara nao repetir como fato uma inferencia do modelo.
+  const websiteProvider = !providerIsUnknown && rawWebsiteProviderEvidence
+    ? rawWebsiteProvider.slice(0, 160)
+    : null;
+  const websiteProviderEvidence = websiteProvider
+    ? rawWebsiteProviderEvidence.slice(0, 600)
+    : null;
   const requestedFit: LaraResearchFit = raw.fit === 'qualified' || raw.fit === 'disqualified'
     ? raw.fit
     : 'nurture';
@@ -158,6 +182,8 @@ export function normalizeResearchAssessment(
       : 'Pesquisa automática de informação',
     businessType,
     vehicleStock,
+    websiteProvider,
+    websiteProviderEvidence,
     evidence,
   };
 }

@@ -187,6 +187,8 @@ export interface LeadProfile {
   researchEvidence: Array<{ source: string; fact: string }> | null;
   researchVisitedUrls: string[];
   researchSiteSource: string | null;
+  researchWebsiteProvider: string | null;
+  researchWebsiteProviderEvidence: string | null;
   aiHandoff: boolean;
   whatsappInvalidAt: string | null;
   whatsappInvalidReason: string | null;

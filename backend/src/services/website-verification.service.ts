@@ -288,7 +288,11 @@ export async function fetchAndSummarizeSite(
 
       const extracted = await page.evaluate((shouldIncludeLinks: boolean) => {
         const doc = (globalThis as any).document;
-        if (!doc) return { text: '', links: [] as Array<{ href: string; label: string }> };
+        if (!doc) return {
+          text: '',
+          links: [] as Array<{ href: string; label: string }>,
+          providerSignals: [] as string[],
+        };
         const title = doc.title ?? '';
         const description = doc.querySelector('meta[name="description"]')?.content ?? '';
         const body = doc.body?.innerText ?? '';
@@ -298,12 +302,76 @@ export async function fetchAndSummarizeSite(
               label: anchor.innerText ?? anchor.textContent ?? '',
             }))
           : [];
-        return { text: `Titulo: ${title}\nDescricao: ${description}\nConteudo: ${body}`, links };
+
+        // Creditos de fornecedor costumam aparecer no rodape como texto,
+        // logo com link externo ou meta generator. Entrega apenas sinais
+        // observaveis para a IA decidir; nao adivinha pelo visual do site.
+        const providerSignals: string[] = [];
+        const creditPattern = /desenvolvid[oa]\s+por|powered\s+by|tecnologia\s+por|site\s+(?:por|by)|criado\s+por|feito\s+por|plataforma\s+por/i;
+        const generator = doc.querySelector('meta[name="generator"]')?.content;
+        if (generator) {
+          const signal = `Meta generator: ${String(generator)}`.replace(/\s+/g, ' ').trim().slice(0, 300);
+          if (signal && !providerSignals.includes(signal)) providerSignals.push(signal);
+        }
+
+        const footerNodes = Array.from(doc.querySelectorAll('footer, [class*="footer" i], [id*="footer" i]')) as any[];
+        for (const footer of footerNodes.slice(0, 6)) {
+          const footerText = String(footer.innerText ?? footer.textContent ?? '');
+          for (const line of footerText.split(/\n+/).map((item: string) => item.trim())) {
+            if (creditPattern.test(line)) {
+              const signal = `Credito no rodape: ${line}`.replace(/\s+/g, ' ').trim().slice(0, 300);
+              if (signal && !providerSignals.includes(signal)) providerSignals.push(signal);
+            }
+          }
+
+          for (const anchor of Array.from(footer.querySelectorAll?.('a[href]') ?? []) as any[]) {
+            const href = String(anchor.href ?? '');
+            let external = false;
+            let isHttp = false;
+            try {
+              const parsedHref = new URL(href);
+              isHttp = parsedHref.protocol === 'http:' || parsedHref.protocol === 'https:';
+              external = isHttp && parsedHref.hostname !== (globalThis as any).location.hostname;
+            } catch { /* ignora */ }
+            const image = anchor.querySelector?.('img');
+            const label = String(
+              anchor.innerText
+              || anchor.getAttribute?.('aria-label')
+              || anchor.getAttribute?.('title')
+              || image?.getAttribute?.('alt')
+              || image?.getAttribute?.('title')
+              || '',
+            ).trim();
+            const context = String(anchor.parentElement?.innerText ?? anchor.parentElement?.textContent ?? '').trim();
+            const ignoredReference = /facebook|instagram|linkedin|youtube|whatsapp|google|pol[ií]tica|privacidade|termos|cookies|lgpd|mailto:/i;
+            const localCredit = context.length <= 240 && creditPattern.test(context);
+            if (
+              (external && label && !ignoredReference.test(`${label} ${href}`))
+              || creditPattern.test(label)
+              || localCredit
+            ) {
+              const signal = `Link/logo no rodape: ${label || context.slice(0, 120)} -> ${href}`.replace(/\s+/g, ' ').trim().slice(0, 300);
+              if (signal && !providerSignals.includes(signal)) providerSignals.push(signal);
+            }
+          }
+        }
+
+        return {
+          text: `Titulo: ${title}\nDescricao: ${description}\nConteudo: ${body}`,
+          links,
+          providerSignals: providerSignals.slice(0, 12),
+        };
       }, includeLinks);
 
       const normalizedFinalUrl = finalUrl.toString();
       visitedUrls.push(normalizedFinalUrl);
-      pageSummaries.push(`Pagina consultada: ${normalizedFinalUrl}\n${sanitizeExtractedText(extracted.text)}`);
+      pageSummaries.push([
+        `Pagina consultada: ${normalizedFinalUrl}`,
+        sanitizeExtractedText(extracted.text),
+        extracted.providerSignals.length > 0
+          ? `Sinais de fornecedor/plataforma do site: ${extracted.providerSignals.join(' | ')}`
+          : 'Sinais de fornecedor/plataforma do site: nenhum credito explicito encontrado',
+      ].join('\n'));
       return extracted.links;
     };
 

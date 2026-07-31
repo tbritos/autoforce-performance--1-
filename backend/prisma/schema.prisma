@@ -177,6 +177,8 @@ model Lead {
   researchEvidence     Json?
   researchVisitedUrls  String[] @default([])
   researchSiteSource   String? // 'lead_provided' | 'corporate_email' | 'web_search'
+  researchWebsiteProvider String?
+  researchWebsiteProviderEvidence String? @db.Text
 
   firstSeenAt DateTime  @default(now())
   lastSeenAt  DateTime  @default(now())

@@ -1037,7 +1037,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                           )}
                         </div>
                         <div style={{ padding: 20 }}>
-                          {(profile.siteUrl || profile.researchBusinessType || profile.researchVehicleStock != null) && (
+                          {(profile.siteUrl || profile.researchBusinessType || profile.researchVehicleStock != null || profile.researchWebsiteProvider) && (
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 16 }}>
                               {profile.siteUrl && (
                                 <div style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--bg-subtle)', border: '1px solid var(--border)' }}>
@@ -1066,6 +1066,19 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                   <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--fg-primary)' }}>
                                     {profile.researchVehicleStock.toLocaleString('pt-BR')} veículos
                                   </div>
+                                </div>
+                              )}
+                              {profile.researchWebsiteProvider && (
+                                <div style={{ padding: '10px 12px', borderRadius: 8, background: 'var(--bg-subtle)', border: '1px solid var(--border)' }}>
+                                  <span style={fieldLabel}>Fornecedor do site</span>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--fg-primary)' }}>
+                                    {profile.researchWebsiteProvider}
+                                  </div>
+                                  {profile.researchWebsiteProviderEvidence && (
+                                    <div style={{ marginTop: 3, fontSize: 10, lineHeight: 1.4, color: 'var(--fg-subtle)' }}>
+                                      {profile.researchWebsiteProviderEvidence}
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>

@@ -50,6 +50,8 @@ export type AIAgentRuntimeContext = {
     researchedAt: Date | null;
     summary: string;
     icpSignal: string | null;
+    websiteProvider: string | null;
+    websiteProviderEvidence: string | null;
   } | null;
 };
 
@@ -164,7 +166,14 @@ export async function loadAIAgentContext(input: LoadContextInput): Promise<AIAge
       ? Promise.resolve(null)
       : prisma.lead.findUnique({
           where: { email: input.leadEmail },
-          select: { siteUrl: true, researchedAt: true, researchSummary: true, researchIcpSignal: true },
+          select: {
+            siteUrl: true,
+            researchedAt: true,
+            researchSummary: true,
+            researchIcpSignal: true,
+            researchWebsiteProvider: true,
+            researchWebsiteProviderEvidence: true,
+          },
         }),
   ]);
 
@@ -211,6 +220,8 @@ export async function loadAIAgentContext(input: LoadContextInput): Promise<AIAge
       researchedAt: researchLead.researchedAt,
       summary: researchLead.researchSummary,
       icpSignal: researchLead.researchIcpSignal,
+      websiteProvider: researchLead.researchWebsiteProvider,
+      websiteProviderEvidence: researchLead.researchWebsiteProviderEvidence,
     } : null,
   };
 }
