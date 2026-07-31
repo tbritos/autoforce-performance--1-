@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { Platform } from '@prisma/client';
 import { PlatformConnectionService } from './platform-connection.service';
+import { getInstagramAppId, getInstagramAppSecret } from './instagram-env.service';
 
 // ============================================================
 // OAuth Service — handles all platform authorization flows
@@ -15,14 +16,6 @@ import { PlatformConnectionService } from './platform-connection.service';
 // ============================================================
 
 const APP_URL = process.env.APP_URL || 'http://localhost:5000';
-
-function getInstagramAppId(): string {
-  return (process.env.INSTAGRAM_APP_ID || process.env.Instagram_App_ID || '').trim();
-}
-
-function getInstagramAppSecret(): string {
-  return (process.env.INSTAGRAM_APP_SECRET || process.env.Instagram_App_Secret || '').trim();
-}
 
 function withNgrokSkipParam(url: string): string {
   if (!url.includes('ngrok-free.')) return url;

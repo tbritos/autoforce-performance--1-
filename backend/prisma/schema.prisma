@@ -670,6 +670,52 @@ model PlatformConnection {
   syncLogs       SyncLog[]
 }
 
+// Envelope idempotente de todos os eventos enviados pelo webhook do Instagram.
+// Mantemos o payload bruto para evoluir novos gatilhos sem perder eventos antigos.
+model InstagramWebhookEvent {
+  id          String   @id @default(uuid())
+  eventKey    String   @unique
+  objectType  String
+  eventType   String
+  accountId   String?
+  senderId    String?
+  recipientId String?
+  messageId   String?
+  payload     Json
+  occurredAt  DateTime?
+  processedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([accountId])
+  @@index([eventType])
+  @@index([messageId])
+  @@index([createdAt])
+}
+
+// Mensagens normalizadas para a futura caixa de entrada do AutoChat.
+// Nenhuma resposta automatica e disparada nesta etapa.
+model InstagramMessage {
+  id          String   @id @default(uuid())
+  messageId   String   @unique
+  accountId   String
+  senderId    String
+  recipientId String
+  direction   String
+  type        String   @default("message")
+  status      String   @default("received")
+  text        String?  @db.Text
+  payload     Json     @default("{}")
+  occurredAt  DateTime?
+  receivedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([accountId])
+  @@index([senderId])
+  @@index([recipientId])
+  @@index([direction])
+  @@index([createdAt])
+}
+
 // ============================================================
 // CAMPANHAS
 // ============================================================
