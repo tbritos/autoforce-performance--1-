@@ -2,6 +2,7 @@ import { prisma } from '../../config/database';
 import { getMetricDef, isDateBucket, MetricDef, DateBucket } from './metrics-catalog';
 import { validateGroupBy, dateRangeFilter, resolveDatePreset, applyConditions } from './report-query.service';
 import { ReportFilterCondition, NUMERIC_FILTER_FIELDS, conditionToWhereValue, sanitizeConditionsForMetric } from './report-filter-ops';
+import { pipedriveForecastLeadWhere } from '../pipedrive-link.utils';
 
 const MAX_PAGE_SIZE = 50;
 const DEFAULT_PAGE_SIZE = 20;
@@ -147,7 +148,7 @@ async function drillDownLeads(
 
   const where: Record<string, unknown> = def.key === 'leads.count'
     ? { deletedAt: null }
-    : { deletedAt: null, pipedriveDealId: { not: null }, pipedriveDealStatus: 'open' }; // forecast_mrr / forecast_setup
+    : pipedriveForecastLeadWhere(); // forecast_mrr / forecast_setup
   applyConditions(where, conditions);
   applyDimensionAndDate(where, def, groupBy, dimension, dateFrom, dateTo);
 

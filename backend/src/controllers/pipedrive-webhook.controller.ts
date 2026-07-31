@@ -5,6 +5,7 @@ import {
   PIPEDRIVE_FIELDS, PIPEDRIVE_OPTIONS,
   resolveSetField, resolveEnumField, extractSetupValue, sourceToOrigin,
 } from '../services/pipedrive.service';
+import { canApplyPipedriveDealToLead } from '../services/pipedrive-link.utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -179,6 +180,21 @@ export class PipedriveWebhookController {
     }
     if (!lead && personId) {
       lead = await prisma.lead.findFirst({ where: { pipedrivePersonId: personId } });
+    }
+
+    // Um e-mail/person_id compartilhado entre venda e onboarding não pode
+    // substituir um vínculo de negócio que já foi estabelecido. Negócios
+    // ganhos ainda seguem sem lead abaixo para registrar receita, mas não
+    // alteram o card/snapshot do lead errado.
+    if (lead && !canApplyPipedriveDealToLead(lead.pipedriveDealId, dealId)) {
+      console.warn(
+        `[pipedrive-webhook] deal #${dealId} nao pode substituir deal #${lead.pipedriveDealId} de ${lead.email}`,
+      );
+      if (dealStatus !== 'won') {
+        res.status(200).json({ ok: true, skipped: true, reason: 'lead_link_conflict' });
+        return;
+      }
+      lead = null;
     }
 
     if (lead) {

@@ -1,6 +1,10 @@
 import { prisma } from '../config/database';
 import { LeadStatus } from '@prisma/client';
 import { PlatformConnectionService } from './platform-connection.service';
+import {
+  canApplyPipedriveDealToLead,
+  PIPEDRIVE_SALES_PIPELINE_IDS,
+} from './pipedrive-link.utils';
 
 // ============================================================
 // Pipedrive Service
@@ -491,7 +495,7 @@ export async function syncPipedrivePersons(): Promise<{ synced: number; errors: 
 }
 
 // Pipelines a sincronizar: novo_cliente (2) e upsell (5)
-const SYNC_PIPELINE_IDS = [2, 5];
+const SYNC_PIPELINE_IDS = [...PIPEDRIVE_SALES_PIPELINE_IDS];
 
 export async function syncPipedriveDeals(): Promise<{ synced: number; errors: number }> {
   const { token, domain, stageMap, authType } = await getCredentials();
@@ -545,6 +549,16 @@ export async function syncPipedriveDeals(): Promise<{ synced: number; errors: nu
     }
 
     if (!lead) continue;
+
+    // O mesmo contato pode participar de venda, onboarding e outros boards.
+    // Depois que um lead tem um negócio explicitamente vinculado, coincidência
+    // de e-mail/person_id não tem autoridade para trocar esse vínculo.
+    if (!canApplyPipedriveDealToLead(lead.pipedriveDealId, String(deal.id))) {
+      console.warn(
+        `[Pipedrive] deal #${deal.id} ignorado para ${lead.email}: lead ja vinculado ao deal #${lead.pipedriveDealId}`,
+      );
+      continue;
+    }
 
     // Only drive lead status + revenue from inbound deals.
     // Already-linked non-inbound deals still get timeline events but must not

@@ -3,6 +3,7 @@ import { LeadStatus, Prisma } from '@prisma/client';
 import { normalizePhoneE164 } from '../utils/phone';
 import { isLikelyBotLead } from './lead-spam-detection.service';
 import { LeadScoringService } from './lead-scoring.service';
+import { pipedriveForecastLeadWhere } from './pipedrive-link.utils';
 
 type ScoringRulesList = Awaited<ReturnType<typeof LeadScoringService.activeRules>>;
 
@@ -909,14 +910,10 @@ export class LeadHubService {
       return { total, page, pageSize, leads: enriched };
     }
 
-    // Case 5: Forecast — all open inbound deals, regardless of pipeline/stage.
-    // Not date-bound: reflects the live pipeline, same as the Forecast card/section.
+    // Case 5: Forecast — somente negócios abertos dos pipelines comerciais e
+    // leads que ainda estão em negociação. Clientes/boards operacionais ficam fora.
     if (params.event === 'forecast') {
-      const where = {
-        deletedAt: null as null,
-        pipedriveDealId: { not: null },
-        pipedriveDealStatus: 'open',
-      };
+      const where = pipedriveForecastLeadWhere() as any;
       const [total, leads] = await Promise.all([
         prisma.lead.count({ where }),
         prisma.lead.findMany({ where, select: leadSelect, orderBy: { lastSeenAt: 'desc' }, skip, take: pageSize }),
@@ -952,10 +949,7 @@ export class LeadHubService {
     const rows = await prisma.lead.groupBy({
       by: ['pipedrivePipelineId', 'pipedriveStageId', 'pipedriveStageName'],
       where: {
-        deletedAt: null,
-        pipedriveDealId: { not: null },
-        pipedriveDealStatus: 'open',
-        pipedrivePipelineId: { not: null },
+        ...pipedriveForecastLeadWhere(),
         pipedriveStageId: { not: null },
       },
       _count: { _all: true },

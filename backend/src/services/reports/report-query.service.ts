@@ -1,4 +1,5 @@
 import { prisma } from '../../config/database';
+import { pipedriveForecastLeadWhere } from '../pipedrive-link.utils';
 import { getMetricDef, isDateBucket, MetricDef, DateBucket } from './metrics-catalog';
 import { ReportFilterCondition, conditionToWhereValue, sanitizeConditionsForMetric } from './report-filter-ops';
 
@@ -169,11 +170,7 @@ async function queryLeads(def: MetricDef, groupBy: string | null, conditions: Re
   }
 
   // leads.forecast_mrr / leads.forecast_setup — live Pipedrive snapshot, not date-bound
-  const where: Record<string, unknown> = {
-    deletedAt: null,
-    pipedriveDealId: { not: null },
-    pipedriveDealStatus: 'open',
-  };
+  const where: Record<string, unknown> = pipedriveForecastLeadWhere();
   applyConditions(where, conditions);
   const rows = await prisma.lead.findMany({
     where,
