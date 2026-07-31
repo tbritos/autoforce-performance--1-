@@ -237,3 +237,32 @@ export async function handleInstagramWebhook(payload: unknown): Promise<{
     messages: insertedMessages.count,
   };
 }
+
+export async function getInstagramWebhookStatus(): Promise<{
+  eventCount: number;
+  messageCount: number;
+  lastEvent: { type: string; receivedAt: Date } | null;
+  lastMessage: { direction: string; type: string; receivedAt: Date } | null;
+}> {
+  const [eventCount, messageCount, lastEvent, lastMessage] = await Promise.all([
+    prisma.instagramWebhookEvent.count(),
+    prisma.instagramMessage.count(),
+    prisma.instagramWebhookEvent.findFirst({
+      orderBy: { createdAt: 'desc' },
+      select: { eventType: true, createdAt: true },
+    }),
+    prisma.instagramMessage.findFirst({
+      orderBy: { receivedAt: 'desc' },
+      select: { direction: true, type: true, receivedAt: true },
+    }),
+  ]);
+
+  return {
+    eventCount,
+    messageCount,
+    lastEvent: lastEvent
+      ? { type: lastEvent.eventType, receivedAt: lastEvent.createdAt }
+      : null,
+    lastMessage,
+  };
+}

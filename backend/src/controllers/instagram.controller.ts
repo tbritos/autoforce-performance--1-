@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import {
   handleInstagramWebhook,
+  getInstagramWebhookStatus,
   verifyInstagramWebhookSignature,
   verifyInstagramWebhookToken,
 } from '../services/instagram-webhook.service';
@@ -8,6 +9,20 @@ import {
 type RequestWithRawBody = Request & { rawBody?: Buffer };
 
 export class InstagramController {
+  static async webhookStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!verifyInstagramWebhookToken(req.header('x-webhook-verify-token'))) {
+        res.status(401).json({ error: 'Invalid Instagram webhook status token' });
+        return;
+      }
+
+      const status = await getInstagramWebhookStatus();
+      res.status(200).json(status);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static verifyWebhook(req: Request, res: Response) {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];

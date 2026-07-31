@@ -3,6 +3,7 @@ import { InstagramController } from '../controllers/instagram.controller';
 
 const router = Router();
 
+router.get('/webhook/status', InstagramController.webhookStatus);
 router.get('/webhook', InstagramController.verifyWebhook);
 router.post('/webhook', InstagramController.receiveWebhook);
 
