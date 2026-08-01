@@ -9,6 +9,7 @@ import {
   withAbortableTimeout,
 } from './lara-runtime.utils';
 import {
+  buildLeadResearchNameFallbackQuery,
   buildLeadResearchQuery,
   normalizeResearchAssessment,
   type NormalizedResearchAssessment,
@@ -485,7 +486,7 @@ export async function researchLead(leadEmailRaw: string): Promise<void> {
   try {
     const lead = await prisma.lead.findUnique({
       where: { email },
-      select: { name: true, company: true, jobTitle: true, siteUrl: true },
+      select: { name: true, company: true, jobTitle: true, city: true, state: true, siteUrl: true },
     });
     if (!lead) return;
 
@@ -507,7 +508,14 @@ export async function researchLead(leadEmailRaw: string): Promise<void> {
 
 async function runResearch(
   email: string,
-  lead: { name: string | null; company: string | null; jobTitle: string | null; siteUrl: string | null },
+  lead: {
+    name: string | null;
+    company: string | null;
+    jobTitle: string | null;
+    city: string | null;
+    state: string | null;
+    siteUrl: string | null;
+  },
   signal: AbortSignal,
 ): Promise<void> {
   const researchQuery = buildLeadResearchQuery(lead);
@@ -519,9 +527,24 @@ async function runResearch(
   }
 
   const webSearch = await searchWeb(researchQuery, signal);
-  const webFindings = webSearch.text;
+  const webFindingParts = webSearch.text ? [webSearch.text] : [];
 
-  const siteResult = await discoverAndVisitSite(email, lead.company, lead.siteUrl, webSearch.results, signal);
+  let siteResult = await discoverAndVisitSite(email, lead.company, lead.siteUrl, webSearch.results, signal);
+
+  // Um site digitado errado nao pode condenar todas as tentativas seguintes a
+  // repetir a mesma query vazia. Se nenhum candidato abriu, busca novamente
+  // pelo nome/localizacao e tenta os novos candidatos. A avaliacao continua
+  // conservadora: resultado generico de busca, sozinho, nunca qualifica.
+  if (!siteResult && lead.siteUrl) {
+    const fallbackQuery = buildLeadResearchNameFallbackQuery(lead);
+    if (fallbackQuery && fallbackQuery !== researchQuery) {
+      const fallbackSearch = await searchWeb(fallbackQuery, signal);
+      if (fallbackSearch.text) webFindingParts.push(fallbackSearch.text);
+      siteResult = await discoverAndVisitSite(email, lead.company, null, fallbackSearch.results, signal);
+    }
+  }
+
+  const webFindings = webFindingParts.length > 0 ? webFindingParts.join('\n\n') : null;
   const siteFindings = siteResult
     ? [
         `Site consultado: ${siteResult.siteUrl}`,

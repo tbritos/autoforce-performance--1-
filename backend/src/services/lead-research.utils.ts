@@ -75,11 +75,15 @@ function hostnameFromSiteUrl(siteUrl: string | null): string | null {
 // (como "concessionaria" ou "revenda") cria viés de confirmação e faz a
 // busca devolver empresas automotivas mesmo quando o domínio pertence a um
 // fornecedor que apenas atende esse mercado.
-export function buildLeadResearchQuery(input: {
+export interface LeadResearchQueryInput {
   name: string | null;
   company: string | null;
   siteUrl: string | null;
-}): string | null {
+  city?: string | null;
+  state?: string | null;
+}
+
+export function buildLeadResearchQuery(input: LeadResearchQueryInput): string | null {
   const target = input.company?.trim() || input.name?.trim();
   const hostname = hostnameFromSiteUrl(input.siteUrl);
   if (!target && !hostname) return null;
@@ -92,6 +96,23 @@ export function buildLeadResearchQuery(input: {
     'empresa atividade produtos serviços o que faz CNPJ',
   ];
   return parts.filter(Boolean).join(' ');
+}
+
+// Segunda consulta usada somente quando o dominio informado nao abre. Nesse
+// momento insistir em `site:dominio-incorreto` garante o mesmo resultado vazio
+// em todas as tentativas. O fallback volta ao nome e usa localizacao quando
+// disponivel para reduzir homonimos, sem adicionar termos do ICP que criariam
+// vies de confirmacao.
+export function buildLeadResearchNameFallbackQuery(input: LeadResearchQueryInput): string | null {
+  const target = input.company?.trim() || input.name?.trim();
+  if (!target) return null;
+
+  const location = [input.city?.trim(), input.state?.trim()].filter(Boolean).join(' ');
+  return [
+    `"${target}"`,
+    location ? `"${location}"` : null,
+    'empresa atividade produtos serviços o que faz CNPJ site oficial',
+  ].filter(Boolean).join(' ');
 }
 
 function parseEvidence(value: unknown): ResearchEvidence[] {

@@ -2,10 +2,10 @@
 nixPkgs = ["nodejs_22", "openssl_3"]
 
 [phases.install]
-cmds = ['npm install --include=dev', 'npx playwright install --with-deps chromium']
+cmds = ['npm install --include=dev', 'PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install --with-deps chromium']
 
 [phases.build]
 cmds = ['npx prisma generate', 'npm run build']
 
 [start]
-cmd = 'npm start'
+cmd = 'PLAYWRIGHT_BROWSERS_PATH=0 npm start'

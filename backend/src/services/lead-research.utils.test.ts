@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildLeadResearchNameFallbackQuery,
   buildLeadResearchQuery,
   normalizeResearchAssessment,
 } from './lead-research.utils';
@@ -15,6 +16,21 @@ test('pesquisa usa o dominio informado e nao injeta termos do ICP na consulta', 
   assert.match(query ?? '', /site:dealerintelligence\.com\.br/);
   assert.doesNotMatch(query ?? '', /Adadwa/);
   assert.match(query ?? '', /produtos serviços o que faz/);
+  assert.doesNotMatch(query ?? '', /concessionária|revenda de veículos/i);
+});
+
+test('site que falhou ganha fallback neutro por empresa e localizacao', () => {
+  const query = buildLeadResearchNameFallbackQuery({
+    name: 'Pessoa teste',
+    company: 'RS Veículos',
+    siteUrl: 'https://dominio-incorreto.example/',
+    city: 'Vila Velha',
+    state: 'ES',
+  });
+
+  assert.match(query ?? '', /"RS Veículos"/);
+  assert.match(query ?? '', /"Vila Velha ES"/);
+  assert.doesNotMatch(query ?? '', /site:dominio-incorreto/);
   assert.doesNotMatch(query ?? '', /concessionária|revenda de veículos/i);
 });
 
