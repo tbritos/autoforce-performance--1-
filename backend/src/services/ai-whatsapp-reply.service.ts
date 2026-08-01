@@ -1032,8 +1032,8 @@ async function findLeadByPhone(phone: string) {
   }
 
   // Fallback: lookup by generated email
-  const digits = phone.replace(/\D/g, '');
-  const toE164 = digits.startsWith('55') ? digits : `55${digits}`;
+  const toE164 = normalizePhoneE164(phone);
+  if (!toE164) return null;
   return prisma.lead.findUnique({
     where: { email: `wpp_${toE164}@autoforce.internal` },
     select: selectFields,
@@ -1156,8 +1156,11 @@ async function sendWhatsAppText(params: SendTextParams): Promise<boolean> {
   }
 
   const { accessToken } = await params.getCredentials();
-  const digits = params.to.replace(/\D/g, '');
-  const toE164 = digits.startsWith('55') ? digits : `55${digits}`;
+  const toE164 = normalizePhoneE164(params.to);
+  if (!toE164) {
+    console.warn(`[AI-WPP] telefone inválido ou sem DDD — resposta não enviada: ${params.to}`);
+    return false;
+  }
 
   const body = {
     messaging_product: 'whatsapp',

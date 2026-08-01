@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/database';
 import { SegmentService, SegmentRules } from '../services/segment.service';
+import { normalizePhoneE164 } from '../utils/phone';
 
 const router = Router();
 
@@ -63,8 +64,9 @@ function leadFieldValues(lead: AudienceLead): Record<string, string> {
 }
 
 function toE164(phone: string): string {
-  const digits = phone.replace(/\D/g, '');
-  return digits.startsWith('55') ? digits : `55${digits}`;
+  const normalized = normalizePhoneE164(phone);
+  if (!normalized) throw new Error(`Telefone inválido ou sem DDD: ${phone}`);
+  return normalized;
 }
 
 // Envia o disparo em segundo plano, em lotes pequenos. Mais conservador que o

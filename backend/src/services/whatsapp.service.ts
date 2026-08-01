@@ -110,6 +110,12 @@ function normalizePhone(phone: string | null | undefined): string {
   return normalizePhoneE164(String(phone ?? '')) ?? String(phone ?? '').replace(/\D/g, '');
 }
 
+function requireValidWhatsAppPhone(phone: string | null | undefined): string {
+  const normalized = normalizePhoneE164(phone);
+  if (!normalized) throw new Error('Telefone inválido ou sem DDD para envio de WhatsApp');
+  return normalized;
+}
+
 function metaTimestamp(seconds: string | number | undefined): Date {
   const n = Number(seconds);
   return Number.isFinite(n) && n > 0 ? new Date(n * 1000) : new Date();
@@ -274,7 +280,7 @@ async function resolveRegisteredWabaId(phoneNumberId: string): Promise<string | 
 // numero padrao (env var). So vale pra resposta manual/IA — disparos de
 // automação usam o phoneNumberId explicito configurado no bloco da jornada.
 export async function resolveDefaultPhoneNumberIdForLead(phone: string): Promise<string> {
-  const normalized = normalizePhone(phone);
+  const normalized = requireValidWhatsAppPhone(phone);
 
   const last = await (prisma as any).whatsAppMessage.findFirst({
     where: {
@@ -603,7 +609,7 @@ async function recordInboundMessage(message: any, senderName: string | null, pho
 
   // Auto-create a placeholder lead for unknown numbers
   if (!lead) {
-    const toE164 = from.startsWith('55') ? from : `55${from}`;
+    const toE164 = requireValidWhatsAppPhone(from);
     const generatedEmail = `wpp_${toE164}@autoforce.internal`;
     lead = await prisma.lead.upsert({
       where: { email: generatedEmail },
@@ -834,7 +840,7 @@ export async function sendWhatsAppTextFromUI(leadId: string, text: string, phone
   if (!lead.phone) throw new Error('Lead sem telefone cadastrado');
 
   const { accessToken } = await getWhatsAppCredentials();
-  const phone = normalizePhone(lead.phone);
+  const phone = requireValidWhatsAppPhone(lead.phone);
   const phoneNumberId = phoneNumberIdOverride?.trim() || await resolveDefaultPhoneNumberIdForLead(phone);
 
   const body = {
@@ -883,7 +889,7 @@ export async function sendWhatsAppTemplateFromUI(
   if (!lead.phone) throw new Error('Lead sem telefone cadastrado');
 
   const { accessToken } = await getWhatsAppCredentials();
-  const phone = normalizePhone(lead.phone);
+  const phone = requireValidWhatsAppPhone(lead.phone);
   const phoneNumberId = phoneNumberIdOverride?.trim() || await resolveDefaultPhoneNumberIdForLead(phone);
 
   // Busca o template DEPOIS de saber o numero — templates ficam na WABA do
@@ -970,7 +976,7 @@ export async function sendWhatsAppDocument(input: {
   phoneNumberId?: string | null;
 }): Promise<void> {
   const { accessToken } = await getWhatsAppCredentials();
-  const phone = normalizePhone(input.to);
+  const phone = requireValidWhatsAppPhone(input.to);
   const phoneNumberId = input.phoneNumberId?.trim() || await resolveDefaultPhoneNumberIdForLead(phone);
 
   const body = {

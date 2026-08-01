@@ -1,5 +1,6 @@
 import { prisma } from '../config/database';
 import { LeadHubService, normalizeEmail } from './lead-hub.service';
+import { normalizePhoneE164 } from '../utils/phone';
 
 type WebhookIngestResult = {
   received: number;
@@ -56,9 +57,10 @@ const buildLeadFromRow = (
     pickString(leadData, ['email']) ||
     pickString(row, ['email']);
 
-  const phone =
+  const phoneRaw =
     pickString(leadData, ['phone', 'mobile_phone', 'personal_phone', 'whatsapp']) ||
     pickString(row, ['phone', 'mobile_phone', 'personal_phone', 'whatsapp']);
+  const phone = phoneRaw ? normalizePhoneE164(phoneRaw) ?? phoneRaw : undefined;
 
   const company =
     pickString(leadData, ['company', 'company_name', 'organization']) ||

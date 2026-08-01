@@ -2,6 +2,7 @@ import { prisma } from '../config/database';
 import { LeadStatus, Prisma } from '@prisma/client';
 import { AIPrequalificationResult, runAIPrequalification } from './ai-provider.service';
 import { loadAIAgentContext, persistAIAgentDecision } from './ai-agent-context.service';
+import { normalizePhoneE164 } from '../utils/phone';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1007,8 +1008,8 @@ async function executeWhatsAppMessage(
   const phoneNumberId = String(config.phoneNumberId ?? '') || process.env.WHATSAPP_PHONE_NUMBER_ID;
   if (!phoneNumberId) throw new Error('Número WhatsApp não configurado no bloco nem em WHATSAPP_PHONE_NUMBER_ID');
 
-  const phone = lead.phone.replace(/\D/g, '');
-  const to = phone.startsWith('55') ? phone : `55${phone}`;
+  const to = normalizePhoneE164(lead.phone);
+  if (!to) throw new Error(`Lead ${leadEmail} tem telefone inválido ou sem DDD`);
 
   // Map lead fields by the same keys used in OUR_LEAD_FIELDS on the frontend
   const leadFieldValues: Record<string, string> = {
