@@ -467,6 +467,11 @@ export class LeadWebhooksService {
 
       const firstSource = cleanString(normalized.conversion.utmSource) || source.defaultSource || source.name;
       const campaignName = cleanString(normalized.conversion.campaignName) || source.defaultCampaign || undefined;
+      const submittedSiteUrl = findWebsiteValue(
+        normalized.customFields,
+        normalized.answers,
+        incomingPayload,
+      ) || cleanString(normalized.lead.siteUrl);
 
       const botDetected = isLikelyBotLead({
         name: cleanString(normalized.lead.name),
@@ -483,7 +488,7 @@ export class LeadWebhooksService {
           jobTitle: cleanString(normalized.lead.jobTitle),
           city: cleanString(normalized.lead.city),
           state: cleanString(normalized.lead.state),
-          siteUrl: cleanString(normalized.lead.siteUrl),
+          siteUrl: submittedSiteUrl,
         },
         {
           source: firstSource,

@@ -1,6 +1,7 @@
 import { prisma } from '../config/database';
 import { LeadHubService, normalizeEmail } from './lead-hub.service';
 import { normalizePhoneE164 } from '../utils/phone';
+import { findWebsiteValue } from './lead-site.utils';
 
 type WebhookIngestResult = {
   received: number;
@@ -65,6 +66,7 @@ const buildLeadFromRow = (
   const company =
     pickString(leadData, ['company', 'company_name', 'organization']) ||
     pickString(row, ['company', 'company_name', 'organization']);
+  const siteUrl = findWebsiteValue(leadData, row);
 
   const externalId =
     pickString(leadData, ['external_id', 'uuid', 'contact_uuid', 'id', 'lead_id']) ||
@@ -117,6 +119,7 @@ const buildLeadFromRow = (
     email,
     phone,
     company,
+    siteUrl,
     conversionIdentifier: conversion.identifier,
     conversionName: conversion.name,
     lastConversionDate,
@@ -230,6 +233,7 @@ export class WebhookLeadsService {
               name: parsed.name,
               phone: parsed.phone,
               company: parsed.company,
+              siteUrl: parsed.siteUrl,
             },
             conversionData: {
               source: parsed.source || 'webhook',

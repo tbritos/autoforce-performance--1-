@@ -14,7 +14,12 @@ import {
   normalizeResearchAssessment,
   type NormalizedResearchAssessment,
 } from './lead-research.utils';
-import { normalizeWebsiteUrl } from './lead-site.utils';
+import {
+  isNonOfficialWebsiteUrl,
+  normalizeWebsiteUrl,
+  resolveLeadResearchWebsite,
+  type LeadWebsiteSource,
+} from './lead-site.utils';
 
 // Pesquisa automatica de informacao (coluna "Novo" do CRM Lara) — dispara
 // quando um lead novo chega por qualquer origem (campanha, WhatsApp, RD,
@@ -170,16 +175,6 @@ function candidateSiteFromEmail(email: string): string | null {
   return `https://${domain}`;
 }
 
-// Domínios que aparecem com frequência em buscas por nome de empresa mas
-// quase nunca SÃO o site oficial dela — não é uma lista exaustiva, só o
-// suficiente pra não desperdiçar a tentativa de visita nesses casos óbvios.
-const NON_OFFICIAL_SITE_DOMAINS = [
-  'linkedin.com', 'facebook.com', 'instagram.com', 'twitter.com', 'x.com', 'youtube.com',
-  'reclameaqui.com.br', 'glassdoor.com', 'glassdoor.com.br', 'indeed.com', 'catho.com.br',
-  'google.com', 'wikipedia.org', 'econodata.com.br', 'empresascnpj.com', 'cnpj.biz',
-  'consultasocio.com', 'apontador.com.br', 'guiamais.com.br', 'telelistas.net', 'casadados.com.br',
-];
-
 function identityTokens(value: string | null | undefined): string[] {
   if (!value) return [];
   const ignored = new Set(['grupo', 'empresa', 'comercio', 'comercial', 'automoveis', 'veiculos', 'ltda', 'sa']);
@@ -207,7 +202,7 @@ function candidateSitesFromSearchResults(
     } catch {
       continue;
     }
-    if (NON_OFFICIAL_SITE_DOMAINS.some(d => hostname === d || hostname.endsWith(`.${d}`))) continue;
+    if (isNonOfficialWebsiteUrl(r.url)) continue;
     const context = `${hostname} ${r.title ?? ''} ${r.content ?? ''}`
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
@@ -264,29 +259,31 @@ function releaseSiteFetchSlot(): void {
   inFlightSiteFetches = Math.max(0, inFlightSiteFetches - 1);
 }
 
-type SiteDiscoverySource = 'lead_provided' | 'corporate_email' | 'web_search';
-
 interface DiscoveredSite {
   siteUrl: string;
   summary: string;
   visitedUrls: string[];
-  source: SiteDiscoverySource;
+  source: LeadWebsiteSource;
 }
 
 async function discoverAndVisitSite(
   email: string,
   company: string | null,
   existingSiteUrl: string | null,
+  existingSiteSource: LeadWebsiteSource | null,
   searchResults: Array<{ title?: string; url?: string; content?: string }>,
   parentSignal: AbortSignal,
 ): Promise<DiscoveredSite | null> {
-  const candidates: Array<{ url: string; source: SiteDiscoverySource }> = [
-    ...(existingSiteUrl ? [{ url: existingSiteUrl, source: 'lead_provided' as const }] : []),
+  const candidates: Array<{ url: string; source: LeadWebsiteSource }> = [
+    ...(existingSiteUrl ? [{ url: existingSiteUrl, source: existingSiteSource ?? 'lead_provided' }] : []),
     ...(candidateSiteFromEmail(email) ? [{ url: candidateSiteFromEmail(email)!, source: 'corporate_email' as const }] : []),
     ...candidateSitesFromSearchResults(searchResults, company).map(url => ({ url, source: 'web_search' as const })),
   ];
   const uniqueCandidates = candidates.filter((candidate, index, all) => {
     const normalized = normalizeWebsiteUrl(candidate.url);
+    // Um diretorio informado explicitamente ainda pode ser visitado, mas um
+    // diretorio descoberto automaticamente jamais vira o site oficial.
+    if (candidate.source !== 'lead_provided' && isNonOfficialWebsiteUrl(normalized)) return false;
     return normalized && all.findIndex(other => normalizeWebsiteUrl(other.url) === normalized) === index;
   });
   if (uniqueCandidates.length === 0) return null;
@@ -486,12 +483,45 @@ export async function researchLead(leadEmailRaw: string): Promise<void> {
   try {
     const lead = await prisma.lead.findUnique({
       where: { email },
-      select: { name: true, company: true, jobTitle: true, city: true, state: true, siteUrl: true },
+      select: {
+        name: true,
+        company: true,
+        jobTitle: true,
+        city: true,
+        state: true,
+        siteUrl: true,
+        customFields: true,
+        researchSiteSource: true,
+      },
     });
     if (!lead) return;
 
+    const resolvedWebsite = resolveLeadResearchWebsite(lead);
+    const researchInput = {
+      name: lead.name,
+      company: lead.company,
+      jobTitle: lead.jobTitle,
+      city: lead.city,
+      state: lead.state,
+      siteUrl: resolvedWebsite.siteUrl,
+      researchSiteSource: resolvedWebsite.source,
+    };
+
+    // Corrige o cadastro antes de acessar a web. Assim, mesmo se a visita ou
+    // a IA falhar, o valor declarado no formulario nao volta a ser substituido
+    // por um resultado de busca de uma tentativa anterior.
+    if (resolvedWebsite.cameFromCustomField && resolvedWebsite.siteUrl !== lead.siteUrl) {
+      await prisma.lead.update({
+        where: { email },
+        data: {
+          siteUrl: resolvedWebsite.siteUrl,
+          researchSiteSource: 'lead_provided',
+        },
+      });
+    }
+
     await withAbortableTimeout(
-      signal => runResearch(email, lead, signal),
+      signal => runResearch(email, researchInput, signal),
       OVERALL_TIMEOUT_MS,
       `pesquisa de lead (${email})`,
     );
@@ -515,6 +545,7 @@ async function runResearch(
     city: string | null;
     state: string | null;
     siteUrl: string | null;
+    researchSiteSource: LeadWebsiteSource | null;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -529,7 +560,14 @@ async function runResearch(
   const webSearch = await searchWeb(researchQuery, signal);
   const webFindingParts = webSearch.text ? [webSearch.text] : [];
 
-  let siteResult = await discoverAndVisitSite(email, lead.company, lead.siteUrl, webSearch.results, signal);
+  let siteResult = await discoverAndVisitSite(
+    email,
+    lead.company,
+    lead.siteUrl,
+    lead.researchSiteSource,
+    webSearch.results,
+    signal,
+  );
 
   // Um site digitado errado nao pode condenar todas as tentativas seguintes a
   // repetir a mesma query vazia. Se nenhum candidato abriu, busca novamente
@@ -540,7 +578,7 @@ async function runResearch(
     if (fallbackQuery && fallbackQuery !== researchQuery) {
       const fallbackSearch = await searchWeb(fallbackQuery, signal);
       if (fallbackSearch.text) webFindingParts.push(fallbackSearch.text);
-      siteResult = await discoverAndVisitSite(email, lead.company, null, fallbackSearch.results, signal);
+      siteResult = await discoverAndVisitSite(email, lead.company, null, null, fallbackSearch.results, signal);
     }
   }
 
