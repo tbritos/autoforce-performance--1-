@@ -11,7 +11,7 @@ import { chromium } from 'playwright';
 // (quando chamar, onde salvar o resultado, decisao de fit) vive la, nao
 // aqui — este arquivo so garante que a busca em si e segura.
 
-const HOME_NAV_TIMEOUT_MS = 10_000;
+const HOME_NAV_TIMEOUT_MS = 15_000;
 const SECONDARY_NAV_TIMEOUT_MS = 5_000;
 const DNS_TIMEOUT_MS = 5_000;
 export const OVERALL_SITE_FETCH_TIMEOUT_MS = 35_000;
@@ -275,7 +275,32 @@ export async function fetchAndSummarizeSite(
 
     const visit = async (target: string, includeLinks: boolean, timeout: number) => {
       if (signal?.aborted) throw new Error('Visita de site cancelada');
-      const response = await page.goto(target, { timeout, waitUntil: 'domcontentloaded' });
+      let response: Awaited<ReturnType<typeof page.goto>> = null;
+      try {
+        response = await page.goto(target, { timeout, waitUntil: 'domcontentloaded' });
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        const message = error instanceof Error ? error.message : String(error);
+        const timedOut = /timeout\s+\d+ms\s+exceeded/i.test(message);
+
+        // Alguns sites WordPress deixam scripts proprios pendurados e nunca
+        // emitem DOMContentLoaded, apesar de titulo e corpo ja estarem
+        // disponiveis. Nesses casos, aproveita o DOM parcial em vez de trocar
+        // o site correto do lead por um resultado generico da busca.
+        const currentUrl = (() => {
+          try { return new URL(page.url()); } catch { return null; }
+        })();
+        const allowedCurrentHost = currentUrl && allowedHosts.has(currentUrl.hostname.toLowerCase());
+        const hasUsableDom = allowedCurrentHost
+          ? await page.evaluate(() => {
+              const doc = (globalThis as any).document;
+              return Boolean(doc?.title?.trim() || doc?.body?.innerText?.trim());
+            }).catch(() => false)
+          : false;
+
+        if (!timedOut || !hasUsableDom) throw error;
+        console.warn(`[WebsiteVerification] usando DOM parcial apos timeout em ${target}`);
+      }
       const contentType = response?.headers()['content-type'] ?? '';
       if (contentType && !contentType.toLowerCase().includes('text/html')) {
         throw new Error(`Conteudo nao e HTML (content-type: ${contentType})`);
