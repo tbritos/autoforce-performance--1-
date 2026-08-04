@@ -444,7 +444,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
 
   // Edit form state
   const [form, setForm] = useState({
-    name: '', phone: '', company: '', jobTitle: '', city: '', state: '', siteUrl: '', assignedTo: '', score: '', pipedriveDealId: '',
+    email: '', name: '', phone: '', company: '', jobTitle: '', city: '', state: '', siteUrl: '', assignedTo: '', score: '', pipedriveDealId: '',
     firstSource: '', firstMedium: '', firstCampaign: '', firstLandingPage: '', utmContent: '', utmTerm: '',
   });
   const [customForm, setCustomForm] = useState<Record<string, unknown>>({});
@@ -474,6 +474,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
         (a, b) => new Date(a.convertedAt).getTime() - new Date(b.convertedAt).getTime()
       )[0];
       setForm({
+        email: isWppEmail(p.email) ? '' : p.email,
         name: p.name ?? '', phone: p.phone ?? '', company: p.company ?? '',
         jobTitle: p.jobTitle ?? '', city: p.city ?? '', state: p.state ?? '',
         siteUrl: p.siteUrl ?? '',
@@ -653,6 +654,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
     setSavingProfile(true);
     try {
       const updated = await DataService.updateLeadProfileById(profile.id, {
+        email: isWppEmail(profile.email) ? form.email.trim() || undefined : undefined,
         name: form.name || undefined,
         phone: form.phone || undefined,
         company: form.company || undefined,
@@ -963,12 +965,24 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                           )}
                         </div>
                         <div style={{ padding: 20 }}>
-                          {/* Email (always read-only) */}
+                          {/* E-mail real pode substituir o identificador temporário do WhatsApp. */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, padding: '8px 12px', background: 'var(--bg-subtle)', borderRadius: 8, border: '1px solid var(--border)' }}>
                             <Mail size={13} style={{ color: 'var(--fg-subtle)' }} />
-                            <span style={{ fontSize: 13, color: 'var(--fg-secondary)' }}>
-                              {displayEmail(profile.email) ?? <em style={{ color: 'var(--fg-subtle)' }}>Sem email cadastrado</em>}
-                            </span>
+                            {editMode && isWppEmail(profile.email) ? (
+                              <div style={{ flex: 1 }}>
+                                <span style={fieldLabel}>E-mail real</span>
+                                <input type="email" value={form.email}
+                                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                                  placeholder="nome@empresa.com.br" style={inputStyle} />
+                                <p style={{ margin: '5px 0 0', fontSize: 10, color: 'var(--fg-subtle)' }}>
+                                  Substitui o identificador temporário sem perder o histórico do lead.
+                                </p>
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: 13, color: 'var(--fg-secondary)' }}>
+                                {displayEmail(profile.email) ?? <em style={{ color: 'var(--fg-subtle)' }}>Sem email cadastrado</em>}
+                              </span>
+                            )}
                           </div>
 
                           {editMode ? (

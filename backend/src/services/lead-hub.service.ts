@@ -89,6 +89,7 @@ export interface LeadFilter {
 }
 
 export interface UpdateLeadProfileInput {
+  email?: string | null;
   name?: string | null;
   phone?: string | null;
   company?: string | null;
@@ -544,6 +545,8 @@ export class LeadHubService {
     const existingLead = await prisma.lead.findUnique({
       where: { id },
       select: {
+        id: true,
+        email: true,
         siteUrl: true,
         firstSource: true,
         firstMedium: true,
@@ -566,6 +569,26 @@ export class LeadHubService {
     });
     if (!existingLead) throw new Error('Lead não encontrado');
 
+    let normalizedEmail: string | undefined;
+    if (input.email !== undefined) {
+      const candidate = input.email?.trim().toLowerCase() ?? '';
+      const isGeneratedEmail = existingLead.email.startsWith('wpp_')
+        && existingLead.email.endsWith('@autoforce.internal');
+
+      if (!isGeneratedEmail) {
+        throw new Error('A troca de e-mail só é permitida para leads criados pelo WhatsApp');
+      }
+      if (!candidate || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate) || candidate.endsWith('@autoforce.internal')) {
+        throw new Error('Informe um e-mail real válido');
+      }
+
+      const duplicate = await prisma.lead.findUnique({ where: { email: candidate }, select: { id: true } });
+      if (duplicate && duplicate.id !== id) {
+        throw new Error('Este e-mail já está vinculado a outro lead');
+      }
+      normalizedEmail = candidate;
+    }
+
     const fillBlank = (current: string | null | undefined, incoming: string | null | undefined) => {
       if (incoming === undefined || current?.trim()) return undefined;
       return cleanString(incoming);
@@ -579,6 +602,7 @@ export class LeadHubService {
     const firstLandingPage = fillBlank(existingLead.firstLandingPage, input.firstLandingPage);
 
     const data: Prisma.LeadUpdateInput = {
+      ...(normalizedEmail !== undefined ? { email: normalizedEmail } : {}),
       ...(input.name !== undefined ? { name: cleanString(input.name) } : {}),
       ...(input.phone !== undefined ? { phone: normalizePhoneE164(input.phone) } : {}),
       ...(input.company !== undefined ? { company: cleanString(input.company) } : {}),
@@ -622,6 +646,19 @@ export class LeadHubService {
 
     const updated = await prisma.$transaction(async tx => {
       const lead = await tx.lead.update({ where: { id }, data });
+      if (normalizedEmail && normalizedEmail !== existingLead.email) {
+        // WhatsAppMessage.leadEmail é histórico e desnormalizado. As relações
+        // por e-mail acompanham a troca pela FK com onUpdate em cascata.
+        await tx.whatsAppMessage.updateMany({
+          where: {
+            OR: [
+              { leadId: id },
+              { leadEmail: existingLead.email },
+            ],
+          },
+          data: { leadEmail: normalizedEmail },
+        });
+      }
       if (firstConversion && Object.keys(conversionData).length > 0) {
         await tx.leadConversion.update({ where: { id: firstConversion.id }, data: conversionData });
       }

@@ -1120,6 +1120,7 @@ export const DataService = {
   },
 
   updateLeadProfileById: async (id: string, profile: {
+    email?: string | null;
     name?: string | null;
     phone?: string | null;
     company?: string | null;
