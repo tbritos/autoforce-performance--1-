@@ -500,8 +500,9 @@ const DashboardContent: React.FC<{
     const [hoveredInsightTile, setHoveredInsightTile] = useState<string | null>(null);
 
     // ── Lead KPI stats from Lead table (replaces DailyLead) ──────────────────
-    const [leadStats, setLeadStats] = useState({ leads: 0, mqls: 0, sqls: 0, clients: 0, newMrr: 0 });
-    const [prevLeadStats, setPrevLeadStats] = useState({ leads: 0, mqls: 0, sqls: 0, clients: 0, newMrr: 0 });
+    const emptyLeadStats = { leads: 0, mqls: 0, sqls: 0, clients: 0, newMrr: 0, paidLeads: { meta: 0, google: 0, total: 0 } };
+    const [leadStats, setLeadStats] = useState(emptyLeadStats);
+    const [prevLeadStats, setPrevLeadStats] = useState(emptyLeadStats);
     const [forecastTotals, setForecastTotals] = useState({ totalMrr: 0, totalSetup: 0, dealCount: 0 });
 
     useEffect(() => {
@@ -595,11 +596,19 @@ const DashboardContent: React.FC<{
       [funnelCounts]
     );
 
-    // CPL = investimento no período ÷ leads captados no período
+    // CPL = investimento em Meta + Google ÷ leads cuja primeira origem foi
+    // atribuida a mídia paga desses mesmos canais no período.
     const cpl = useMemo(() => {
-      if (totalInvest === 0 || leadStats.leads === 0) return 0;
-      return totalInvest / leadStats.leads;
-    }, [totalInvest, leadStats.leads]);
+      if (totalInvest === 0 || leadStats.paidLeads.total === 0) return 0;
+      return totalInvest / leadStats.paidLeads.total;
+    }, [totalInvest, leadStats.paidLeads.total]);
+
+    const metaCpl = metaSpend > 0 && leadStats.paidLeads.meta > 0
+      ? metaSpend / leadStats.paidLeads.meta
+      : 0;
+    const googleCpl = googleSpend > 0 && leadStats.paidLeads.google > 0
+      ? googleSpend / leadStats.paidLeads.google
+      : 0;
 
     // Fallback de segurança para evitar erro se metrics vier vazio
     const safeMetrics = Array.isArray(metrics) ? metrics : [];
@@ -872,6 +881,7 @@ const DashboardContent: React.FC<{
                 icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
                 color: string;
                 tooltip: string;
+                breakdownTitle?: string;
                 breakdown?: Array<{ label: string; value: string; color: string }>;
               };
               const tiles: InsightTile[] = [
@@ -881,12 +891,24 @@ const DashboardContent: React.FC<{
                   icon: DollarSign,
                   color: 'var(--af-600)',
                   tooltip: 'Soma do gasto em Meta Ads (Facebook/Instagram) + Google Ads no período selecionado. Atualizado via sincronização automática.',
+                  breakdownTitle: 'Investimento por canal',
                   breakdown: [
                     { label: 'Meta Ads', value: insightsLoading ? dash : fmt(metaSpend), color: '#1877f2' },
                     { label: 'Google Ads', value: insightsLoading ? dash : fmt(googleSpend), color: '#f9ab00' },
                   ],
                 },
-                { label: 'CPL',             value: insightsLoading ? dash : (cpl > 0 ? fmt(cpl) : dash), icon: Target, color: 'var(--green-600)', tooltip: 'Custo por Lead: quanto foi investido em mídia paga para cada novo lead captado no período. Calculado como: Total Investido ÷ Total de Leads.' },
+                {
+                  label: 'CPL',
+                  value: insightsLoading ? dash : (cpl > 0 ? fmt(cpl) : dash),
+                  icon: Target,
+                  color: 'var(--green-600)',
+                  tooltip: 'Custo por Lead pago: investimento de Meta Ads + Google Ads dividido apenas pelos novos leads atribuídos a esses canais no período. Não entram leads orgânicos, indicações ou importações.',
+                  breakdownTitle: 'CPL e leads pagos por canal',
+                  breakdown: [
+                    { label: `Meta Ads · ${leadStats.paidLeads.meta} leads`, value: insightsLoading ? dash : (metaCpl > 0 ? fmt(metaCpl) : dash), color: '#1877f2' },
+                    { label: `Google Ads · ${leadStats.paidLeads.google} leads`, value: insightsLoading ? dash : (googleCpl > 0 ? fmt(googleCpl) : dash), color: '#f9ab00' },
+                  ],
+                },
                 { label: 'Lead → MQL',      value: insightsLoading ? dash : pct(conversionRates.leadToMql),  icon: TrendingUp, color: 'var(--af-500)',    tooltip: 'Taxa de conversão de Lead para MQL no período. Calculado como: MQLs no período ÷ Leads no período. Indica a qualidade dos leads gerados.' },
                 { label: 'MQL → SQL',       value: insightsLoading ? dash : pct(conversionRates.mqlToSql),   icon: TrendingUp, color: '#818cf8',          tooltip: 'Taxa de conversão de MQL para SQL (Sales Qualified Lead). Indica quantos leads qualificados pelo marketing evoluíram para o estágio comercial.' },
                 { label: 'SQL → Venda',     value: insightsLoading ? dash : pct(conversionRates.sqlToSale),  icon: TrendingUp, color: 'var(--yellow-600)', tooltip: 'Taxa de conversão de SQL para negócio ganho. Indica a eficiência do time de vendas em fechar os negócios que chegaram até eles.' },
@@ -933,7 +955,7 @@ const DashboardContent: React.FC<{
                           }}
                         >
                           <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 700, color: 'var(--fg-muted)' }}>
-                            Investimento por canal
+                            {t.breakdownTitle}
                           </p>
                           {t.breakdown.map(item => (
                             <div key={item.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 6 }}>

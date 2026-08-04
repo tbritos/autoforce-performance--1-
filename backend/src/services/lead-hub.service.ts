@@ -5,6 +5,7 @@ import { isLikelyBotLead } from './lead-spam-detection.service';
 import { LeadScoringService } from './lead-scoring.service';
 import { pipedriveForecastLeadWhere } from './pipedrive-link.utils';
 import { normalizeWebsiteUrl } from './lead-site.utils';
+import { countPaidLeadsByChannel } from './lead-attribution.utils';
 
 type ScoringRulesList = Awaited<ReturnType<typeof LeadScoringService.activeRules>>;
 
@@ -716,9 +717,18 @@ export class LeadHubService {
     // counts once. "Vendas Realizadas" (clients) usa a mesma fonte da lista aberta ao
     // clicar o card (evento became_client) — antes vinha de RevenueEntry, o que podia
     // divergir do numero mostrado na lista.
-    const [leads, mqlRows, sqlRows, clientRows] = await Promise.all([
+    const [leads, paidLeadRows, mqlRows, sqlRows, clientRows] = await Promise.all([
       prisma.lead.count({
         where: { deletedAt: null, status: { not: 'DISQUALIFIED' }, firstSeenAt: { gte: start, lte: end } },
+      }),
+      prisma.lead.findMany({
+        where: {
+          deletedAt: null,
+          status: { not: 'DISQUALIFIED' },
+          firstSeenAt: { gte: start, lte: end },
+          NOT: { tags: { has: LeadHubService.EXCLUDED_LEAD_TAG } },
+        },
+        select: { firstSource: true, firstMedium: true },
       }),
       prisma.leadStatusHistory.findMany({
         where: {
@@ -765,6 +775,10 @@ export class LeadHubService {
       sqls: sqlRows.length,
       clients: clientRows.length,
       newMrr: mrrAgg._sum.mrrValue ?? 0,
+      paidLeads: countPaidLeadsByChannel(paidLeadRows.map(lead => ({
+        source: lead.firstSource,
+        medium: lead.firstMedium,
+      }))),
     };
   }
 

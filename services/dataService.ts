@@ -166,14 +166,16 @@ export const DataService = {
 
   // --- AQUI ESTAVA O PROBLEMA: Lead Tracker ---
 
-  getLeadStats: async (start: string, end: string): Promise<{ leads: number; mqls: number; sqls: number; clients: number; newMrr: number }> => {
+  getLeadStats: async (start: string, end: string): Promise<{ leads: number; mqls: number; sqls: number; clients: number; newMrr: number; paidLeads: { meta: number; google: number; total: number } }> => {
     if (USE_API) {
-      const data = await apiClient.get<{ leads: number; mqls: number; sqls: number; clients: number; newMrr: number }>(
+      const data = await apiClient.get<{ leads: number; mqls: number; sqls: number; clients: number; newMrr: number; paidLeads?: { meta: number; google: number; total: number } }>(
         `/lead-hub/stats?start=${start}&end=${end}`
       );
-      return data ?? { leads: 0, mqls: 0, sqls: 0, clients: 0, newMrr: 0 };
+      return data
+        ? { ...data, paidLeads: data.paidLeads ?? { meta: 0, google: 0, total: 0 } }
+        : { leads: 0, mqls: 0, sqls: 0, clients: 0, newMrr: 0, paidLeads: { meta: 0, google: 0, total: 0 } };
     }
-    return { leads: 0, mqls: 0, sqls: 0, clients: 0, newMrr: 0 };
+    return { leads: 0, mqls: 0, sqls: 0, clients: 0, newMrr: 0, paidLeads: { meta: 0, google: 0, total: 0 } };
   },
 
   getDailyLeadsHistory: async (): Promise<DailyLeadEntry[]> => {
