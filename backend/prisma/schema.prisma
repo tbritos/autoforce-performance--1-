@@ -799,7 +799,7 @@ model CampaignMetrics {
   cpl   Float @default(0)
 
   leads           Int   @default(0)
-  conversions     Int   @default(0)
+  conversions     Float @default(0)
   conversionValue Float @default(0)
   roas            Float @default(0)
 

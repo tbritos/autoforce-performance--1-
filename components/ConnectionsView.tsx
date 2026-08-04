@@ -14,6 +14,8 @@ import {
   Wifi,
   MessageCircle,
   CalendarDays,
+  Settings2,
+  Save,
 } from 'lucide-react';
 import { PlatformConnection, ConnectionStatus, ConnectionRequirement } from '../types';
 import { DataService } from '../services/dataService';
@@ -129,25 +131,40 @@ interface CardProps {
   onDisconnect: (platform: string) => Promise<void>;
   onSync: (platform: string) => Promise<void>;
   onTest: (platform: string) => Promise<{ ok: boolean; message: string }>;
+  onSaveConfig: (platform: string, metadata: Record<string, unknown>) => Promise<void>;
 }
 
-const PlatformCard: React.FC<CardProps> = ({ meta, connection, requirement, onConnect, onDisconnect, onSync, onTest }) => {
-  const [loadingAction, setLoadingAction] = useState<'connect' | 'disconnect' | 'sync' | 'test' | null>(null);
+const PlatformCard: React.FC<CardProps> = ({ meta, connection, requirement, onConnect, onDisconnect, onSync, onTest, onSaveConfig }) => {
+  const [loadingAction, setLoadingAction] = useState<'connect' | 'disconnect' | 'sync' | 'test' | 'config' | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
+  const [showConfig, setShowConfig] = useState(false);
+  const [googleCustomerId, setGoogleCustomerId] = useState('');
+  const [googleLoginCustomerId, setGoogleLoginCustomerId] = useState('');
   const status: ConnectionStatus = connection?.status ?? 'DISCONNECTED';
   const hasSavedConnection = hasConnectionData(connection);
   const canManageConnection = status === 'CONNECTED' || (status === 'ERROR' && hasSavedConnection);
   const { Icon, accentColor, accentBg } = meta;
   const missingEnv = requirement?.missingEnv || [];
+  const missingSyncEnv = requirement?.missingSyncEnv || [];
   const canOAuthConnect = requirement?.readyForOAuth ?? true;
+  const canSync = meta.id === 'GOOGLE_ADS' ? (requirement?.readyForSync ?? true) : true;
+  const visibleMissingEnv = status === 'CONNECTED' ? [] : missingEnv;
 
-  const run = async (action: 'connect' | 'disconnect' | 'sync' | 'test', fn: () => Promise<void>) => {
+  useEffect(() => {
+    if (meta.id !== 'GOOGLE_ADS') return;
+    const metadata = connection?.metadata || {};
+    setGoogleCustomerId(typeof metadata.customerId === 'string' ? metadata.customerId : '');
+    setGoogleLoginCustomerId(typeof metadata.loginCustomerId === 'string' ? metadata.loginCustomerId : '');
+  }, [connection?.metadata, meta.id]);
+
+  const run = async (action: 'connect' | 'disconnect' | 'sync' | 'test' | 'config', fn: () => Promise<void>) => {
     setLoadingAction(action);
     setFeedback(null);
     try {
       await fn();
       if (action === 'sync') setFeedback({ type: 'ok', msg: 'Sync concluído!' });
       if (action === 'disconnect') setFeedback({ type: 'ok', msg: 'Desconectado.' });
+      if (action === 'config') setFeedback({ type: 'ok', msg: 'Conta do Google Ads salva.' });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro inesperado';
       setFeedback({ type: 'err', msg });
@@ -196,11 +213,68 @@ const PlatformCard: React.FC<CardProps> = ({ meta, connection, requirement, onCo
         </div>
       )}
 
+      {meta.id === 'GOOGLE_ADS' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setShowConfig(value => !value)}
+            disabled={loadingAction !== null}
+            style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 6, padding: 0, border: 'none', background: 'transparent', color: 'var(--fg-muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+          >
+            <Settings2 size={11} />
+            {showConfig ? 'Fechar configuração' : 'Configurar conta e MCC'}
+          </button>
+          {showConfig && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, borderRadius: 'var(--r-md)', border: '1px solid var(--border)', background: 'var(--bg-subtle)' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: 'var(--fg-muted)' }}>
+                Customer ID da conta de anúncios
+                <input
+                  value={googleCustomerId}
+                  onChange={event => setGoogleCustomerId(event.target.value)}
+                  placeholder="123-456-7890"
+                  inputMode="numeric"
+                  style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--bg-surface)', color: 'var(--fg-primary)', padding: '7px 9px', fontSize: 12, outline: 'none' }}
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11, color: 'var(--fg-muted)' }}>
+                Login Customer ID da MCC <span style={{ color: 'var(--fg-subtle)' }}>(opcional)</span>
+                <input
+                  value={googleLoginCustomerId}
+                  onChange={event => setGoogleLoginCustomerId(event.target.value)}
+                  placeholder="987-654-3210"
+                  inputMode="numeric"
+                  style={{ border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--bg-surface)', color: 'var(--fg-primary)', padding: '7px 9px', fontSize: 12, outline: 'none' }}
+                />
+              </label>
+              <button
+                type="button"
+                disabled={loadingAction !== null || !googleCustomerId.trim()}
+                onClick={() => run('config', async () => {
+                  await onSaveConfig(meta.id, {
+                    customerId: googleCustomerId,
+                    loginCustomerId: googleLoginCustomerId,
+                  });
+                  setShowConfig(false);
+                })}
+                style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 6, padding: '5px 11px', borderRadius: 'var(--r-sm)', fontSize: 11, fontWeight: 700, background: 'var(--accent)', color: 'white', border: 'none', cursor: 'pointer', opacity: loadingAction !== null || !googleCustomerId.trim() ? 0.45 : 1 }}
+              >
+                {loadingAction === 'config' ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+                Salvar conta
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Error message */}
-      {status !== 'CONNECTED' && !canOAuthConnect && (
+      {(visibleMissingEnv.length > 0 || missingSyncEnv.length > 0) && (
         <p style={{ fontSize: 11, color: 'var(--yellow-700)', background: 'var(--yellow-50)', border: '1px solid rgba(234,179,8,0.25)', borderRadius: 'var(--r-md)', padding: '7px 10px', margin: 0, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
           <AlertCircle size={11} style={{ flexShrink: 0, marginTop: 1 }} />
-          Configure no .env: {missingEnv.join(', ')}
+          <span>
+            {visibleMissingEnv.length > 0 && <>Para conectar, configure no .env: {visibleMissingEnv.join(', ')}.</>}
+            {visibleMissingEnv.length > 0 && missingSyncEnv.length > 0 && <br />}
+            {missingSyncEnv.length > 0 && <>Para sincronizar, falta: {missingSyncEnv.map(name => name === 'GOOGLE_ADS_CUSTOMER_ID' ? 'Customer ID da conta' : name).join(', ')}.</>}
+          </span>
         </p>
       )}
       {status === 'ERROR' && connection?.lastSyncError && canOAuthConnect && (
@@ -235,9 +309,9 @@ const PlatformCard: React.FC<CardProps> = ({ meta, connection, requirement, onCo
           <>
             <button
               type="button"
-              disabled={loadingAction !== null}
+              disabled={loadingAction !== null || !canSync}
               onClick={() => run('test', () => onTest(meta.id).then(r => { setFeedback({ type: r.ok ? 'ok' : 'err', msg: r.message }); }))}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 'var(--r-md)', fontSize: 12, fontWeight: 600, background: 'var(--bg-subtle)', color: 'var(--fg-secondary)', border: '1px solid var(--border)', cursor: 'pointer', opacity: loadingAction !== null ? 0.4 : 1, transition: 'all .15s' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 'var(--r-md)', fontSize: 12, fontWeight: 600, background: 'var(--bg-subtle)', color: 'var(--fg-secondary)', border: '1px solid var(--border)', cursor: canSync ? 'pointer' : 'not-allowed', opacity: loadingAction !== null || !canSync ? 0.4 : 1, transition: 'all .15s' }}
             >
               {loadingAction === 'test' ? <Loader2 size={11} className="animate-spin" /> : <Wifi size={11} />}
               Testar
@@ -245,9 +319,9 @@ const PlatformCard: React.FC<CardProps> = ({ meta, connection, requirement, onCo
             {!meta.envVarOnly && (
               <button
                 type="button"
-                disabled={loadingAction !== null}
+                disabled={loadingAction !== null || !canSync}
                 onClick={() => run('sync', () => onSync(meta.id))}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 'var(--r-md)', fontSize: 12, fontWeight: 600, background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--border)', cursor: 'pointer', opacity: loadingAction !== null ? 0.4 : 1, transition: 'all .15s' }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 'var(--r-md)', fontSize: 12, fontWeight: 600, background: 'var(--accent-soft)', color: 'var(--accent)', border: '1px solid var(--border)', cursor: canSync ? 'pointer' : 'not-allowed', opacity: loadingAction !== null || !canSync ? 0.4 : 1, transition: 'all .15s' }}
               >
                 {loadingAction === 'sync' ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
                 Sincronizar
@@ -356,6 +430,11 @@ const ConnectionsView: React.FC = () => {
     return result;
   }, [loadConnections]);
 
+  const handleSaveConfig = useCallback(async (platform: string, metadata: Record<string, unknown>) => {
+    await DataService.updateConnectionConfig(platform, { metadata });
+    await loadConnections(true);
+  }, [loadConnections]);
+
   const connectionMap = new Map(connections.map(c => [c.platform, c]));
   const requirementMap = new Map(requirements.map(item => [item.platform, item]));
 
@@ -397,6 +476,7 @@ const ConnectionsView: React.FC = () => {
                   onDisconnect={handleDisconnect}
                   onSync={handleSync}
                   onTest={handleTest}
+                  onSaveConfig={handleSaveConfig}
                 />
         ))}
       </div>

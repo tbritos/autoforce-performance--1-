@@ -824,6 +824,9 @@ export interface ConnectionRequirement {
   requiredEnv: string[];
   missingEnv: string[];
   readyForOAuth: boolean;
+  requiredSyncEnv?: string[];
+  missingSyncEnv?: string[];
+  readyForSync?: boolean;
 }
 
 export interface Metric {

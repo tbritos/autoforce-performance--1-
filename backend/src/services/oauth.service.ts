@@ -476,8 +476,14 @@ async function exchangeGoogleCode(code: string, platform: Platform): Promise<voi
     ? new Date(Date.now() + data.expires_in * 1000)
     : undefined;
 
-  // Save the token only for the Google product that completed OAuth.
-  const metadata: Record<string, unknown> = {};
+  // Save the token only for the Google product that completed OAuth. Preserve
+  // account metadata configured before OAuth (notably Customer ID / MCC for Ads).
+  const existingConnection = platform === 'GOOGLE_ADS'
+    ? await PlatformConnectionService.getConnection(platform)
+    : null;
+  const metadata: Record<string, unknown> = {
+    ...((existingConnection?.metadata || {}) as Record<string, unknown>),
+  };
   if (platform === 'GOOGLE_ANALYTICS') {
     metadata.propertyId = process.env.GA4_PROPERTY_ID;
     metadata.propertyIds = process.env.GA4_PROPERTY_IDS || process.env.GA4_PROPERTY_ID;

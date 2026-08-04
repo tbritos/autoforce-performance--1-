@@ -3,6 +3,7 @@ import { Platform } from '@prisma/client';
 import { OAuthService } from '../services/oauth.service';
 import { PlatformConnectionService } from '../services/platform-connection.service';
 import { getWhatsAppCredentials } from '../services/whatsapp.service';
+import { normalizeGoogleAdsCustomerId, requireGoogleAdsCustomerId } from '../config/google-ads';
 
 const VALID_PLATFORMS = [
   'META_ADS', 'INSTAGRAM', 'GOOGLE_ADS', 'GOOGLE_ANALYTICS', 'GOOGLE_CALENDAR', 'RD_STATION', 'PIPEDRIVE', 'CLARITY', 'WHATSAPP',
@@ -60,6 +61,10 @@ const OAUTH_ENV_REQUIREMENTS: Record<(typeof VALID_PLATFORMS)[number], string[]>
   WHATSAPP:          [],
 };
 
+const SYNC_ENV_REQUIREMENTS: Partial<Record<(typeof VALID_PLATFORMS)[number], string[]>> = {
+  GOOGLE_ADS: ['GOOGLE_ADS_DEVELOPER_TOKEN', 'GOOGLE_ADS_CUSTOMER_ID'],
+};
+
 const ENV_ALIASES: Partial<Record<string, string[]>> = {
   INSTAGRAM_APP_ID: ['Instagram_App_ID'],
   INSTAGRAM_APP_SECRET: ['Instagram_App_Secret'],
@@ -82,6 +87,16 @@ async function testPlatformConnection(platform: Platform): Promise<{ ok: boolean
       } catch (err) {
         return { ok: false, message: err instanceof Error ? err.message : 'Erro ao testar WhatsApp' };
       }
+    }
+
+    if (platform === 'GOOGLE_ADS') {
+      const { testGoogleAdsConnection } = await import('../services/google-ads.service');
+      const result = await testGoogleAdsConnection();
+      return {
+        ok: true,
+        message: `Google Ads conectado${result.accountName ? ` — ${result.accountName}` : ''} ` +
+          `(conta ${result.customerId}, API ${result.apiVersion})`,
+      };
     }
 
     const token = await OAuthService.getValidToken(platform);
@@ -149,18 +164,6 @@ async function testPlatformConnection(platform: Platform): Promise<{ ok: boolean
         return { ok: true, message: `Google Analytics (property ${propertyId}) OK` };
       }
 
-      case 'GOOGLE_ADS': {
-        const customerId = process.env.GOOGLE_ADS_CUSTOMER_ID;
-        const devToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
-        if (!customerId) return { ok: false, message: 'GOOGLE_ADS_CUSTOMER_ID não configurado no Railway' };
-        if (!devToken) return { ok: false, message: 'GOOGLE_ADS_DEVELOPER_TOKEN não configurado no Railway' };
-        const res = await fetch(`https://googleads.googleapis.com/v17/customers/${customerId}`, {
-          headers: { Authorization: `Bearer ${token}`, 'developer-token': devToken },
-        });
-        if (!res.ok) return { ok: false, message: `HTTP ${res.status} — verifique o developer token e customer ID` };
-        return { ok: true, message: `Google Ads (customer ${customerId}) OK` };
-      }
-
       default:
         return { ok: false, message: 'Teste não implementado para esta plataforma' };
     }
@@ -219,9 +222,19 @@ export class ConnectionsController {
   // GET /api/connections/requirements
   static async requirements(req: Request, res: Response, next: NextFunction) {
     try {
+      const googleAdsConnection = await PlatformConnectionService.getConnection('GOOGLE_ADS');
+      const googleAdsMetadata = (googleAdsConnection?.metadata || {}) as Record<string, unknown>;
+
       const result = VALID_PLATFORMS.map(platform => {
         const requiredEnv = OAUTH_ENV_REQUIREMENTS[platform];
+        const requiredSyncEnv = SYNC_ENV_REQUIREMENTS[platform] || [];
         let missingEnv = requiredEnv.filter(name => !hasRequiredEnv(name));
+        const missingSyncEnv = requiredSyncEnv.filter(name => {
+          if (name === 'GOOGLE_ADS_CUSTOMER_ID' && typeof googleAdsMetadata.customerId === 'string') {
+            return !/^\d{10}$/.test(normalizeGoogleAdsCustomerId(googleAdsMetadata.customerId));
+          }
+          return !hasRequiredEnv(name);
+        });
         let readyForOAuth = missingEnv.length === 0;
 
         if (platform === 'PIPEDRIVE' && process.env.PIPEDRIVE_API_TOKEN && process.env.PIPEDRIVE_DOMAIN) {
@@ -239,6 +252,9 @@ export class ConnectionsController {
           requiredEnv,
           missingEnv,
           readyForOAuth,
+          requiredSyncEnv,
+          missingSyncEnv,
+          readyForSync: readyForOAuth && missingSyncEnv.length === 0,
         };
       });
       res.json(result);
@@ -317,9 +333,25 @@ export class ConnectionsController {
 
       const current = await PlatformConnectionService.getInternalConnection(platform);
       const currentMetadata = (current?.metadata ?? {}) as Record<string, unknown>;
-      const metadata = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+      let metadata = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
         ? { ...currentMetadata, ...body.metadata }
         : currentMetadata;
+
+      if (platform === 'GOOGLE_ADS' && body.metadata) {
+        const customerId = requireGoogleAdsCustomerId(
+          typeof metadata.customerId === 'string' ? metadata.customerId : undefined,
+        );
+        const rawLoginCustomerId = typeof metadata.loginCustomerId === 'string'
+          ? metadata.loginCustomerId.trim()
+          : '';
+        metadata = {
+          ...metadata,
+          customerId,
+          loginCustomerId: rawLoginCustomerId
+            ? requireGoogleAdsCustomerId(rawLoginCustomerId, 'Login Customer ID (MCC)')
+            : null,
+        };
+      }
 
       const accessToken = typeof body.accessToken === 'string' && body.accessToken.trim()
         ? body.accessToken.trim()
