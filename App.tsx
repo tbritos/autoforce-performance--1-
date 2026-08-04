@@ -497,6 +497,7 @@ const DashboardContent: React.FC<{
     const [visits, setVisits]         = useState(0);
     const [visitsError, setVisitsError] = useState('');
     const [insightsLoading, setInsightsLoading] = useState(true);
+    const [hoveredInsightTile, setHoveredInsightTile] = useState<string | null>(null);
 
     // ── Lead KPI stats from Lead table (replaces DailyLead) ──────────────────
     const [leadStats, setLeadStats] = useState({ leads: 0, mqls: 0, sqls: 0, clients: 0, newMrr: 0 });
@@ -865,8 +866,26 @@ const DashboardContent: React.FC<{
               const fmt = (v: number) => formatCurrency(v);
               const pct = (v: number) => `${v.toFixed(1)}%`;
               const dash = '—';
-              const tiles = [
-                { label: 'Total Investido', value: insightsLoading ? dash : fmt(totalInvest), icon: DollarSign, color: 'var(--af-600)',    tooltip: 'Soma do gasto em Meta Ads (Facebook/Instagram) + Google Ads no período selecionado. Atualizado via sincronização automática.' },
+              type InsightTile = {
+                label: string;
+                value: string;
+                icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
+                color: string;
+                tooltip: string;
+                breakdown?: Array<{ label: string; value: string; color: string }>;
+              };
+              const tiles: InsightTile[] = [
+                {
+                  label: 'Total Investido',
+                  value: insightsLoading ? dash : fmt(totalInvest),
+                  icon: DollarSign,
+                  color: 'var(--af-600)',
+                  tooltip: 'Soma do gasto em Meta Ads (Facebook/Instagram) + Google Ads no período selecionado. Atualizado via sincronização automática.',
+                  breakdown: [
+                    { label: 'Meta Ads', value: insightsLoading ? dash : fmt(metaSpend), color: '#1877f2' },
+                    { label: 'Google Ads', value: insightsLoading ? dash : fmt(googleSpend), color: '#f9ab00' },
+                  ],
+                },
                 { label: 'CPL',             value: insightsLoading ? dash : (cpl > 0 ? fmt(cpl) : dash), icon: Target, color: 'var(--green-600)', tooltip: 'Custo por Lead: quanto foi investido em mídia paga para cada novo lead captado no período. Calculado como: Total Investido ÷ Total de Leads.' },
                 { label: 'Lead → MQL',      value: insightsLoading ? dash : pct(conversionRates.leadToMql),  icon: TrendingUp, color: 'var(--af-500)',    tooltip: 'Taxa de conversão de Lead para MQL no período. Calculado como: MQLs no período ÷ Leads no período. Indica a qualidade dos leads gerados.' },
                 { label: 'MQL → SQL',       value: insightsLoading ? dash : pct(conversionRates.mqlToSql),   icon: TrendingUp, color: '#818cf8',          tooltip: 'Taxa de conversão de MQL para SQL (Sales Qualified Lead). Indica quantos leads qualificados pelo marketing evoluíram para o estágio comercial.' },
@@ -876,7 +895,62 @@ const DashboardContent: React.FC<{
               return (
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {tiles.map(t => (
-                    <div key={t.label} className="ds-card" style={{ flex: '1 1 148px', padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div
+                      key={t.label}
+                      className="ds-card"
+                      onMouseEnter={() => t.breakdown && setHoveredInsightTile(t.label)}
+                      onMouseLeave={() => t.breakdown && setHoveredInsightTile(null)}
+                      onFocus={() => t.breakdown && setHoveredInsightTile(t.label)}
+                      onBlur={() => t.breakdown && setHoveredInsightTile(null)}
+                      tabIndex={t.breakdown ? 0 : undefined}
+                      style={{
+                        flex: '1 1 148px',
+                        padding: '12px 14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        position: 'relative',
+                        cursor: t.breakdown ? 'help' : undefined,
+                      }}
+                    >
+                      {t.breakdown && hoveredInsightTile === t.label && (
+                        <div
+                          role="tooltip"
+                          style={{
+                            position: 'absolute',
+                            zIndex: 30,
+                            left: '50%',
+                            bottom: 'calc(100% + 8px)',
+                            transform: 'translateX(-50%)',
+                            width: 230,
+                            padding: '11px 12px',
+                            borderRadius: 12,
+                            background: 'var(--bg-surface)',
+                            border: '1px solid var(--border)',
+                            boxShadow: '0 10px 30px rgba(0,0,0,0.24)',
+                            color: 'var(--fg-primary)',
+                            pointerEvents: 'none',
+                          }}
+                        >
+                          <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 700, color: 'var(--fg-muted)' }}>
+                            Investimento por canal
+                          </p>
+                          {t.breakdown.map(item => (
+                            <div key={item.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 6 }}>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--fg-muted)' }}>
+                                <span style={{ width: 7, height: 7, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
+                                {item.label}
+                              </span>
+                              <strong style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>{item.value}</strong>
+                            </div>
+                          ))}
+                          <div style={{ height: 1, background: 'var(--border)', margin: '9px 0 7px' }} />
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12 }}>
+                            <span style={{ color: 'var(--fg-muted)' }}>Total</span>
+                            <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{t.value}</strong>
+                          </div>
+                        </div>
+                      )}
                       <div style={{ width: 32, height: 32, borderRadius: 'var(--r-md)', background: `${t.color}1a`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         <t.icon size={14} style={{ color: t.color }} />
                       </div>
