@@ -160,8 +160,8 @@ function mapGoogleAdsCampaign(row: any, start: string, end: string): GoogleAdsCa
     ctr: Number(row.metrics?.ctr || 0) * 100,
     cpc: Number(row.metrics?.averageCpc || 0) / 1_000_000,
     conversions: Number(row.metrics?.conversions || 0),
-    startDate: row.campaign?.startDate || start,
-    endDate: row.campaign?.endDate || end,
+    startDate: row.campaign?.startDateTime?.slice(0, 10) || start,
+    endDate: row.campaign?.endDateTime?.slice(0, 10) || end,
   };
 }
 
@@ -176,8 +176,8 @@ export async function fetchGoogleAdsCampaigns(
       campaign.id,
       campaign.name,
       campaign.status,
-      campaign.start_date,
-      campaign.end_date,
+      campaign.start_date_time,
+      campaign.end_date_time,
       campaign_budget.amount_micros,
       metrics.cost_micros,
       metrics.impressions,
@@ -210,8 +210,8 @@ async function fetchGoogleAdsDailyCampaignMetrics(
       campaign.id,
       campaign.name,
       campaign.status,
-      campaign.start_date,
-      campaign.end_date,
+      campaign.start_date_time,
+      campaign.end_date_time,
       campaign_budget.amount_micros,
       segments.date,
       metrics.cost_micros,

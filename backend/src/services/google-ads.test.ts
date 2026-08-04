@@ -58,7 +58,10 @@ test('Google Ads chama a API v25 com OAuth, developer token e MCC normalizada', 
       requestInit = init;
       return new Response(JSON.stringify([{
         results: [{
-          campaign: { id: '42', name: 'Pesquisa local', status: 'ENABLED' },
+          campaign: {
+            id: '42', name: 'Pesquisa local', status: 'ENABLED',
+            startDateTime: '2026-06-15 00:00:00', endDateTime: '2026-12-31 23:59:59',
+          },
           campaignBudget: { amountMicros: '25000000' },
           metrics: {
             costMicros: '12500000', impressions: '1000', clicks: '50',
@@ -81,7 +84,7 @@ test('Google Ads chama a API v25 com OAuth, developer token e MCC normalizada', 
     assert.deepEqual(campaigns[0], {
       id: '42', name: 'Pesquisa local', status: 'ENABLED', budget: 25,
       spend: 12.5, impressions: 1000, clicks: 50, ctr: 5, cpc: 0.25,
-      conversions: 4, startDate: '2026-07-01', endDate: '2026-07-31',
+      conversions: 4, startDate: '2026-06-15', endDate: '2026-12-31',
     });
   } finally {
     globalThis.fetch = previousFetch;
