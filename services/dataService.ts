@@ -1132,6 +1132,12 @@ export const DataService = {
     score?: number | null;
     pipedriveDealId?: string | null;
     pipedrivePersonId?: string | null;
+    firstSource?: string | null;
+    firstMedium?: string | null;
+    firstCampaign?: string | null;
+    firstLandingPage?: string | null;
+    utmContent?: string | null;
+    utmTerm?: string | null;
   }): Promise<Partial<LeadProfile>> => {
     return apiClient.patch<Partial<LeadProfile>>(`/lead-hub/id/${encodeURIComponent(id)}`, profile);
   },

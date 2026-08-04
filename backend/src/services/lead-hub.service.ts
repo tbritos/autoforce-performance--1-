@@ -102,6 +102,12 @@ export interface UpdateLeadProfileInput {
   pipedriveDealId?: string | null;
   pipedrivePersonId?: string | null;
   firstSeenAt?: string | Date;
+  firstSource?: string | null;
+  firstMedium?: string | null;
+  firstCampaign?: string | null;
+  firstLandingPage?: string | null;
+  utmContent?: string | null;
+  utmTerm?: string | null;
 }
 
 // ============================================================
@@ -535,9 +541,42 @@ export class LeadHubService {
     const normalizedSiteUrl = input.siteUrl === undefined
       ? undefined
       : normalizeWebsiteUrl(input.siteUrl) ?? null;
-    const previousSite = input.siteUrl === undefined
-      ? null
-      : await prisma.lead.findUnique({ where: { id }, select: { siteUrl: true } });
+    const existingLead = await prisma.lead.findUnique({
+      where: { id },
+      select: {
+        siteUrl: true,
+        firstSource: true,
+        firstMedium: true,
+        firstCampaign: true,
+        firstLandingPage: true,
+        conversions: {
+          orderBy: { convertedAt: 'asc' },
+          take: 1,
+          select: {
+            id: true,
+            utmSource: true,
+            utmMedium: true,
+            utmCampaign: true,
+            utmContent: true,
+            utmTerm: true,
+            landingPage: true,
+          },
+        },
+      },
+    });
+    if (!existingLead) throw new Error('Lead não encontrado');
+
+    const fillBlank = (current: string | null | undefined, incoming: string | null | undefined) => {
+      if (incoming === undefined || current?.trim()) return undefined;
+      return cleanString(incoming);
+    };
+
+    // Atribuicao de primeira origem e historica. O editor serve para reparar
+    // UTMs ausentes; nunca substitui silenciosamente um valor ja registrado.
+    const firstSource = fillBlank(existingLead.firstSource, input.firstSource);
+    const firstMedium = fillBlank(existingLead.firstMedium, input.firstMedium);
+    const firstCampaign = fillBlank(existingLead.firstCampaign, input.firstCampaign);
+    const firstLandingPage = fillBlank(existingLead.firstLandingPage, input.firstLandingPage);
 
     const data: Prisma.LeadUpdateInput = {
       ...(input.name !== undefined ? { name: cleanString(input.name) } : {}),
@@ -553,11 +592,40 @@ export class LeadHubService {
       ...(input.pipedriveDealId !== undefined ? { pipedriveDealId: cleanString(input.pipedriveDealId) } : {}),
       ...(input.pipedrivePersonId !== undefined ? { pipedrivePersonId: cleanString(input.pipedrivePersonId) } : {}),
       ...(firstSeenAt !== undefined ? { firstSeenAt } : {}),
+      ...(firstSource !== undefined ? { firstSource } : {}),
+      ...(firstMedium !== undefined ? { firstMedium } : {}),
+      ...(firstCampaign !== undefined ? { firstCampaign } : {}),
+      ...(firstLandingPage !== undefined ? { firstLandingPage } : {}),
     };
 
-    const updated = await prisma.lead.update({
-      where: { id },
-      data,
+    const firstConversion = existingLead.conversions[0];
+    const conversionData: Prisma.LeadConversionUpdateInput = firstConversion ? {
+      ...(fillBlank(firstConversion.utmSource, input.firstSource) !== undefined
+        ? { utmSource: fillBlank(firstConversion.utmSource, input.firstSource) }
+        : {}),
+      ...(fillBlank(firstConversion.utmMedium, input.firstMedium) !== undefined
+        ? { utmMedium: fillBlank(firstConversion.utmMedium, input.firstMedium) }
+        : {}),
+      ...(fillBlank(firstConversion.utmCampaign, input.firstCampaign) !== undefined
+        ? { utmCampaign: fillBlank(firstConversion.utmCampaign, input.firstCampaign) }
+        : {}),
+      ...(fillBlank(firstConversion.utmContent, input.utmContent) !== undefined
+        ? { utmContent: fillBlank(firstConversion.utmContent, input.utmContent) }
+        : {}),
+      ...(fillBlank(firstConversion.utmTerm, input.utmTerm) !== undefined
+        ? { utmTerm: fillBlank(firstConversion.utmTerm, input.utmTerm) }
+        : {}),
+      ...(fillBlank(firstConversion.landingPage, input.firstLandingPage) !== undefined
+        ? { landingPage: fillBlank(firstConversion.landingPage, input.firstLandingPage) }
+        : {}),
+    } : {};
+
+    const updated = await prisma.$transaction(async tx => {
+      const lead = await tx.lead.update({ where: { id }, data });
+      if (firstConversion && Object.keys(conversionData).length > 0) {
+        await tx.leadConversion.update({ where: { id: firstConversion.id }, data: conversionData });
+      }
+      return lead;
     });
 
     if (input.score !== undefined) {
@@ -566,7 +634,7 @@ export class LeadHubService {
       }).catch(() => {});
     }
 
-    if (normalizedSiteUrl && normalizedSiteUrl !== previousSite?.siteUrl) {
+    if (normalizedSiteUrl && normalizedSiteUrl !== existingLead.siteUrl) {
       void import('./lead-research.service')
         .then(({ refreshSiteResearch }) => refreshSiteResearch(updated.email, normalizedSiteUrl))
         .catch(err => console.error('[LeadResearch] falha ao atualizar site editado no perfil:', err));

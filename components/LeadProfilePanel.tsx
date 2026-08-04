@@ -445,6 +445,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   // Edit form state
   const [form, setForm] = useState({
     name: '', phone: '', company: '', jobTitle: '', city: '', state: '', siteUrl: '', assignedTo: '', score: '', pipedriveDealId: '',
+    firstSource: '', firstMedium: '', firstCampaign: '', firstLandingPage: '', utmContent: '', utmTerm: '',
   });
   const [customForm, setCustomForm] = useState<Record<string, unknown>>({});
 
@@ -469,12 +470,18 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
       setAiHandoff(p.aiHandoff ?? false);
       setNotes(p.notes ?? '');
       setFieldDefs(defs.filter(d => d.visible));
+      const firstConversion = [...p.conversions].sort(
+        (a, b) => new Date(a.convertedAt).getTime() - new Date(b.convertedAt).getTime()
+      )[0];
       setForm({
         name: p.name ?? '', phone: p.phone ?? '', company: p.company ?? '',
         jobTitle: p.jobTitle ?? '', city: p.city ?? '', state: p.state ?? '',
         siteUrl: p.siteUrl ?? '',
         assignedTo: p.assignedTo ?? '', score: p.score != null ? String(p.score) : '',
         pipedriveDealId: p.pipedriveDealId ?? '',
+        firstSource: p.firstSource ?? '', firstMedium: p.firstMedium ?? '',
+        firstCampaign: p.firstCampaign ?? '', firstLandingPage: p.firstLandingPage ?? '',
+        utmContent: firstConversion?.utmContent ?? '', utmTerm: firstConversion?.utmTerm ?? '',
       });
       setCustomForm((p.customFields as Record<string, unknown>) ?? {});
     }).catch(console.error).finally(() => { if (!cancelled) setLoading(false); });
@@ -656,6 +663,12 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
         assignedTo: form.assignedTo || undefined,
         score: form.score.trim() === '' ? null : Number(form.score),
         pipedriveDealId: form.pipedriveDealId.trim() === '' ? null : form.pipedriveDealId.trim(),
+        firstSource: form.firstSource.trim() || undefined,
+        firstMedium: form.firstMedium.trim() || undefined,
+        firstCampaign: form.firstCampaign.trim() || undefined,
+        firstLandingPage: form.firstLandingPage.trim() || undefined,
+        utmContent: form.utmContent.trim() || undefined,
+        utmTerm: form.utmTerm.trim() || undefined,
       });
       // Save custom fields
       for (const [key, val] of Object.entries(customForm)) {
@@ -1797,25 +1810,52 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                       <span style={cardHeadTitle}><Link2 size={13} /> Primeira Origem</span>
                     </div>
                     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {[
-                        { icon: <Link2 size={13} />, label: 'Fonte', value: profile.firstSource },
-                        { icon: <Activity size={13} />, label: 'Mídia', value: profile.firstMedium },
-                        { icon: <Tag size={13} />, label: 'Campanha', value: profile.firstCampaign },
-                        { icon: <Calendar size={13} />, label: 'Primeiro contato', value: fmt(profile.firstSeenAt) },
-                      ].map(({ icon, label, value }) => (
-                        <div key={label} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                          <span style={{ color: 'var(--fg-subtle)', marginTop: 2, flexShrink: 0 }}>{icon}</span>
-                          <div>
-                            <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)' }}>{label}</p>
-                            <p style={{ margin: 0, fontSize: 13, color: value && value !== '—' ? 'var(--fg-primary)' : 'var(--fg-subtle)' }}>{value ?? '—'}</p>
-                          </div>
-                        </div>
-                      ))}
-                      {profile.firstLandingPage && (
-                        <div style={{ paddingTop: 10, borderTop: '1px solid var(--border)' }}>
-                          <p style={{ margin: '0 0 3px', fontSize: 11, color: 'var(--fg-subtle)' }}>Landing page</p>
-                          <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-muted)', fontFamily: 'monospace', wordBreak: 'break-all' }}>{profile.firstLandingPage}</p>
-                        </div>
+                      {editMode ? (
+                        <>
+                          {([
+                            ['firstSource', 'Fonte'],
+                            ['firstMedium', 'Mídia'],
+                            ['firstCampaign', 'Campanha'],
+                            ['utmContent', 'Conteúdo'],
+                            ['utmTerm', 'Termo'],
+                          ] as Array<[keyof typeof form, string]>).map(([key, label]) => (
+                            <label key={key} style={{ display: 'block' }}>
+                              <span style={fieldLabel}>{label}</span>
+                              <input value={form[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} style={inputStyle} />
+                            </label>
+                          ))}
+                          <label style={{ display: 'block' }}>
+                            <span style={fieldLabel}>Landing page</span>
+                            <textarea value={form.firstLandingPage} onChange={e => setForm(f => ({ ...f, firstLandingPage: e.target.value }))}
+                              rows={4} style={{ ...inputStyle, resize: 'vertical', fontFamily: 'monospace', fontSize: 11 }} />
+                          </label>
+                          <p style={{ margin: 0, fontSize: 10, color: 'var(--fg-subtle)' }}>
+                            Campos já preenchidos são preservados. Este editor completa apenas dados de atribuição ausentes.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          {[
+                            { icon: <Link2 size={13} />, label: 'Fonte', value: profile.firstSource },
+                            { icon: <Activity size={13} />, label: 'Mídia', value: profile.firstMedium },
+                            { icon: <Tag size={13} />, label: 'Campanha', value: profile.firstCampaign },
+                            { icon: <Calendar size={13} />, label: 'Primeiro contato', value: fmt(profile.firstSeenAt) },
+                          ].map(({ icon, label, value }) => (
+                            <div key={label} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                              <span style={{ color: 'var(--fg-subtle)', marginTop: 2, flexShrink: 0 }}>{icon}</span>
+                              <div>
+                                <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)' }}>{label}</p>
+                                <p style={{ margin: 0, fontSize: 13, color: value && value !== '—' ? 'var(--fg-primary)' : 'var(--fg-subtle)' }}>{value ?? '—'}</p>
+                              </div>
+                            </div>
+                          ))}
+                          {profile.firstLandingPage && (
+                            <div style={{ paddingTop: 10, borderTop: '1px solid var(--border)' }}>
+                              <p style={{ margin: '0 0 3px', fontSize: 11, color: 'var(--fg-subtle)' }}>Landing page</p>
+                              <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-muted)', fontFamily: 'monospace', wordBreak: 'break-all' }}>{profile.firstLandingPage}</p>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
