@@ -15,7 +15,7 @@ import {
   Bookmark,
   X,
 } from 'lucide-react';
-import { UTMLink, UTMLinkListResult, UTMCampaignPicker, UTMDestination, UTM_SOURCES, UTM_MEDIUMS } from '../types';
+import { UTMLink, UTMLinkListResult, UTMDestination, UTM_SOURCES, UTM_MEDIUMS } from '../types';
 import { DataService } from '../services/dataService';
 
 // ─── Source / medium labels ───────────────────────────────────────────────────
@@ -57,12 +57,11 @@ interface BuilderState {
   utmContent: string;
   utmTerm: string;
   title: string;
-  campaignId: string;
 }
 
 const EMPTY_BUILDER: BuilderState = {
   destinationUrl: '', utmSource: '', utmMedium: '', utmCampaign: '',
-  utmContent: '', utmTerm: '', title: '', campaignId: '',
+  utmContent: '', utmTerm: '', title: '',
 };
 
 function buildPreviewUrl(state: BuilderState): string {
@@ -120,12 +119,11 @@ const TextField: React.FC<{
 );
 
 const UTMBuilder: React.FC<{
-  campaigns: UTMCampaignPicker[];
   destinations: UTMDestination[];
   onCreated: (link: UTMLink) => void;
   onDestinationAdded: (dest: UTMDestination) => void;
   onDestinationDeleted: (id: string) => void;
-}> = ({ campaigns, destinations, onCreated, onDestinationAdded, onDestinationDeleted }) => {
+}> = ({ destinations, onCreated, onDestinationAdded, onDestinationDeleted }) => {
   const [form, setForm]               = useState<BuilderState>(EMPTY_BUILDER);
   const [saving, setSaving]           = useState(false);
   const [error, setError]             = useState<string | null>(null);
@@ -165,7 +163,6 @@ const UTMBuilder: React.FC<{
         utmContent:     form.utmContent  || undefined,
         utmTerm:        form.utmTerm     || undefined,
         title:          form.title       || undefined,
-        campaignId:     form.campaignId  || undefined,
       });
       onCreated(link);
       setForm(EMPTY_BUILDER);
@@ -266,52 +263,10 @@ const UTMBuilder: React.FC<{
           onChange={set('utmMedium')} options={UTM_MEDIUMS} labels={MEDIUM_LABELS} required
         />
 
-        {/* Campaign: select from DB or type free */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-autoforce-lightGrey font-medium">
-            Campanha (utm_campaign)<span className="text-red-400 ml-0.5">*</span>
-          </label>
-          {campaigns.length > 0 ? (
-            <select
-              value={form.campaignId ? form.campaignId : form.utmCampaign}
-              onChange={e => {
-                const selected = campaigns.find(c => c.id === e.target.value);
-                if (selected) {
-                  setForm(f => ({
-                    ...f,
-                    campaignId:  selected.id,
-                    utmCampaign: selected.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
-                  }));
-                } else {
-                  setForm(f => ({ ...f, campaignId: '', utmCampaign: e.target.value }));
-                }
-              }}
-              className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-autoforce-grey/50 appearance-none"
-            >
-              <option value="">Digitar livremente...</option>
-              {campaigns.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          ) : (
-            <input
-              type="text"
-              value={form.utmCampaign}
-              onChange={e => set('utmCampaign')(e.target.value)}
-              placeholder="ex: campanha-maio-2026"
-              className="bg-autoforce-darkest border border-autoforce-grey/20 rounded-lg px-3 py-2 text-sm text-white placeholder:text-autoforce-grey/50 focus:outline-none focus:border-autoforce-grey/50 font-mono"
-            />
-          )}
-          {form.campaignId && (
-            <input
-              type="text"
-              value={form.utmCampaign}
-              onChange={e => set('utmCampaign')(e.target.value)}
-              placeholder="slug da campanha"
-              className="mt-1 bg-autoforce-darkest border border-autoforce-grey/20 rounded-lg px-3 py-2 text-sm text-white placeholder:text-autoforce-grey/50 focus:outline-none focus:border-autoforce-grey/50 font-mono"
-            />
-          )}
-        </div>
+        <TextField
+          label="Campanha (utm_campaign)" value={form.utmCampaign}
+          onChange={set('utmCampaign')} placeholder="ex: campanha-maio-2026" required mono
+        />
 
         <TextField
           label="Conteúdo (utm_content)" value={form.utmContent}
@@ -450,7 +405,6 @@ const LinkRow: React.FC<{
 const UTMTrackerView: React.FC = () => {
   const [result, setResult]             = useState<UTMLinkListResult | null>(null);
   const [destinations, setDestinations] = useState<UTMDestination[]>([]);
-  const [campaigns, setCampaigns]       = useState<UTMCampaignPicker[]>([]);
   const [loading, setLoading]           = useState(true);
   const [search, setSearch]             = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -485,19 +439,9 @@ const UTMTrackerView: React.FC = () => {
   }, [debouncedSearch, sourceFilter, mediumFilter, page]);
 
   useEffect(() => {
-    Promise.all([
-      DataService.listUTMDestinations().catch(err => {
-        console.warn('UTM destinations load skipped:', err);
-        return [];
-      }),
-      DataService.listUTMCampaigns().catch(err => {
-        console.warn('UTM campaigns load skipped:', err);
-        return [];
-      }),
-    ]).then(([d, c]) => {
-      setDestinations(d);
-      setCampaigns(c);
-    }).catch(console.error);
+    DataService.listUTMDestinations()
+      .then(setDestinations)
+      .catch(err => console.warn('UTM destinations load skipped:', err));
   }, []);
 
   useEffect(() => { loadLinks(); }, [loadLinks]);
@@ -558,7 +502,6 @@ const UTMTrackerView: React.FC = () => {
 
       {/* Builder */}
       <UTMBuilder
-        campaigns={campaigns}
         destinations={destinations}
         onCreated={handleCreated}
         onDestinationAdded={dest => setDestinations(prev => [dest, ...prev])}
