@@ -183,7 +183,6 @@ export const ReportDetailTable: React.FC<ReportDetailTableProps> = ({ metricKey,
           },
         },
         { key: 'tags', label: 'Etiqueta', minWidth: 135, render: row => tagCell(row.tags) },
-        { key: 'qualifier', label: 'Qualificador', minWidth: 135, render: row => textCell(customFieldValue(row, customFieldDefs, ['qualificador'], 'N/A'), 'N/A') },
         { key: 'brand', label: 'Marca', minWidth: 170, render: row => textCell(customFieldValue(row, customFieldDefs, ['marca representada', 'marca'])) },
         { key: 'segment', label: 'Segmentação', minWidth: 175, render: row => textCell(customFieldValue(row, customFieldDefs, ['segmentacao', 'segmento', 'tipo de operacao', 'tipo operacao'])) },
       ];
