@@ -134,13 +134,14 @@ const ReportBuilderView: React.FC = () => {
   return (
     <div style={{ padding: '20px 24px 64px' }} className="animate-fade-in-up">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '1 1 420px', minWidth: 0, maxWidth: '100%' }}>
           <button type="button" onClick={() => navigate('/reports')}
             style={{ background: 'var(--bg-muted)', border: 'none', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <ArrowLeft size={15} />
           </button>
           <input value={name} onChange={e => { setName(e.target.value); setDirty(true); }} disabled={!canEdit}
-            style={{ fontSize: 19, fontWeight: 700, color: 'var(--fg-primary)', background: 'transparent', border: 'none', outline: 'none', minWidth: 200 }} />
+            title={name}
+            style={{ flex: '1 1 auto', width: '100%', minWidth: 0, fontSize: 19, fontWeight: 700, color: 'var(--fg-primary)', background: 'transparent', border: 'none', outline: 'none' }} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button type="button" onClick={handleTogglePrivacy} disabled={!canEdit || privacySaving}
