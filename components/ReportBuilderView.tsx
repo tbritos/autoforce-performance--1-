@@ -5,6 +5,7 @@ import { DataService } from '../services/dataService';
 import { ChartConfig, DrillDownClickParams, MetricDef, MetricSource, Report, ReportFilterCondition, ReportQueryContext, ReportWidgetType } from '../types';
 import { WidgetRenderer } from './reports/WidgetRenderer';
 import { ReportDrillDownModal } from './reports/ReportDrillDownModal';
+import { ReportDetailTable } from './reports/ReportDetailTable';
 import { ReportFilterBar } from './reports/ReportFilterBar';
 import { SOURCE_LABELS, DIMENSION_LABELS, CHART_TYPE_META } from './reports/reportLabels';
 
@@ -252,9 +253,12 @@ const ReportBuilderView: React.FC = () => {
       </div>
 
       {chartConfig ? (
-        <div className="ds-card" style={{ height: 480, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <WidgetRenderer widget={chartConfig} reportContext={reportContext} onDrillDown={setDrillDown} />
-        </div>
+        <>
+          <div className="ds-card" style={{ height: 480, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <WidgetRenderer widget={chartConfig} reportContext={reportContext} onDrillDown={setDrillDown} />
+          </div>
+          <ReportDetailTable metricKey={metricKey} groupBy={chartConfig.groupBy} reportContext={reportContext} />
+        </>
       ) : (
         <div className="ds-card" style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--fg-subtle)' }}>
           <p style={{ fontSize: 13, margin: 0 }}>Escolha uma métrica em "Medir por" para ver o gráfico.</p>
