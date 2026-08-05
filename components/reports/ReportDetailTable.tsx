@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Columns3, X } from 'lucide-react';
 import { DataService } from '../../services/dataService';
-import { DrillDownResult, LeadCustomFieldDef, PipedriveStage, ReportQueryContext } from '../../types';
+import { DrillDownResult, LeadCustomFieldDef, ReportQueryContext } from '../../types';
 
 const PAGE_SIZE = 20;
 
@@ -52,8 +52,8 @@ const MARKETING_STAGE_LABELS: Record<string, string> = {
 };
 
 const DEFAULT_COLUMN_KEYS: Record<string, string[]> = {
-  lead: ['title', 'stage', 'status', 'setup', 'dealValue', 'owner', 'pipeline', 'tags', 'brand', 'segment'],
-  revenue_entry: ['title', 'status', 'setup', 'dealValue', 'owner', 'origin', 'date'],
+  lead: ['company', 'name', 'email', 'phone', 'status', 'marketingStage', 'owner', 'tags', 'source', 'medium', 'campaign', 'brand', 'segment', 'firstSeenAt'],
+  revenue_entry: ['businessName', 'setup', 'mrr', 'closedBy', 'origin', 'originType', 'date'],
   campaign_metric: ['campaign', 'platform', 'spend', 'impressions', 'clicks', 'leads', 'conversions', 'date'],
   email_campaign: ['name', 'source', 'sends', 'opens', 'clicks', 'date'],
 };
@@ -152,18 +152,13 @@ export const ReportDetailTable: React.FC<ReportDetailTableProps> = ({
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState<DrillDownResult | null>(null);
-  const [stages, setStages] = useState<PipedriveStage[]>([]);
   const [customFieldDefs, setCustomFieldDefs] = useState<LeadCustomFieldDef[]>([]);
   const [columnPickerOpen, setColumnPickerOpen] = useState(false);
 
   useEffect(() => {
-    Promise.all([
-      DataService.getPipedriveStages().catch(() => [] as PipedriveStage[]),
-      DataService.listCustomFieldDefs().catch(() => [] as LeadCustomFieldDef[]),
-    ]).then(([nextStages, nextDefs]) => {
-      setStages(nextStages);
-      setCustomFieldDefs(nextDefs);
-    });
+    DataService.listCustomFieldDefs()
+      .then(setCustomFieldDefs)
+      .catch(() => setCustomFieldDefs([]));
   }, []);
 
   useEffect(() => { setPage(1); }, [metricKey, groupBy, reportContext]);
@@ -191,12 +186,6 @@ export const ReportDetailTable: React.FC<ReportDetailTableProps> = ({
     return () => { cancelled = true; };
   }, [metricKey, groupBy, reportContext, page]);
 
-  const pipelineNames = useMemo(() => {
-    const map = new Map<number, string>();
-    stages.forEach(stage => map.set(stage.pipeline_id, stage.pipeline_name));
-    return map;
-  }, [stages]);
-
   const availableColumns = useMemo<ColumnDef[]>(() => {
     if (result?.entity === 'lead') {
       const extraCustomColumns: ColumnDef[] = customFieldDefs
@@ -215,25 +204,15 @@ export const ReportDetailTable: React.FC<ReportDetailTableProps> = ({
           render: row => textCell(customFieldByKey(row, def.name)),
         }));
       return [
-        { key: 'title', label: 'Título', minWidth: 220, render: row => textCell(row.dealTitle || row.company || row.name || row.email) },
+        { key: 'company', label: 'Empresa', minWidth: 190, render: row => textCell(row.company) },
         { key: 'name', label: 'Nome', minWidth: 170, render: row => textCell(row.name) },
         { key: 'email', label: 'E-mail', minWidth: 220, render: row => textCell(row.email) },
         { key: 'phone', label: 'Telefone', minWidth: 145, render: row => textCell(row.phone) },
-        { key: 'company', label: 'Empresa', minWidth: 190, render: row => textCell(row.company) },
         { key: 'jobTitle', label: 'Cargo', minWidth: 160, render: row => textCell(row.jobTitle) },
-        { key: 'stage', label: 'Etapa', minWidth: 150, render: row => textCell(row.pipedriveStageName || STATUS_LABELS[String(row.toStatus ?? row.status)] || row.toStatus || row.status) },
-        { key: 'status', label: 'Status', minWidth: 110, render: row => textCell(STATUS_LABELS[String(row.pipedriveDealStatus ?? row.status)] || row.pipedriveDealStatus || row.status) },
+        { key: 'status', label: 'Status', minWidth: 120, render: row => textCell(STATUS_LABELS[String(row.status)] || row.status) },
         { key: 'marketingStage', label: 'Etapa da Lara', minWidth: 175, render: row => textCell(MARKETING_STAGE_LABELS[String(row.marketingStage)] || row.marketingStage) },
-        { key: 'setup', label: 'Valor de setup', minWidth: 135, align: 'right', render: row => fmtCurrency(row.pipedriveSetupValue) },
-        { key: 'dealValue', label: 'Valor do negócio', minWidth: 145, align: 'right', render: row => fmtCurrency(row.pipedriveDealValue) },
-        { key: 'owner', label: 'Proprietário', minWidth: 150, render: row => textCell(row.assignedTo) },
-        {
-          key: 'pipeline', label: 'Funil', minWidth: 170, render: row => {
-            const pipelineId = Number(row.pipedrivePipelineId);
-            return textCell(pipelineNames.get(pipelineId) || (Number.isFinite(pipelineId) ? `Pipeline #${pipelineId}` : null));
-          },
-        },
-        { key: 'tags', label: 'Etiqueta', minWidth: 135, render: row => tagCell(row.tags) },
+        { key: 'owner', label: 'Responsável', minWidth: 150, render: row => textCell(row.assignedTo) },
+        { key: 'tags', label: 'Etiquetas', minWidth: 150, render: row => tagCell(row.tags) },
         { key: 'brand', label: 'Marca', minWidth: 170, render: row => textCell(customFieldValue(row, customFieldDefs, ['marca representada', 'marca'])) },
         { key: 'segment', label: 'Segmentação', minWidth: 175, render: row => textCell(customFieldValue(row, customFieldDefs, ['segmentacao', 'segmento', 'tipo de operacao', 'tipo operacao'])) },
         { key: 'source', label: 'Origem', minWidth: 140, render: row => textCell(row.firstSource) },
@@ -251,12 +230,13 @@ export const ReportDetailTable: React.FC<ReportDetailTableProps> = ({
     }
     if (result?.entity === 'revenue_entry') {
       return [
-        { key: 'title', label: 'Título', minWidth: 240, render: row => textCell(row.businessName || row.leadEmail) },
-        { key: 'status', label: 'Status', minWidth: 110, render: () => 'Ganho' },
-        { key: 'setup', label: 'Valor de setup', minWidth: 140, align: 'right', render: row => fmtCurrency(row.setupValue) },
-        { key: 'dealValue', label: 'Valor do negócio', minWidth: 150, align: 'right', render: row => fmtCurrency(row.mrrValue) },
-        { key: 'owner', label: 'Proprietário', minWidth: 160, render: row => textCell(row.closedBy) },
+        { key: 'businessName', label: 'Empresa', minWidth: 220, render: row => textCell(row.businessName) },
+        { key: 'leadEmail', label: 'E-mail do lead', minWidth: 220, render: row => textCell(row.leadEmail) },
+        { key: 'setup', label: 'Setup', minWidth: 140, align: 'right', render: row => fmtCurrency(row.setupValue) },
+        { key: 'mrr', label: 'MRR', minWidth: 140, align: 'right', render: row => fmtCurrency(row.mrrValue) },
+        { key: 'closedBy', label: 'Vendedor', minWidth: 160, render: row => textCell(row.closedBy) },
         { key: 'origin', label: 'Origem', minWidth: 140, render: row => textCell(row.origin) },
+        { key: 'originType', label: 'Tipo de origem', minWidth: 140, render: row => textCell(row.originType) },
         { key: 'date', label: 'Data', minWidth: 120, render: row => fmtDate(row.date) },
       ];
     }
@@ -283,12 +263,12 @@ export const ReportDetailTable: React.FC<ReportDetailTableProps> = ({
       ];
     }
     return [];
-  }, [result?.entity, pipelineNames, customFieldDefs]);
+  }, [result?.entity, customFieldDefs]);
 
   const selectedColumnKeys = useMemo(() => {
     const availableKeys = new Set(availableColumns.map(column => column.key));
-    const configured = (configuredColumns ?? []).filter(key => availableKeys.has(key));
-    if (configured.length > 0) return configured;
+    const configured = configuredColumns ?? [];
+    if (configured.length > 0 && configured.every(key => availableKeys.has(key))) return configured;
     const defaults = DEFAULT_COLUMN_KEYS[result?.entity ?? ''] ?? [];
     return defaults.filter(key => availableKeys.has(key));
   }, [availableColumns, configuredColumns, result?.entity]);

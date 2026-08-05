@@ -119,23 +119,7 @@ const LEAD_SELECT = {
   assignedTo: true, firstSeenAt: true, lastSeenAt: true,
   siteUrl: true, score: true, aiScore: true,
   tags: true, customFields: true,
-  pipedriveDealId: true, pipedrivePipelineId: true, pipedriveStageName: true, pipedriveDealStatus: true,
-  pipedriveDealValue: true, pipedriveSetupValue: true,
-  pipedriveEvents: {
-    orderBy: { occurredAt: 'desc' as const },
-    take: 10,
-    select: { dealId: true, dealTitle: true },
-  },
 };
-
-function flattenLeadRow<T extends { pipedriveDealId?: string | null; pipedriveEvents?: Array<{ dealId: string; dealTitle: string | null }> }>(lead: T) {
-  const { pipedriveEvents, ...row } = lead;
-  const linkedDealEvent = pipedriveEvents?.find(event => event.dealId === lead.pipedriveDealId);
-  const dealTitle = lead.pipedriveDealId
-    ? linkedDealEvent?.dealTitle ?? null
-    : pipedriveEvents?.[0]?.dealTitle ?? null;
-  return { ...row, dealTitle };
-}
 
 async function drillDownLeads(
   def: MetricDef, groupBy: string | null, dimension: string | null | undefined,
@@ -156,7 +140,7 @@ async function drillDownLeads(
     ]);
     const emails = histories.map(h => h.leadEmail);
     const leads = await prisma.lead.findMany({ where: { email: { in: emails } }, select: LEAD_SELECT });
-    const byEmail = new Map(leads.map(l => [l.email, flattenLeadRow(l)]));
+    const byEmail = new Map(leads.map(l => [l.email, l]));
     const rows = histories.map(h => ({
       ...(byEmail.get(h.leadEmail) ?? { email: h.leadEmail }),
       toStatus: h.toStatus,
@@ -175,7 +159,7 @@ async function drillDownLeads(
     prisma.lead.count({ where }),
     prisma.lead.findMany({ where, skip, take, orderBy: { firstSeenAt: 'desc' }, select: LEAD_SELECT }),
   ]);
-  return { supported: true, entity: 'lead', total, page: p, pageSize: ps, rows: rows.map(flattenLeadRow) };
+  return { supported: true, entity: 'lead', total, page: p, pageSize: ps, rows };
 }
 
 async function drillDownRevenue(
