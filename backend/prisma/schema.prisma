@@ -1512,6 +1512,10 @@ model Report {
   groupBy   String?
   chartType ReportWidgetType @default(BAR_CHART)
 
+  // Ordem e visibilidade das colunas da tabela de registros exibida abaixo
+  // do gráfico. null = usa o conjunto padrão da fonte da métrica.
+  tableColumns Json?
+
   widgets ReportWidget[]
 
   createdAt DateTime @default(now())

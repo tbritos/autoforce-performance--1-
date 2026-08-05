@@ -63,9 +63,10 @@ export class ReportsController {
         return;
       }
 
-      const { name, description, metricKey, groupBy, chartType, filters, dateFrom, dateTo, datePreset } = req.body as {
+      const { name, description, metricKey, groupBy, chartType, filters, dateFrom, dateTo, datePreset, tableColumns } = req.body as {
         name?: string; description?: string | null; metricKey?: string | null; groupBy?: string | null; chartType?: ReportWidgetType;
         filters?: Record<string, string> | null; dateFrom?: string | null; dateTo?: string | null; datePreset?: string | null;
+        tableColumns?: string[] | null;
       };
 
       if (chartType !== undefined && !ReportsService.isValidWidgetType(chartType)) {
@@ -73,7 +74,17 @@ export class ReportsController {
         return;
       }
 
-      const report = await ReportsService.update(req.params.id, { name, description, metricKey, groupBy, chartType, filters, dateFrom, dateTo, datePreset }, user);
+      if (tableColumns !== undefined && tableColumns !== null) {
+        const valid = Array.isArray(tableColumns)
+          && tableColumns.length <= 50
+          && tableColumns.every(column => typeof column === 'string' && column.length > 0 && column.length <= 120);
+        if (!valid) {
+          res.status(400).json({ error: 'Configuração de colunas inválida' });
+          return;
+        }
+      }
+
+      const report = await ReportsService.update(req.params.id, { name, description, metricKey, groupBy, chartType, filters, dateFrom, dateTo, datePreset, tableColumns }, user);
       res.json(report);
     } catch (err) {
       next(err);

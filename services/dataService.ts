@@ -1684,6 +1684,7 @@ export const DataService = {
     dateFrom?: string | null;
     dateTo?: string | null;
     datePreset?: string | null;
+    tableColumns?: string[] | null;
   }): Promise<Report> => {
     return apiClient.patch<Report>(`/reports/${id}`, data);
   },

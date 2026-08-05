@@ -113,8 +113,11 @@ function applyDimensionAndDate(
 }
 
 const LEAD_SELECT = {
-  id: true, email: true, name: true, company: true, status: true,
-  firstSource: true, firstMedium: true, assignedTo: true, firstSeenAt: true,
+  id: true, email: true, name: true, phone: true, company: true, jobTitle: true,
+  city: true, state: true, status: true, marketingStage: true,
+  firstSource: true, firstMedium: true, firstCampaign: true,
+  assignedTo: true, firstSeenAt: true, lastSeenAt: true,
+  siteUrl: true, score: true, aiScore: true,
   tags: true, customFields: true,
   pipedriveDealId: true, pipedrivePipelineId: true, pipedriveStageName: true, pipedriveDealStatus: true,
   pipedriveDealValue: true, pipedriveSetupValue: true,

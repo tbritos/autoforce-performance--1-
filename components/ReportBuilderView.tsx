@@ -37,6 +37,7 @@ const ReportBuilderView: React.FC = () => {
   const [chartType, setChartType] = useState<ReportWidgetType>('BAR_CHART');
   const [metricKey, setMetricKey] = useState('');
   const [groupBy, setGroupBy] = useState('');
+  const [tableColumns, setTableColumns] = useState<string[] | null>(null);
 
   const canEdit = report?.canEdit ?? true;
 
@@ -62,6 +63,7 @@ const ReportBuilderView: React.FC = () => {
       setChartType(r.chartType ?? 'BAR_CHART');
       setMetricKey(r.metricKey ?? '');
       setGroupBy(r.groupBy ?? '');
+      setTableColumns(Array.isArray(r.tableColumns) ? r.tableColumns : null);
     });
   }, [id]);
 
@@ -69,6 +71,7 @@ const ReportBuilderView: React.FC = () => {
 
   const handleMetricChange = (key: string) => {
     setMetricKey(key);
+    setTableColumns(null);
     const m = metrics.find(x => x.key === key);
     if (groupBy && !(m?.groupableDimensions ?? []).includes(groupBy)) setGroupBy('');
     setDirty(true);
@@ -96,6 +99,7 @@ const ReportBuilderView: React.FC = () => {
         metricKey: metricKey || null,
         groupBy: chartType === 'KPI_CARD' ? null : (groupBy || null),
         chartType,
+        tableColumns,
       });
       setReport(updated);
       setReportFilters(Array.isArray(updated.filters) ? updated.filters : []);
@@ -105,6 +109,7 @@ const ReportBuilderView: React.FC = () => {
       setChartType(updated.chartType ?? 'BAR_CHART');
       setMetricKey(updated.metricKey ?? '');
       setGroupBy(updated.groupBy ?? '');
+      setTableColumns(Array.isArray(updated.tableColumns) ? updated.tableColumns : null);
       setDirty(false);
     } finally {
       setSaving(false);
@@ -257,7 +262,14 @@ const ReportBuilderView: React.FC = () => {
           <div className="ds-card" style={{ height: 480, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <WidgetRenderer widget={chartConfig} reportContext={reportContext} onDrillDown={setDrillDown} />
           </div>
-          <ReportDetailTable metricKey={metricKey} groupBy={chartConfig.groupBy} reportContext={reportContext} />
+          <ReportDetailTable
+            metricKey={metricKey}
+            groupBy={chartConfig.groupBy}
+            reportContext={reportContext}
+            configuredColumns={tableColumns}
+            canEdit={canEdit}
+            onColumnsChange={next => { setTableColumns(next); setDirty(true); }}
+          />
         </>
       ) : (
         <div className="ds-card" style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--fg-subtle)' }}>

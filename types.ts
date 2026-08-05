@@ -423,6 +423,7 @@ export interface Report {
   metricKey: string | null;
   groupBy: string | null;
   chartType: ReportWidgetType;
+  tableColumns: string[] | null;
   createdAt: string;
   updatedAt: string;
 }

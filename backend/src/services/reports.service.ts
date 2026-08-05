@@ -13,6 +13,7 @@ export interface UpdateReportInput {
   dateFrom?: string | null;
   dateTo?: string | null;
   datePreset?: string | null;
+  tableColumns?: string[] | null;
 }
 
 export class ReportsService {
@@ -87,6 +88,7 @@ export class ReportsService {
         ...(input.dateFrom !== undefined ? { dateFrom: input.dateFrom ? new Date(input.dateFrom) : null } : {}),
         ...(input.dateTo !== undefined ? { dateTo: input.dateTo ? new Date(input.dateTo) : null } : {}),
         ...(input.datePreset !== undefined ? { datePreset: input.datePreset ?? null } : {}),
+        ...(input.tableColumns !== undefined ? { tableColumns: (input.tableColumns ?? Prisma.JsonNull) as Prisma.InputJsonValue } : {}),
         ...(adopt ? { createdBy: adopt } : {}),
       },
     });
