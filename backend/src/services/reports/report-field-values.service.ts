@@ -57,6 +57,27 @@ export async function getFieldValueOptions(source: string, field: string): Promi
     if (field === 'pipedrivePipelineId' || field === 'pipedriveStageId') {
       return distinctStringValues(prisma.lead as never, field, { deletedAt: null });
     }
+    if (field === 'tag') {
+      const leads = await prisma.lead.findMany({
+        where: { deletedAt: null, tags: { isEmpty: false } },
+        select: { tags: true },
+        take: 1000,
+      });
+      return Array.from(new Set(leads.flatMap(lead => lead.tags).map(tag => tag.trim()).filter(Boolean)))
+        .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+        .slice(0, 300)
+        .map(tag => ({ value: tag, label: tag }));
+    }
+    if (field === 'conversionSource') {
+      const conversions = await prisma.leadConversion.findMany({
+        where: { source: { not: '' }, lead: { deletedAt: null } },
+        select: { source: true },
+        distinct: ['source'],
+        orderBy: { source: 'asc' },
+        take: 300,
+      });
+      return conversions.map(conversion => ({ value: conversion.source, label: conversion.source }));
+    }
     return [];
   }
 

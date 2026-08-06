@@ -15,10 +15,11 @@ export interface ReportFilterCondition {
 // são numéricos (Int).
 export const ENUM_FILTER_FIELDS = new Set(['status', 'toStatus']);
 export const NUMERIC_FILTER_FIELDS = new Set(['pipedrivePipelineId', 'pipedriveStageId']);
+export const EXACT_MATCH_FILTER_FIELDS = new Set(['tag']);
 
 export function allowedOperatorsFor(field: string): FilterOperator[] {
   const ALL: FilterOperator[] = ['equals', 'not_equals', 'contains', 'is_set', 'is_not_set'];
-  return (ENUM_FILTER_FIELDS.has(field) || NUMERIC_FILTER_FIELDS.has(field))
+  return (ENUM_FILTER_FIELDS.has(field) || NUMERIC_FILTER_FIELDS.has(field) || EXACT_MATCH_FILTER_FIELDS.has(field))
     ? ALL.filter(o => o !== 'contains')
     : ALL;
 }

@@ -2,6 +2,13 @@ import { prisma } from '../../config/database';
 import { pipedriveForecastLeadWhere } from '../pipedrive-link.utils';
 import { getMetricDef, isDateBucket, MetricDef, DateBucket } from './metrics-catalog';
 import { ReportFilterCondition, conditionToWhereValue, sanitizeConditionsForMetric } from './report-filter-ops';
+import {
+  applyLeadReportConditions,
+  LEAD_CONVERSION_DIMENSION,
+  LEAD_TAG_DIMENSION,
+  NO_CONVERSION_LABEL,
+  NO_TAG_LABEL,
+} from './lead-report-dimensions';
 
 export const DATE_PRESETS = ['last_7_days', 'last_30_days', 'this_month', 'last_month', 'this_quarter', 'last_quarter'] as const;
 export type DatePreset = (typeof DATE_PRESETS)[number];
@@ -121,6 +128,24 @@ function dimensionValue(row: Record<string, unknown>, groupBy: string | null, da
   return String(val);
 }
 
+function dimensionValues(row: Record<string, unknown>, groupBy: string | null, dateField: string | null): string[] {
+  if (groupBy === LEAD_TAG_DIMENSION) {
+    const tags = Array.isArray(row.tags)
+      ? row.tags.map(String).map(tag => tag.trim()).filter(Boolean)
+      : [];
+    return tags.length ? Array.from(new Set(tags)) : [NO_TAG_LABEL];
+  }
+  if (groupBy === LEAD_CONVERSION_DIMENSION) {
+    const conversions = Array.isArray(row.conversions) ? row.conversions : [];
+    const sources = conversions
+      .map(conversion => conversion && typeof conversion === 'object' ? (conversion as { source?: unknown }).source : null)
+      .map(source => source == null ? '' : String(source).trim())
+      .filter(Boolean);
+    return sources.length ? Array.from(new Set(sources)) : [NO_CONVERSION_LABEL];
+  }
+  return [dimensionValue(row, groupBy, dateField)];
+}
+
 // Aggregates flattened rows into { dimension, value } buckets.
 function aggregate(
   rows: Array<Record<string, unknown>>,
@@ -129,12 +154,13 @@ function aggregate(
 ): MetricQueryResult {
   const buckets = new Map<string, { sum: number; count: number }>();
   for (const row of rows) {
-    const dim = dimensionValue(row, groupBy, def.dateField);
     const raw = def.aggregation === 'count' ? 0 : Number(row[def.valueField!] ?? 0);
-    const b = buckets.get(dim) ?? { sum: 0, count: 0 };
-    b.sum += raw;
-    b.count += 1;
-    buckets.set(dim, b);
+    for (const dim of dimensionValues(row, groupBy, def.dateField)) {
+      const b = buckets.get(dim) ?? { sum: 0, count: 0 };
+      b.sum += raw;
+      b.count += 1;
+      buckets.set(dim, b);
+    }
   }
   const rowsOut = Array.from(buckets.entries()).map(([dimension, b]) => ({
     dimension,
@@ -149,11 +175,14 @@ function aggregate(
 async function queryLeads(def: MetricDef, groupBy: string | null, conditions: ReportFilterCondition[], dateFrom?: string | null, dateTo?: string | null): Promise<MetricQueryResult> {
   if (def.key === 'leads.count') {
     const where: Record<string, unknown> = { deletedAt: null };
-    applyConditions(where, conditions);
+    applyLeadReportConditions(where, conditions);
     if (dateFrom || dateTo) where.firstSeenAt = dateRangeFilter(dateFrom, dateTo);
     const rows = await prisma.lead.findMany({
       where,
-      select: { status: true, firstSource: true, firstMedium: true, assignedTo: true, firstSeenAt: true },
+      select: {
+        status: true, firstSource: true, firstMedium: true, assignedTo: true, firstSeenAt: true,
+        tags: true, conversions: { select: { source: true } },
+      },
     });
     return aggregate(rows, def, groupBy);
   }

@@ -52,7 +52,7 @@ const MARKETING_STAGE_LABELS: Record<string, string> = {
 };
 
 const DEFAULT_COLUMN_KEYS: Record<string, string[]> = {
-  lead: ['company', 'name', 'email', 'phone', 'status', 'marketingStage', 'owner', 'tags', 'source', 'medium', 'campaign', 'brand', 'segment', 'firstSeenAt'],
+  lead: ['company', 'name', 'email', 'phone', 'status', 'marketingStage', 'owner', 'tags', 'conversions', 'source', 'medium', 'campaign', 'brand', 'segment', 'firstSeenAt'],
   revenue_entry: ['businessName', 'setup', 'mrr', 'closedBy', 'origin', 'originType', 'date'],
   campaign_metric: ['campaign', 'platform', 'spend', 'impressions', 'clicks', 'leads', 'conversions', 'date'],
   email_campaign: ['name', 'source', 'sends', 'opens', 'clicks', 'date'],
@@ -145,6 +145,15 @@ const tagCell = (value: unknown) => {
   );
 };
 
+const conversionCell = (value: unknown) => {
+  if (!Array.isArray(value)) return '—';
+  const sources = Array.from(new Set(value
+    .map(item => item && typeof item === 'object' ? (item as { source?: unknown }).source : null)
+    .map(source => source == null ? '' : String(source).trim())
+    .filter(Boolean)));
+  return textCell(sources.join(', '));
+};
+
 export const ReportDetailTable: React.FC<ReportDetailTableProps> = ({
   metricKey, groupBy, reportContext, configuredColumns, canEdit, onColumnsChange,
 }) => {
@@ -213,6 +222,7 @@ export const ReportDetailTable: React.FC<ReportDetailTableProps> = ({
         { key: 'marketingStage', label: 'Etapa da Lara', minWidth: 175, render: row => textCell(MARKETING_STAGE_LABELS[String(row.marketingStage)] || row.marketingStage) },
         { key: 'owner', label: 'Responsável', minWidth: 150, render: row => textCell(row.assignedTo) },
         { key: 'tags', label: 'Etiquetas', minWidth: 150, render: row => tagCell(row.tags) },
+        { key: 'conversions', label: 'Conversões', minWidth: 200, render: row => conversionCell(row.conversions) },
         { key: 'brand', label: 'Marca', minWidth: 170, render: row => textCell(customFieldValue(row, customFieldDefs, ['marca representada', 'marca'])) },
         { key: 'segment', label: 'Segmentação', minWidth: 175, render: row => textCell(customFieldValue(row, customFieldDefs, ['segmentacao', 'segmento', 'tipo de operacao', 'tipo operacao'])) },
         { key: 'source', label: 'Origem', minWidth: 140, render: row => textCell(row.firstSource) },

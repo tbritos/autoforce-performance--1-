@@ -3,6 +3,11 @@ import { getMetricDef, isDateBucket, MetricDef, DateBucket } from './metrics-cat
 import { validateGroupBy, dateRangeFilter, resolveDatePreset, applyConditions } from './report-query.service';
 import { ReportFilterCondition, NUMERIC_FILTER_FIELDS, conditionToWhereValue, sanitizeConditionsForMetric } from './report-filter-ops';
 import { pipedriveForecastLeadWhere } from '../pipedrive-link.utils';
+import {
+  applyLeadDimensionSlice,
+  applyLeadReportConditions,
+  isLeadMultiValueDimension,
+} from './lead-report-dimensions';
 
 const MAX_PAGE_SIZE = 50;
 const DEFAULT_PAGE_SIZE = 20;
@@ -119,6 +124,7 @@ const LEAD_SELECT = {
   assignedTo: true, firstSeenAt: true, lastSeenAt: true,
   siteUrl: true, score: true, aiScore: true,
   tags: true, customFields: true,
+  conversions: { select: { source: true } },
 };
 
 async function drillDownLeads(
@@ -152,8 +158,14 @@ async function drillDownLeads(
   const where: Record<string, unknown> = def.key === 'leads.count'
     ? { deletedAt: null }
     : pipedriveForecastLeadWhere(); // forecast_mrr / forecast_setup
-  applyConditions(where, conditions);
-  applyDimensionAndDate(where, def, groupBy, dimension, dateFrom, dateTo);
+  if (def.key === 'leads.count') applyLeadReportConditions(where, conditions);
+  else applyConditions(where, conditions);
+  if (def.key === 'leads.count' && isLeadMultiValueDimension(groupBy)) {
+    applyDimensionAndDate(where, def, null, null, dateFrom, dateTo);
+    applyLeadDimensionSlice(where, groupBy, dimension);
+  } else {
+    applyDimensionAndDate(where, def, groupBy, dimension, dateFrom, dateTo);
+  }
 
   const [total, rows] = await Promise.all([
     prisma.lead.count({ where }),

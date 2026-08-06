@@ -34,9 +34,9 @@ export const METRICS_CATALOG: MetricDef[] = [
     aggregation: 'count',
     valueField: null,
     dateField: 'firstSeenAt',
-    groupableDimensions: ['status', 'firstSource', 'firstMedium', 'assignedTo', ...DATE_BUCKETS],
-    filterableDimensions: ['status', 'firstSource', 'firstMedium', 'assignedTo'],
-    description: 'Contagem de leads criados no sistema.',
+    groupableDimensions: ['status', 'firstSource', 'firstMedium', 'assignedTo', 'tag', 'conversionSource', ...DATE_BUCKETS],
+    filterableDimensions: ['status', 'firstSource', 'firstMedium', 'assignedTo', 'tag', 'conversionSource'],
+    description: 'Contagem de leads criados no sistema, inclusive por etiqueta ou conversão registrada.',
   },
   {
     key: 'leads.status_transitions',
