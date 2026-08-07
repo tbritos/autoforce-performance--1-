@@ -821,8 +821,8 @@ export class LeadHubService {
       ],
       // O periodo do funil e uma safra definida pela entrada como MQL
       // (qualifiedAt), que coincide com a criacao do negocio no Pipedrive.
-      // Assim SQL/Vendas continuam pertencendo a safra original mesmo quando
-      // o avanco acontece em outro mes.
+      // Assim SQL continua pertencendo a safra original mesmo quando o avanco
+      // acontece em outro mes. Vendas e MRR usam a data propria do ganho.
       lead: LeadHubService.activeLeadRelationWhere(true, qualifiedAt),
     };
   }
@@ -866,7 +866,8 @@ export class LeadHubService {
       prisma.leadStatusHistory.findMany({
         where: {
           toStatus: 'CLIENT',
-          lead: LeadHubService.activeLeadRelationWhere(true, mqlCohortRange),
+          changedAt: { gte: start, lte: end },
+          lead: LeadHubService.activeLeadRelationWhere(),
         },
         distinct: ['leadEmail'],
         select: { leadEmail: true },
@@ -1025,16 +1026,18 @@ export class LeadHubService {
     };
     if (params.event && statusEventMap[params.event]) {
       const toStatus = statusEventMap[params.event];
-      const usesMqlCohort = toStatus === 'MQL' || toStatus === 'CLIENT';
+      const usesMqlCohort = toStatus === 'MQL';
+      const excludeImported = toStatus === 'MQL' || toStatus === 'CLIENT';
       const cohortRange = fromDate || toDate ? { gte: fromDate, lte: toDate } : undefined;
       const histories = await prisma.leadStatusHistory.findMany({
         where: {
           toStatus: toStatus as any,
           ...(!usesMqlCohort && cohortRange ? { changedAt: cohortRange } : {}),
           // Mesmo escopo dos cards: a lista precisa bater com o numero
-          // mostrado, sem leads excluidos; MQL e Cliente tambem ignoram a tag
-          // de importacao e usam qualifiedAt como data da safra.
-          lead: LeadHubService.activeLeadRelationWhere(usesMqlCohort, usesMqlCohort ? cohortRange : undefined),
+          // mostrado, sem leads excluidos. MQL e Cliente ignoram a tag de
+          // importacao; somente MQL usa qualifiedAt, enquanto Cliente usa a
+          // data do ganho gravada no evento de mudanca.
+          lead: LeadHubService.activeLeadRelationWhere(excludeImported, usesMqlCohort ? cohortRange : undefined),
         },
         select: { leadEmail: true, changedAt: true },
         orderBy: { changedAt: 'desc' },
