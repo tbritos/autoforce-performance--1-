@@ -797,9 +797,13 @@ export class LeadHubService {
   // Escopo comum dos eventos que alimentam os cards e seus detalhamentos.
   // LeadStatusHistory e preservado quando o Lead recebe soft delete; por isso
   // toda contagem historica precisa excluir explicitamente deletedAt != null.
-  private static activeLeadRelationWhere(excludeImported = true): Prisma.LeadWhereInput {
+  private static activeLeadRelationWhere(
+    excludeImported = true,
+    qualifiedAt?: Prisma.DateTimeNullableFilter,
+  ): Prisma.LeadWhereInput {
     return {
       deletedAt: null,
+      ...(qualifiedAt ? { qualifiedAt } : {}),
       ...(excludeImported
         ? { NOT: { tags: { has: LeadHubService.EXCLUDED_LEAD_TAG } } }
         : {}),
@@ -807,7 +811,7 @@ export class LeadHubService {
   }
 
   private static sqlCrossingWhere(
-    changedAt?: Prisma.LeadStatusHistoryWhereInput['changedAt']
+    qualifiedAt?: Prisma.DateTimeNullableFilter,
   ): Prisma.LeadStatusHistoryWhereInput {
     return {
       toStatus: { in: LeadHubService.SQL_OR_LATER_STATUSES },
@@ -815,11 +819,11 @@ export class LeadHubService {
         { fromStatus: null },
         { fromStatus: { notIn: LeadHubService.SQL_OR_LATER_STATUSES } },
       ],
-      // Leads excluidos ou marcados como importacao nao entram no card. A
-      // tag evita contar uma migracao como qualificacao nova; deletedAt evita
-      // que um historico preservado vire um registro fantasma no total.
-      lead: LeadHubService.activeLeadRelationWhere(),
-      ...(changedAt ? { changedAt } : {}),
+      // O periodo do funil e uma safra definida pela entrada como MQL
+      // (qualifiedAt), que coincide com a criacao do negocio no Pipedrive.
+      // Assim SQL/Vendas continuam pertencendo a safra original mesmo quando
+      // o avanco acontece em outro mes.
+      lead: LeadHubService.activeLeadRelationWhere(true, qualifiedAt),
     };
   }
 
@@ -832,6 +836,7 @@ export class LeadHubService {
     // counts once. "Vendas Realizadas" (clients) usa a mesma fonte da lista aberta ao
     // clicar o card (evento became_client) — antes vinha de RevenueEntry, o que podia
     // divergir do numero mostrado na lista.
+    const mqlCohortRange: Prisma.DateTimeNullableFilter = { gte: start, lte: end };
     const [leads, paidLeadRows, mqlRows, sqlRows, clientRows] = await Promise.all([
       prisma.lead.count({
         where: { deletedAt: null, status: { not: 'DISQUALIFIED' }, firstSeenAt: { gte: start, lte: end } },
@@ -848,22 +853,20 @@ export class LeadHubService {
       prisma.leadStatusHistory.findMany({
         where: {
           toStatus: 'MQL',
-          changedAt: { gte: start, lte: end },
-          lead: LeadHubService.activeLeadRelationWhere(),
+          lead: LeadHubService.activeLeadRelationWhere(true, mqlCohortRange),
         },
         distinct: ['leadEmail'],
         select: { leadEmail: true },
       }),
       prisma.leadStatusHistory.findMany({
-        where: LeadHubService.sqlCrossingWhere({ gte: start, lte: end }),
+        where: LeadHubService.sqlCrossingWhere(mqlCohortRange),
         distinct: ['leadEmail'],
         select: { leadEmail: true },
       }),
       prisma.leadStatusHistory.findMany({
         where: {
           toStatus: 'CLIENT',
-          changedAt: { gte: start, lte: end },
-          lead: LeadHubService.activeLeadRelationWhere(),
+          lead: LeadHubService.activeLeadRelationWhere(true, mqlCohortRange),
         },
         distinct: ['leadEmail'],
         select: { leadEmail: true },
@@ -921,6 +924,7 @@ export class LeadHubService {
     const leadSelect = {
       id: true, email: true, name: true, company: true,
       status: true, firstSeenAt: true, lastSeenAt: true, isHot: true,
+      qualifiedAt: true,
       firstSource: true, firstMedium: true,
       pipedriveDealValue: true, pipedriveSetupValue: true,
     } as const;
@@ -982,7 +986,7 @@ export class LeadHubService {
     if (params.event === 'became_sql') {
       const histories = await prisma.leadStatusHistory.findMany({
         where: LeadHubService.sqlCrossingWhere(
-          fromDate || toDate ? { gte: fromDate, lte: toDate } : undefined
+          fromDate || toDate ? { gte: fromDate, lte: toDate } : undefined,
         ),
         select: { leadEmail: true, changedAt: true },
         orderBy: { changedAt: 'desc' },
@@ -1001,7 +1005,10 @@ export class LeadHubService {
       });
       const leadsMap = new Map(leadsData.map(l => [l.email, l]));
       const rawLeads = paged
-        .map(h => { const l = leadsMap.get(h.leadEmail); return l ? { ...l, eventDate: h.changedAt } : null; })
+        .map(h => {
+          const l = leadsMap.get(h.leadEmail);
+          return l ? { ...l, eventDate: l.qualifiedAt ?? h.changedAt } : null;
+        })
         .filter((l): l is NonNullable<typeof l> => l !== null);
       const enriched = await enrichLostReason(await enrichConvSource(rawLeads));
       return { total, page, pageSize, leads: enriched };
@@ -1018,14 +1025,16 @@ export class LeadHubService {
     };
     if (params.event && statusEventMap[params.event]) {
       const toStatus = statusEventMap[params.event];
+      const usesMqlCohort = toStatus === 'MQL' || toStatus === 'CLIENT';
+      const cohortRange = fromDate || toDate ? { gte: fromDate, lte: toDate } : undefined;
       const histories = await prisma.leadStatusHistory.findMany({
         where: {
           toStatus: toStatus as any,
-          ...(fromDate || toDate ? { changedAt: { gte: fromDate, lte: toDate } } : {}),
+          ...(!usesMqlCohort && cohortRange ? { changedAt: cohortRange } : {}),
           // Mesmo escopo dos cards: a lista precisa bater com o numero
           // mostrado, sem leads excluidos; MQL e Cliente tambem ignoram a tag
-          // de importacao.
-          lead: LeadHubService.activeLeadRelationWhere(toStatus === 'MQL' || toStatus === 'CLIENT'),
+          // de importacao e usam qualifiedAt como data da safra.
+          lead: LeadHubService.activeLeadRelationWhere(usesMqlCohort, usesMqlCohort ? cohortRange : undefined),
         },
         select: { leadEmail: true, changedAt: true },
         orderBy: { changedAt: 'desc' },
@@ -1044,7 +1053,10 @@ export class LeadHubService {
       });
       const leadsMap = new Map(leadsData.map(l => [l.email, l]));
       const rawLeads = paged
-        .map(h => { const l = leadsMap.get(h.leadEmail); return l ? { ...l, eventDate: h.changedAt } : null; })
+        .map(h => {
+          const l = leadsMap.get(h.leadEmail);
+          return l ? { ...l, eventDate: usesMqlCohort ? (l.qualifiedAt ?? h.changedAt) : h.changedAt } : null;
+        })
         .filter((l): l is NonNullable<typeof l> => l !== null);
       const enriched = await enrichLostReason(await enrichConvSource(rawLeads));
       return { total, page, pageSize, leads: enriched };
