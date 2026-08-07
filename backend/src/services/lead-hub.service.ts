@@ -794,6 +794,18 @@ export class LeadHubService {
   // criterio do backfill unico em tagBulkImportLeads.
   private static readonly LEGACY_BULK_IMPORT_SOURCES = ['importacao_csv', 'rdstation', 'rdstation_webhook'];
 
+  // Escopo comum dos eventos que alimentam os cards e seus detalhamentos.
+  // LeadStatusHistory e preservado quando o Lead recebe soft delete; por isso
+  // toda contagem historica precisa excluir explicitamente deletedAt != null.
+  private static activeLeadRelationWhere(excludeImported = true): Prisma.LeadWhereInput {
+    return {
+      deletedAt: null,
+      ...(excludeImported
+        ? { NOT: { tags: { has: LeadHubService.EXCLUDED_LEAD_TAG } } }
+        : {}),
+    };
+  }
+
   private static sqlCrossingWhere(
     changedAt?: Prisma.LeadStatusHistoryWhereInput['changedAt']
   ): Prisma.LeadStatusHistoryWhereInput {
@@ -803,12 +815,10 @@ export class LeadHubService {
         { fromStatus: null },
         { fromStatus: { notIn: LeadHubService.SQL_OR_LATER_STATUSES } },
       ],
-      // Leads marcados com a tag de exclusao (ex: base de clientes ja
-      // existentes importada/migrada em massa) nao "viraram SQL" de
-      // verdade quando o Pipedrive sincroniza e grava o status deles —
-      // isso e so o sistema catalogando algo que ja aconteceu no passado,
-      // nao uma qualificacao nova no periodo.
-      lead: { NOT: { tags: { has: LeadHubService.EXCLUDED_LEAD_TAG } } },
+      // Leads excluidos ou marcados como importacao nao entram no card. A
+      // tag evita contar uma migracao como qualificacao nova; deletedAt evita
+      // que um historico preservado vire um registro fantasma no total.
+      lead: LeadHubService.activeLeadRelationWhere(),
       ...(changedAt ? { changedAt } : {}),
     };
   }
@@ -839,7 +849,7 @@ export class LeadHubService {
         where: {
           toStatus: 'MQL',
           changedAt: { gte: start, lte: end },
-          lead: { NOT: { tags: { has: LeadHubService.EXCLUDED_LEAD_TAG } } },
+          lead: LeadHubService.activeLeadRelationWhere(),
         },
         distinct: ['leadEmail'],
         select: { leadEmail: true },
@@ -853,7 +863,7 @@ export class LeadHubService {
         where: {
           toStatus: 'CLIENT',
           changedAt: { gte: start, lte: end },
-          lead: { NOT: { tags: { has: LeadHubService.EXCLUDED_LEAD_TAG } } },
+          lead: LeadHubService.activeLeadRelationWhere(),
         },
         distinct: ['leadEmail'],
         select: { leadEmail: true },
@@ -1012,12 +1022,10 @@ export class LeadHubService {
         where: {
           toStatus: toStatus as any,
           ...(fromDate || toDate ? { changedAt: { gte: fromDate, lte: toDate } } : {}),
-          // Mesma exclusao dos cards "Total de MQLs"/"Vendas Realizadas" — a
-          // lista precisa bater com o numero mostrado quando o card e
-          // clicado, sem leads marcados aparecendo na lista.
-          ...(toStatus === 'MQL' || toStatus === 'CLIENT'
-            ? { lead: { NOT: { tags: { has: LeadHubService.EXCLUDED_LEAD_TAG } } } }
-            : {}),
+          // Mesmo escopo dos cards: a lista precisa bater com o numero
+          // mostrado, sem leads excluidos; MQL e Cliente tambem ignoram a tag
+          // de importacao.
+          lead: LeadHubService.activeLeadRelationWhere(toStatus === 'MQL' || toStatus === 'CLIENT'),
         },
         select: { leadEmail: true, changedAt: true },
         orderBy: { changedAt: 'desc' },
