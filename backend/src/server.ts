@@ -41,7 +41,6 @@ import emailBlastsRoutes, { recoverStuckBlasts } from './routes/email-blasts.rou
 import segmentRoutes from './routes/segment.routes';
 import leadScoringRoutes from './routes/lead-scoring.routes';
 import reportsRoutes from './routes/reports.routes';
-import instagramRoutes from './routes/instagram.routes';
 import emailUnsubscribeRoutes from './routes/email-unsubscribe.routes';
 
 dotenv.config();
@@ -219,15 +218,7 @@ app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 
 // Body parsing — antes do CORS para estar disponível no redirect do Google
-app.use(express.json({
-  limit: '10mb',
-  verify: (req, _res, buffer) => {
-    const request = req as express.Request & { rawBody?: Buffer };
-    if (request.originalUrl.startsWith('/api/instagram/webhook')) {
-      request.rawBody = Buffer.from(buffer);
-    }
-  },
-}));
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
@@ -326,17 +317,6 @@ const emailUnsubscribeLimiter = rateLimit({
   skip: () => process.env.NODE_ENV === 'development',
 });
 
-// O Instagram pode entregar rajadas e repetir eventos. A idempotencia fica no banco,
-// então o limite aqui protege a API sem bloquear uma conta com maior engajamento.
-const instagramWebhookLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 3000,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Limite de requisições atingido.' },
-  skip: () => process.env.NODE_ENV === 'development',
-});
-
 // Rate limiting para webhook do Pipedrive (deals mudam com frequência moderada)
 const pipedriveWebhookLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -383,9 +363,6 @@ app.use('/api/email-unsubscribe', emailUnsubscribeLimiter, emailUnsubscribeRoute
 
 // Public incoming lead webhooks — sem autenticação, com rate limit
 app.use('/api/lead-webhooks', webhookLimiter, publicLeadWebhooksRouter);
-
-// Instagram webhook — público para a Meta, com token no GET e HMAC SHA-256 no POST.
-app.use('/api/instagram', instagramWebhookLimiter, instagramRoutes);
 
 // Pipedrive deal webhooks — público, autenticado por query token
 app.use('/api/pipedrive-webhook', pipedriveWebhookLimiter, pipedriveWebhookRoutes);

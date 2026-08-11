@@ -370,6 +370,14 @@ model AutomationJourney {
   triggerType String?
   isActive    Boolean @default(false)
 
+  // UNCLASSIFIED preserva o comportamento legado ate o usuario classificar.
+  // Apenas NURTURE participa da fila exclusiva por lead; STANDALONE roda avulsa.
+  automationType            String  @default("UNCLASSIFIED")
+  entryMode                 String  @default("TRIGGER") // TRIGGER | AUDIENCE
+  priority                  Int     @default(50)
+  canInterruptLowerPriority Boolean @default(true)
+  queueTtlHours             Int?    @default(168) // null = sem prazo para expirar na fila
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -387,9 +395,20 @@ model AutomationExecution {
   journey   AutomationJourney @relation(fields: [journeyId], references: [id], onDelete: Cascade)
   leadEmail String
 
-  status        String    @default("running") // 'running' | 'waiting' | 'completed' | 'failed'
+  status        String    @default("running") // running | waiting | queued | completed | failed | cancelled
   currentNodeId String?
   resumeAt      DateTime?
+
+  // Snapshot da classificacao na entrada: uma alteracao futura no fluxo nao
+  // muda retroativamente quem ja esta ativo ou aguardando.
+  automationTypeSnapshot String    @default("STANDALONE")
+  prioritySnapshot       Int       @default(0)
+  triggerEvent           String?
+  triggerContext         Json?
+  queuedAt               DateTime?
+  expiresAt              DateTime?
+  supersededById         String?
+  isTest                 Boolean   @default(false)
 
   log   Json    @default("[]")
   error String? @db.Text
@@ -400,7 +419,9 @@ model AutomationExecution {
   @@index([status])
   @@index([journeyId])
   @@index([leadEmail])
+  @@index([leadEmail, status])
   @@index([resumeAt])
+  @@index([status, queuedAt])
   @@index([startedAt])
 }
 
@@ -635,7 +656,6 @@ model WhatsAppNumber {
 
 enum Platform {
   META_ADS
-  INSTAGRAM
   GOOGLE_ADS
   GOOGLE_ANALYTICS
   RD_STATION
@@ -679,67 +699,6 @@ model PlatformConnection {
   campaigns      Campaign[]
   emailCampaigns EmailCampaign[]
   syncLogs       SyncLog[]
-}
-
-// Envelope idempotente de todos os eventos enviados pelo webhook do Instagram.
-// Mantemos o payload bruto para evoluir novos gatilhos sem perder eventos antigos.
-model InstagramWebhookEvent {
-  id          String   @id @default(uuid())
-  eventKey    String   @unique
-  objectType  String
-  eventType   String
-  accountId   String?
-  senderId    String?
-  recipientId String?
-  messageId   String?
-  payload     Json
-  occurredAt  DateTime?
-  processedAt DateTime?
-  createdAt   DateTime @default(now())
-
-  @@index([accountId])
-  @@index([eventType])
-  @@index([messageId])
-  @@index([createdAt])
-}
-
-// Mensagens normalizadas para a futura caixa de entrada do AutoChat.
-// Nenhuma resposta automatica e disparada nesta etapa.
-model InstagramMessage {
-  id          String   @id @default(uuid())
-  messageId   String   @unique
-  accountId   String
-  senderId    String
-  recipientId String
-  direction   String
-  type        String   @default("message")
-  status      String   @default("received")
-  text        String?  @db.Text
-  payload     Json     @default("{}")
-  occurredAt  DateTime?
-  receivedAt  DateTime @default(now())
-  createdAt   DateTime @default(now())
-
-  @@index([accountId])
-  @@index([senderId])
-  @@index([recipientId])
-  @@index([direction])
-  @@index([createdAt])
-}
-
-// Comprovante sem dados pessoais para o fluxo de exclusão exigido pela Meta.
-model InstagramDataDeletionRequest {
-  id                  String   @id @default(uuid())
-  confirmationCode    String   @unique
-  userIdHash          String
-  status              String   @default("completed")
-  deletedEventCount   Int      @default(0)
-  deletedMessageCount Int      @default(0)
-  requestedAt         DateTime @default(now())
-  completedAt         DateTime?
-
-  @@index([status])
-  @@index([requestedAt])
 }
 
 // ============================================================

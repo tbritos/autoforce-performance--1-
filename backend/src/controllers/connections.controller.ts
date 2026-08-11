@@ -6,7 +6,7 @@ import { getWhatsAppCredentials } from '../services/whatsapp.service';
 import { normalizeGoogleAdsCustomerId, requireGoogleAdsCustomerId } from '../config/google-ads';
 
 const VALID_PLATFORMS = [
-  'META_ADS', 'INSTAGRAM', 'GOOGLE_ADS', 'GOOGLE_ANALYTICS', 'GOOGLE_CALENDAR', 'RD_STATION', 'PIPEDRIVE', 'CLARITY', 'WHATSAPP',
+  'META_ADS', 'GOOGLE_ADS', 'GOOGLE_ANALYTICS', 'GOOGLE_CALENDAR', 'RD_STATION', 'PIPEDRIVE', 'CLARITY', 'WHATSAPP',
 ] as const satisfies readonly Platform[];
 
 function parsePlatform(raw: string): Platform | null {
@@ -48,7 +48,6 @@ function oauthPopupHtml(
 
 const OAUTH_ENV_REQUIREMENTS: Record<(typeof VALID_PLATFORMS)[number], string[]> = {
   META_ADS:          ['META_APP_ID', 'META_APP_SECRET', 'APP_URL'],
-  INSTAGRAM:         ['INSTAGRAM_APP_ID', 'INSTAGRAM_APP_SECRET', 'APP_URL'],
   // GOOGLE_ADS_DEVELOPER_TOKEN is intentionally NOT required here — it's only needed to
   // call the Ads API (checked in testPlatformConnection below), not to complete the OAuth
   // handshake itself. Requiring it here would block "Conectar" while a token is pending approval.
@@ -65,14 +64,8 @@ const SYNC_ENV_REQUIREMENTS: Partial<Record<(typeof VALID_PLATFORMS)[number], st
   GOOGLE_ADS: ['GOOGLE_ADS_DEVELOPER_TOKEN', 'GOOGLE_ADS_CUSTOMER_ID'],
 };
 
-const ENV_ALIASES: Partial<Record<string, string[]>> = {
-  INSTAGRAM_APP_ID: ['Instagram_App_ID'],
-  INSTAGRAM_APP_SECRET: ['Instagram_App_Secret'],
-};
-
 function hasRequiredEnv(name: string): boolean {
-  return [name, ...(ENV_ALIASES[name] || [])]
-    .some(candidate => Boolean(process.env[candidate]?.trim()));
+  return Boolean(process.env[name]?.trim());
 }
 
 async function testPlatformConnection(platform: Platform): Promise<{ ok: boolean; message: string }> {
@@ -107,23 +100,6 @@ async function testPlatformConnection(platform: Platform): Promise<{ ok: boolean
         const data = await res.json() as { name?: string; error?: { message: string } };
         if ((data as any).error) return { ok: false, message: (data as any).error.message };
         return { ok: true, message: `Conectado como ${data.name || 'conta desconhecida'}` };
-      }
-
-      case 'INSTAGRAM': {
-        const version = process.env.INSTAGRAM_GRAPH_API_VERSION || 'v24.0';
-        const url = new URL(`https://graph.instagram.com/${version}/me`);
-        url.searchParams.set('fields', 'user_id,username');
-        const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-        const data = await response.json() as {
-          id?: string;
-          user_id?: string;
-          username?: string;
-          error?: { message?: string };
-        };
-        if (!response.ok || data.error) {
-          return { ok: false, message: data.error?.message || `Instagram respondeu HTTP ${response.status}` };
-        }
-        return { ok: true, message: `Instagram conectado — @${data.username || data.user_id || data.id || 'conta profissional'}` };
       }
 
       case 'RD_STATION': {
@@ -177,7 +153,6 @@ function hasEnvCredentials(platform: (typeof VALID_PLATFORMS)[number]): boolean 
   switch (platform) {
     case 'RD_STATION':      return !!(process.env.RD_STATION_REFRESH_TOKEN || process.env.RD_STATION_ACCESS_TOKEN);
     case 'META_ADS':        return !!process.env.META_ACCESS_TOKEN;
-    case 'INSTAGRAM':       return false;
     case 'PIPEDRIVE':       return !!(process.env.PIPEDRIVE_API_TOKEN && process.env.PIPEDRIVE_DOMAIN);
     case 'GOOGLE_ANALYTICS':return !!(process.env.GA4_CREDENTIALS_JSON || process.env.GA4_CREDENTIALS_PATH);
     case 'GOOGLE_ADS':      return !!(process.env.GOOGLE_ADS_CUSTOMER_ID && process.env.GOOGLE_ADS_DEVELOPER_TOKEN);
@@ -525,16 +500,6 @@ export class ConnectionsController {
 // Called once on server startup — migrates env var tokens to DB and tests each platform.
 // Platforms already with a non-DISCONNECTED DB record are skipped.
 export async function startupConnectionCheck(): Promise<void> {
-  try {
-    const instagram = await PlatformConnectionService.getInternalConnection('INSTAGRAM');
-    if (instagram?.status === 'CONNECTED' && instagram.accountId) {
-      const subscription = await OAuthService.ensureInstagramWebhookSubscription();
-      console.log(`[connections] INSTAGRAM: webhook ativo — ${subscription.fields.join(', ')}`);
-    }
-  } catch (err) {
-    console.error('[connections] INSTAGRAM: não foi possível ativar o webhook:', err);
-  }
-
   const platforms = ['META_ADS', 'PIPEDRIVE', 'GOOGLE_ANALYTICS', 'RD_STATION', 'GOOGLE_ADS'] as const;
 
   for (const platform of platforms) {

@@ -1,4 +1,12 @@
 import { prisma } from '../config/database';
+import {
+  AutomationType,
+  deriveEntryMode,
+  normalizeAutomationPriority,
+  normalizeAutomationType,
+  normalizeQueueTtlHours,
+  suggestedPriorityForEntry,
+} from './automation-priority.utils';
 
 export interface JourneyNode {
   id: string;
@@ -35,6 +43,10 @@ export interface AutomationJourneyInput {
   triggerType?: string | null;
   isActive?: boolean;
   exitConditions?: ExitConditions | null;
+  automationType?: AutomationType;
+  priority?: number;
+  canInterruptLowerPriority?: boolean;
+  queueTtlHours?: number | null;
 }
 
 const validStatus = (status?: string) => {
@@ -57,34 +69,59 @@ export class AutomationJourneysService {
     if (!input.name?.trim()) throw new Error('name is required');
 
     const status = validStatus(input.status);
+    const automationType = normalizeAutomationType(input.automationType);
+    const isActive = input.isActive ?? status === 'ACTIVE';
+    if (isActive && automationType === 'UNCLASSIFIED') {
+      throw new Error('Classifique a automação como fluxo de nutrição ou automação avulsa antes de publicar.');
+    }
     return (prisma as any).automationJourney.create({
       data: {
         name: input.name.trim(),
         description: input.description || null,
         status,
-        isActive: input.isActive ?? status === 'ACTIVE',
+        isActive,
         triggerType: input.triggerType || null,
         nodes: input.nodes ?? [],
         edges: input.edges ?? [],
         exitConditions: input.exitConditions ?? null,
+        automationType,
+        entryMode: deriveEntryMode(input.nodes),
+        priority: normalizeAutomationPriority(input.priority ?? suggestedPriorityForEntry(input.nodes)),
+        canInterruptLowerPriority: input.canInterruptLowerPriority ?? true,
+        queueTtlHours: normalizeQueueTtlHours(input.queueTtlHours),
       },
     });
   }
 
   static async update(id: string, input: Partial<AutomationJourneyInput>) {
+    const current = await prisma.automationJourney.findUniqueOrThrow({ where: { id }, select: { automationType: true } });
     const data: Record<string, unknown> = {};
+    const requestedStatus = input.status !== undefined ? validStatus(input.status) : undefined;
     if (input.name !== undefined) data.name = input.name.trim();
     if (input.description !== undefined) data.description = input.description || null;
-    if (input.status !== undefined) {
-      const status = validStatus(input.status);
-      data.status = status;
-      data.isActive = status === 'ACTIVE';
+    if (requestedStatus !== undefined) {
+      data.status = requestedStatus;
+      data.isActive = requestedStatus === 'ACTIVE';
+    } else if (input.isActive !== undefined) {
+      data.isActive = input.isActive;
     }
-    if (input.isActive !== undefined) data.isActive = input.isActive;
     if (input.triggerType !== undefined) data.triggerType = input.triggerType || null;
-    if (input.nodes !== undefined) data.nodes = input.nodes;
+    if (input.nodes !== undefined) {
+      data.nodes = input.nodes;
+      data.entryMode = deriveEntryMode(input.nodes);
+    }
     if (input.edges !== undefined) data.edges = input.edges;
     if (input.exitConditions !== undefined) data.exitConditions = input.exitConditions;
+    if (input.automationType !== undefined) data.automationType = normalizeAutomationType(input.automationType);
+    if (input.priority !== undefined) data.priority = normalizeAutomationPriority(input.priority);
+    if (input.canInterruptLowerPriority !== undefined) data.canInterruptLowerPriority = Boolean(input.canInterruptLowerPriority);
+    if (input.queueTtlHours !== undefined) data.queueTtlHours = normalizeQueueTtlHours(input.queueTtlHours);
+
+    const willBeActive = requestedStatus === 'ACTIVE' || (requestedStatus === undefined && input.isActive === true);
+    const nextType = normalizeAutomationType(input.automationType ?? current.automationType);
+    if (willBeActive && nextType === 'UNCLASSIFIED') {
+      throw new Error('Classifique a automação como fluxo de nutrição ou automação avulsa antes de ativar.');
+    }
 
     return (prisma as any).automationJourney.update({ where: { id }, data });
   }
@@ -128,7 +165,7 @@ export class AutomationJourneysService {
       where: { journeyId },
       _count: { _all: true },
     });
-    const result = { running: 0, waiting: 0, completed: 0, failed: 0, total: 0 };
+    const result = { running: 0, waiting: 0, queued: 0, completed: 0, failed: 0, cancelled: 0, total: 0 };
     for (const row of counts) {
       const s = row.status as keyof typeof result;
       if (s in result) result[s] = row._count._all;

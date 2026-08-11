@@ -119,10 +119,11 @@ export function startSyncScheduler(): void {
     timers.set(platform, timer);
   }
 
-  // Resume waiting automation executions every 60 seconds
+  // Retoma esperas vencidas e libera filas de nutricao a cada 60 segundos.
   setInterval(() => {
-    import('./automation-engine.service').then(({ resumeWaitingExecutions }) => {
-      resumeWaitingExecutions().catch(err => console.error('[automation] resume error:', err));
+    import('./automation-engine.service').then(({ resumeWaitingExecutions, resumeQueuedNurtures }) => {
+      Promise.all([resumeWaitingExecutions(), resumeQueuedNurtures()])
+        .catch(err => console.error('[automation] resume error:', err));
     }).catch(() => {});
   }, 60_000);
 

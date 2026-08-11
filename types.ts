@@ -547,6 +547,11 @@ export interface AutomationJourney {
   edges: AutomationJourneyEdge[];
   triggerType: string | null;
   isActive: boolean;
+  automationType: 'UNCLASSIFIED' | 'NURTURE' | 'STANDALONE';
+  entryMode: 'TRIGGER' | 'AUDIENCE';
+  priority: number;
+  canInterruptLowerPriority: boolean;
+  queueTtlHours: number | null;
   exitConditions?: ExitConditions | null;
   createdAt: string;
   updatedAt: string;
@@ -555,7 +560,7 @@ export interface AutomationJourney {
   };
 }
 
-export type AutomationExecutionStatus = 'running' | 'waiting' | 'completed' | 'failed';
+export type AutomationExecutionStatus = 'running' | 'waiting' | 'queued' | 'completed' | 'failed' | 'cancelled';
 
 export interface AutomationExecutionLogEntry {
   nodeId: string;
@@ -583,8 +588,10 @@ export interface AutomationExecution {
 export interface AutomationExecutionStats {
   running: number;
   waiting: number;
+  queued: number;
   completed: number;
   failed: number;
+  cancelled: number;
   total: number;
 }
 

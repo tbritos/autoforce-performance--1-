@@ -1451,6 +1451,10 @@ export const DataService = {
     triggerType?: string | null;
     isActive?: boolean;
     exitConditions?: ExitConditions | null;
+    automationType?: AutomationJourney['automationType'];
+    priority?: number;
+    canInterruptLowerPriority?: boolean;
+    queueTtlHours?: number | null;
   }): Promise<AutomationJourney> => {
     return apiClient.post<AutomationJourney>('/automation-journeys', payload);
   },
@@ -1464,6 +1468,10 @@ export const DataService = {
     triggerType: string | null;
     isActive: boolean;
     exitConditions: ExitConditions | null;
+    automationType: AutomationJourney['automationType'];
+    priority: number;
+    canInterruptLowerPriority: boolean;
+    queueTtlHours: number | null;
   }>): Promise<AutomationJourney> => {
     return apiClient.patch<AutomationJourney>(`/automation-journeys/${encodeURIComponent(id)}`, payload);
   },

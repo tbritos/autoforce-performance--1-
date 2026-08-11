@@ -204,6 +204,14 @@ const statusLabel: Record<AutomationJourneyStatus, string> = {
   PAUSED: 'Pausada',
 };
 
+const automationTypeLabel = (type: AutomationJourney['automationType']): string =>
+  type === 'NURTURE' ? 'Fluxo de nutrição'
+  : type === 'STANDALONE' ? 'Automação avulsa'
+  : 'Não classificada';
+
+const priorityText = (priority: number): string =>
+  priority >= 90 ? 'Crítica' : priority >= 70 ? 'Alta' : priority >= 40 ? 'Normal' : 'Baixa';
+
 type CustomSelectOption<T extends string> = {
   value: T;
   label: string;
@@ -997,6 +1005,11 @@ const emptyDraft = () => {
     edges: defaultEdges(),
     triggerType: 'webhook_received',
     isActive: false,
+    automationType: 'UNCLASSIFIED' as const,
+    entryMode: 'TRIGGER' as const,
+    priority: 50,
+    canInterruptLowerPriority: true,
+    queueTtlHours: 168,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -1007,8 +1020,10 @@ const emptyDraft = () => {
 const STATUS_EXEC: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   running:   { label: 'Rodando',   color: 'var(--af-500)',    icon: <Loader2 size={11} className="animate-spin" /> },
   waiting:   { label: 'Aguard.',   color: '#f59e0b',          icon: <Hourglass size={11} /> },
+  queued:    { label: 'Na fila',   color: '#6366f1',          icon: <Hourglass size={11} /> },
   completed: { label: 'Concluído', color: 'var(--green-500)', icon: <CheckCircle2 size={11} /> },
   failed:    { label: 'Falhou',    color: 'var(--red-500)',   icon: <XCircle size={11} /> },
+  cancelled: { label: 'Interromp.', color: 'var(--fg-muted)', icon: <XCircle size={11} /> },
 };
 
 function fmtDuration(startedAt: string, completedAt: string | null): string {
@@ -1054,8 +1069,10 @@ const ExecutionsDrawer: React.FC<{
   const statItems = [
     { key: 'running',   label: 'Rodando' },
     { key: 'waiting',   label: 'Aguardando' },
+    { key: 'queued',    label: 'Na fila' },
     { key: 'completed', label: 'Concluídos' },
     { key: 'failed',    label: 'Falhou' },
+    { key: 'cancelled', label: 'Interrompidos' },
   ] as const;
 
   return createPortal(
@@ -1087,7 +1104,7 @@ const ExecutionsDrawer: React.FC<{
 
         {/* Stats */}
         {stats && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, padding: '14px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: '14px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
             {statItems.map(({ key, label }) => {
               const cfg = STATUS_EXEC[key];
               return (
@@ -1192,6 +1209,131 @@ const ExecutionsDrawer: React.FC<{
   );
 };
 
+const AutomationClassificationModal: React.FC<{
+  journey: AutomationJourney;
+  entryEvent: string;
+  onCancel: () => void;
+  onSave: (changes: Partial<AutomationJourney>) => void;
+}> = ({ journey, entryEvent, onCancel, onSave }) => {
+  const [automationType, setAutomationType] = useState<AutomationJourney['automationType']>(journey.automationType);
+  const [priority, setPriority] = useState(
+    journey.automationType === 'UNCLASSIFIED' && entryEvent === 'conversion_received'
+      ? 75
+      : journey.priority || 50
+  );
+  const [canInterrupt, setCanInterrupt] = useState(journey.canInterruptLowerPriority ?? true);
+  const [ttlHours, setTtlHours] = useState<number | null>(
+    journey.queueTtlHours === undefined ? 168 : journey.queueTtlHours
+  );
+  const isAudience = entryEvent === 'segment_entered';
+
+  const priorityOptions = [
+    { value: 95, label: 'Crítica', description: 'Contato comercial, demonstração ou orçamento' },
+    { value: 75, label: 'Alta', description: 'Conversão específica, ebook ou campanha' },
+    { value: 50, label: 'Normal', description: 'Nutrição recorrente da base' },
+    { value: 20, label: 'Baixa', description: 'Reengajamento e conteúdo genérico' },
+  ];
+
+  return (
+    <>
+      <div onClick={onCancel} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000 }} />
+      <div style={{
+        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+        width: 620, maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
+        background: 'var(--bg-surface)', borderRadius: 16, border: '1px solid var(--border)',
+        boxShadow: 'var(--shadow-xl)', zIndex: 1001, padding: 28, display: 'flex', flexDirection: 'column', gap: 20,
+      }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 850, color: 'var(--fg-primary)' }}>Classificação e prioridade</h2>
+          <p style={{ margin: '6px 0 0', fontSize: 13, lineHeight: 1.5, color: 'var(--fg-muted)' }}>
+            Somente fluxos de nutrição disputam a fila exclusiva do lead. Automações avulsas continuam independentes.
+          </p>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {([
+            { value: 'NURTURE', title: 'Fluxo de nutrição', text: 'Sequência de email e WhatsApp. Apenas uma nutrição ativa por lead.' },
+            { value: 'STANDALONE', title: 'Automação avulsa', text: 'Ação pontual ou operacional. Não entra na fila de nutrição.' },
+          ] as const).map(option => {
+            const active = automationType === option.value;
+            return (
+              <button key={option.value} type="button" onClick={() => setAutomationType(option.value)} style={{
+                padding: 16, borderRadius: 12, textAlign: 'left', cursor: 'pointer',
+                border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                background: active ? 'var(--accent-soft)' : 'var(--bg-surface)', color: 'var(--fg-primary)',
+              }}>
+                <span style={{ display: 'block', fontSize: 14, fontWeight: 800, color: active ? 'var(--accent)' : 'var(--fg-primary)' }}>{option.title}</span>
+                <span style={{ display: 'block', marginTop: 5, fontSize: 12, lineHeight: 1.45, color: 'var(--fg-muted)' }}>{option.text}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {automationType === 'NURTURE' && (
+          <>
+            <div style={{ padding: '11px 13px', borderRadius: 10, background: 'var(--bg-muted)', border: '1px solid var(--border)', fontSize: 13, color: 'var(--fg-muted)' }}>
+              Forma de entrada detectada: <strong style={{ color: 'var(--fg-primary)' }}>{isAudience ? 'Público da base / segmento' : 'Gatilho específico'}</strong>
+            </div>
+
+            <div style={{ display: 'grid', gap: 9 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Prioridade</span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {priorityOptions.map(option => {
+                  const active = priority === option.value;
+                  return (
+                    <button key={option.value} type="button" onClick={() => setPriority(option.value)} style={{
+                      padding: '11px 12px', borderRadius: 9, border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                      background: active ? 'var(--accent-soft)' : 'var(--bg-surface)', textAlign: 'left', cursor: 'pointer',
+                    }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: active ? 'var(--accent)' : 'var(--fg-primary)' }}>{option.label}</span>
+                      <span style={{ display: 'block', marginTop: 2, fontSize: 11, color: 'var(--fg-muted)' }}>{option.description}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: 13, borderRadius: 10, border: '1px solid var(--border)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={canInterrupt} onChange={event => setCanInterrupt(event.target.checked)} style={{ marginTop: 2 }} />
+              <span>
+                <strong style={{ display: 'block', fontSize: 13, color: 'var(--fg-primary)' }}>Pode interromper uma nutrição menos prioritária</strong>
+                <span style={{ display: 'block', marginTop: 3, fontSize: 12, lineHeight: 1.45, color: 'var(--fg-muted)' }}>O fluxo anterior é encerrado e não volta do meio depois.</span>
+              </span>
+            </label>
+
+            <label style={{ display: 'grid', gap: 7 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Validade na fila</span>
+              <select value={ttlHours === null ? 'unlimited' : ttlHours} onChange={event => setTtlHours(event.target.value === 'unlimited' ? null : Number(event.target.value))} style={{ height: 42, border: '1px solid var(--border)', borderRadius: 9, padding: '0 12px', background: 'var(--bg-surface)', color: 'var(--fg-primary)', fontSize: 13 }}>
+                <option value="unlimited">Sem prazo</option>
+                <option value={72}>3 dias</option>
+                <option value={168}>7 dias</option>
+                <option value={360}>15 dias</option>
+                <option value={720}>30 dias</option>
+              </select>
+              <span style={{ fontSize: 11, lineHeight: 1.45, color: 'var(--fg-subtle)' }}>
+                Sem prazo mantém o lead na fila até haver uma vaga ou ele deixar de ser elegível.
+              </span>
+            </label>
+          </>
+        )}
+
+        {automationType === 'UNCLASSIFIED' && (
+          <div style={{ padding: '10px 12px', borderRadius: 9, background: '#fef3c7', color: '#92400e', fontSize: 12 }}>
+            Escolha uma classificação para poder publicar ou ativar esta automação.
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button type="button" onClick={onCancel} className="ds-btn" style={{ height: 38, padding: '0 16px' }}>Cancelar</button>
+          <button type="button" disabled={automationType === 'UNCLASSIFIED'} onClick={() => onSave({ automationType, priority, canInterruptLowerPriority: canInterrupt, queueTtlHours: ttlHours })} className="ds-btn" style={{ height: 38, padding: '0 20px', border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontWeight: 750, opacity: automationType === 'UNCLASSIFIED' ? .5 : 1 }}>
+            Aplicar classificação
+          </button>
+        </div>
+      </div>
+    </>
+  );
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 const AutomationJourneysView: React.FC = () => {
@@ -1221,6 +1363,7 @@ const AutomationJourneysView: React.FC = () => {
   const [testStartNodeId, setTestStartNodeId] = useState<string | null>(null);
   const [aiAgents, setAiAgents] = useState<AIAgent[]>([]);
   const [exitConditionsModalOpen, setExitConditionsModalOpen] = useState(false);
+  const [classificationModalOpen, setClassificationModalOpen] = useState(false);
 
   useEffect(() => {
     if (!modalNodeId) { setPanelValues(null); return; }
@@ -1344,6 +1487,10 @@ const AutomationJourneysView: React.FC = () => {
         triggerType: selected.triggerType,
         isActive: selected.status === 'ACTIVE',
         exitConditions: selected.exitConditions ?? null,
+        automationType: selected.automationType,
+        priority: selected.priority,
+        canInterruptLowerPriority: selected.canInterruptLowerPriority,
+        queueTtlHours: selected.queueTtlHours,
       };
       const saved = selected.id
         ? await DataService.updateAutomationJourney(selected.id, payload)
@@ -1368,6 +1515,11 @@ const AutomationJourneysView: React.FC = () => {
       setModalNodeId(triggerNode?.id ?? null);
       return;
     }
+    if (selected.automationType === 'UNCLASSIFIED') {
+      alert('Classifique esta automação como fluxo de nutrição ou automação avulsa antes de publicar.');
+      setClassificationModalOpen(true);
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -1379,6 +1531,10 @@ const AutomationJourneysView: React.FC = () => {
         triggerType: selected.triggerType,
         isActive: true,
         exitConditions: selected.exitConditions ?? null,
+        automationType: selected.automationType,
+        priority: selected.priority,
+        canInterruptLowerPriority: selected.canInterruptLowerPriority,
+        queueTtlHours: selected.queueTtlHours,
       };
       const saved = selected.id
         ? await DataService.updateAutomationJourney(selected.id, payload)
@@ -1577,6 +1733,11 @@ const AutomationJourneysView: React.FC = () => {
 
   const toggleJourneyStatus = async (journey: AutomationJourney) => {
     const nextStatus: AutomationJourneyStatus = journey.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
+    if (nextStatus === 'ACTIVE' && journey.automationType === 'UNCLASSIFIED') {
+      alert('Abra a automação e classifique-a antes de ativar.');
+      openJourney(journey);
+      return;
+    }
     const updated = await DataService.updateAutomationJourney(journey.id, {
       status: nextStatus,
       isActive: nextStatus === 'ACTIVE',
@@ -1713,6 +1874,14 @@ const AutomationJourneysView: React.FC = () => {
                   style={{ border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer' }}
                 >
                   <strong style={{ color: isActive ? 'var(--fg-primary)' : 'var(--fg-muted)', fontSize: 15 }}>{journey.name}</strong>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
+                    <span style={{ padding: '2px 7px', borderRadius: 999, fontSize: 10, fontWeight: 800, background: journey.automationType === 'NURTURE' ? 'var(--accent-soft)' : 'var(--bg-muted)', color: journey.automationType === 'NURTURE' ? 'var(--accent)' : 'var(--fg-muted)' }}>
+                      {automationTypeLabel(journey.automationType)}
+                    </span>
+                    {journey.automationType === 'NURTURE' && (
+                      <span style={{ fontSize: 10, color: 'var(--fg-subtle)' }}>Prioridade {priorityText(journey.priority).toLowerCase()}</span>
+                    )}
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -1817,6 +1986,24 @@ const AutomationJourneysView: React.FC = () => {
 
         {/* Right: action buttons */}
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+
+          <button
+            type="button"
+            onClick={() => setClassificationModalOpen(true)}
+            title="Definir se participa da fila de nutrição"
+            style={{
+              display: 'inline-flex', gap: 6, alignItems: 'center', height: 34, padding: '0 14px',
+              border: `1px solid ${selected.automationType === 'UNCLASSIFIED' ? '#f59e0b' : selected.automationType === 'NURTURE' ? 'var(--accent)' : 'var(--border)'}`,
+              borderRadius: 8,
+              background: selected.automationType === 'NURTURE' ? 'var(--accent-soft)' : 'var(--bg-surface)',
+              color: selected.automationType === 'UNCLASSIFIED' ? '#d97706' : selected.automationType === 'NURTURE' ? 'var(--accent)' : 'var(--fg-primary)',
+              fontSize: 13, fontWeight: 650, cursor: 'pointer',
+            }}
+          >
+            <Workflow size={12} />
+            {automationTypeLabel(selected.automationType)}
+            {selected.automationType === 'NURTURE' ? ` · ${priorityText(selected.priority)}` : ''}
+          </button>
 
           <button
             type="button"
@@ -2054,7 +2241,7 @@ const AutomationJourneysView: React.FC = () => {
                       { value: 'score_reached',   icon: TrendingUp, label: 'Score atingiu limite',    description: 'Score chegou a um valor mínimo definido',    subField: 'score' },
                       { value: 'status_changed',  icon: ArrowRight, label: 'Etapa mudou',             description: 'Lead mudou para uma etapa específica',       subField: 'status' },
                       { value: 'email_received',  icon: MailOpen,   label: 'Email recebido',          description: 'Lead respondeu ou enviou um email',          subField: 'email' },
-                      { value: 'segment_entered', icon: Layers,     label: 'Entrou em segmento',      description: 'Lead passou a satisfazer as regras de um segmento', subField: 'segment' },
+                      { value: 'segment_entered', icon: Layers,     label: 'Público da base / segmento', description: 'Nutrição recorrente para leads que atendem às regras de um segmento', subField: 'segment' },
                     ];
                     const selectedEvent = panelValues.config.event || '';
                     const activeOpt = triggerOptions.find(o => o.value === selectedEvent);
@@ -3001,6 +3188,19 @@ const AutomationJourneysView: React.FC = () => {
           onSave={next => {
             updateSelected({ exitConditions: next.conditions.length ? next : null });
             setExitConditionsModalOpen(false);
+          }}
+        />,
+        document.body
+      )}
+
+      {classificationModalOpen && createPortal(
+        <AutomationClassificationModal
+          journey={selected}
+          entryEvent={String(selected.nodes.find(node => node.type === 'trigger')?.config?.event ?? '')}
+          onCancel={() => setClassificationModalOpen(false)}
+          onSave={changes => {
+            updateSelected(changes);
+            setClassificationModalOpen(false);
           }}
         />,
         document.body

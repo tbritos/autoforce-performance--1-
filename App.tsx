@@ -11,7 +11,6 @@ import ConnectionsView from './components/ConnectionsView';
 import DocsView from './components/DocsView';
 import LeadHubView from './components/LeadHubView';
 import CRMLaraView from './components/CRMLaraView';
-import AutoChatView from './components/AutoChatView';
 import LeadProfilePanel from './components/LeadProfilePanel';
 import UTMTrackerView from './components/UTMTrackerView';
 import FunnelView from './components/FunnelView';
@@ -64,7 +63,6 @@ import {
   Flame,
   Building2,
   Send,
-  Instagram,
 } from 'lucide-react';
 import { FunnelChart, FunnelStep } from './components/Charts';
 
@@ -1384,7 +1382,6 @@ const AppContent: React.FC = () => {
       items: [
         { label: 'Automacao', path: '/automation', icon: Workflow },
         { label: 'WhatsApp', path: '/ai-agents', icon: MessageSquare },
-        { label: 'AutoChat', path: '/autochat', icon: Instagram },
       ],
     },
     {
@@ -1657,7 +1654,6 @@ const AppContent: React.FC = () => {
             <Route path="/automation" element={<AutomationJourneysView />} />
             <Route path="/automation/:id" element={<AutomationJourneysView />} />
             <Route path="/ai-agents" element={<AIAgentsView />} />
-            <Route path="/autochat" element={<AutoChatView />} />
 
             {/* Performance */}
             <Route path="/funnel" element={<FunnelView />} />

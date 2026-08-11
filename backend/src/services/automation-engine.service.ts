@@ -3,6 +3,12 @@ import { LeadStatus, Prisma } from '@prisma/client';
 import { AIPrequalificationResult, runAIPrequalification } from './ai-provider.service';
 import { loadAIAgentContext, persistAIAgentDecision } from './ai-agent-context.service';
 import { normalizePhoneE164 } from '../utils/phone';
+import { SegmentService, SegmentRules } from './segment.service';
+import {
+  decideNurtureEnrollment,
+  normalizeAutomationPriority,
+  normalizeQueueTtlHours,
+} from './automation-priority.utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,6 +75,10 @@ const executingLeads = new Set<string>();
 // This handles orphaned rows left by a previous crash/restart.
 export async function recoverStuckExecutions(): Promise<void> {
   try {
+    const affected = await prisma.automationExecution.findMany({
+      where: { status: 'running' },
+      select: { leadEmail: true, automationTypeSnapshot: true },
+    });
     const stuck = await prisma.automationExecution.updateMany({
       where: { status: 'running' },
       data: { status: 'failed', error: 'Processo reiniciado — execução interrompida', completedAt: new Date() },
@@ -76,6 +86,8 @@ export async function recoverStuckExecutions(): Promise<void> {
     if (stuck.count > 0) {
       console.log(`[automation] Recovered ${stuck.count} stuck execution(s) from previous process`);
     }
+    const nurtureEmails = [...new Set(affected.filter(item => item.automationTypeSnapshot === 'NURTURE').map(item => item.leadEmail))];
+    for (const email of nurtureEmails) await promoteNextNurture(email);
   } catch (err) {
     console.error('[automation] recoverStuckExecutions error:', err);
   }
@@ -88,7 +100,105 @@ type JourneyRecord = {
   nodes: unknown;
   edges: unknown;
   exitConditions?: unknown;
+  automationType: string;
+  entryMode: string;
+  priority: number;
+  canInterruptLowerPriority: boolean;
+  queueTtlHours: number | null;
 };
+
+type NurtureLaunch = {
+  executionId: string;
+  preemptedGuardKey?: string;
+};
+
+const ACTIVE_EXECUTION_STATUSES = ['running', 'waiting'] as const;
+
+const jsonContext = (context: TriggerContext): Prisma.InputJsonValue =>
+  JSON.parse(JSON.stringify(context)) as Prisma.InputJsonValue;
+
+// Decide e persiste a entrada sob um lock transacional por lead. O lock e o
+// indice parcial do PostgreSQL tornam a exclusividade segura mesmo com varios
+// webhooks/processos chegando ao mesmo tempo.
+async function enrollNurtureJourney(
+  journey: JourneyRecord,
+  triggerNode: AutomationNode,
+  leadEmail: string,
+  context: TriggerContext,
+  triggerEvent: string
+): Promise<NurtureLaunch | null> {
+  const email = leadEmail.trim().toLowerCase();
+  const priority = normalizeAutomationPriority(journey.priority);
+  const ttlHours = normalizeQueueTtlHours(journey.queueTtlHours);
+  const expiresAt = ttlHours === null ? null : new Date(Date.now() + ttlHours * 3_600_000);
+
+  return prisma.$transaction(async tx => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${email}))`;
+
+    const duplicate = await tx.automationExecution.findFirst({
+      where: {
+        journeyId: journey.id,
+        leadEmail: email,
+        isTest: false,
+        status: { in: ['running', 'waiting', 'queued'] },
+      },
+      select: { id: true },
+    });
+    if (duplicate) return null;
+
+    const active = await tx.automationExecution.findFirst({
+      where: {
+        leadEmail: email,
+        isTest: false,
+        automationTypeSnapshot: 'NURTURE',
+        status: { in: [...ACTIVE_EXECUTION_STATUSES] },
+      },
+      orderBy: { startedAt: 'asc' },
+      select: { id: true, journeyId: true, prioritySnapshot: true },
+    });
+
+    const decision = decideNurtureEnrollment(
+      active ? { priority: active.prioritySnapshot } : null,
+      { priority, canInterruptLowerPriority: journey.canInterruptLowerPriority }
+    );
+
+    if (decision === 'preempt' && active) {
+      await tx.automationExecution.update({
+        where: { id: active.id },
+        data: {
+          status: 'cancelled',
+          completedAt: new Date(),
+          error: `Interrompido por fluxo prioritário: ${journey.id}`,
+        },
+      });
+    }
+
+    const shouldStart = decision === 'start' || decision === 'preempt';
+    const execution = await tx.automationExecution.create({
+      data: {
+        journeyId: journey.id,
+        leadEmail: email,
+        status: shouldStart ? 'running' : 'queued',
+        currentNodeId: triggerNode.id,
+        log: [],
+        automationTypeSnapshot: 'NURTURE',
+        prioritySnapshot: priority,
+        triggerEvent,
+        triggerContext: jsonContext(context),
+        queuedAt: shouldStart ? null : new Date(),
+        expiresAt: shouldStart ? null : expiresAt,
+      },
+    });
+
+    if (active && decision === 'preempt') {
+      await tx.automationExecution.update({ where: { id: active.id }, data: { supersededById: execution.id } });
+    }
+
+    return shouldStart
+      ? { executionId: execution.id, preemptedGuardKey: active ? `${active.journeyId}:${email}` : undefined }
+      : null;
+  });
+}
 
 // Inicia uma execucao para UMA journey especifica (ja sabendo que o trigger bate).
 // Extraido de fireTrigger para ser reutilizavel por chamadores que ja sabem qual
@@ -98,9 +208,24 @@ async function startExecutionForJourney(
   journey: JourneyRecord,
   triggerNode: AutomationNode,
   leadEmail: string,
-  context: TriggerContext
+  context: TriggerContext,
+  triggerEvent: string
 ): Promise<void> {
-  const guardKey = `${journey.id}:${leadEmail}`;
+  const normalizedLeadEmail = leadEmail.trim().toLowerCase();
+  const guardKey = `${journey.id}:${normalizedLeadEmail}`;
+
+  if (journey.automationType === 'NURTURE') {
+    const launch = await enrollNurtureJourney(journey, triggerNode, normalizedLeadEmail, context, triggerEvent);
+    if (!launch) return;
+    if (launch.preemptedGuardKey) executingLeads.delete(launch.preemptedGuardKey);
+    executingLeads.add(guardKey);
+    const nodes = (journey.nodes as unknown as AutomationNode[]) ?? [];
+    const edges = (journey.edges as unknown as AutomationEdge[]) ?? [];
+    runExecution(launch.executionId, journey.id, nodes, edges, normalizedLeadEmail, context, undefined, guardKey, journey.exitConditions)
+      .catch(err => handleExecutionCrash(launch.executionId, guardKey, err));
+    return;
+  }
+
   if (executingLeads.has(guardKey)) return;
 
   // FIX: set guard IMMEDIATELY before any await to close the TOCTOU window
@@ -111,17 +236,19 @@ async function startExecutionForJourney(
     const execution = await prisma.automationExecution.create({
       data: {
         journeyId: journey.id,
-        leadEmail,
+        leadEmail: normalizedLeadEmail,
         status: 'running',
         currentNodeId: triggerNode.id,
         log: [],
+        automationTypeSnapshot: 'STANDALONE',
+        triggerEvent,
+        triggerContext: jsonContext(context),
       },
     });
 
     const edges = (journey.edges as unknown as AutomationEdge[]) ?? [];
-    runExecution(execution.id, journey.id, nodes, edges, leadEmail, context, undefined, guardKey, journey.exitConditions).catch(err => {
-      console.error(`[automation] execution ${execution.id} crashed:`, err);
-      executingLeads.delete(guardKey);
+    runExecution(execution.id, journey.id, nodes, edges, normalizedLeadEmail, context, undefined, guardKey, journey.exitConditions).catch(err => {
+      return handleExecutionCrash(execution.id, guardKey, err);
     });
   } catch (err) {
     // If execution creation fails, always release the guard
@@ -145,15 +272,25 @@ export async function fireTrigger(
       where: { isActive: true },
     });
 
-    for (const journey of journeys) {
+    const matching = journeys.filter(journey => {
+      const nodes = (journey.nodes as unknown as AutomationNode[]) ?? [];
+      const triggerNode = nodes.find(n => n.type === 'trigger');
+      if (!triggerNode) return false;
+
+      const c = (triggerNode.config ?? {}) as Record<string, string>;
+      return matchesTrigger(c.event, event, c, context);
+    }).sort((a, b) => {
+      if (a.automationType === 'NURTURE' && b.automationType === 'NURTURE') return b.priority - a.priority;
+      if (a.automationType === 'NURTURE') return -1;
+      if (b.automationType === 'NURTURE') return 1;
+      return 0;
+    });
+
+    for (const journey of matching) {
       const nodes = (journey.nodes as unknown as AutomationNode[]) ?? [];
       const triggerNode = nodes.find(n => n.type === 'trigger');
       if (!triggerNode) continue;
-
-      const c = (triggerNode.config ?? {}) as Record<string, string>;
-      if (!matchesTrigger(c.event, event, c, context)) continue;
-
-      await startExecutionForJourney(journey, triggerNode, leadEmail, context);
+      await startExecutionForJourney(journey, triggerNode, leadEmail, context, event);
     }
   } catch (err) {
     console.error('[automation] fireTrigger error:', err);
@@ -179,9 +316,161 @@ export async function fireTriggerForJourney(
     const triggerNode = nodes.find(n => n.type === 'trigger');
     if (!triggerNode) return;
 
-    await startExecutionForJourney(journey, triggerNode, leadEmail, context);
+    const triggerEvent = String((triggerNode.config ?? {}).event ?? 'segment_entered');
+    await startExecutionForJourney(journey, triggerNode, leadEmail, context, triggerEvent);
   } catch (err) {
     console.error('[automation] fireTriggerForJourney error:', err);
+  }
+}
+
+async function queuedAudienceStillMatches(
+  tx: Prisma.TransactionClient,
+  journey: { nodes: unknown; entryMode: string },
+  leadEmail: string
+): Promise<boolean> {
+  if (journey.entryMode !== 'AUDIENCE') return true;
+  const nodes = (journey.nodes as unknown as AutomationNode[]) ?? [];
+  const triggerNode = nodes.find(node => node.type === 'trigger');
+  const config = (triggerNode?.config ?? {}) as Record<string, string>;
+  if (config.event !== 'segment_entered' || !config.eventValue) return false;
+
+  const segment = await tx.segment.findUnique({ where: { id: config.eventValue } });
+  if (!segment) return false;
+  const rules = segment.rules as unknown as SegmentRules;
+  const where = SegmentService.buildWhere(rules);
+  const lead = await tx.lead.findFirst({
+    where: { ...where, email: leadEmail, deletedAt: null, status: { not: 'DISQUALIFIED' } },
+    select: { id: true },
+  });
+  return Boolean(lead);
+}
+
+async function promoteNextNurture(leadEmail: string): Promise<void> {
+  const email = leadEmail.trim().toLowerCase();
+  const launch = await prisma.$transaction(async tx => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${email}))`;
+
+    const active = await tx.automationExecution.findFirst({
+      where: {
+        leadEmail: email,
+        isTest: false,
+        automationTypeSnapshot: 'NURTURE',
+        status: { in: [...ACTIVE_EXECUTION_STATUSES] },
+      },
+      select: { id: true },
+    });
+    if (active) return null;
+
+    const lead = await tx.lead.findUnique({ where: { email }, select: LEAD_RECORD_SELECT });
+    const candidates = await tx.automationExecution.findMany({
+      where: {
+        leadEmail: email,
+        isTest: false,
+        automationTypeSnapshot: 'NURTURE',
+        status: 'queued',
+      },
+      orderBy: [{ prioritySnapshot: 'desc' }, { queuedAt: 'asc' }],
+      include: { journey: true },
+    });
+
+    for (const candidate of candidates) {
+      const expired = Boolean(candidate.expiresAt && candidate.expiresAt <= new Date());
+      const exited = lead ? evaluateExitConditions(lead, candidate.journey.exitConditions as ExitConditions | null) : true;
+      const audienceMatches = !expired && candidate.journey.isActive
+        ? await queuedAudienceStillMatches(tx, candidate.journey, email)
+        : false;
+
+      if (expired || !candidate.journey.isActive || !lead || lead.status === 'DISQUALIFIED' || exited || !audienceMatches) {
+        await tx.automationExecution.update({
+          where: { id: candidate.id },
+          data: {
+            status: 'cancelled',
+            completedAt: new Date(),
+            error: expired ? 'Expirou na fila de nutrição' : 'Não estava mais elegível ao liberar a fila',
+          },
+        });
+        continue;
+      }
+
+      const claimed = await tx.automationExecution.updateMany({
+        where: { id: candidate.id, status: 'queued' },
+        data: { status: 'running', startedAt: new Date(), queuedAt: null, expiresAt: null },
+      });
+      if (claimed.count === 0) continue;
+
+      return {
+        executionId: candidate.id,
+        journey: candidate.journey,
+        context: (candidate.triggerContext ?? {}) as TriggerContext,
+      };
+    }
+
+    return null;
+  });
+
+  if (!launch) return;
+  const nodes = (launch.journey.nodes as unknown as AutomationNode[]) ?? [];
+  const edges = (launch.journey.edges as unknown as AutomationEdge[]) ?? [];
+  const guardKey = `${launch.journey.id}:${email}`;
+  executingLeads.add(guardKey);
+  runExecution(
+    launch.executionId,
+    launch.journey.id,
+    nodes,
+    edges,
+    email,
+    launch.context,
+    undefined,
+    guardKey,
+    launch.journey.exitConditions
+  ).catch(err => handleExecutionCrash(launch.executionId, guardKey, err));
+}
+
+async function finishExecution(
+  executionId: string,
+  status: 'completed' | 'failed',
+  error?: string
+): Promise<boolean> {
+  const current = await prisma.automationExecution.findUnique({
+    where: { id: executionId },
+    select: { leadEmail: true, automationTypeSnapshot: true, status: true, isTest: true },
+  });
+  if (!current || !ACTIVE_EXECUTION_STATUSES.includes(current.status as typeof ACTIVE_EXECUTION_STATUSES[number])) return false;
+
+  const updated = await prisma.automationExecution.updateMany({
+    where: { id: executionId, status: { in: [...ACTIVE_EXECUTION_STATUSES] } },
+    data: { status, error: error ?? null, completedAt: new Date(), resumeAt: null },
+  });
+  if (updated.count === 0) return false;
+
+  if (current.automationTypeSnapshot === 'NURTURE' && !current.isTest) {
+    await promoteNextNurture(current.leadEmail);
+  }
+  return true;
+}
+
+async function handleExecutionCrash(executionId: string, guardKey: string, err: unknown): Promise<void> {
+  console.error(`[automation] execution ${executionId} crashed:`, err);
+  await finishExecution(
+    executionId,
+    'failed',
+    err instanceof Error ? err.message : String(err)
+  ).catch(finishErr => console.error(`[automation] failed to close crashed execution ${executionId}:`, finishErr));
+  executingLeads.delete(guardKey);
+}
+
+// Varredura de seguranca: se o processo reiniciar entre o fim de uma jornada e
+// a promocao da fila, o scheduler libera esses leads no proximo ciclo.
+export async function resumeQueuedNurtures(): Promise<void> {
+  const queued = await prisma.automationExecution.findMany({
+    where: { status: 'queued', automationTypeSnapshot: 'NURTURE', isTest: false },
+    distinct: ['leadEmail'],
+    select: { leadEmail: true },
+  });
+  for (const { leadEmail } of queued) {
+    await promoteNextNurture(leadEmail).catch(err =>
+      console.error(`[automation] queue promotion failed for ${leadEmail}:`, err)
+    );
   }
 }
 
@@ -220,13 +509,16 @@ export async function testJourneyForLead(
       status: 'running',
       currentNodeId: initialNodeId,
       log: [],
+      automationTypeSnapshot: journey.automationType === 'NURTURE' ? 'NURTURE' : 'STANDALONE',
+      prioritySnapshot: journey.automationType === 'NURTURE' ? journey.priority : 0,
+      triggerEvent: String((triggerNode.config ?? {}).event ?? 'test'),
+      triggerContext: { _test: true },
+      isTest: true,
     },
   });
 
-  runExecution(execution.id, journeyId, nodes, edges, leadEmail, { _test: true }, startNodeId, guardKey, journey.exitConditions).catch(err => {
-    console.error(`[automation] test execution ${execution.id} failed:`, err);
-    executingLeads.delete(guardKey);
-  });
+  runExecution(execution.id, journeyId, nodes, edges, leadEmail, { _test: true }, startNodeId, guardKey, journey.exitConditions)
+    .catch(err => handleExecutionCrash(execution.id, guardKey, err));
 
   return { executionId: execution.id };
 }
@@ -264,10 +556,7 @@ export async function resumeWaitingExecutions(): Promise<void> {
     const edges = (execution.journey.edges as unknown as AutomationEdge[]) ?? [];
 
     if (!execution.currentNodeId) {
-      await prisma.automationExecution.update({
-        where: { id: execution.id },
-        data: { status: 'completed', completedAt: now },
-      });
+      await finishExecution(execution.id, 'completed');
       continue;
     }
 
@@ -280,10 +569,7 @@ export async function resumeWaitingExecutions(): Promise<void> {
     const nextEdge = pickNextEdge(outEdges, resumeHandle);
 
     if (!nextEdge) {
-      await prisma.automationExecution.update({
-        where: { id: execution.id },
-        data: { status: 'completed', completedAt: now },
-      });
+      await finishExecution(execution.id, 'completed');
       continue;
     }
 
@@ -297,10 +583,8 @@ export async function resumeWaitingExecutions(): Promise<void> {
       await appendLog(execution.id, currentNode.id, 'email_wait_event', 'ok', 'Tempo esgotado sem evento de email');
     }
 
-    runExecution(execution.id, execution.journeyId, nodes, edges, execution.leadEmail, {}, nextEdge.target, guardKey).catch(err => {
-      console.error(`[automation] resume ${execution.id} crashed:`, err);
-      executingLeads.delete(guardKey);
-    });
+    runExecution(execution.id, execution.journeyId, nodes, edges, execution.leadEmail, {}, nextEdge.target, guardKey, execution.journey.exitConditions)
+      .catch(err => handleExecutionCrash(execution.id, guardKey, err));
   }
 }
 
@@ -320,7 +604,6 @@ export async function resumeWaitingWhatsAppReply(
 
   for (const execution of waiting) {
     const guardKey = `${execution.journeyId}:${execution.leadEmail}`;
-    if (executingLeads.has(guardKey)) continue;
 
     const nodes = (execution.journey.nodes as unknown as AutomationNode[]) ?? [];
     const edges = (execution.journey.edges as unknown as AutomationEdge[]) ?? [];
@@ -343,7 +626,10 @@ export async function resumeWaitingWhatsAppReply(
 
     const outEdges = edges.filter(edge => edge.source === currentNode.id);
     const nextEdge = pickNextEdge(outEdges, handle);
-    if (!nextEdge) continue;
+    if (!nextEdge) {
+      await finishExecution(execution.id, 'completed');
+      continue;
+    }
 
     const claimed = await prisma.automationExecution.updateMany({
       where: { id: execution.id, status: 'waiting' },
@@ -351,6 +637,7 @@ export async function resumeWaitingWhatsAppReply(
     });
     if (claimed.count === 0) continue;
 
+    executingLeads.delete(guardKey);
     executingLeads.add(guardKey);
     await appendLog(
       execution.id,
@@ -360,10 +647,8 @@ export async function resumeWaitingWhatsAppReply(
       handle === 'failed' ? 'Envio WhatsApp falhou' : `Resposta recebida: ${replyText.slice(0, 160)}`
     );
 
-    runExecution(execution.id, execution.journeyId, nodes, edges, execution.leadEmail, {}, nextEdge.target, guardKey).catch(err => {
-      console.error(`[automation] whatsapp resume ${execution.id} crashed:`, err);
-      executingLeads.delete(guardKey);
-    });
+    runExecution(execution.id, execution.journeyId, nodes, edges, execution.leadEmail, {}, nextEdge.target, guardKey, execution.journey.exitConditions)
+      .catch(err => handleExecutionCrash(execution.id, guardKey, err));
 
     resumed += 1;
   }
@@ -402,10 +687,12 @@ export async function resumeWaitingEmailEvent(
 
   const outEdges = edges.filter(e => e.source === currentNode.id);
   const nextEdge = pickNextEdge(outEdges, 'event');
-  if (!nextEdge) return 0;
+  if (!nextEdge) {
+    await finishExecution(execution.id, 'completed');
+    return 0;
+  }
 
   const guardKey = `${execution.journeyId}:${execution.leadEmail}`;
-  if (executingLeads.has(guardKey)) return 0;
 
   const claimed = await prisma.automationExecution.updateMany({
     where: { id: execution.id, status: 'waiting' },
@@ -413,13 +700,12 @@ export async function resumeWaitingEmailEvent(
   });
   if (claimed.count === 0) return 0;
 
+  executingLeads.delete(guardKey);
   executingLeads.add(guardKey);
   await appendLog(execution.id, currentNode.id, 'email_wait_event', 'ok', `Evento recebido: ${eventType}`);
 
-  runExecution(execution.id, execution.journeyId, nodes, edges, execution.leadEmail, {}, nextEdge.target, guardKey).catch(err => {
-    console.error(`[automation] email event resume ${execution.id} crashed:`, err);
-    executingLeads.delete(guardKey);
-  });
+  runExecution(execution.id, execution.journeyId, nodes, edges, execution.leadEmail, {}, nextEdge.target, guardKey, execution.journey.exitConditions)
+    .catch(err => handleExecutionCrash(execution.id, guardKey, err));
 
   return 1;
 }
@@ -460,10 +746,12 @@ export async function resumeWaitingEmailReceived(
 
     const outEdges = edges.filter(e => e.source === currentNode.id);
     const nextEdge = pickNextEdge(outEdges, 'event');
-    if (!nextEdge) continue;
+    if (!nextEdge) {
+      await finishExecution(execution.id, 'completed');
+      continue;
+    }
 
     const guardKey = `${execution.journeyId}:${execution.leadEmail}`;
-    if (executingLeads.has(guardKey)) continue;
 
     const claimed = await prisma.automationExecution.updateMany({
       where: { id: execution.id, status: 'waiting' },
@@ -471,13 +759,12 @@ export async function resumeWaitingEmailReceived(
     });
     if (claimed.count === 0) continue;
 
+    executingLeads.delete(guardKey);
     executingLeads.add(guardKey);
     await appendLog(execution.id, currentNode.id, 'email_wait_event', 'ok', `Email recebido: ${replyText.slice(0, 160)}`);
 
-    runExecution(execution.id, execution.journeyId, nodes, edges, execution.leadEmail, {}, nextEdge.target, guardKey).catch(err => {
-      console.error(`[automation] email received resume ${execution.id} crashed:`, err);
-      executingLeads.delete(guardKey);
-    });
+    runExecution(execution.id, execution.journeyId, nodes, edges, execution.leadEmail, {}, nextEdge.target, guardKey, execution.journey.exitConditions)
+      .catch(err => handleExecutionCrash(execution.id, guardKey, err));
 
     resumed += 1;
   }
@@ -505,10 +792,7 @@ async function runExecution(
     let currentNodeId = startNodeId ?? triggerNode?.id;
     if (!currentNodeId) {
       // FIX: mark as failed instead of silently returning with status='running'
-      await prisma.automationExecution.update({
-        where: { id: executionId },
-        data: { status: 'failed', error: 'Journey sem nó de Entrada — execução abortada', completedAt: new Date() },
-      }).catch(() => {});
+      await finishExecution(executionId, 'failed', 'Journey sem nó de Entrada — execução abortada').catch(() => {});
       return;
     }
 
@@ -517,6 +801,9 @@ async function runExecution(
     while (currentNodeId) {
       if (visited.has(currentNodeId)) break;
       visited.add(currentNodeId);
+
+      const state = await prisma.automationExecution.findUnique({ where: { id: executionId }, select: { status: true } });
+      if (!state || state.status !== 'running') return;
 
       if (await shouldExitJourney(exitConditions, leadEmail)) {
         await exitExecution(executionId, currentNodeId);
@@ -538,12 +825,12 @@ async function runExecution(
         const message = err instanceof Error ? err.message : String(err);
         // FIX: log the failing node before marking as failed
         await appendLog(executionId, node.id, node.type, 'error', message).catch(() => {});
-        await prisma.automationExecution.update({
-          where: { id: executionId },
-          data: { status: 'failed', error: message, completedAt: new Date() },
-        });
+        await finishExecution(executionId, 'failed', message);
         return;
       }
+
+      const stateAfterNode = await prisma.automationExecution.findUnique({ where: { id: executionId }, select: { status: true } });
+      if (!stateAfterNode || (stateAfterNode.status !== 'running' && stateAfterNode.status !== 'waiting')) return;
 
       if (result === 'wait') {
         isWaiting = true;  // FIX: guard kept while waiting so new triggers don't start duplicate
@@ -569,10 +856,7 @@ async function runExecution(
       }
     }
 
-    await prisma.automationExecution.update({
-      where: { id: executionId },
-      data: { status: 'completed', completedAt: new Date() },
-    }).catch(() => {});
+    await finishExecution(executionId, 'completed').catch(() => {});
   } finally {
     // FIX: keep guard active while execution is in 'waiting' state
     // so new triggers don't create a second parallel execution
@@ -606,10 +890,11 @@ async function executeNode(
         unit === 'week'    || unit === 'weeks'   ? amount * 7 * 86_400_000 :
         /* day / days */                           amount * 86_400_000;
 
-      await prisma.automationExecution.update({
-        where: { id: executionId },
+      const waiting = await prisma.automationExecution.updateMany({
+        where: { id: executionId, status: 'running' },
         data: { status: 'waiting', resumeAt: new Date(Date.now() + ms) },
       });
+      if (waiting.count === 0) return 'stop';
       await appendLog(executionId, node.id, 'wait', 'ok', `Aguardando ${amount} ${unit}(s)`);
       return 'wait';
     }
@@ -622,10 +907,11 @@ async function executeNode(
         unit === 'hour'    || unit === 'hours'   ? amount * 3_600_000 :
         /* day / days */                           amount * 86_400_000;
 
-      await prisma.automationExecution.update({
-        where: { id: executionId },
+      const waiting = await prisma.automationExecution.updateMany({
+        where: { id: executionId, status: 'running' },
         data: { status: 'waiting', resumeAt: new Date(Date.now() + ms) },
       });
+      if (waiting.count === 0) return 'stop';
 
       const keywords = String(c.keywords ?? '').trim();
       await appendLog(
@@ -675,10 +961,11 @@ async function executeNode(
         return 'event';
       }
 
-      await prisma.automationExecution.update({
-        where: { id: executionId },
+      const waiting = await prisma.automationExecution.updateMany({
+        where: { id: executionId, status: 'running' },
         data: { status: 'waiting', resumeAt: new Date(Date.now() + ms) },
       });
+      if (waiting.count === 0) return 'stop';
       await appendLog(executionId, node.id, 'email_wait_event', 'ok', `Aguardando ${waitFor} por ${amount} ${unit}(s)`);
       return 'wait';
     }
@@ -871,10 +1158,7 @@ async function exitExecution(executionId: string, nodeId: string | undefined): P
   if (nodeId) {
     await appendLog(executionId, nodeId, 'exit_condition', 'ok', 'Saiu do fluxo: condição de saída atingida').catch(() => {});
   }
-  await prisma.automationExecution.update({
-    where: { id: executionId },
-    data: { status: 'completed', completedAt: new Date() },
-  }).catch(() => {});
+  await finishExecution(executionId, 'completed').catch(() => {});
 }
 
 async function appendLog(
