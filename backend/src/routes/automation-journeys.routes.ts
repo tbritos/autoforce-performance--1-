@@ -5,6 +5,9 @@ const router = Router();
 
 router.get('/', AutomationJourneysController.list);
 router.post('/', AutomationJourneysController.create);
+router.get('/nurture-groups', AutomationJourneysController.listNurtureGroups);
+router.post('/nurture-groups', AutomationJourneysController.createNurtureGroup);
+router.patch('/nurture-groups/:id', AutomationJourneysController.updateNurtureGroup);
 router.get('/:id/executions', AutomationJourneysController.getExecutions);
 router.get('/:id/execution-stats', AutomationJourneysController.getExecutionStats);
 router.post('/:id/test', AutomationJourneysController.testRun);

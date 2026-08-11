@@ -34,6 +34,7 @@ test('token adulterado é rejeitado', () => withEnv(() => {
   const token = createUnsubscribeToken('pessoa@exemplo.com');
   const replacement = token.at(-1) === 'A' ? 'B' : 'A';
   assert.throws(() => readUnsubscribeToken(`${token.slice(0, -1)}${replacement}`), /inválido/);
+  assert.throws(() => readUnsubscribeToken(`${token}!`), /inválido/);
 }));
 
 test('URL pública e máscara não expõem o email completo', () => withEnv(() => {

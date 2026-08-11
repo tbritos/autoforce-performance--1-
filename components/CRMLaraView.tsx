@@ -51,12 +51,13 @@ export default function CRMLaraView() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [dragOverStage, setDragOverStage] = useState<MarketingStage | null>(null);
+  const [includeAll, setIncludeAll] = useState(false);
 
-  const load = async () => {
+  const load = async (showAll = includeAll) => {
     setLoading(true);
     setError('');
     try {
-      const data = await DataService.getMarketingKanban(false);
+      const data = await DataService.getMarketingKanban(showAll);
       setBoard(data);
     } catch {
       setError('Erro ao carregar o board.');
@@ -65,7 +66,7 @@ export default function CRMLaraView() {
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(false); }, []);
 
   const moveCard = async (cardId: string, fromStage: MarketingStage, toStage: MarketingStage) => {
     if (fromStage === toStage) return;
@@ -105,7 +106,21 @@ export default function CRMLaraView() {
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button type="button" onClick={() => load()} disabled={loading}
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)', cursor: loading ? 'wait' : 'pointer' }}>
+            <input
+              type="checkbox"
+              data-testid="crm-lara-include-all"
+              checked={includeAll}
+              disabled={loading}
+              onChange={event => {
+                const checked = event.target.checked;
+                setIncludeAll(checked);
+                void load(checked);
+              }}
+            />
+            Ver tudo
+          </label>
+          <button type="button" onClick={() => load(includeAll)} disabled={loading}
             style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--fg-primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Atualizar
           </button>

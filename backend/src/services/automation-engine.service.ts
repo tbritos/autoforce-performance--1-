@@ -105,11 +105,18 @@ type JourneyRecord = {
   priority: number;
   canInterruptLowerPriority: boolean;
   queueTtlHours: number | null;
+  nurtureGroupId: string | null;
+  nurtureGroup?: {
+    id: string;
+    priority: number;
+    canInterruptLowerPriority: boolean;
+    queueTtlHours: number | null;
+  } | null;
 };
 
 type NurtureLaunch = {
   executionId: string;
-  preemptedGuardKey?: string;
+  preemptedGuardKeys: string[];
 };
 
 const ACTIVE_EXECUTION_STATUSES = ['running', 'waiting'] as const;
@@ -117,8 +124,21 @@ const ACTIVE_EXECUTION_STATUSES = ['running', 'waiting'] as const;
 const jsonContext = (context: TriggerContext): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify(context)) as Prisma.InputJsonValue;
 
+function nurtureSettings(journey: JourneyRecord) {
+  const group = journey.nurtureGroup;
+  return {
+    groupKey: group ? `group:${group.id}` : `journey:${journey.id}`,
+    priority: normalizeAutomationPriority(group?.priority ?? journey.priority),
+    canInterruptLowerPriority: group?.canInterruptLowerPriority ?? journey.canInterruptLowerPriority,
+    queueTtlHours: normalizeQueueTtlHours(group ? group.queueTtlHours : journey.queueTtlHours),
+  };
+}
+
+const executionGroupKey = (execution: { nurtureGroupKeySnapshot: string | null; journeyId: string }) =>
+  execution.nurtureGroupKeySnapshot || `journey:${execution.journeyId}`;
+
 // Decide e persiste a entrada sob um lock transacional por lead. O lock e o
-// indice parcial do PostgreSQL tornam a exclusividade segura mesmo com varios
+// advisory lock do PostgreSQL torna a exclusividade segura mesmo com varios
 // webhooks/processos chegando ao mesmo tempo.
 async function enrollNurtureJourney(
   journey: JourneyRecord,
@@ -128,8 +148,9 @@ async function enrollNurtureJourney(
   triggerEvent: string
 ): Promise<NurtureLaunch | null> {
   const email = leadEmail.trim().toLowerCase();
-  const priority = normalizeAutomationPriority(journey.priority);
-  const ttlHours = normalizeQueueTtlHours(journey.queueTtlHours);
+  const settings = nurtureSettings(journey);
+  const { groupKey, priority, canInterruptLowerPriority } = settings;
+  const ttlHours = settings.queueTtlHours;
   const expiresAt = ttlHours === null ? null : new Date(Date.now() + ttlHours * 3_600_000);
 
   return prisma.$transaction(async tx => {
@@ -146,7 +167,7 @@ async function enrollNurtureJourney(
     });
     if (duplicate) return null;
 
-    const active = await tx.automationExecution.findFirst({
+    const active = await tx.automationExecution.findMany({
       where: {
         leadEmail: email,
         isTest: false,
@@ -154,17 +175,21 @@ async function enrollNurtureJourney(
         status: { in: [...ACTIVE_EXECUTION_STATUSES] },
       },
       orderBy: { startedAt: 'asc' },
-      select: { id: true, journeyId: true, prioritySnapshot: true },
+      select: { id: true, journeyId: true, prioritySnapshot: true, nurtureGroupKeySnapshot: true },
     });
 
-    const decision = decideNurtureEnrollment(
-      active ? { priority: active.prioritySnapshot } : null,
-      { priority, canInterruptLowerPriority: journey.canInterruptLowerPriority }
-    );
+    const activeGroupKey = active[0] ? executionGroupKey(active[0]) : null;
+    const joinsActiveGroup = activeGroupKey === groupKey;
+    const decision = joinsActiveGroup
+      ? 'start'
+      : decideNurtureEnrollment(
+        active[0] ? { priority: active[0].prioritySnapshot } : null,
+        { priority, canInterruptLowerPriority }
+      );
 
-    if (decision === 'preempt' && active) {
-      await tx.automationExecution.update({
-        where: { id: active.id },
+    if (decision === 'preempt' && active.length) {
+      await tx.automationExecution.updateMany({
+        where: { id: { in: active.map(item => item.id) } },
         data: {
           status: 'cancelled',
           completedAt: new Date(),
@@ -183,6 +208,7 @@ async function enrollNurtureJourney(
         log: [],
         automationTypeSnapshot: 'NURTURE',
         prioritySnapshot: priority,
+        nurtureGroupKeySnapshot: groupKey,
         triggerEvent,
         triggerContext: jsonContext(context),
         queuedAt: shouldStart ? null : new Date(),
@@ -190,12 +216,20 @@ async function enrollNurtureJourney(
       },
     });
 
-    if (active && decision === 'preempt') {
-      await tx.automationExecution.update({ where: { id: active.id }, data: { supersededById: execution.id } });
+    if (active.length && decision === 'preempt') {
+      await tx.automationExecution.updateMany({
+        where: { id: { in: active.map(item => item.id) } },
+        data: { supersededById: execution.id },
+      });
     }
 
     return shouldStart
-      ? { executionId: execution.id, preemptedGuardKey: active ? `${active.journeyId}:${email}` : undefined }
+      ? {
+        executionId: execution.id,
+        preemptedGuardKeys: decision === 'preempt'
+          ? active.map(item => `${item.journeyId}:${email}`)
+          : [],
+      }
       : null;
   });
 }
@@ -217,7 +251,7 @@ async function startExecutionForJourney(
   if (journey.automationType === 'NURTURE') {
     const launch = await enrollNurtureJourney(journey, triggerNode, normalizedLeadEmail, context, triggerEvent);
     if (!launch) return;
-    if (launch.preemptedGuardKey) executingLeads.delete(launch.preemptedGuardKey);
+    for (const preemptedGuardKey of launch.preemptedGuardKeys) executingLeads.delete(preemptedGuardKey);
     executingLeads.add(guardKey);
     const nodes = (journey.nodes as unknown as AutomationNode[]) ?? [];
     const edges = (journey.edges as unknown as AutomationEdge[]) ?? [];
@@ -270,17 +304,30 @@ export async function fireTrigger(
 
     const journeys = await prisma.automationJourney.findMany({
       where: { isActive: true },
+      include: { nurtureGroup: true },
     });
 
-    const matching = journeys.filter(journey => {
+    const directlyMatching = journeys.filter(journey => {
       const nodes = (journey.nodes as unknown as AutomationNode[]) ?? [];
       const triggerNode = nodes.find(n => n.type === 'trigger');
       if (!triggerNode) return false;
 
       const c = (triggerNode.config ?? {}) as Record<string, string>;
       return matchesTrigger(c.event, event, c, context);
-    }).sort((a, b) => {
-      if (a.automationType === 'NURTURE' && b.automationType === 'NURTURE') return b.priority - a.priority;
+    });
+    const triggeredGroupIds = new Set(
+      directlyMatching
+        .filter(journey => journey.automationType === 'NURTURE' && journey.nurtureGroupId)
+        .map(journey => journey.nurtureGroupId as string)
+    );
+    const directlyMatchingIds = new Set(directlyMatching.map(journey => journey.id));
+    const matching = journeys.filter(journey =>
+      directlyMatchingIds.has(journey.id)
+      || (journey.automationType === 'NURTURE' && Boolean(journey.nurtureGroupId) && triggeredGroupIds.has(journey.nurtureGroupId!))
+    ).sort((a, b) => {
+      if (a.automationType === 'NURTURE' && b.automationType === 'NURTURE') {
+        return nurtureSettings(b).priority - nurtureSettings(a).priority;
+      }
       if (a.automationType === 'NURTURE') return -1;
       if (b.automationType === 'NURTURE') return 1;
       return 0;
@@ -309,15 +356,27 @@ export async function fireTriggerForJourney(
     const lead = await prisma.lead.findUnique({ where: { email: leadEmail }, select: { status: true } });
     if (lead?.status === 'DISQUALIFIED') return;
 
-    const journey = await prisma.automationJourney.findUnique({ where: { id: journeyId } });
+    const journey = await prisma.automationJourney.findUnique({ where: { id: journeyId }, include: { nurtureGroup: true } });
     if (!journey || !journey.isActive) return;
 
-    const nodes = (journey.nodes as unknown as AutomationNode[]) ?? [];
-    const triggerNode = nodes.find(n => n.type === 'trigger');
-    if (!triggerNode) return;
+    const groupJourneys = journey.automationType === 'NURTURE' && journey.nurtureGroupId
+      ? await prisma.automationJourney.findMany({
+        where: { nurtureGroupId: journey.nurtureGroupId, automationType: 'NURTURE', isActive: true },
+        include: { nurtureGroup: true },
+      })
+      : [journey];
 
-    const triggerEvent = String((triggerNode.config ?? {}).event ?? 'segment_entered');
-    await startExecutionForJourney(journey, triggerNode, leadEmail, context, triggerEvent);
+    const sourceNodes = (journey.nodes as unknown as AutomationNode[]) ?? [];
+    const sourceTrigger = sourceNodes.find(n => n.type === 'trigger');
+    if (!sourceTrigger) return;
+    const triggerEvent = String((sourceTrigger.config ?? {}).event ?? 'segment_entered');
+
+    for (const member of groupJourneys) {
+      const nodes = (member.nodes as unknown as AutomationNode[]) ?? [];
+      const triggerNode = nodes.find(n => n.type === 'trigger');
+      if (!triggerNode) continue;
+      await startExecutionForJourney(member, triggerNode, leadEmail, context, triggerEvent);
+    }
   } catch (err) {
     console.error('[automation] fireTriggerForJourney error:', err);
   }
@@ -347,7 +406,7 @@ async function queuedAudienceStillMatches(
 
 async function promoteNextNurture(leadEmail: string): Promise<void> {
   const email = leadEmail.trim().toLowerCase();
-  const launch = await prisma.$transaction(async tx => {
+  const launches = await prisma.$transaction(async tx => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${email}))`;
 
     const active = await tx.automationExecution.findFirst({
@@ -359,7 +418,7 @@ async function promoteNextNurture(leadEmail: string): Promise<void> {
       },
       select: { id: true },
     });
-    if (active) return null;
+    if (active) return [];
 
     const lead = await tx.lead.findUnique({ where: { email }, select: LEAD_RECORD_SELECT });
     const candidates = await tx.automationExecution.findMany({
@@ -370,60 +429,88 @@ async function promoteNextNurture(leadEmail: string): Promise<void> {
         status: 'queued',
       },
       orderBy: [{ prioritySnapshot: 'desc' }, { queuedAt: 'asc' }],
-      include: { journey: true },
+      include: { journey: { include: { nurtureGroup: true } } },
     });
 
-    for (const candidate of candidates) {
+    const isEligible = async (candidate: typeof candidates[number]) => {
       const expired = Boolean(candidate.expiresAt && candidate.expiresAt <= new Date());
       const exited = lead ? evaluateExitConditions(lead, candidate.journey.exitConditions as ExitConditions | null) : true;
       const audienceMatches = !expired && candidate.journey.isActive
         ? await queuedAudienceStillMatches(tx, candidate.journey, email)
         : false;
+      return {
+        ok: !expired && candidate.journey.isActive && Boolean(lead) && lead?.status !== 'DISQUALIFIED' && !exited && audienceMatches,
+        expired,
+      };
+    };
 
-      if (expired || !candidate.journey.isActive || !lead || lead.status === 'DISQUALIFIED' || exited || !audienceMatches) {
-        await tx.automationExecution.update({
-          where: { id: candidate.id },
-          data: {
-            status: 'cancelled',
-            completedAt: new Date(),
-            error: expired ? 'Expirou na fila de nutrição' : 'Não estava mais elegível ao liberar a fila',
-          },
-        });
+    const cancelCandidate = async (candidate: typeof candidates[number], expired: boolean) => {
+      await tx.automationExecution.updateMany({
+        where: { id: candidate.id, status: 'queued' },
+        data: {
+          status: 'cancelled',
+          completedAt: new Date(),
+          error: expired ? 'Expirou na fila de nutrição' : 'Não estava mais elegível ao liberar a fila',
+        },
+      });
+    };
+
+    for (const candidate of candidates) {
+      const eligibility = await isEligible(candidate);
+      if (!eligibility.ok) {
+        await cancelCandidate(candidate, eligibility.expired);
         continue;
       }
 
-      const claimed = await tx.automationExecution.updateMany({
-        where: { id: candidate.id, status: 'queued' },
-        data: { status: 'running', startedAt: new Date(), queuedAt: null, expiresAt: null },
-      });
-      if (claimed.count === 0) continue;
+      const selectedGroupKey = executionGroupKey(candidate);
+      const groupCandidates = candidates.filter(item => executionGroupKey(item) === selectedGroupKey);
+      const selectedLaunches: Array<{
+        executionId: string;
+        journey: typeof candidate.journey;
+        context: TriggerContext;
+      }> = [];
 
-      return {
-        executionId: candidate.id,
-        journey: candidate.journey,
-        context: (candidate.triggerContext ?? {}) as TriggerContext,
-      };
+      for (const member of groupCandidates) {
+        const memberEligibility = member.id === candidate.id ? eligibility : await isEligible(member);
+        if (!memberEligibility.ok) {
+          await cancelCandidate(member, memberEligibility.expired);
+          continue;
+        }
+        const claimed = await tx.automationExecution.updateMany({
+          where: { id: member.id, status: 'queued' },
+          data: { status: 'running', startedAt: new Date(), queuedAt: null, expiresAt: null },
+        });
+        if (claimed.count === 0) continue;
+        selectedLaunches.push({
+          executionId: member.id,
+          journey: member.journey,
+          context: (member.triggerContext ?? {}) as TriggerContext,
+        });
+      }
+
+      if (selectedLaunches.length) return selectedLaunches;
     }
 
-    return null;
+    return [];
   });
 
-  if (!launch) return;
-  const nodes = (launch.journey.nodes as unknown as AutomationNode[]) ?? [];
-  const edges = (launch.journey.edges as unknown as AutomationEdge[]) ?? [];
-  const guardKey = `${launch.journey.id}:${email}`;
-  executingLeads.add(guardKey);
-  runExecution(
-    launch.executionId,
-    launch.journey.id,
-    nodes,
-    edges,
-    email,
-    launch.context,
-    undefined,
-    guardKey,
-    launch.journey.exitConditions
-  ).catch(err => handleExecutionCrash(launch.executionId, guardKey, err));
+  for (const launch of launches) {
+    const nodes = (launch.journey.nodes as unknown as AutomationNode[]) ?? [];
+    const edges = (launch.journey.edges as unknown as AutomationEdge[]) ?? [];
+    const guardKey = `${launch.journey.id}:${email}`;
+    executingLeads.add(guardKey);
+    runExecution(
+      launch.executionId,
+      launch.journey.id,
+      nodes,
+      edges,
+      email,
+      launch.context,
+      undefined,
+      guardKey,
+      launch.journey.exitConditions
+    ).catch(err => handleExecutionCrash(launch.executionId, guardKey, err));
+  }
 }
 
 async function finishExecution(
@@ -479,7 +566,7 @@ export async function testJourneyForLead(
   leadEmail: string,
   startNodeId?: string
 ): Promise<{ executionId: string }> {
-  const journey = await prisma.automationJourney.findUniqueOrThrow({ where: { id: journeyId } });
+  const journey = await prisma.automationJourney.findUniqueOrThrow({ where: { id: journeyId }, include: { nurtureGroup: true } });
   const nodes = (journey.nodes as unknown as AutomationNode[]) ?? [];
   const edges = (journey.edges as unknown as AutomationEdge[]) ?? [];
   const triggerNode = nodes.find(n => n.type === 'trigger');
@@ -502,6 +589,7 @@ export async function testJourneyForLead(
 
   const initialNodeId = startNodeId ?? triggerNode.id;
 
+  const settings = nurtureSettings(journey);
   const execution = await prisma.automationExecution.create({
     data: {
       journeyId,
@@ -510,7 +598,8 @@ export async function testJourneyForLead(
       currentNodeId: initialNodeId,
       log: [],
       automationTypeSnapshot: journey.automationType === 'NURTURE' ? 'NURTURE' : 'STANDALONE',
-      prioritySnapshot: journey.automationType === 'NURTURE' ? journey.priority : 0,
+      prioritySnapshot: journey.automationType === 'NURTURE' ? settings.priority : 0,
+      nurtureGroupKeySnapshot: journey.automationType === 'NURTURE' ? settings.groupKey : null,
       triggerEvent: String((triggerNode.config ?? {}).event ?? 'test'),
       triggerContext: { _test: true },
       isTest: true,

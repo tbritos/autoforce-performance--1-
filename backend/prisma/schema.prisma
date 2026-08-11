@@ -378,6 +378,11 @@ model AutomationJourney {
   canInterruptLowerPriority Boolean @default(true)
   queueTtlHours             Int?    @default(168) // null = sem prazo para expirar na fila
 
+  // Duas ou mais automacoes (ex.: email + WhatsApp) podem representar uma
+  // unica nutricao logica. Sem grupo, a propria journey continua sendo o grupo.
+  nurtureGroupId String?
+  nurtureGroup   AutomationNurtureGroup? @relation(fields: [nurtureGroupId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -386,6 +391,23 @@ model AutomationJourney {
 
   @@index([status])
   @@index([isActive])
+  @@index([nurtureGroupId])
+  @@index([createdAt])
+}
+
+model AutomationNurtureGroup {
+  id                        String  @id @default(uuid())
+  name                      String  @unique
+  priority                  Int     @default(50)
+  canInterruptLowerPriority Boolean @default(true)
+  queueTtlHours             Int?    @default(168)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  journeys AutomationJourney[]
+
+  @@index([priority])
   @@index([createdAt])
 }
 
@@ -403,6 +425,7 @@ model AutomationExecution {
   // muda retroativamente quem ja esta ativo ou aguardando.
   automationTypeSnapshot String    @default("STANDALONE")
   prioritySnapshot       Int       @default(0)
+  nurtureGroupKeySnapshot String?
   triggerEvent           String?
   triggerContext         Json?
   queuedAt               DateTime?
@@ -420,6 +443,7 @@ model AutomationExecution {
   @@index([journeyId])
   @@index([leadEmail])
   @@index([leadEmail, status])
+  @@index([leadEmail, nurtureGroupKeySnapshot, status])
   @@index([resumeAt])
   @@index([status, queuedAt])
   @@index([startedAt])

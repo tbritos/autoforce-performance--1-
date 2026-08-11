@@ -1,6 +1,6 @@
 /**
  * QA — API Backend: endpoints críticos respondem corretamente.
- * Testa diretamente a API Railway.
+ * Usa API_URL; o fallback continua sendo a API publicada para checagens manuais.
  */
 import { test, expect } from '@playwright/test';
 
@@ -49,7 +49,7 @@ test.describe('API Health', () => {
 
   test('POST /pipedrive-webhook sem token retorna 401', async ({ request }) => {
     const res = await request.post(
-      'https://autoforce-performance-1-production.up.railway.app/api/pipedrive-webhook',
+      `${API}/pipedrive-webhook`,
       { data: { event: 'updated.deal', current: {} } }
     );
     // Com PIPEDRIVE_WEBHOOK_SECRET configurado deve ser 401

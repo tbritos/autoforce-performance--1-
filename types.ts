@@ -552,12 +552,25 @@ export interface AutomationJourney {
   priority: number;
   canInterruptLowerPriority: boolean;
   queueTtlHours: number | null;
+  nurtureGroupId: string | null;
+  nurtureGroup?: AutomationNurtureGroup | null;
   exitConditions?: ExitConditions | null;
   createdAt: string;
   updatedAt: string;
   _count?: {
     executions?: number;
   };
+}
+
+export interface AutomationNurtureGroup {
+  id: string;
+  name: string;
+  priority: number;
+  canInterruptLowerPriority: boolean;
+  queueTtlHours: number | null;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { journeys?: number };
 }
 
 export type AutomationExecutionStatus = 'running' | 'waiting' | 'queued' | 'completed' | 'failed' | 'cancelled';
@@ -579,6 +592,7 @@ export interface AutomationExecution {
   status: AutomationExecutionStatus;
   currentNodeId: string | null;
   resumeAt: string | null;
+  nurtureGroupKeySnapshot?: string | null;
   log: AutomationExecutionLogEntry[];
   error: string | null;
   startedAt: string;

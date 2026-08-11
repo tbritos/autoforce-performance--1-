@@ -19,12 +19,14 @@ type JourneyOptions = {
   tail?: 'wait' | 'fail_after_wait';
   exitConditions?: Prisma.InputJsonValue;
   queueTtlHours?: number | null;
+  nurtureGroupId?: string;
 };
 
 type Scope = {
   journeyIds: string[];
   emails: string[];
   segmentIds: string[];
+  groupIds: string[];
 };
 
 const SUITE_SUFFIX = '@qa-automacao-suite.local';
@@ -70,6 +72,7 @@ async function createJourney(scope: Scope, name: string, options: JourneyOptions
       priority: options.priority ?? 50,
       canInterruptLowerPriority: options.canInterrupt ?? true,
       queueTtlHours: options.queueTtlHours === undefined ? 168 : options.queueTtlHours,
+      nurtureGroupId: options.nurtureGroupId ?? null,
       nodes: nodesFor(options),
       edges: edgesFor(options),
       exitConditions: options.exitConditions ?? Prisma.JsonNull,
@@ -77,6 +80,23 @@ async function createJourney(scope: Scope, name: string, options: JourneyOptions
   });
   scope.journeyIds.push(journey.id);
   return journey;
+}
+
+async function createNurtureGroup(
+  scope: Scope,
+  name: string,
+  options: { priority?: number; canInterrupt?: boolean; queueTtlHours?: number | null } = {},
+) {
+  const group = await prisma.automationNurtureGroup.create({
+    data: {
+      name,
+      priority: options.priority ?? 50,
+      canInterruptLowerPriority: options.canInterrupt ?? true,
+      queueTtlHours: options.queueTtlHours === undefined ? 168 : options.queueTtlHours,
+    },
+  });
+  scope.groupIds.push(group.id);
+  return group;
 }
 
 async function createLead(scope: Scope, localPart: string, data: { name?: string; tags?: string[]; status?: 'LEAD' | 'DISQUALIFIED'; notes?: string } = {}) {
@@ -109,6 +129,7 @@ async function createSegment(scope: Scope, name: string, tag: string) {
 
 async function cleanupScope(scope: Scope) {
   if (scope.journeyIds.length) await prisma.automationJourney.deleteMany({ where: { id: { in: scope.journeyIds } } });
+  if (scope.groupIds.length) await prisma.automationNurtureGroup.deleteMany({ where: { id: { in: scope.groupIds } } });
   if (scope.segmentIds.length) await prisma.segment.deleteMany({ where: { id: { in: scope.segmentIds } } });
   if (scope.emails.length) await prisma.lead.deleteMany({ where: { email: { in: scope.emails } } });
 }
@@ -142,7 +163,7 @@ async function forceResume(executionId: string) {
 }
 
 async function runCase(name: string, body: (scope: Scope) => Promise<void>, results: string[]) {
-  const scope: Scope = { journeyIds: [], emails: [], segmentIds: [] };
+  const scope: Scope = { journeyIds: [], emails: [], segmentIds: [], groupIds: [] };
   try {
     await body(scope);
     results.push(`OK  ${name}`);
@@ -153,6 +174,7 @@ async function runCase(name: string, body: (scope: Scope) => Promise<void>, resu
 
 async function runAutomatedSuite() {
   await prisma.automationJourney.deleteMany({ where: { name: { startsWith: '[QA Suite]' } } });
+  await prisma.automationNurtureGroup.deleteMany({ where: { name: { startsWith: '[QA Suite]' } } });
   await prisma.segment.deleteMany({ where: { name: { startsWith: '[QA Suite]' } } });
   await prisma.lead.deleteMany({ where: { email: { endsWith: SUITE_SUFFIX } } });
 
@@ -264,18 +286,72 @@ async function runAutomatedSuite() {
     assert.equal(rows.filter(item => item.status === 'failed').length, 0);
   }, results);
 
-  await runCase('índice do PostgreSQL impede duas nutrições ativas para o mesmo lead', async scope => {
-    const lead = await createLead(scope, 'indice-unico');
-    const first = await createJourney(scope, '[QA Suite] índice A', { priority: 50 });
-    const second = await createJourney(scope, '[QA Suite] índice B', { priority: 50 });
-    await fireTriggerForJourney(first.id, lead.email);
-    await waitStatus(first.id, lead.email, 'waiting');
-    await assert.rejects(() => prisma.automationExecution.create({
-      data: {
-        journeyId: second.id, leadEmail: lead.email, status: 'running', currentNodeId: 'trigger',
-        automationTypeSnapshot: 'NURTURE', prioritySnapshot: 50, log: [],
-      },
-    }), (error: any) => error?.code === 'P2002');
+  await runCase('email e WhatsApp do mesmo grupo rodam juntos', async scope => {
+    const lead = await createLead(scope, 'grupo-paralelo');
+    const group = await createNurtureGroup(scope, '[QA Suite] Grupo Ebook', { priority: 75 });
+    const email = await createJourney(scope, '[QA Suite] Grupo Ebook | Email', { nurtureGroupId: group.id });
+    const whatsapp = await createJourney(scope, '[QA Suite] Grupo Ebook | WhatsApp', { nurtureGroupId: group.id });
+    // Um único gatilho do grupo precisa iniciar os dois canais.
+    await fireTriggerForJourney(email.id, lead.email);
+    const [emailExecution, whatsappExecution] = await Promise.all([
+      waitStatus(email.id, lead.email, 'waiting'),
+      waitStatus(whatsapp.id, lead.email, 'waiting'),
+    ]);
+    assert.equal(emailExecution?.nurtureGroupKeySnapshot, `group:${group.id}`);
+    assert.equal(whatsappExecution?.nurtureGroupKeySnapshot, `group:${group.id}`);
+    assert.equal(emailExecution?.prioritySnapshot, 75);
+    assert.equal(whatsappExecution?.prioritySnapshot, 75);
+  }, results);
+
+  await runCase('próximo grupo só entra quando email e WhatsApp atuais terminam', async scope => {
+    const lead = await createLead(scope, 'grupo-libera-junto');
+    const activeGroup = await createNurtureGroup(scope, '[QA Suite] Grupo Atual', { priority: 75 });
+    const queuedGroup = await createNurtureGroup(scope, '[QA Suite] Próximo Grupo', { priority: 50 });
+    const activeEmail = await createJourney(scope, '[QA Suite] Atual | Email', { nurtureGroupId: activeGroup.id });
+    const activeWhatsapp = await createJourney(scope, '[QA Suite] Atual | WhatsApp', { nurtureGroupId: activeGroup.id });
+    const queuedEmail = await createJourney(scope, '[QA Suite] Próximo | Email', { nurtureGroupId: queuedGroup.id });
+    const queuedWhatsapp = await createJourney(scope, '[QA Suite] Próximo | WhatsApp', { nurtureGroupId: queuedGroup.id });
+
+    await Promise.all([fireTriggerForJourney(activeEmail.id, lead.email), fireTriggerForJourney(activeWhatsapp.id, lead.email)]);
+    const [activeEmailExecution, activeWhatsappExecution] = await Promise.all([
+      waitStatus(activeEmail.id, lead.email, 'waiting'),
+      waitStatus(activeWhatsapp.id, lead.email, 'waiting'),
+    ]);
+    await Promise.all([fireTriggerForJourney(queuedEmail.id, lead.email), fireTriggerForJourney(queuedWhatsapp.id, lead.email)]);
+    await Promise.all([
+      waitStatus(queuedEmail.id, lead.email, 'queued'),
+      waitStatus(queuedWhatsapp.id, lead.email, 'queued'),
+    ]);
+
+    await forceResume(activeEmailExecution!.id);
+    assert.equal((await execution(queuedEmail.id, lead.email))?.status, 'queued');
+    assert.equal((await execution(queuedWhatsapp.id, lead.email))?.status, 'queued');
+
+    await forceResume(activeWhatsappExecution!.id);
+    await Promise.all([
+      waitStatus(queuedEmail.id, lead.email, 'waiting'),
+      waitStatus(queuedWhatsapp.id, lead.email, 'waiting'),
+    ]);
+  }, results);
+
+  await runCase('grupo prioritário interrompe todas as automações do grupo anterior', async scope => {
+    const lead = await createLead(scope, 'grupo-preempcao');
+    const lowGroup = await createNurtureGroup(scope, '[QA Suite] Grupo Baixo', { priority: 20 });
+    const highGroup = await createNurtureGroup(scope, '[QA Suite] Grupo Alto', { priority: 95 });
+    const lowEmail = await createJourney(scope, '[QA Suite] Baixo | Email', { nurtureGroupId: lowGroup.id });
+    const lowWhatsapp = await createJourney(scope, '[QA Suite] Baixo | WhatsApp', { nurtureGroupId: lowGroup.id });
+    const highEmail = await createJourney(scope, '[QA Suite] Alto | Email', { nurtureGroupId: highGroup.id });
+    const highWhatsapp = await createJourney(scope, '[QA Suite] Alto | WhatsApp', { nurtureGroupId: highGroup.id });
+
+    await Promise.all([fireTriggerForJourney(lowEmail.id, lead.email), fireTriggerForJourney(lowWhatsapp.id, lead.email)]);
+    await Promise.all([waitStatus(lowEmail.id, lead.email, 'waiting'), waitStatus(lowWhatsapp.id, lead.email, 'waiting')]);
+    await Promise.all([fireTriggerForJourney(highEmail.id, lead.email), fireTriggerForJourney(highWhatsapp.id, lead.email)]);
+    await Promise.all([
+      waitStatus(lowEmail.id, lead.email, 'cancelled'),
+      waitStatus(lowWhatsapp.id, lead.email, 'cancelled'),
+      waitStatus(highEmail.id, lead.email, 'waiting'),
+      waitStatus(highWhatsapp.id, lead.email, 'waiting'),
+    ]);
   }, results);
 
   await runCase('item expirado é cancelado e não entra após a liberação da fila', async scope => {
@@ -458,13 +534,14 @@ async function runAutomatedSuite() {
 
 async function resetPermanentFixtures() {
   await prisma.automationJourney.deleteMany({ where: { name: { startsWith: FIXTURE_PREFIX } } });
+  await prisma.automationNurtureGroup.deleteMany({ where: { name: { startsWith: FIXTURE_PREFIX } } });
   await prisma.segment.deleteMany({ where: { name: { startsWith: FIXTURE_PREFIX } } });
   await prisma.lead.deleteMany({ where: { email: { endsWith: FIXTURE_SUFFIX } } });
 }
 
 async function seedPermanentFixtures() {
   await resetPermanentFixtures();
-  const scope: Scope = { journeyIds: [], emails: [], segmentIds: [] };
+  const scope: Scope = { journeyIds: [], emails: [], segmentIds: [], groupIds: [] };
 
   const segment = await prisma.segment.create({
     data: {
@@ -475,6 +552,8 @@ async function seedPermanentFixtures() {
     },
   });
   scope.segmentIds.push(segment.id);
+
+  const ebookGroup = await createNurtureGroup(scope, `${FIXTURE_PREFIX} Ebook multicanal`, { priority: 75, queueTtlHours: null });
 
   const journeys = {
     base: await createJourney(scope, `${FIXTURE_PREFIX} Base | Baixa`, { priority: 20, eventValue: 'qa-base' }),
@@ -489,6 +568,8 @@ async function seedPermanentFixtures() {
       priority: 50, entryMode: 'AUDIENCE', event: 'segment_entered', eventValue: segment.id,
     }),
     failing: await createJourney(scope, `${FIXTURE_PREFIX} Falha controlada`, { priority: 95, tail: 'fail_after_wait', eventValue: 'qa-falha' }),
+    groupedEmail: await createJourney(scope, `${FIXTURE_PREFIX} Grupo Ebook | Email`, { nurtureGroupId: ebookGroup.id, eventValue: 'qa-grupo-ebook' }),
+    groupedWhatsapp: await createJourney(scope, `${FIXTURE_PREFIX} Grupo Ebook | WhatsApp`, { nurtureGroupId: ebookGroup.id, eventValue: 'qa-grupo-ebook' }),
   };
 
   async function fixtureLead(localPart: string, name: string, notes: string, tags = ['qa-automacao']) {
@@ -571,6 +652,16 @@ async function seedPermanentFixtures() {
     fireTriggerForJourney(journeys.standaloneA.id, parallel.email),
     fireTriggerForJourney(journeys.standaloneB.id, parallel.email),
   ]);
+
+  const grouped = await fixtureLead('10-grupo-multicanal', '[QA] 10 — Email e WhatsApp agrupados', 'Esperado: as duas automações do grupo Ebook ficam ativas juntas.');
+  await Promise.all([
+    fireTriggerForJourney(journeys.groupedEmail.id, grouped.email),
+    fireTriggerForJourney(journeys.groupedWhatsapp.id, grouped.email),
+  ]);
+  await Promise.all([
+    waitStatus(journeys.groupedEmail.id, grouped.email, 'waiting'),
+    waitStatus(journeys.groupedWhatsapp.id, grouped.email, 'waiting'),
+  ]);
   await Promise.all([
     waitStatus(journeys.base.id, parallel.email, 'waiting'),
     waitStatus(journeys.standaloneA.id, parallel.email, 'waiting'),
@@ -607,6 +698,7 @@ main()
   })
   .finally(async () => {
     await prisma.automationJourney.deleteMany({ where: { name: { startsWith: '[QA Suite]' } } }).catch(() => {});
+    await prisma.automationNurtureGroup.deleteMany({ where: { name: { startsWith: '[QA Suite]' } } }).catch(() => {});
     await prisma.segment.deleteMany({ where: { name: { startsWith: '[QA Suite]' } } }).catch(() => {});
     await prisma.lead.deleteMany({ where: { email: { endsWith: SUITE_SUFFIX } } }).catch(() => {});
     await prisma.$disconnect();

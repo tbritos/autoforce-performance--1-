@@ -18,6 +18,11 @@ dist
 dist-ssr
 *.local
 
+# Playwright — artefatos gerados localmente
+test-results/
+tests/e2e/report/data/
+tests/e2e/report/trace/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -2,6 +2,30 @@ import { Request, Response, NextFunction } from 'express';
 import { AutomationJourneysService } from '../services/automation-journeys.service';
 
 export class AutomationJourneysController {
+  static async listNurtureGroups(_req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json(await AutomationJourneysService.listNurtureGroups());
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async createNurtureGroup(req: Request, res: Response, next: NextFunction) {
+    try {
+      res.status(201).json(await AutomationJourneysService.createNurtureGroup(req.body));
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async updateNurtureGroup(req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json(await AutomationJourneysService.updateNurtureGroup(req.params.id, req.body));
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async list(_req: Request, res: Response, next: NextFunction) {
     try {
       res.json(await AutomationJourneysService.list());

@@ -2,24 +2,24 @@
  * QA — Conexões: cards de plataforma, status, botão Testar.
  */
 import { test, expect } from '@playwright/test';
-import { goto, assertNoError } from './helpers';
+import { goto } from './helpers';
 
 const PLATFORMS = ['Meta Ads', 'Google Ads', 'Google Analytics', 'RD Station', 'Pipedrive', 'WhatsApp'];
 
 test.describe('Conexões', () => {
   test('página carrega com todos os cards', async ({ page }) => {
     await goto(page, '/connections');
-    await assertNoError(page);
     for (const platform of PLATFORMS) {
-      await expect(page.locator(`text=${platform}`).first()).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText(platform, { exact: true })).toBeVisible();
     }
   });
 
   test('badge de status visível em cada card', async ({ page }) => {
     await goto(page, '/connections');
-    // Pelo menos um badge de status (CONECTADO ou DESCONECTADO)
-    const badges = page.locator('text=Conectado, text=Desconectado, text=CONECTADO, text=DESCONECTADO');
-    await expect(badges.first()).toBeVisible({ timeout: 5000 });
+    for (const platform of PLATFORMS) {
+      const card = page.locator('.ds-card').filter({ hasText: platform });
+      await expect(card.getByText(/^(Conectado|Desconectado|Erro|Expirado)$/)).toBeVisible();
+    }
   });
 
   test('botão Testar visível nas plataformas conectadas', async ({ page }) => {
@@ -34,11 +34,10 @@ test.describe('Conexões', () => {
 
   test('WhatsApp mostra env vars em vez de botão Configurar', async ({ page }) => {
     await goto(page, '/connections');
+    const whatsappCard = page.locator('.ds-card').filter({ hasText: 'WhatsApp Business' });
     // O card do WhatsApp NÃO deve ter botão "Configurar"
-    const configBtn = page.locator('button:has-text("Configurar")').first();
-    const visible = await configBtn.isVisible().catch(() => false);
-    expect(visible).toBe(false);
+    await expect(whatsappCard.getByRole('button', { name: /Configurar/i })).toHaveCount(0);
     // Deve mostrar as env vars
-    await expect(page.locator('text=WHATSAPP_ACCESS_TOKEN').first()).toBeVisible({ timeout: 5000 });
+    await expect(whatsappCard.getByText(/WHATSAPP_ACCESS_TOKEN/).first()).toBeVisible();
   });
 });

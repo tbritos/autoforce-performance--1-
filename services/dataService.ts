@@ -1455,6 +1455,7 @@ export const DataService = {
     priority?: number;
     canInterruptLowerPriority?: boolean;
     queueTtlHours?: number | null;
+    nurtureGroupId?: string | null;
   }): Promise<AutomationJourney> => {
     return apiClient.post<AutomationJourney>('/automation-journeys', payload);
   },
@@ -1472,12 +1473,35 @@ export const DataService = {
     priority: number;
     canInterruptLowerPriority: boolean;
     queueTtlHours: number | null;
+    nurtureGroupId: string | null;
   }>): Promise<AutomationJourney> => {
     return apiClient.patch<AutomationJourney>(`/automation-journeys/${encodeURIComponent(id)}`, payload);
   },
 
   deleteAutomationJourney: async (id: string): Promise<void> => {
     await apiClient.delete(`/automation-journeys/${encodeURIComponent(id)}`);
+  },
+
+  listAutomationNurtureGroups: async (): Promise<import('../types').AutomationNurtureGroup[]> => {
+    return apiClient.get('/automation-journeys/nurture-groups');
+  },
+
+  createAutomationNurtureGroup: async (payload: {
+    name: string;
+    priority: number;
+    canInterruptLowerPriority: boolean;
+    queueTtlHours: number | null;
+  }): Promise<import('../types').AutomationNurtureGroup> => {
+    return apiClient.post('/automation-journeys/nurture-groups', payload);
+  },
+
+  updateAutomationNurtureGroup: async (id: string, payload: Partial<{
+    name: string;
+    priority: number;
+    canInterruptLowerPriority: boolean;
+    queueTtlHours: number | null;
+  }>): Promise<import('../types').AutomationNurtureGroup> => {
+    return apiClient.patch(`/automation-journeys/nurture-groups/${encodeURIComponent(id)}`, payload);
   },
 
   getAutomationExecutions: async (journeyId: string, limit = 50): Promise<import('../types').AutomationExecution[]> => {

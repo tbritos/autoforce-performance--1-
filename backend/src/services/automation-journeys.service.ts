@@ -47,6 +47,14 @@ export interface AutomationJourneyInput {
   priority?: number;
   canInterruptLowerPriority?: boolean;
   queueTtlHours?: number | null;
+  nurtureGroupId?: string | null;
+}
+
+export interface AutomationNurtureGroupInput {
+  name: string;
+  priority?: number;
+  canInterruptLowerPriority?: boolean;
+  queueTtlHours?: number | null;
 }
 
 const validStatus = (status?: string) => {
@@ -61,6 +69,7 @@ export class AutomationJourneysService {
       orderBy: [{ updatedAt: 'desc' }],
       include: {
         _count: { select: { executions: true } },
+        nurtureGroup: true,
       },
     });
   }
@@ -89,12 +98,14 @@ export class AutomationJourneysService {
         priority: normalizeAutomationPriority(input.priority ?? suggestedPriorityForEntry(input.nodes)),
         canInterruptLowerPriority: input.canInterruptLowerPriority ?? true,
         queueTtlHours: normalizeQueueTtlHours(input.queueTtlHours),
+        nurtureGroupId: automationType === 'NURTURE' ? input.nurtureGroupId || null : null,
       },
+      include: { nurtureGroup: true },
     });
   }
 
   static async update(id: string, input: Partial<AutomationJourneyInput>) {
-    const current = await prisma.automationJourney.findUniqueOrThrow({ where: { id }, select: { automationType: true } });
+    const current = await prisma.automationJourney.findUniqueOrThrow({ where: { id }, select: { automationType: true, nurtureGroupId: true } });
     const data: Record<string, unknown> = {};
     const requestedStatus = input.status !== undefined ? validStatus(input.status) : undefined;
     if (input.name !== undefined) data.name = input.name.trim();
@@ -116,6 +127,7 @@ export class AutomationJourneysService {
     if (input.priority !== undefined) data.priority = normalizeAutomationPriority(input.priority);
     if (input.canInterruptLowerPriority !== undefined) data.canInterruptLowerPriority = Boolean(input.canInterruptLowerPriority);
     if (input.queueTtlHours !== undefined) data.queueTtlHours = normalizeQueueTtlHours(input.queueTtlHours);
+    if (input.nurtureGroupId !== undefined) data.nurtureGroupId = input.nurtureGroupId || null;
 
     const willBeActive = requestedStatus === 'ACTIVE' || (requestedStatus === undefined && input.isActive === true);
     const nextType = normalizeAutomationType(input.automationType ?? current.automationType);
@@ -123,7 +135,47 @@ export class AutomationJourneysService {
       throw new Error('Classifique a automação como fluxo de nutrição ou automação avulsa antes de ativar.');
     }
 
-    return (prisma as any).automationJourney.update({ where: { id }, data });
+    if (nextType !== 'NURTURE') data.nurtureGroupId = null;
+
+    return (prisma as any).automationJourney.update({ where: { id }, data, include: { nurtureGroup: true } });
+  }
+
+  static async listNurtureGroups() {
+    return prisma.automationNurtureGroup.findMany({
+      orderBy: [{ priority: 'desc' }, { name: 'asc' }],
+      include: { _count: { select: { journeys: true } } },
+    });
+  }
+
+  static async createNurtureGroup(input: AutomationNurtureGroupInput) {
+    const name = input.name?.trim();
+    if (!name) throw new Error('Informe o nome do grupo de nutrição.');
+    return prisma.automationNurtureGroup.create({
+      data: {
+        name,
+        priority: normalizeAutomationPriority(input.priority),
+        canInterruptLowerPriority: input.canInterruptLowerPriority ?? true,
+        queueTtlHours: normalizeQueueTtlHours(input.queueTtlHours),
+      },
+      include: { _count: { select: { journeys: true } } },
+    });
+  }
+
+  static async updateNurtureGroup(id: string, input: Partial<AutomationNurtureGroupInput>) {
+    const data: Record<string, unknown> = {};
+    if (input.name !== undefined) {
+      const name = input.name.trim();
+      if (!name) throw new Error('Informe o nome do grupo de nutrição.');
+      data.name = name;
+    }
+    if (input.priority !== undefined) data.priority = normalizeAutomationPriority(input.priority);
+    if (input.canInterruptLowerPriority !== undefined) data.canInterruptLowerPriority = Boolean(input.canInterruptLowerPriority);
+    if (input.queueTtlHours !== undefined) data.queueTtlHours = normalizeQueueTtlHours(input.queueTtlHours);
+    return prisma.automationNurtureGroup.update({
+      where: { id },
+      data,
+      include: { _count: { select: { journeys: true } } },
+    });
   }
 
   static async remove(id: string) {

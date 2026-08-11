@@ -38,7 +38,12 @@ export function createUnsubscribeToken(emailValue: string): string {
 
 export function readUnsubscribeToken(token: string): string {
   try {
+    if (!/^[A-Za-z0-9_-]+$/.test(token)) throw new Error('Token malformado');
     const data = Buffer.from(token, 'base64url');
+    // Buffer aceita representações Base64URL não canônicas cujos bits finais
+    // ignorados produzem os mesmos bytes. Exigir a recodificação idêntica faz
+    // qualquer alteração textual no link ser rejeitada antes do AES-GCM.
+    if (data.toString('base64url') !== token) throw new Error('Token não canônico');
     if (data.length <= IV_BYTES + AUTH_TAG_BYTES) throw new Error('Token incompleto');
 
     const iv = data.subarray(0, IV_BYTES);

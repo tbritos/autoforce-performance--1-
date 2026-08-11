@@ -33,6 +33,7 @@ import {
   AutomationExecution,
   AutomationExecutionStats,
   AutomationJourney,
+  AutomationNurtureGroup,
   AutomationJourneyEdge,
   AutomationJourneyNode,
   AutomationJourneyStatus,
@@ -211,6 +212,9 @@ const automationTypeLabel = (type: AutomationJourney['automationType']): string 
 
 const priorityText = (priority: number): string =>
   priority >= 90 ? 'Crítica' : priority >= 70 ? 'Alta' : priority >= 40 ? 'Normal' : 'Baixa';
+
+const effectiveJourneyPriority = (journey: AutomationJourney): number =>
+  journey.nurtureGroup?.priority ?? journey.priority;
 
 type CustomSelectOption<T extends string> = {
   value: T;
@@ -1010,6 +1014,8 @@ const emptyDraft = () => {
     priority: 50,
     canInterruptLowerPriority: true,
     queueTtlHours: 168,
+    nurtureGroupId: null,
+    nurtureGroup: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -1211,21 +1217,76 @@ const ExecutionsDrawer: React.FC<{
 
 const AutomationClassificationModal: React.FC<{
   journey: AutomationJourney;
+  groups: AutomationNurtureGroup[];
   entryEvent: string;
   onCancel: () => void;
-  onSave: (changes: Partial<AutomationJourney>) => void;
-}> = ({ journey, entryEvent, onCancel, onSave }) => {
+  onSave: (
+    changes: Partial<AutomationJourney>,
+    groupAction?: {
+      mode: 'create' | 'update';
+      id?: string;
+      name: string;
+      priority: number;
+      canInterruptLowerPriority: boolean;
+      queueTtlHours: number | null;
+    },
+  ) => Promise<void> | void;
+}> = ({ journey, groups, entryEvent, onCancel, onSave }) => {
   const [automationType, setAutomationType] = useState<AutomationJourney['automationType']>(journey.automationType);
+  const [groupSelection, setGroupSelection] = useState(journey.nurtureGroupId ?? 'individual');
+  const [newGroupName, setNewGroupName] = useState('');
   const [priority, setPriority] = useState(
-    journey.automationType === 'UNCLASSIFIED' && entryEvent === 'conversion_received'
+    journey.nurtureGroup?.priority ?? (journey.automationType === 'UNCLASSIFIED' && entryEvent === 'conversion_received'
       ? 75
-      : journey.priority || 50
+      : journey.priority || 50)
   );
-  const [canInterrupt, setCanInterrupt] = useState(journey.canInterruptLowerPriority ?? true);
+  const [canInterrupt, setCanInterrupt] = useState(journey.nurtureGroup?.canInterruptLowerPriority ?? journey.canInterruptLowerPriority ?? true);
   const [ttlHours, setTtlHours] = useState<number | null>(
-    journey.queueTtlHours === undefined ? 168 : journey.queueTtlHours
+    journey.nurtureGroup
+      ? journey.nurtureGroup.queueTtlHours
+      : (journey.queueTtlHours === undefined ? 168 : journey.queueTtlHours)
   );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const isAudience = entryEvent === 'segment_entered';
+
+  const changeGroup = (value: string) => {
+    setGroupSelection(value);
+    const group = groups.find(item => item.id === value);
+    if (!group) return;
+    setPriority(group.priority);
+    setCanInterrupt(group.canInterruptLowerPriority);
+    setTtlHours(group.queueTtlHours);
+  };
+
+  const applyClassification = async () => {
+    if (automationType === 'UNCLASSIFIED') return;
+    if (automationType === 'NURTURE' && groupSelection === 'new' && !newGroupName.trim()) {
+      setError('Informe o nome do novo grupo de nutrição.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const selectedGroup = groups.find(item => item.id === groupSelection);
+      const groupAction = automationType === 'NURTURE' && groupSelection === 'new'
+        ? { mode: 'create' as const, name: newGroupName.trim(), priority, canInterruptLowerPriority: canInterrupt, queueTtlHours: ttlHours }
+        : automationType === 'NURTURE' && selectedGroup
+          ? { mode: 'update' as const, id: selectedGroup.id, name: selectedGroup.name, priority, canInterruptLowerPriority: canInterrupt, queueTtlHours: ttlHours }
+          : undefined;
+      await onSave({
+        automationType,
+        priority,
+        canInterruptLowerPriority: canInterrupt,
+        queueTtlHours: ttlHours,
+        nurtureGroupId: automationType === 'NURTURE' && selectedGroup ? selectedGroup.id : null,
+      }, groupAction);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível salvar o grupo.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const priorityOptions = [
     { value: 95, label: 'Crítica', description: 'Contato comercial, demonstração ou orçamento' },
@@ -1246,13 +1307,13 @@ const AutomationClassificationModal: React.FC<{
         <div>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 850, color: 'var(--fg-primary)' }}>Classificação e prioridade</h2>
           <p style={{ margin: '6px 0 0', fontSize: 13, lineHeight: 1.5, color: 'var(--fg-muted)' }}>
-            Somente fluxos de nutrição disputam a fila exclusiva do lead. Automações avulsas continuam independentes.
+            A fila considera o grupo lógico. Email e WhatsApp do mesmo grupo podem rodar juntos; outros grupos aguardam.
           </p>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {([
-            { value: 'NURTURE', title: 'Fluxo de nutrição', text: 'Sequência de email e WhatsApp. Apenas uma nutrição ativa por lead.' },
+            { value: 'NURTURE', title: 'Fluxo de nutrição', text: 'Pode participar sozinho ou junto de outras automações no mesmo grupo.' },
             { value: 'STANDALONE', title: 'Automação avulsa', text: 'Ação pontual ou operacional. Não entra na fila de nutrição.' },
           ] as const).map(option => {
             const active = automationType === option.value;
@@ -1275,6 +1336,35 @@ const AutomationClassificationModal: React.FC<{
               Forma de entrada detectada: <strong style={{ color: 'var(--fg-primary)' }}>{isAudience ? 'Público da base / segmento' : 'Gatilho específico'}</strong>
             </div>
 
+            <label style={{ display: 'grid', gap: 7 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Grupo de nutrição</span>
+              <select
+                aria-label="Grupo de nutrição"
+                value={groupSelection}
+                onChange={event => changeGroup(event.target.value)}
+                style={{ height: 42, border: '1px solid var(--border)', borderRadius: 9, padding: '0 12px', background: 'var(--bg-surface)', color: 'var(--fg-primary)', fontSize: 13 }}
+              >
+                <option value="individual">Fluxo individual (sem grupo)</option>
+                {groups.map(group => (
+                  <option key={group.id} value={group.id}>{group.name} ({group._count?.journeys ?? 0} automações)</option>
+                ))}
+                <option value="new">+ Criar novo grupo</option>
+              </select>
+              {groupSelection === 'new' && (
+                <input
+                  autoFocus
+                  value={newGroupName}
+                  onChange={event => setNewGroupName(event.target.value)}
+                  placeholder="Ex.: Ebook Máquina de Vendas"
+                  className="ds-input"
+                  style={{ height: 42 }}
+                />
+              )}
+              <span style={{ fontSize: 11, lineHeight: 1.45, color: 'var(--fg-subtle)' }}>
+                Use o mesmo grupo nas automações de email e WhatsApp que pertencem à mesma nutrição.
+              </span>
+            </label>
+
             <div style={{ display: 'grid', gap: 9 }}>
               <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Prioridade</span>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -1296,14 +1386,14 @@ const AutomationClassificationModal: React.FC<{
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: 13, borderRadius: 10, border: '1px solid var(--border)', cursor: 'pointer' }}>
               <input type="checkbox" checked={canInterrupt} onChange={event => setCanInterrupt(event.target.checked)} style={{ marginTop: 2 }} />
               <span>
-                <strong style={{ display: 'block', fontSize: 13, color: 'var(--fg-primary)' }}>Pode interromper uma nutrição menos prioritária</strong>
-                <span style={{ display: 'block', marginTop: 3, fontSize: 12, lineHeight: 1.45, color: 'var(--fg-muted)' }}>O fluxo anterior é encerrado e não volta do meio depois.</span>
+                <strong style={{ display: 'block', fontSize: 13, color: 'var(--fg-primary)' }}>Pode interromper um grupo menos prioritário</strong>
+                <span style={{ display: 'block', marginTop: 3, fontSize: 12, lineHeight: 1.45, color: 'var(--fg-muted)' }}>Todas as automações do grupo anterior são encerradas juntas.</span>
               </span>
             </label>
 
             <label style={{ display: 'grid', gap: 7 }}>
               <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Validade na fila</span>
-              <select value={ttlHours === null ? 'unlimited' : ttlHours} onChange={event => setTtlHours(event.target.value === 'unlimited' ? null : Number(event.target.value))} style={{ height: 42, border: '1px solid var(--border)', borderRadius: 9, padding: '0 12px', background: 'var(--bg-surface)', color: 'var(--fg-primary)', fontSize: 13 }}>
+              <select aria-label="Validade na fila" value={ttlHours === null ? 'unlimited' : ttlHours} onChange={event => setTtlHours(event.target.value === 'unlimited' ? null : Number(event.target.value))} style={{ height: 42, border: '1px solid var(--border)', borderRadius: 9, padding: '0 12px', background: 'var(--bg-surface)', color: 'var(--fg-primary)', fontSize: 13 }}>
                 <option value="unlimited">Sem prazo</option>
                 <option value={72}>3 dias</option>
                 <option value={168}>7 dias</option>
@@ -1323,10 +1413,16 @@ const AutomationClassificationModal: React.FC<{
           </div>
         )}
 
+        {error && (
+          <div style={{ padding: '10px 12px', borderRadius: 9, background: 'rgba(239,68,68,.1)', color: 'var(--red-500)', fontSize: 12 }}>
+            {error}
+          </div>
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <button type="button" onClick={onCancel} className="ds-btn" style={{ height: 38, padding: '0 16px' }}>Cancelar</button>
-          <button type="button" disabled={automationType === 'UNCLASSIFIED'} onClick={() => onSave({ automationType, priority, canInterruptLowerPriority: canInterrupt, queueTtlHours: ttlHours })} className="ds-btn" style={{ height: 38, padding: '0 20px', border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontWeight: 750, opacity: automationType === 'UNCLASSIFIED' ? .5 : 1 }}>
-            Aplicar classificação
+          <button type="button" disabled={automationType === 'UNCLASSIFIED' || saving} onClick={applyClassification} className="ds-btn" style={{ height: 38, padding: '0 20px', border: 0, borderRadius: 8, background: 'var(--accent)', color: '#fff', fontWeight: 750, opacity: automationType === 'UNCLASSIFIED' || saving ? .5 : 1 }}>
+            {saving ? 'Salvando...' : 'Aplicar classificação'}
           </button>
         </div>
       </div>
@@ -1341,6 +1437,7 @@ const AutomationJourneysView: React.FC = () => {
   const { id: routeId } = useParams<{ id: string }>();
 
   const [journeys, setJourneys] = useState<AutomationJourney[]>([]);
+  const [nurtureGroups, setNurtureGroups] = useState<AutomationNurtureGroup[]>([]);
   const [selected, setSelected] = useState<AutomationJourney>(emptyDraft());
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1396,12 +1493,14 @@ const AutomationJourneysView: React.FC = () => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [data, agentData] = await Promise.all([
+      const [data, agentData, groupData] = await Promise.all([
         DataService.listAutomationJourneys(),
         DataService.listAIAgents().catch(() => []),
+        DataService.listAutomationNurtureGroups().catch(() => []),
       ]);
       setJourneys(data);
       setAiAgents(agentData);
+      setNurtureGroups(groupData);
     } catch (error) {
       console.error('Erro ao carregar jornadas', error);
     } finally {
@@ -1491,6 +1590,7 @@ const AutomationJourneysView: React.FC = () => {
         priority: selected.priority,
         canInterruptLowerPriority: selected.canInterruptLowerPriority,
         queueTtlHours: selected.queueTtlHours,
+        nurtureGroupId: selected.nurtureGroupId,
       };
       const saved = selected.id
         ? await DataService.updateAutomationJourney(selected.id, payload)
@@ -1535,6 +1635,7 @@ const AutomationJourneysView: React.FC = () => {
         priority: selected.priority,
         canInterruptLowerPriority: selected.canInterruptLowerPriority,
         queueTtlHours: selected.queueTtlHours,
+        nurtureGroupId: selected.nurtureGroupId,
       };
       const saved = selected.id
         ? await DataService.updateAutomationJourney(selected.id, payload)
@@ -1879,7 +1980,9 @@ const AutomationJourneysView: React.FC = () => {
                       {automationTypeLabel(journey.automationType)}
                     </span>
                     {journey.automationType === 'NURTURE' && (
-                      <span style={{ fontSize: 10, color: 'var(--fg-subtle)' }}>Prioridade {priorityText(journey.priority).toLowerCase()}</span>
+                      <span style={{ fontSize: 10, color: 'var(--fg-subtle)' }}>
+                        {journey.nurtureGroup ? `${journey.nurtureGroup.name} · ` : ''}Prioridade {priorityText(effectiveJourneyPriority(journey)).toLowerCase()}
+                      </span>
                     )}
                   </span>
                 </button>
@@ -2002,7 +2105,9 @@ const AutomationJourneysView: React.FC = () => {
           >
             <Workflow size={12} />
             {automationTypeLabel(selected.automationType)}
-            {selected.automationType === 'NURTURE' ? ` · ${priorityText(selected.priority)}` : ''}
+            {selected.automationType === 'NURTURE'
+              ? ` · ${selected.nurtureGroup?.name ?? 'Individual'} · ${priorityText(effectiveJourneyPriority(selected))}`
+              : ''}
           </button>
 
           <button
@@ -3196,10 +3301,37 @@ const AutomationJourneysView: React.FC = () => {
       {classificationModalOpen && createPortal(
         <AutomationClassificationModal
           journey={selected}
+          groups={nurtureGroups}
           entryEvent={String(selected.nodes.find(node => node.type === 'trigger')?.config?.event ?? '')}
           onCancel={() => setClassificationModalOpen(false)}
-          onSave={changes => {
-            updateSelected(changes);
+          onSave={async (changes, groupAction) => {
+            let group: AutomationNurtureGroup | null = null;
+            if (groupAction?.mode === 'create') {
+              group = await DataService.createAutomationNurtureGroup(groupAction);
+              setNurtureGroups(prev => [...prev, group!].sort((a, b) => b.priority - a.priority || a.name.localeCompare(b.name)));
+            } else if (groupAction?.mode === 'update' && groupAction.id) {
+              group = await DataService.updateAutomationNurtureGroup(groupAction.id, groupAction);
+              setNurtureGroups(prev => prev.map(item => item.id === group!.id ? group! : item));
+              setJourneys(prev => prev.map(item => item.nurtureGroupId === group!.id ? { ...item, nurtureGroup: group } : item));
+            }
+            const nextChanges: Partial<AutomationJourney> = {
+              ...changes,
+              nurtureGroupId: group?.id ?? changes.nurtureGroupId ?? null,
+              nurtureGroup: group,
+            };
+            if (selected.id) {
+              const saved = await DataService.updateAutomationJourney(selected.id, {
+                automationType: nextChanges.automationType,
+                priority: nextChanges.priority,
+                canInterruptLowerPriority: nextChanges.canInterruptLowerPriority,
+                queueTtlHours: nextChanges.queueTtlHours,
+                nurtureGroupId: nextChanges.nurtureGroupId,
+              });
+              setSelected(saved);
+              setJourneys(prev => prev.map(item => item.id === saved.id ? saved : item));
+            } else {
+              updateSelected(nextChanges);
+            }
             setClassificationModalOpen(false);
           }}
         />,
