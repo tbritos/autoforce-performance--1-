@@ -91,6 +91,119 @@ test.describe('Prioridade de automações — localhost', () => {
     }
   });
 
+  test('interface arquiva, restaura e exclui definitivamente um fluxo sem histórico', async ({ page, request }) => {
+    let journeyId = '';
+    const journeyName = `[QA API temporário] arquivamento ${Date.now()}`;
+    try {
+      const createdResponse = await request.post(`${API}/automation-journeys`, {
+        headers: authHeaders,
+        data: {
+          name: journeyName,
+          status: 'DRAFT',
+          automationType: 'STANDALONE',
+          nodes: [],
+          edges: [],
+        },
+      });
+      expect(createdResponse.status()).toBe(201);
+      journeyId = (await createdResponse.json()).id;
+
+      await enterLocal(page);
+      const row = page.getByTestId(`automation-journey-${journeyId}`);
+      await expect(row).toBeVisible();
+
+      await row.getByRole('button', { name: `Mais ações de ${journeyName}` }).click();
+      page.once('dialog', dialog => dialog.accept());
+      await page.getByRole('menuitem', { name: 'Arquivar fluxo' }).click();
+      await expect(row.getByText('Arquivada', { exact: true })).toBeVisible();
+
+      await page.getByRole('button', { name: /Arquivadas 1$/ }).click();
+      await expect(row).toBeVisible();
+      await page.getByRole('button', { name: /Todas \d+$/ }).click();
+
+      await row.getByRole('button', { name: `Mais ações de ${journeyName}` }).click();
+      await page.getByRole('menuitem', { name: 'Restaurar fluxo' }).click();
+      await expect(row.getByText('Pausada', { exact: true })).toBeVisible();
+
+      await row.getByRole('button', { name: `Mais ações de ${journeyName}` }).click();
+      page.once('dialog', dialog => dialog.accept());
+      await page.getByRole('menuitem', { name: 'Excluir definitivamente' }).click();
+      await expect(row).toHaveCount(0);
+      journeyId = '';
+    } finally {
+      if (journeyId) await request.delete(`${API}/automation-journeys/${journeyId}`, { headers: authHeaders });
+    }
+  });
+
+  test('API impede exclusão de fluxo com histórico e mantém suas execuções', async ({ request }) => {
+    const response = await request.get(`${API}/automation-journeys`, { headers: authHeaders });
+    expect(response.status()).toBe(200);
+    const journeys = await response.json();
+    const protectedJourney = journeys.find((journey: any) =>
+      journey.name === '[QA Prioridade] Base | Baixa' && Number(journey._count?.executions ?? 0) > 0,
+    );
+    expect(protectedJourney).toBeTruthy();
+
+    const deleteResponse = await request.delete(`${API}/automation-journeys/${protectedJourney.id}`, { headers: authHeaders });
+    expect(deleteResponse.status()).toBe(409);
+    expect(JSON.stringify(await deleteResponse.json())).toContain('deve ser arquivado');
+
+    const executionsResponse = await request.get(`${API}/automation-journeys/${protectedJourney.id}/executions`, { headers: authHeaders });
+    expect(executionsResponse.status()).toBe(200);
+    expect((await executionsResponse.json()).length).toBeGreaterThan(0);
+  });
+
+  test('excluir integrantes preserva o grupo até a última automação', async ({ request }) => {
+    const suffix = Date.now();
+    let firstId = '';
+    let secondId = '';
+
+    const groupResponse = await request.post(`${API}/automation-journeys/nurture-groups`, {
+      headers: authHeaders,
+      data: {
+        name: `[QA API temporário] grupo para exclusão ${suffix}`,
+        priority: 50,
+        canInterruptLowerPriority: true,
+        queueTtlHours: null,
+      },
+    });
+    expect(groupResponse.status()).toBe(201);
+    const group = await groupResponse.json();
+
+    try {
+      for (const channel of ['Email', 'WhatsApp']) {
+        const journeyResponse = await request.post(`${API}/automation-journeys`, {
+          headers: authHeaders,
+          data: {
+            name: `[QA API temporário] grupo ${suffix} | ${channel}`,
+            status: 'DRAFT',
+            automationType: 'NURTURE',
+            nurtureGroupId: group.id,
+            nodes: [],
+            edges: [],
+          },
+        });
+        expect(journeyResponse.status()).toBe(201);
+        const journey = await journeyResponse.json();
+        if (!firstId) firstId = journey.id;
+        else secondId = journey.id;
+      }
+
+      expect((await request.delete(`${API}/automation-journeys/${firstId}`, { headers: authHeaders })).status()).toBe(204);
+      firstId = '';
+      let groups = await (await request.get(`${API}/automation-journeys/nurture-groups`, { headers: authHeaders })).json();
+      expect(groups.find((item: any) => item.id === group.id)?._count.journeys).toBe(1);
+
+      expect((await request.delete(`${API}/automation-journeys/${secondId}`, { headers: authHeaders })).status()).toBe(204);
+      secondId = '';
+      groups = await (await request.get(`${API}/automation-journeys/nurture-groups`, { headers: authHeaders })).json();
+      expect(groups.some((item: any) => item.id === group.id)).toBe(false);
+    } finally {
+      if (firstId) await request.delete(`${API}/automation-journeys/${firstId}`, { headers: authHeaders });
+      if (secondId) await request.delete(`${API}/automation-journeys/${secondId}`, { headers: authHeaders });
+    }
+  });
+
   test('interface mostra classificação, prioridade e monitoramento', async ({ page, request }) => {
     const response = await request.get(`${API}/automation-journeys`, { headers: authHeaders });
     const journeys = await response.json();

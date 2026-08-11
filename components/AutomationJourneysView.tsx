@@ -27,6 +27,8 @@ import {
   Loader2,
   Hourglass,
   Layers,
+  Archive,
+  RotateCcw,
 } from 'lucide-react';
 import { DataService, listSegments, SegmentType } from '../services/dataService';
 import {
@@ -203,6 +205,7 @@ const statusLabel: Record<AutomationJourneyStatus, string> = {
   DRAFT: 'Rascunho',
   ACTIVE: 'Ativa',
   PAUSED: 'Pausada',
+  ARCHIVED: 'Arquivada',
 };
 
 const automationTypeLabel = (type: AutomationJourney['automationType']): string =>
@@ -1466,6 +1469,8 @@ const AutomationJourneysView: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | AutomationJourneyStatus>('all');
   const [sortOrder, setSortOrder] = useState<'recent' | 'name' | 'executions'>('recent');
   const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(() => new Set());
+  const [journeyMenuId, setJourneyMenuId] = useState<string | null>(null);
+  const [journeyActionId, setJourneyActionId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [panelValues, setPanelValues] = useState<{ label: string; config: Record<string, string> } | null>(null);
   const [modalNodeId, setModalNodeId] = useState<string | null>(null);
@@ -1724,17 +1729,41 @@ const AutomationJourneysView: React.FC = () => {
     }
   };
 
-  const deleteJourney = async () => {
-    if (!selected.id) {
-      createJourney();
-      return;
+  const permanentlyDeleteJourney = async (journey: AutomationJourney) => {
+    if (!window.confirm(`Excluir definitivamente o fluxo "${journey.name}"? Esta ação não pode ser desfeita.`)) return;
+    setJourneyActionId(journey.id);
+    try {
+      await DataService.deleteAutomationJourney(journey.id);
+      setJourneys(previous => previous.filter(item => item.id !== journey.id));
+      if (selected.id === journey.id) {
+        setSelectedNodeId(null);
+        navigate('/automation');
+      }
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível excluir o fluxo.');
+    } finally {
+      setJourneyActionId(null);
+      setJourneyMenuId(null);
     }
-    if (!window.confirm(`Excluir a jornada "${selected.name}"?`)) return;
-    await DataService.deleteAutomationJourney(selected.id);
-    const remaining = journeys.filter(item => item.id !== selected.id);
-    setJourneys(remaining);
-    setSelectedNodeId(null);
-    navigate('/automation');
+  };
+
+  const changeJourneyArchiveStatus = async (journey: AutomationJourney) => {
+    const restoring = journey.status === 'ARCHIVED';
+    if (!restoring && !window.confirm(`Arquivar o fluxo "${journey.name}"? Ele deixará de receber novas entradas.`)) return;
+    setJourneyActionId(journey.id);
+    try {
+      const updated = await DataService.updateAutomationJourney(journey.id, {
+        status: restoring ? 'PAUSED' : 'ARCHIVED',
+        isActive: false,
+      });
+      setJourneys(previous => previous.map(item => item.id === journey.id ? updated : item));
+      if (selected.id === journey.id) setSelected(updated);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível atualizar o fluxo.');
+    } finally {
+      setJourneyActionId(null);
+      setJourneyMenuId(null);
+    }
   };
 
   const setStatus = (status: AutomationJourneyStatus) => {
@@ -1858,6 +1887,7 @@ const AutomationJourneysView: React.FC = () => {
 
   const totalActive = journeys.filter(journey => journey.status === 'ACTIVE').length;
   const totalPaused = journeys.filter(journey => journey.status === 'PAUSED').length;
+  const totalArchived = journeys.filter(journey => journey.status === 'ARCHIVED').length;
 
   const handleTestSearch = async (q: string) => {
     setTestSearch(q);
@@ -1898,6 +1928,10 @@ const AutomationJourneysView: React.FC = () => {
   };
 
   const toggleJourneyStatus = async (journey: AutomationJourney) => {
+    if (journey.status === 'ARCHIVED') {
+      await changeJourneyArchiveStatus(journey);
+      return;
+    }
     const nextStatus: AutomationJourneyStatus = journey.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
     if (nextStatus === 'ACTIVE' && journey.automationType === 'UNCLASSIFIED') {
       alert('Abra a automação e classifique-a antes de ativar.');
@@ -1926,27 +1960,32 @@ const AutomationJourneysView: React.FC = () => {
 
   const renderJourneyRow = (journey: AutomationJourney, grouped = false, isLast = true) => {
     const isActive = journey.status === 'ACTIVE';
+    const isArchived = journey.status === 'ARCHIVED';
     const executions = automationExecutionCount(journey);
+    const canDeletePermanently = executions === 0;
+    const actionRunning = journeyActionId === journey.id;
     return (
       <div
         key={journey.id}
         data-testid={`automation-journey-${journey.id}`}
         style={{
           display: 'grid',
-          gridTemplateColumns: '58px minmax(0, 1fr) 180px 42px 42px',
+          gridTemplateColumns: '58px minmax(0, 1fr) 150px 42px 42px 42px',
           gap: 14,
           alignItems: 'center',
           padding: grouped ? '16px 18px 16px 30px' : '20px 18px',
           borderBottom: isLast ? 'none' : '1px solid var(--border)',
           minHeight: 64,
           background: grouped ? 'var(--bg-surface)' : undefined,
+          opacity: isArchived ? .72 : 1,
         }}
       >
         <button
           type="button"
           onClick={() => toggleJourneyStatus(journey)}
-          title={isActive ? 'Pausar automação' : 'Ativar automação'}
-          aria-label={`${isActive ? 'Pausar' : 'Ativar'} ${journey.name}`}
+          title={isArchived ? 'Restaurar automação' : isActive ? 'Pausar automação' : 'Ativar automação'}
+          aria-label={`${isArchived ? 'Restaurar' : isActive ? 'Pausar' : 'Ativar'} ${journey.name}`}
+          disabled={actionRunning}
           style={{
             width: 36,
             height: 20,
@@ -1954,7 +1993,7 @@ const AutomationJourneysView: React.FC = () => {
             border: `1.5px solid ${isActive ? 'var(--green-500)' : 'var(--border)'}`,
             background: isActive ? 'var(--green-500)' : 'transparent',
             padding: 2,
-            cursor: 'pointer',
+            cursor: actionRunning ? 'wait' : 'pointer',
             display: 'flex',
             justifyContent: isActive ? 'flex-end' : 'flex-start',
             alignItems: 'center',
@@ -1964,7 +2003,7 @@ const AutomationJourneysView: React.FC = () => {
         >
           <span style={{
             width: 14, height: 14, borderRadius: 999,
-            background: isActive ? '#fff' : 'var(--fg-muted)',
+            background: isActive ? '#fff' : isArchived ? 'var(--accent)' : 'var(--fg-muted)',
             display: 'block', flexShrink: 0,
             transition: 'background .15s',
           }} />
@@ -1997,7 +2036,7 @@ const AutomationJourneysView: React.FC = () => {
               <Activity size={12} style={{ color: 'var(--green-500)' }} />
               <strong style={{ color: 'var(--fg-primary)' }}>{executions.toLocaleString('pt-BR')}</strong> exec.
             </span>
-          ) : 'Pausada'}
+          ) : statusLabel[journey.status]}
         </button>
         <button type="button" onClick={() => openJourney(journey)} title="Editar fluxo" aria-label={`Editar ${journey.name}`} style={{ border: 'none', background: 'transparent', color: 'var(--fg-muted)', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
           <Pencil size={16} />
@@ -2005,6 +2044,48 @@ const AutomationJourneysView: React.FC = () => {
         <button type="button" onClick={() => setMonitoringJourneyId(journey.id)} title="Monitorar execuções" aria-label={`Monitorar ${journey.name}`} style={{ border: 'none', background: 'transparent', color: 'var(--fg-muted)', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
           <Activity size={16} />
         </button>
+        <div style={{ position: 'relative', display: 'grid', placeItems: 'center' }}>
+          <button
+            type="button"
+            onClick={() => setJourneyMenuId(current => current === journey.id ? null : journey.id)}
+            aria-label={`Mais ações de ${journey.name}`}
+            title="Mais ações"
+            disabled={actionRunning}
+            style={{ width: 32, height: 32, border: 'none', borderRadius: 8, background: journeyMenuId === journey.id ? 'var(--bg-muted)' : 'transparent', color: 'var(--fg-muted)', cursor: actionRunning ? 'wait' : 'pointer', display: 'grid', placeItems: 'center' }}
+          >
+            {actionRunning ? <Loader2 size={15} className="animate-spin" /> : <MoreHorizontal size={17} />}
+          </button>
+          {journeyMenuId === journey.id && (
+            <div
+              role="menu"
+              style={{ position: 'absolute', zIndex: 40, top: 36, right: 0, width: 224, padding: 6, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-surface)', boxShadow: 'var(--shadow-lg)' }}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => void changeJourneyArchiveStatus(journey)}
+                style={{ width: '100%', border: 'none', borderRadius: 7, background: 'transparent', color: 'var(--fg-primary)', padding: '9px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', textAlign: 'left', fontSize: 12, fontWeight: 650 }}
+              >
+                {isArchived ? <RotateCcw size={14} /> : <Archive size={14} />}
+                {isArchived ? 'Restaurar fluxo' : 'Arquivar fluxo'}
+              </button>
+              {canDeletePermanently ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => void permanentlyDeleteJourney(journey)}
+                  style={{ width: '100%', border: 'none', borderRadius: 7, background: 'transparent', color: 'var(--red-500)', padding: '9px 10px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', textAlign: 'left', fontSize: 12, fontWeight: 650 }}
+                >
+                  <Trash2 size={14} /> Excluir definitivamente
+                </button>
+              ) : (
+                <div style={{ marginTop: 4, padding: '8px 10px', borderTop: '1px solid var(--border)', color: 'var(--fg-subtle)', fontSize: 10.5, lineHeight: 1.4 }}>
+                  Possui {executions.toLocaleString('pt-BR')} {executions === 1 ? 'execução' : 'execuções'}. Arquive para preservar o histórico.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -2056,6 +2137,7 @@ const AutomationJourneysView: React.FC = () => {
             <button type="button" onClick={() => setStatusFilter('all')} style={pillStyle(statusFilter === 'all')}>Todas {journeys.length}</button>
             <button type="button" onClick={() => setStatusFilter('ACTIVE')} style={pillStyle(statusFilter === 'ACTIVE')}>Ativas {totalActive}</button>
             <button type="button" onClick={() => setStatusFilter('PAUSED')} style={pillStyle(statusFilter === 'PAUSED')}>Pausadas {totalPaused}</button>
+            <button type="button" onClick={() => setStatusFilter('ARCHIVED')} style={pillStyle(statusFilter === 'ARCHIVED')}>Arquivadas {totalArchived}</button>
           </div>
           <CustomSelect
             value={sortOrder}
@@ -2080,7 +2162,7 @@ const AutomationJourneysView: React.FC = () => {
           ) : automationListItems.map(item => {
             if (item.kind === 'journey') {
               return (
-                <div key={item.key} className="ds-card" style={{ padding: 0, overflow: 'hidden' }}>
+                <div key={item.key} className="ds-card" style={{ padding: 0, overflow: 'visible' }}>
                   {renderJourneyRow(item.journey)}
                 </div>
               );
@@ -2094,7 +2176,7 @@ const AutomationJourneysView: React.FC = () => {
                 key={item.key}
                 data-testid={`automation-group-${item.group.id}`}
                 className="ds-card"
-                style={{ padding: 0, overflow: 'hidden', borderColor: 'color-mix(in srgb, var(--accent) 28%, var(--border))' }}
+                style={{ padding: 0, overflow: 'visible', borderColor: 'color-mix(in srgb, var(--accent) 28%, var(--border))' }}
               >
                 <button
                   type="button"

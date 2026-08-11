@@ -309,7 +309,7 @@ export interface LeadClassificationRule {
   _count?: { executions: number };
 }
 
-export type AutomationJourneyStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED';
+export type AutomationJourneyStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ARCHIVED';
 
 export interface WhatsAppTemplateComponent {
   type: 'HEADER' | 'BODY' | 'FOOTER' | 'BUTTONS';

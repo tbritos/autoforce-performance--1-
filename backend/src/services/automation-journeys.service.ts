@@ -60,7 +60,7 @@ export interface AutomationNurtureGroupInput {
 const validStatus = (status?: string) => {
   if (!status) return 'DRAFT';
   const normalized = status.toUpperCase();
-  return ['DRAFT', 'ACTIVE', 'PAUSED'].includes(normalized) ? normalized : 'DRAFT';
+  return ['DRAFT', 'ACTIVE', 'PAUSED', 'ARCHIVED'].includes(normalized) ? normalized : 'DRAFT';
 };
 
 export class AutomationJourneysService {
@@ -79,7 +79,7 @@ export class AutomationJourneysService {
 
     const status = validStatus(input.status);
     const automationType = normalizeAutomationType(input.automationType);
-    const isActive = input.isActive ?? status === 'ACTIVE';
+    const isActive = status === 'ACTIVE';
     if (isActive && automationType === 'UNCLASSIFIED') {
       throw new Error('Classifique a automação como fluxo de nutrição ou automação avulsa antes de publicar.');
     }
@@ -100,7 +100,7 @@ export class AutomationJourneysService {
         queueTtlHours: normalizeQueueTtlHours(input.queueTtlHours),
         nurtureGroupId: automationType === 'NURTURE' ? input.nurtureGroupId || null : null,
       },
-      include: { nurtureGroup: true },
+      include: { nurtureGroup: true, _count: { select: { executions: true } } },
     });
   }
 
@@ -137,7 +137,11 @@ export class AutomationJourneysService {
 
     if (nextType !== 'NURTURE') data.nurtureGroupId = null;
 
-    return (prisma as any).automationJourney.update({ where: { id }, data, include: { nurtureGroup: true } });
+    return (prisma as any).automationJourney.update({
+      where: { id },
+      data,
+      include: { nurtureGroup: true, _count: { select: { executions: true } } },
+    });
   }
 
   static async listNurtureGroups() {
@@ -179,7 +183,30 @@ export class AutomationJourneysService {
   }
 
   static async remove(id: string) {
-    return (prisma as any).automationJourney.delete({ where: { id } });
+    const journey = await prisma.automationJourney.findUniqueOrThrow({
+      where: { id },
+      select: {
+        name: true,
+        nurtureGroupId: true,
+        _count: { select: { executions: true } },
+      },
+    });
+    if (journey._count.executions > 0) {
+      const error = new Error(`O fluxo "${journey.name}" possui histórico de execuções e deve ser arquivado.`) as Error & { statusCode?: number };
+      error.statusCode = 409;
+      throw error;
+    }
+
+    return prisma.$transaction(async transaction => {
+      const deleted = await transaction.automationJourney.delete({ where: { id } });
+      if (journey.nurtureGroupId) {
+        const remaining = await transaction.automationJourney.count({ where: { nurtureGroupId: journey.nurtureGroupId } });
+        if (remaining === 0) {
+          await transaction.automationNurtureGroup.deleteMany({ where: { id: journey.nurtureGroupId } });
+        }
+      }
+      return deleted;
+    });
   }
 
   static async getExecutions(journeyId: string, limit = 50) {
