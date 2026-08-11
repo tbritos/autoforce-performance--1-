@@ -365,6 +365,7 @@ const EmailEditorView: React.FC = () => {
               company:  { name: 'Empresa',  value: '{{company}}' },
               phone:    { name: 'Telefone', value: '{{phone}}' },
               jobTitle: { name: 'Cargo',    value: '{{jobTitle}}' },
+              unsubscribeUrl: { name: 'Link de desinscrição', value: '{{unsubscribe_url}}' },
             },
           } as any}
         />

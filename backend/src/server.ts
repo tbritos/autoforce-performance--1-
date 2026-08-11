@@ -42,6 +42,7 @@ import segmentRoutes from './routes/segment.routes';
 import leadScoringRoutes from './routes/lead-scoring.routes';
 import reportsRoutes from './routes/reports.routes';
 import instagramRoutes from './routes/instagram.routes';
+import emailUnsubscribeRoutes from './routes/email-unsubscribe.routes';
 
 dotenv.config();
 
@@ -314,6 +315,17 @@ const webhookLimiter = rateLimit({
   skip: () => process.env.NODE_ENV === 'development',
 });
 
+// Tela pública de desinscrição. O limite é alto o bastante para clientes de
+// email que verificam links, mas impede tentativas abusivas de tokens.
+const emailUnsubscribeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Muitas tentativas. Aguarde alguns minutos e tente novamente.' },
+  skip: () => process.env.NODE_ENV === 'development',
+});
+
 // O Instagram pode entregar rajadas e repetir eventos. A idempotencia fica no banco,
 // então o limite aqui protege a API sem bloquear uma conta com maior engajamento.
 const instagramWebhookLimiter = rateLimit({
@@ -364,6 +376,10 @@ app.get('/api/health', (req, res) => {
 
 // Auth routes
 app.use('/api/auth', authLimiter, authRoutes);
+
+// Link público usado pelo rodapé das newsletters e pelo List-Unsubscribe.
+// Precisa ficar antes do middleware de autenticação da API.
+app.use('/api/email-unsubscribe', emailUnsubscribeLimiter, emailUnsubscribeRoutes);
 
 // Public incoming lead webhooks — sem autenticação, com rate limit
 app.use('/api/lead-webhooks', webhookLimiter, publicLeadWebhooksRouter);
@@ -673,7 +689,7 @@ app.post('/api/resend-webhook', express.json(), async (req, res) => {
 
     const current = await db.emailSent.findUnique({
       where: { resendId: emailId },
-      select: { id: true, status: true, deliveredAt: true, openedAt: true, clickedAt: true, clickedUrl: true },
+      select: { id: true, toEmail: true, status: true, deliveredAt: true, openedAt: true, clickedAt: true, clickedUrl: true },
     });
 
     if (!current) {
@@ -738,6 +754,18 @@ app.post('/api/resend-webhook', express.json(), async (req, res) => {
       where: { id: current.id },
       data:  { ...updates, updatedAt: now },
     });
+
+    // Uma denuncia de spam também bloqueia futuros emails de marketing.
+    if (type === 'email.complained') {
+      const email = normalizeEmail(current.toEmail);
+      if (email) {
+        await db.emailSuppression.upsert({
+          where: { email },
+          create: { email, reason: 'complaint', source: 'resend-webhook', unsubscribedAt: now },
+          update: {},
+        });
+      }
+    }
 
     if (type === 'email.opened' || type === 'email.clicked') {
       const { resumeWaitingEmailEvent } = await import('./services/automation-engine.service');

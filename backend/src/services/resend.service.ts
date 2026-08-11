@@ -1,5 +1,10 @@
 import { Resend } from 'resend';
 import { prisma } from '../config/database';
+import {
+  buildOneClickUnsubscribeUrl,
+  buildUnsubscribeUrl,
+  normalizeUnsubscribeEmail,
+} from './email-unsubscribe.service';
 
 const SEND_TIMEOUT_MS = 20_000;
 
@@ -33,6 +38,9 @@ export interface SendEmailInput {
   automationExecutionId?: string;
   automationNodeId?: string;
   skipRecord?: boolean;
+  // Alertas operacionais podem ignorar a preferência de marketing.
+  respectUnsubscribe?: boolean;
+  includeUnsubscribe?: boolean;
   // Opcional: recebe a mensagem de erro real quando o envio falha, sem mudar o
   // contrato de retorno (boolean) que os outros chamadores (disparo em massa)
   // ja dependem pra contar sucesso/falha.
@@ -73,11 +81,43 @@ export async function sendEmail(input: SendEmailInput): Promise<boolean> {
 
   let resendId: string | null = null;
   let status = 'failed';
+  let html = input.html;
 
+  const respectUnsubscribe = input.respectUnsubscribe !== false;
+  let normalizedEmail: string;
   try {
+    normalizedEmail = normalizeUnsubscribeEmail(input.toEmail);
+  } catch {
+    normalizedEmail = input.toEmail.trim().toLowerCase();
+  }
+
+  if (respectUnsubscribe) {
+    const suppression = await prisma.emailSuppression.findUnique({ where: { email: normalizedEmail }, select: { id: true } });
+    if (suppression) {
+      status = 'suppressed';
+    }
+  }
+
+  if (status !== 'suppressed') try {
+    const includeUnsubscribe = input.includeUnsubscribe !== false;
+    const headers: Record<string, string> | undefined = includeUnsubscribe
+      ? {
+          'List-Unsubscribe': `<${buildOneClickUnsubscribeUrl(normalizedEmail)}>`,
+          'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        }
+      : undefined;
+    if (includeUnsubscribe) {
+      html = html.replace(/\{\{unsubscribe_url\}\}/gi, buildUnsubscribeUrl(normalizedEmail));
+    }
     const client = getResend();
     const result = await withTimeout(
-      client.emails.send({ from, to: [input.toEmail], subject: input.subject, html: input.html }),
+      client.emails.send({
+        from,
+        to: [input.toEmail],
+        subject: input.subject,
+        html,
+        headers,
+      }),
       SEND_TIMEOUT_MS,
       `sendEmail ${input.toEmail}`
     );
@@ -106,7 +146,7 @@ export async function sendEmail(input: SendEmailInput): Promise<boolean> {
         fromEmail,
         toEmail:               input.toEmail,
         status,
-        htmlBody:              input.html,
+        htmlBody:              html,
         automationExecutionId: input.automationExecutionId ?? null,
         automationNodeId:      input.automationNodeId      ?? null,
         sentAt:                new Date(),

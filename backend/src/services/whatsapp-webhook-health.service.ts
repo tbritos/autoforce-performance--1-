@@ -102,6 +102,8 @@ async function sendAlertEmail(subject: string, message: string): Promise<void> {
       subject,
       html: `<p>${message}</p><p style="color:#888">Verificado em ${new Date().toLocaleString('pt-BR')}</p>`,
       skipRecord: true,
+      respectUnsubscribe: false,
+      includeUnsubscribe: false,
     });
   } catch (err) {
     console.error('[whatsapp-health] Erro ao enviar e-mail de alerta:', err);

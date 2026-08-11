@@ -1162,6 +1162,20 @@ model EmailSent {
   @@index([sentAt])
 }
 
+// Lista global de enderecos que nao devem receber comunicacoes de marketing.
+// Fica separada de Lead para o bloqueio sobreviver a exclusoes/reimportacoes.
+model EmailSuppression {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  reason         String   @default("unsubscribe")
+  source         String?
+  unsubscribedAt DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([unsubscribedAt])
+}
+
 model EmailReceived {
   id        String @id @default(cuid())
   leadEmail String

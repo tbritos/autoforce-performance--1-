@@ -18,19 +18,17 @@ const LEAD_SELECT = { email: true, name: true, company: true, phone: true, jobTi
 async function resolveAudienceLeads(audienceType: string, audienceValue: string): Promise<AudienceLead[]> {
   const baseWhere: Prisma.LeadWhereInput = { deletedAt: null, status: { not: 'DISQUALIFIED' } };
 
-  if (audienceType === 'tag') {
-    return prisma.lead.findMany({ where: { ...baseWhere, tags: { has: audienceValue } }, select: LEAD_SELECT });
-  }
+  let leads: AudienceLead[];
 
-  if (audienceType === 'segment') {
+  if (audienceType === 'tag') {
+    leads = await prisma.lead.findMany({ where: { ...baseWhere, tags: { has: audienceValue } }, select: LEAD_SELECT });
+  } else if (audienceType === 'segment') {
     const segment = await prisma.segment.findUnique({ where: { id: audienceValue } });
     if (!segment) return [];
     const rules = segment.rules as unknown as SegmentRules;
     const segmentWhere = SegmentService.buildWhere(rules);
-    return prisma.lead.findMany({ where: { ...segmentWhere, status: { not: 'DISQUALIFIED' } }, select: LEAD_SELECT });
-  }
-
-  if (audienceType === 'individual') {
+    leads = await prisma.lead.findMany({ where: { ...segmentWhere, status: { not: 'DISQUALIFIED' } }, select: LEAD_SELECT });
+  } else if (audienceType === 'individual') {
     let emails: string[] = [];
     try {
       emails = JSON.parse(audienceValue);
@@ -38,10 +36,16 @@ async function resolveAudienceLeads(audienceType: string, audienceValue: string)
       return [];
     }
     if (!Array.isArray(emails) || !emails.length) return [];
-    return prisma.lead.findMany({ where: { ...baseWhere, email: { in: emails } }, select: LEAD_SELECT });
+    leads = await prisma.lead.findMany({ where: { ...baseWhere, email: { in: emails } }, select: LEAD_SELECT });
+  } else {
+    return [];
   }
 
-  return [];
+  if (!leads.length) return leads;
+  const normalized = leads.map(lead => lead.email.trim().toLowerCase());
+  const suppressions = await prisma.emailSuppression.findMany({ where: { email: { in: normalized } }, select: { email: true } });
+  const blocked = new Set(suppressions.map(item => item.email));
+  return leads.filter(lead => !blocked.has(lead.email.trim().toLowerCase()));
 }
 
 // Envia o disparo em segundo plano, em lotes pequenos para respeitar limites do Resend.

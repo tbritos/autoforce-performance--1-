@@ -28,6 +28,7 @@ import EmailBlastDetailView from './components/EmailBlastDetailView';
 import WhatsAppTemplateNewView from './components/WhatsAppTemplateNewView';
 import WhatsAppBlastsView from './components/WhatsAppBlastsView';
 import WhatsAppBlastDetailView from './components/WhatsAppBlastDetailView';
+import EmailUnsubscribeView from './components/EmailUnsubscribeView';
 import { DataService } from './services/dataService';
 import { User, Metric, LandingPage, DailyLeadEntry, RevenueEntry, FunnelCounts, LeadStatus } from './types';
 import {
@@ -1708,7 +1709,10 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
     return (
         <BrowserRouter>
-            <AppContent />
+            <Routes>
+              <Route path="/unsubscribe" element={<EmailUnsubscribeView />} />
+              <Route path="*" element={<AppContent />} />
+            </Routes>
         </BrowserRouter>
     );
 };

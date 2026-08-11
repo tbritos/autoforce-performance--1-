@@ -188,6 +188,7 @@ router.post('/:id/test', async (req: Request, res: Response) => {
       fromName:   template.fromName  ?? undefined,
       fromEmail:  template.fromEmail ?? undefined,
       skipRecord: true,
+      respectUnsubscribe: false,
       onError: message => { sendErrorMessage = message; },
     });
 
