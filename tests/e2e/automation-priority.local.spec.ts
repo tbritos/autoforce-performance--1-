@@ -103,6 +103,19 @@ test.describe('Prioridade de automações — localhost', () => {
 
     await enterLocal(page);
     await expect(page.getByText('[QA Prioridade] Ebook | Alta', { exact: true })).toBeVisible();
+    const groupCard = page.getByTestId(`automation-group-${groupedEmail.nurtureGroupId}`);
+    await expect(groupCard).toBeVisible();
+    await expect(groupCard.getByText('[QA Prioridade] Ebook multicanal', { exact: true })).toBeVisible();
+    await expect(groupCard.getByText('[QA Prioridade] Grupo Ebook | Email', { exact: true })).toBeVisible();
+    await expect(groupCard.getByText('[QA Prioridade] Grupo Ebook | WhatsApp', { exact: true })).toBeVisible();
+    await expect(groupCard.getByText('Email', { exact: true })).toBeVisible();
+    await expect(groupCard.getByText('WhatsApp', { exact: true })).toBeVisible();
+    const groupToggle = groupCard.getByRole('button').first();
+    await expect(groupToggle).toHaveAttribute('aria-expanded', 'true');
+    await groupToggle.click();
+    await expect(groupToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(groupCard.getByText('[QA Prioridade] Grupo Ebook | Email', { exact: true })).toBeHidden();
+    await groupToggle.click();
     await page.goto(`${FRONTEND}/automation/${ebook.id}`);
     const classification = page.getByRole('button', { name: /Fluxo de nutrição.*Alta/i });
     await expect(classification).toBeVisible();

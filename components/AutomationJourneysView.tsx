@@ -216,6 +216,26 @@ const priorityText = (priority: number): string =>
 const effectiveJourneyPriority = (journey: AutomationJourney): number =>
   journey.nurtureGroup?.priority ?? journey.priority;
 
+const automationExecutionCount = (journey: AutomationJourney): number => {
+  if (typeof journey._count?.executions === 'number') return journey._count.executions;
+  const stored = journey.nodes.reduce((sum, node) => {
+    const value = node.config?.executions;
+    return sum + (typeof value === 'number' ? value : 0);
+  }, 0);
+  return stored || 0;
+};
+
+const automationChannelLabel = (journey: AutomationJourney): string => {
+  const channels: string[] = [];
+  if (journey.nodes.some(node => node.type === 'send_email' || node.type === 'rd_conversion') || /\be-?mail\b/i.test(journey.name)) channels.push('Email');
+  if (journey.nodes.some(node => node.type === 'whatsapp_message' || node.type === 'whatsapp_wait_reply') || /\b(whatsapp|wpp)\b/i.test(journey.name)) channels.push('WhatsApp');
+  return channels.join(' + ') || (journey.entryMode === 'AUDIENCE' ? 'Público da base' : 'Gatilho específico');
+};
+
+type AutomationListItem =
+  | { kind: 'group'; key: string; group: AutomationNurtureGroup; journeys: AutomationJourney[] }
+  | { kind: 'journey'; key: string; journey: AutomationJourney };
+
 type CustomSelectOption<T extends string> = {
   value: T;
   label: string;
@@ -1445,6 +1465,7 @@ const AutomationJourneysView: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AutomationJourneyStatus>('all');
   const [sortOrder, setSortOrder] = useState<'recent' | 'name' | 'executions'>('recent');
+  const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(() => new Set());
   const [editingName, setEditingName] = useState(false);
   const [panelValues, setPanelValues] = useState<{ label: string; config: Record<string, string> } | null>(null);
   const [modalNodeId, setModalNodeId] = useState<string | null>(null);
@@ -1546,13 +1567,65 @@ const AutomationJourneysView: React.FC = () => {
     return journeys.filter(journey => {
       if (statusFilter !== 'all' && journey.status !== statusFilter) return false;
       if (!q) return true;
-      return journey.name.toLowerCase().includes(q) || (journey.description ?? '').toLowerCase().includes(q);
-    }).sort((a, b) => {
-      if (sortOrder === 'name') return a.name.localeCompare(b.name);
-      if (sortOrder === 'executions') return getExecutions(b) - getExecutions(a);
-      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      const groupName = journey.nurtureGroup?.name
+        ?? nurtureGroups.find(group => group.id === journey.nurtureGroupId)?.name
+        ?? '';
+      return journey.name.toLowerCase().includes(q)
+        || (journey.description ?? '').toLowerCase().includes(q)
+        || groupName.toLowerCase().includes(q);
     });
-  }, [journeys, search, statusFilter, sortOrder]);
+  }, [journeys, nurtureGroups, search, statusFilter]);
+
+  const automationListItems = useMemo<AutomationListItem[]>(() => {
+    const groups = new Map<string, Extract<AutomationListItem, { kind: 'group' }>>();
+    const individual: Array<Extract<AutomationListItem, { kind: 'journey' }>> = [];
+
+    for (const journey of filteredJourneys) {
+      const group = journey.nurtureGroup
+        ?? nurtureGroups.find(item => item.id === journey.nurtureGroupId)
+        ?? null;
+      if (journey.automationType === 'NURTURE' && journey.nurtureGroupId && group) {
+        const existing = groups.get(group.id);
+        if (existing) existing.journeys.push(journey);
+        else groups.set(group.id, { kind: 'group', key: `group-${group.id}`, group, journeys: [journey] });
+      } else {
+        individual.push({ kind: 'journey', key: `journey-${journey.id}`, journey });
+      }
+    }
+
+    const compareJourneys = (a: AutomationJourney, b: AutomationJourney) => {
+      if (sortOrder === 'name') return a.name.localeCompare(b.name, 'pt-BR');
+      if (sortOrder === 'executions') return automationExecutionCount(b) - automationExecutionCount(a);
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    };
+    const result: AutomationListItem[] = [
+      ...Array.from(groups.values()).map(item => ({ ...item, journeys: [...item.journeys].sort(compareJourneys) })),
+      ...individual,
+    ];
+    return result.sort((a, b) => {
+      if (sortOrder === 'name') {
+        const aName = a.kind === 'group' ? a.group.name : a.journey.name;
+        const bName = b.kind === 'group' ? b.group.name : b.journey.name;
+        return aName.localeCompare(bName, 'pt-BR');
+      }
+      if (sortOrder === 'executions') {
+        const aCount = a.kind === 'group'
+          ? a.journeys.reduce((sum, journey) => sum + automationExecutionCount(journey), 0)
+          : automationExecutionCount(a.journey);
+        const bCount = b.kind === 'group'
+          ? b.journeys.reduce((sum, journey) => sum + automationExecutionCount(journey), 0)
+          : automationExecutionCount(b.journey);
+        return bCount - aCount;
+      }
+      const aUpdated = a.kind === 'group'
+        ? Math.max(...a.journeys.map(journey => new Date(journey.updatedAt).getTime()))
+        : new Date(a.journey.updatedAt).getTime();
+      const bUpdated = b.kind === 'group'
+        ? Math.max(...b.journeys.map(journey => new Date(journey.updatedAt).getTime()))
+        : new Date(b.journey.updatedAt).getTime();
+      return bUpdated - aUpdated;
+    });
+  }, [filteredJourneys, nurtureGroups, sortOrder]);
 
 
   const updateSelected = (changes: Partial<AutomationJourney>) => {
@@ -1785,14 +1858,6 @@ const AutomationJourneysView: React.FC = () => {
 
   const totalActive = journeys.filter(journey => journey.status === 'ACTIVE').length;
   const totalPaused = journeys.filter(journey => journey.status === 'PAUSED').length;
-  const getExecutions = (journey: AutomationJourney) => {
-    if (typeof journey._count?.executions === 'number') return journey._count.executions;
-    const stored = journey.nodes.reduce((sum, node) => {
-      const value = node.config?.executions;
-      return sum + (typeof value === 'number' ? value : 0);
-    }, 0);
-    return stored || 0;
-  };
 
   const handleTestSearch = async (q: string) => {
     setTestSearch(q);
@@ -1859,6 +1924,91 @@ const AutomationJourneysView: React.FC = () => {
     cursor: 'pointer',
   });
 
+  const renderJourneyRow = (journey: AutomationJourney, grouped = false, isLast = true) => {
+    const isActive = journey.status === 'ACTIVE';
+    const executions = automationExecutionCount(journey);
+    return (
+      <div
+        key={journey.id}
+        data-testid={`automation-journey-${journey.id}`}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '58px minmax(0, 1fr) 180px 42px 42px',
+          gap: 14,
+          alignItems: 'center',
+          padding: grouped ? '16px 18px 16px 30px' : '20px 18px',
+          borderBottom: isLast ? 'none' : '1px solid var(--border)',
+          minHeight: 64,
+          background: grouped ? 'var(--bg-surface)' : undefined,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => toggleJourneyStatus(journey)}
+          title={isActive ? 'Pausar automação' : 'Ativar automação'}
+          aria-label={`${isActive ? 'Pausar' : 'Ativar'} ${journey.name}`}
+          style={{
+            width: 36,
+            height: 20,
+            borderRadius: 999,
+            border: `1.5px solid ${isActive ? 'var(--green-500)' : 'var(--border)'}`,
+            background: isActive ? 'var(--green-500)' : 'transparent',
+            padding: 2,
+            cursor: 'pointer',
+            display: 'flex',
+            justifyContent: isActive ? 'flex-end' : 'flex-start',
+            alignItems: 'center',
+            flexShrink: 0,
+            transition: 'background .15s, border-color .15s',
+          }}
+        >
+          <span style={{
+            width: 14, height: 14, borderRadius: 999,
+            background: isActive ? '#fff' : 'var(--fg-muted)',
+            display: 'block', flexShrink: 0,
+            transition: 'background .15s',
+          }} />
+        </button>
+        <button
+          type="button"
+          onClick={() => openJourney(journey)}
+          style={{ border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer', minWidth: 0 }}
+        >
+          <strong style={{ color: isActive ? 'var(--fg-primary)' : 'var(--fg-muted)', fontSize: 15, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{journey.name}</strong>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
+            <span style={{ padding: '2px 7px', borderRadius: 999, fontSize: 10, fontWeight: 800, background: journey.automationType === 'NURTURE' ? 'var(--accent-soft)' : 'var(--bg-muted)', color: journey.automationType === 'NURTURE' ? 'var(--accent)' : 'var(--fg-muted)' }}>
+              {grouped ? automationChannelLabel(journey) : automationTypeLabel(journey.automationType)}
+            </span>
+            {journey.automationType === 'NURTURE' && !grouped && (
+              <span style={{ fontSize: 10, color: 'var(--fg-subtle)' }}>
+                {journey.nurtureGroup ? `${journey.nurtureGroup.name} · ` : ''}Prioridade {priorityText(effectiveJourneyPriority(journey)).toLowerCase()}
+              </span>
+            )}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMonitoringJourneyId(journey.id)}
+          style={{ border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer', color: 'var(--fg-muted)', fontSize: 13 }}
+          title="Ver execuções"
+        >
+          {isActive ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <Activity size={12} style={{ color: 'var(--green-500)' }} />
+              <strong style={{ color: 'var(--fg-primary)' }}>{executions.toLocaleString('pt-BR')}</strong> exec.
+            </span>
+          ) : 'Pausada'}
+        </button>
+        <button type="button" onClick={() => openJourney(journey)} title="Editar fluxo" aria-label={`Editar ${journey.name}`} style={{ border: 'none', background: 'transparent', color: 'var(--fg-muted)', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+          <Pencil size={16} />
+        </button>
+        <button type="button" onClick={() => setMonitoringJourneyId(journey.id)} title="Monitorar execuções" aria-label={`Monitorar ${journey.name}`} style={{ border: 'none', background: 'transparent', color: 'var(--fg-muted)', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+          <Activity size={16} />
+        </button>
+      </div>
+    );
+  };
+
   if (!routeId) {
     return (
       <div style={{ padding: '38px 28px 64px', maxWidth: 1140, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 18 }} className="animate-fade-in-up">
@@ -1919,92 +2069,75 @@ const AutomationJourneysView: React.FC = () => {
           />
         </div>
 
-        <section className="ds-card" style={{ padding: 0, overflow: 'hidden' }}>
+        <section data-testid="automation-list" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {loading ? (
-            <div style={{ padding: 28, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--fg-muted)' }}>
+            <div className="ds-card" style={{ padding: 28, display: 'flex', alignItems: 'center', gap: 10, color: 'var(--fg-muted)' }}>
               <RefreshCw size={16} className="animate-spin" />
               Carregando automações...
             </div>
-          ) : filteredJourneys.length === 0 ? (
-            <div style={{ padding: 34, color: 'var(--fg-muted)', textAlign: 'center' }}>Nenhuma automação encontrada.</div>
-          ) : filteredJourneys.map((journey, index) => {
-            const isActive = journey.status === 'ACTIVE';
-            const executions = getExecutions(journey);
+          ) : automationListItems.length === 0 ? (
+            <div className="ds-card" style={{ padding: 34, color: 'var(--fg-muted)', textAlign: 'center' }}>Nenhuma automação encontrada.</div>
+          ) : automationListItems.map(item => {
+            if (item.kind === 'journey') {
+              return (
+                <div key={item.key} className="ds-card" style={{ padding: 0, overflow: 'hidden' }}>
+                  {renderJourneyRow(item.journey)}
+                </div>
+              );
+            }
+
+            const collapsed = collapsedGroupIds.has(item.group.id);
+            const activeCount = item.journeys.filter(journey => journey.status === 'ACTIVE').length;
+            const executionCount = item.journeys.reduce((sum, journey) => sum + automationExecutionCount(journey), 0);
             return (
               <div
-                key={journey.id}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '58px 1fr 180px 42px 42px',
-                  gap: 14,
-                  alignItems: 'center',
-                  padding: '20px 18px',
-                  borderBottom: index === filteredJourneys.length - 1 ? 'none' : '1px solid var(--border)',
-                  minHeight: 64,
-                }}
+                key={item.key}
+                data-testid={`automation-group-${item.group.id}`}
+                className="ds-card"
+                style={{ padding: 0, overflow: 'hidden', borderColor: 'color-mix(in srgb, var(--accent) 28%, var(--border))' }}
               >
                 <button
                   type="button"
-                  onClick={() => toggleJourneyStatus(journey)}
-                  title={isActive ? 'Pausar automação' : 'Ativar automação'}
+                  onClick={() => setCollapsedGroupIds(previous => {
+                    const next = new Set(previous);
+                    if (next.has(item.group.id)) next.delete(item.group.id);
+                    else next.add(item.group.id);
+                    return next;
+                  })}
+                  aria-expanded={!collapsed}
+                  aria-controls={`automation-group-members-${item.group.id}`}
                   style={{
-                    width: 36,
-                    height: 20,
-                    borderRadius: 999,
-                    border: `1.5px solid ${isActive ? 'var(--green-500)' : 'var(--border)'}`,
-                    background: isActive ? 'var(--green-500)' : 'transparent',
-                    padding: 2,
+                    width: '100%', border: 'none', borderBottom: collapsed ? 'none' : '1px solid var(--border)',
+                    background: 'var(--accent-soft)', padding: '14px 18px',
                     cursor: 'pointer',
-                    display: 'flex',
-                    justifyContent: isActive ? 'flex-end' : 'flex-start',
-                    alignItems: 'center',
-                    flexShrink: 0,
-                    transition: 'background .15s, border-color .15s',
+                    display: 'grid', gridTemplateColumns: '32px minmax(0, 1fr) auto', gap: 12,
+                    alignItems: 'center', textAlign: 'left', color: 'var(--fg-primary)',
                   }}
                 >
-                  <span style={{
-                    width: 14, height: 14, borderRadius: 999,
-                    background: isActive ? '#fff' : 'var(--fg-muted)',
-                    display: 'block', flexShrink: 0,
-                    transition: 'background .15s',
-                  }} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openJourney(journey)}
-                  style={{ border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer' }}
-                >
-                  <strong style={{ color: isActive ? 'var(--fg-primary)' : 'var(--fg-muted)', fontSize: 15 }}>{journey.name}</strong>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
-                    <span style={{ padding: '2px 7px', borderRadius: 999, fontSize: 10, fontWeight: 800, background: journey.automationType === 'NURTURE' ? 'var(--accent-soft)' : 'var(--bg-muted)', color: journey.automationType === 'NURTURE' ? 'var(--accent)' : 'var(--fg-muted)' }}>
-                      {automationTypeLabel(journey.automationType)}
+                  <span style={{ width: 30, height: 30, borderRadius: 9, display: 'grid', placeItems: 'center', background: 'var(--bg-surface)', color: 'var(--accent)', border: '1px solid var(--border)' }}>
+                    <Layers size={15} />
+                  </span>
+                  <span style={{ minWidth: 0 }}>
+                    <strong style={{ display: 'block', fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.group.name}</strong>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, color: 'var(--fg-muted)', fontSize: 11, flexWrap: 'wrap' }}>
+                      <span>Grupo de nutrição</span>
+                      <span>•</span>
+                      <span>Prioridade {priorityText(item.group.priority).toLowerCase()}</span>
+                      <span>•</span>
+                      <span>{item.journeys.length} {item.journeys.length === 1 ? 'automação' : 'automações'}</span>
                     </span>
-                    {journey.automationType === 'NURTURE' && (
-                      <span style={{ fontSize: 10, color: 'var(--fg-subtle)' }}>
-                        {journey.nurtureGroup ? `${journey.nurtureGroup.name} · ` : ''}Prioridade {priorityText(effectiveJourneyPriority(journey)).toLowerCase()}
-                      </span>
-                    )}
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 16, color: 'var(--fg-muted)', fontSize: 12 }}>
+                    <span style={{ whiteSpace: 'nowrap' }}><strong style={{ color: activeCount ? 'var(--green-500)' : 'var(--fg-muted)' }}>{activeCount}</strong> ativas</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}><Activity size={12} /> <strong style={{ color: 'var(--fg-primary)' }}>{executionCount.toLocaleString('pt-BR')}</strong> exec.</span>
+                    <ChevronDown size={16} style={{ transform: collapsed ? 'rotate(-90deg)' : 'rotate(0)', transition: 'transform .15s' }} />
                   </span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setMonitoringJourneyId(journey.id)}
-                  style={{ border: 'none', background: 'transparent', padding: 0, textAlign: 'left', cursor: 'pointer', color: 'var(--fg-muted)', fontSize: 13 }}
-                  title="Ver execuções"
-                >
-                  {isActive ? (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                      <Activity size={12} style={{ color: 'var(--green-500)' }} />
-                      <strong style={{ color: 'var(--fg-primary)' }}>{executions.toLocaleString('pt-BR')}</strong> exec.
-                    </span>
-                  ) : 'Pausada'}
-                </button>
-                <button type="button" onClick={() => openJourney(journey)} title="Editar fluxo" style={{ border: 'none', background: 'transparent', color: 'var(--fg-muted)', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
-                  <Pencil size={16} />
-                </button>
-                <button type="button" onClick={() => setMonitoringJourneyId(journey.id)} title="Monitorar execuções" style={{ border: 'none', background: 'transparent', color: 'var(--fg-muted)', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
-                  <Activity size={16} />
-                </button>
+                {!collapsed && (
+                  <div id={`automation-group-members-${item.group.id}`}>
+                    {item.journeys.map((journey, index) => renderJourneyRow(journey, true, index === item.journeys.length - 1))}
+                  </div>
+                )}
               </div>
             );
           })}
