@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { normalizeEmailSuppressionScope, type EmailSuppressionScope } from './email-preferences.service';
 
 const TOKEN_VERSION = 1;
 const IV_BYTES = 12;
@@ -26,17 +27,18 @@ function getKey(): Buffer {
 
 // AES-GCM deixa o token autenticado e também impede que o email fique legível na URL.
 // O token não expira: links antigos de descadastro precisam continuar funcionando.
-export function createUnsubscribeToken(emailValue: string): string {
+export function createUnsubscribeToken(emailValue: string, scopeValue: EmailSuppressionScope = 'newsletter'): string {
   const email = normalizeUnsubscribeEmail(emailValue);
+  const scope = normalizeEmailSuppressionScope(scopeValue);
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv('aes-256-gcm', getKey(), iv);
-  const payload = Buffer.from(JSON.stringify({ v: TOKEN_VERSION, email }), 'utf8');
+  const payload = Buffer.from(JSON.stringify({ v: TOKEN_VERSION, email, scope }), 'utf8');
   const encrypted = Buffer.concat([cipher.update(payload), cipher.final()]);
   const tag = cipher.getAuthTag();
   return Buffer.concat([iv, tag, encrypted]).toString('base64url');
 }
 
-export function readUnsubscribeToken(token: string): string {
+export function readUnsubscribePreferenceToken(token: string): { email: string; scope: 'newsletter' | 'marketing' } {
   try {
     if (!/^[A-Za-z0-9_-]+$/.test(token)) throw new Error('Token malformado');
     const data = Buffer.from(token, 'base64url');
@@ -52,28 +54,36 @@ export function readUnsubscribeToken(token: string): string {
     const decipher = createDecipheriv('aes-256-gcm', getKey(), iv);
     decipher.setAuthTag(tag);
     const decoded = Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
-    const payload = JSON.parse(decoded) as { v?: number; email?: string };
+    const payload = JSON.parse(decoded) as { v?: number; email?: string; scope?: string };
     if (payload.v !== TOKEN_VERSION || !payload.email) throw new Error('Token incompatível');
-    return normalizeUnsubscribeEmail(payload.email);
+    return {
+      email: normalizeUnsubscribeEmail(payload.email),
+      // Tokens antigos não tinham escopo e continuam sendo de newsletter.
+      scope: normalizeEmailSuppressionScope(payload.scope),
+    };
   } catch {
     throw new Error('Link de desinscrição inválido');
   }
+}
+
+export function readUnsubscribeToken(token: string): string {
+  return readUnsubscribePreferenceToken(token).email;
 }
 
 function firstCorsOrigin(): string | undefined {
   return process.env.CORS_ORIGIN?.split(',')[0]?.trim() || undefined;
 }
 
-export function buildUnsubscribeUrl(email: string): string {
+export function buildUnsubscribeUrl(email: string, scope: 'newsletter' | 'marketing' = 'newsletter'): string {
   const frontendUrl = (process.env.FRONTEND_URL || firstCorsOrigin() || 'http://localhost:5173').replace(/\/+$/, '');
-  const token = createUnsubscribeToken(email);
+  const token = createUnsubscribeToken(email, scope);
   return `${frontendUrl}/unsubscribe?token=${encodeURIComponent(token)}`;
 }
 
-export function buildOneClickUnsubscribeUrl(email: string): string {
+export function buildOneClickUnsubscribeUrl(email: string, scope: 'newsletter' | 'marketing' = 'newsletter'): string {
   const railwayUrl = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : undefined;
   const apiUrl = (process.env.APP_URL || railwayUrl || 'http://localhost:5000').replace(/\/+$/, '');
-  const token = createUnsubscribeToken(email);
+  const token = createUnsubscribeToken(email, scope);
   return `${apiUrl}/api/email-unsubscribe/${encodeURIComponent(token)}`;
 }
 

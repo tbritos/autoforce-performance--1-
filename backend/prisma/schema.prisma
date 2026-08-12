@@ -1062,6 +1062,8 @@ model EmailBlast {
   audienceType  String // tag | segment | individual
   audienceValue String        @db.Text // tag name | segment id | JSON array de emails
   audienceCount Int           @default(0)
+  // NEWSLETTER | MARKETING | OPERATIONAL
+  communicationType String    @default("MARKETING")
   // status: draft | scheduled | sending | sent | failed | cancelled
   status        String        @default("draft")
   scheduledAt   DateTime?
@@ -1149,13 +1151,18 @@ model EmailSent {
 // Fica separada de Lead para o bloqueio sobreviver a exclusoes/reimportacoes.
 model EmailSuppression {
   id             String   @id @default(cuid())
-  email          String   @unique
+  email          String
+  // newsletter | marketing | all (denúncias de spam)
+  scope           String   @default("newsletter")
   reason         String   @default("unsubscribe")
   source         String?
   unsubscribedAt DateTime @default(now())
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  @@unique([email, scope])
+  @@index([email])
+  @@index([scope])
   @@index([unsubscribedAt])
 }
 

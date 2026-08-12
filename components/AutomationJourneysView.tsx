@@ -90,6 +90,22 @@ const SendEmailPanel: React.FC<{
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div style={{ display: 'grid', gap: 7 }}>
+        <span style={fieldLabelStyle}>Tipo de comunicação</span>
+        <select
+          value={config.communicationType ?? 'NEWSLETTER'}
+          onChange={event => onChange({ communicationType: event.target.value })}
+          aria-label="Tipo de comunicação do e-mail"
+          style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}
+        >
+          <option value="NEWSLETTER">Newsletter</option>
+          <option value="MARKETING">Marketing e nutrição</option>
+          <option value="OPERATIONAL">Operacional</option>
+        </select>
+        <span style={{ fontSize: 11.5, color: 'var(--fg-muted)', lineHeight: 1.45 }}>
+          O descadastro é aplicado somente à categoria escolhida. Denúncias de spam bloqueiam todas.
+        </span>
+      </div>
+      <div style={{ display: 'grid', gap: 7 }}>
         <span style={fieldLabelStyle}>Template de email</span>
         {loading ? (
           <div style={{ fontSize: 12, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>

@@ -1775,6 +1775,7 @@ export type SegmentType = {
   createdAt: string;
   updatedAt: string;
   leadCount?: number;
+  system?: boolean;
 };
 
 export async function fetchFieldValues(field: string): Promise<string[]> {

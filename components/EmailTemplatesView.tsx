@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Plus, Search, Mail, Trash2, Edit3, RefreshCw,
   AlertCircle, X, LayoutGrid, List,
-  Clock, Zap, Copy, ChevronRight,
+  Clock, Zap, Copy, ChevronRight, UserX,
 } from 'lucide-react';
 import { apiClient } from '../services/apiClient';
 
@@ -124,10 +124,16 @@ const EmailTemplatesView: React.FC = () => {
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>E-mails</h1>
           <p style={{ margin: '4px 0 0', fontSize: 14, color: 'var(--fg-muted)' }}>Crie, dispare e acompanhe os e-mails enviados aos seus leads.</p>
         </div>
-        <button onClick={() => navigate('/emails/new')}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 9, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px rgba(69,108,236,0.3)' }}>
-          <Plus size={15}/> Novo e-mail
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => navigate('/emails/unsubscribes')}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--fg-primary)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            <UserX size={15}/> Descadastros
+          </button>
+          <button onClick={() => navigate('/emails/new')}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 9, border: 'none', background: 'var(--accent)', color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px rgba(69,108,236,0.3)' }}>
+            <Plus size={15}/> Novo e-mail
+          </button>
+        </div>
       </div>
 
       {/* Search + filters */}

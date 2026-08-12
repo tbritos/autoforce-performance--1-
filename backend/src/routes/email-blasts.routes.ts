@@ -2,6 +2,12 @@ import { Router, Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/database';
 import { SegmentService, SegmentRules } from '../services/segment.service';
+import {
+  blockingSuppressionScopes,
+  NEWSLETTER_AUDIENCE_ID,
+  normalizeEmailCommunicationType,
+  type EmailCommunicationType,
+} from '../services/email-preferences.service';
 
 const router = Router();
 
@@ -15,19 +21,30 @@ const LEAD_SELECT = { email: true, name: true, company: true, phone: true, jobTi
 
 // Resolve a lista de leads de uma audiencia (tag | segment | individual).
 // Leads DISQUALIFIED (bot / inoperantes) nunca entram em um disparo.
-async function resolveAudienceLeads(audienceType: string, audienceValue: string): Promise<AudienceLead[]> {
+async function resolveAudienceLeads(
+  audienceType: string,
+  audienceValue: string,
+  communicationTypeValue: unknown = 'MARKETING',
+): Promise<AudienceLead[]> {
   const baseWhere: Prisma.LeadWhereInput = { deletedAt: null, status: { not: 'DISQUALIFIED' } };
+  const communicationType = audienceType === 'segment' && audienceValue === NEWSLETTER_AUDIENCE_ID
+    ? 'NEWSLETTER'
+    : normalizeEmailCommunicationType(communicationTypeValue);
 
   let leads: AudienceLead[];
 
   if (audienceType === 'tag') {
     leads = await prisma.lead.findMany({ where: { ...baseWhere, tags: { has: audienceValue } }, select: LEAD_SELECT });
   } else if (audienceType === 'segment') {
-    const segment = await prisma.segment.findUnique({ where: { id: audienceValue } });
-    if (!segment) return [];
-    const rules = segment.rules as unknown as SegmentRules;
-    const segmentWhere = SegmentService.buildWhere(rules);
-    leads = await prisma.lead.findMany({ where: { ...segmentWhere, status: { not: 'DISQUALIFIED' } }, select: LEAD_SELECT });
+    if (audienceValue === NEWSLETTER_AUDIENCE_ID) {
+      leads = await prisma.lead.findMany({ where: baseWhere, select: LEAD_SELECT });
+    } else {
+      const segment = await prisma.segment.findUnique({ where: { id: audienceValue } });
+      if (!segment) return [];
+      const rules = segment.rules as unknown as SegmentRules;
+      const segmentWhere = SegmentService.buildWhere(rules);
+      leads = await prisma.lead.findMany({ where: { ...segmentWhere, status: { not: 'DISQUALIFIED' } }, select: LEAD_SELECT });
+    }
   } else if (audienceType === 'individual') {
     let emails: string[] = [];
     try {
@@ -43,7 +60,10 @@ async function resolveAudienceLeads(audienceType: string, audienceValue: string)
 
   if (!leads.length) return leads;
   const normalized = leads.map(lead => lead.email.trim().toLowerCase());
-  const suppressions = await prisma.emailSuppression.findMany({ where: { email: { in: normalized } }, select: { email: true } });
+  const suppressions = await prisma.emailSuppression.findMany({
+    where: { email: { in: normalized }, scope: { in: blockingSuppressionScopes(communicationType) } },
+    select: { email: true },
+  });
   const blocked = new Set(suppressions.map(item => item.email));
   return leads.filter(lead => !blocked.has(lead.email.trim().toLowerCase()));
 }
@@ -68,7 +88,7 @@ async function sendBlastNow(blastId: string, opts: { resume?: boolean } = {}): P
 
   try {
     const { sendEmail, renderTemplate } = await import('../services/resend.service');
-    let leads = await resolveAudienceLeads(blast.audienceType, blast.audienceValue);
+    let leads = await resolveAudienceLeads(blast.audienceType, blast.audienceValue, blast.communicationType);
 
     // Verdade sempre vem do EmailSent — nunca confiar em sentCount/failedCount salvos,
     // que podem estar desatualizados apos um reinicio. "failed" e o unico status que
@@ -106,6 +126,7 @@ async function sendBlastNow(blastId: string, opts: { resume?: boolean } = {}): P
             fromEmail: blast.template.fromEmail ?? undefined,
             templateId: blast.templateId,
             blastId: blast.id,
+            communicationType: normalizeEmailCommunicationType(blast.communicationType),
           });
         } catch {
           return false;
@@ -190,9 +211,10 @@ router.get('/audience-preview', async (req: Request, res: Response) => {
   try {
     const audienceType = String(req.query.audienceType ?? '');
     const audienceValue = String(req.query.audienceValue ?? '');
+    const communicationType = String(req.query.communicationType ?? 'MARKETING');
     if (!audienceType || !audienceValue) { res.status(400).json({ error: 'audienceType e audienceValue são obrigatórios' }); return; }
 
-    const leads = await resolveAudienceLeads(audienceType, audienceValue);
+    const leads = await resolveAudienceLeads(audienceType, audienceValue, communicationType);
     res.json({ count: leads.length });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : 'Erro ao pré-visualizar audiência' });
@@ -264,17 +286,23 @@ router.get('/:id', async (req: Request, res: Response) => {
 // POST / — cria um disparo (rascunho, agendado, ou dispara na hora se sendNow=true)
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { name, templateId, audienceType, audienceValue, scheduledAt, sendNow } = req.body as Record<string, unknown>;
+    const { name, templateId, audienceType, audienceValue, communicationType, scheduledAt, sendNow } = req.body as Record<string, unknown>;
 
     if (!String(name ?? '').trim())          { res.status(400).json({ error: 'Nome é obrigatório' }); return; }
     if (!String(templateId ?? '').trim())    { res.status(400).json({ error: 'Template é obrigatório' }); return; }
     if (!String(audienceType ?? '').trim())  { res.status(400).json({ error: 'Tipo de audiência é obrigatório' }); return; }
     if (!String(audienceValue ?? '').trim()) { res.status(400).json({ error: 'Audiência é obrigatória' }); return; }
+    if (!String(communicationType ?? '').trim() && !(String(audienceType) === 'segment' && String(audienceValue) === NEWSLETTER_AUDIENCE_ID)) {
+      res.status(400).json({ error: 'Tipo de comunicação é obrigatório' }); return;
+    }
 
     const template = await prisma.emailTemplate.findUnique({ where: { id: String(templateId) } });
     if (!template) { res.status(404).json({ error: 'Template não encontrado' }); return; }
 
-    const leads = await resolveAudienceLeads(String(audienceType), String(audienceValue));
+    const normalizedCommunicationType: EmailCommunicationType = String(audienceType) === 'segment' && String(audienceValue) === NEWSLETTER_AUDIENCE_ID
+      ? 'NEWSLETTER'
+      : normalizeEmailCommunicationType(communicationType);
+    const leads = await resolveAudienceLeads(String(audienceType), String(audienceValue), normalizedCommunicationType);
     const scheduledDate = scheduledAt ? new Date(String(scheduledAt)) : null;
     const isFutureSchedule = scheduledDate !== null && scheduledDate.getTime() > Date.now();
 
@@ -285,6 +313,7 @@ router.post('/', async (req: Request, res: Response) => {
         audienceType: String(audienceType),
         audienceValue: String(audienceValue),
         audienceCount: leads.length,
+        communicationType: normalizedCommunicationType,
         status: isFutureSchedule ? 'scheduled' : 'draft',
         scheduledAt: isFutureSchedule ? scheduledDate : null,
       },

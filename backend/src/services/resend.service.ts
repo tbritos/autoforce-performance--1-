@@ -5,6 +5,12 @@ import {
   buildUnsubscribeUrl,
   normalizeUnsubscribeEmail,
 } from './email-unsubscribe.service';
+import {
+  blockingSuppressionScopes,
+  normalizeEmailCommunicationType,
+  suppressionScopeForCommunication,
+  type EmailCommunicationType,
+} from './email-preferences.service';
 
 const SEND_TIMEOUT_MS = 20_000;
 
@@ -41,6 +47,7 @@ export interface SendEmailInput {
   // Alertas operacionais podem ignorar a preferência de marketing.
   respectUnsubscribe?: boolean;
   includeUnsubscribe?: boolean;
+  communicationType?: EmailCommunicationType;
   // Opcional: recebe a mensagem de erro real quando o envio falha, sem mudar o
   // contrato de retorno (boolean) que os outros chamadores (disparo em massa)
   // ja dependem pra contar sucesso/falha.
@@ -84,6 +91,7 @@ export async function sendEmail(input: SendEmailInput): Promise<boolean> {
   let html = input.html;
 
   const respectUnsubscribe = input.respectUnsubscribe !== false;
+  const communicationType = normalizeEmailCommunicationType(input.communicationType);
   let normalizedEmail: string;
   try {
     normalizedEmail = normalizeUnsubscribeEmail(input.toEmail);
@@ -92,22 +100,28 @@ export async function sendEmail(input: SendEmailInput): Promise<boolean> {
   }
 
   if (respectUnsubscribe) {
-    const suppression = await prisma.emailSuppression.findUnique({ where: { email: normalizedEmail }, select: { id: true } });
+    const suppression = await prisma.emailSuppression.findFirst({
+      where: { email: normalizedEmail, scope: { in: blockingSuppressionScopes(communicationType) } },
+      select: { id: true },
+    });
     if (suppression) {
       status = 'suppressed';
     }
   }
 
   if (status !== 'suppressed') try {
-    const includeUnsubscribe = input.includeUnsubscribe !== false;
+    const unsubscribeScope = suppressionScopeForCommunication(communicationType);
+    const includeUnsubscribe = input.includeUnsubscribe ?? (unsubscribeScope !== null);
     const headers: Record<string, string> | undefined = includeUnsubscribe
       ? {
-          'List-Unsubscribe': `<${buildOneClickUnsubscribeUrl(normalizedEmail)}>`,
+          'List-Unsubscribe': `<${buildOneClickUnsubscribeUrl(normalizedEmail, unsubscribeScope ?? 'marketing')}>`,
           'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
         }
       : undefined;
     if (includeUnsubscribe) {
-      html = html.replace(/\{\{unsubscribe_url\}\}/gi, buildUnsubscribeUrl(normalizedEmail));
+      html = html.replace(/\{\{unsubscribe_url\}\}/gi, buildUnsubscribeUrl(normalizedEmail, unsubscribeScope ?? 'marketing'));
+    } else {
+      html = html.replace(/\{\{unsubscribe_url\}\}/gi, '');
     }
     const client = getResend();
     const result = await withTimeout(

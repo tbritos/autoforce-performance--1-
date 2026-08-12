@@ -1,5 +1,6 @@
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
+import { blockingSuppressionScopes, NEWSLETTER_AUDIENCE_ID } from './email-preferences.service';
 
 export type RuleCondition = {
   id: string;
@@ -14,6 +15,33 @@ export type SegmentRules = {
 };
 
 export class SegmentService {
+
+  private static newsletterSegment(leadCount?: number) {
+    return {
+      id: NEWSLETTER_AUDIENCE_ID,
+      name: 'Newsletter — Inscritos',
+      description: 'Base ativa menos quem se descadastrou da newsletter ou denunciou spam.',
+      color: '#4057df',
+      rules: { logic: 'AND' as const, conditions: [] },
+      createdBy: 'system',
+      createdAt: new Date(0),
+      updatedAt: new Date(),
+      system: true,
+      ...(leadCount !== undefined ? { leadCount } : {}),
+    };
+  }
+
+  private static async newsletterEligibleWhere(): Promise<Prisma.LeadWhereInput> {
+    const blocked = await prisma.emailSuppression.findMany({
+      where: { scope: { in: blockingSuppressionScopes('NEWSLETTER') } },
+      select: { email: true },
+    });
+    return {
+      deletedAt: null,
+      status: { not: 'DISQUALIFIED' },
+      ...(blocked.length ? { email: { notIn: blocked.map(item => item.email) } } : {}),
+    };
+  }
 
   private static csvCell(value: unknown): string {
     if (value === null || value === undefined) return '';
@@ -103,15 +131,22 @@ export class SegmentService {
 
   static async listSegments() {
     const segments = await prisma.segment.findMany({ orderBy: { createdAt: 'desc' } });
-    const withCounts = await Promise.all(segments.map(async seg => {
+    const [newsletterCount, withCounts] = await Promise.all([
+      SegmentService.newsletterEligibleWhere().then(where => prisma.lead.count({ where })),
+      Promise.all(segments.map(async seg => {
       const rules = seg.rules as unknown as SegmentRules;
       const count = await prisma.lead.count({ where: SegmentService.buildWhere(rules) });
       return { ...seg, leadCount: count };
-    }));
-    return withCounts;
+      })),
+    ]);
+    return [SegmentService.newsletterSegment(newsletterCount), ...withCounts];
   }
 
   static async getSegment(id: string) {
+    if (id === NEWSLETTER_AUDIENCE_ID) {
+      const count = await prisma.lead.count({ where: await SegmentService.newsletterEligibleWhere() });
+      return SegmentService.newsletterSegment(count);
+    }
     return prisma.segment.findUniqueOrThrow({ where: { id } });
   }
 
@@ -128,6 +163,7 @@ export class SegmentService {
   }
 
   static async updateSegment(id: string, data: { name?: string; description?: string; color?: string; rules?: SegmentRules }) {
+    if (id === NEWSLETTER_AUDIENCE_ID) throw new Error('Este segmento é gerenciado automaticamente pelo sistema.');
     return prisma.segment.update({
       where: { id },
       data: {
@@ -140,6 +176,7 @@ export class SegmentService {
   }
 
   static async deleteSegment(id: string) {
+    if (id === NEWSLETTER_AUDIENCE_ID) throw new Error('Este segmento é gerenciado automaticamente pelo sistema.');
     return prisma.segment.delete({ where: { id } });
   }
 
@@ -148,6 +185,22 @@ export class SegmentService {
   }
 
   static async getSegmentLeads(id: string, page = 1, pageSize = 25) {
+    if (id === NEWSLETTER_AUDIENCE_ID) {
+      const where = await SegmentService.newsletterEligibleWhere();
+      const skip = (page - 1) * pageSize;
+      const [total, leads] = await Promise.all([
+        prisma.lead.count({ where }),
+        prisma.lead.findMany({
+          where, skip, take: pageSize,
+          orderBy: { lastSeenAt: 'desc' },
+          select: {
+            id: true, email: true, name: true, company: true, status: true,
+            isHot: true, firstSource: true, firstMedium: true, lastSeenAt: true,
+          },
+        }),
+      ]);
+      return { total, page, pageSize, leads };
+    }
     const seg = await prisma.segment.findUniqueOrThrow({ where: { id } });
     const rules = seg.rules as unknown as SegmentRules;
     const where = SegmentService.buildWhere(rules);
@@ -167,8 +220,10 @@ export class SegmentService {
   }
 
   static async exportSegment(id: string) {
-    const seg = await prisma.segment.findUniqueOrThrow({ where: { id } });
-    const where = SegmentService.buildWhere(seg.rules as unknown as SegmentRules);
+    const seg = await SegmentService.getSegment(id);
+    const where = id === NEWSLETTER_AUDIENCE_ID
+      ? await SegmentService.newsletterEligibleWhere()
+      : SegmentService.buildWhere(seg.rules as unknown as SegmentRules);
     const leads = await prisma.lead.findMany({
       where,
       orderBy: { lastSeenAt: 'desc' },

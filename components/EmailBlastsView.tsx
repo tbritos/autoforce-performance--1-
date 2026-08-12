@@ -11,6 +11,8 @@ import { apiClient } from '../services/apiClient';
 
 type BlastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed' | 'cancelled';
 type AudienceType = 'tag' | 'segment' | 'individual';
+type CommunicationType = 'NEWSLETTER' | 'MARKETING' | 'OPERATIONAL';
+const NEWSLETTER_AUDIENCE_ID = '__newsletter_subscribers__';
 
 interface EmailBlast {
   id: string;
@@ -20,6 +22,7 @@ interface EmailBlast {
   audienceType: AudienceType;
   audienceValue: string;
   audienceCount: number;
+  communicationType: CommunicationType;
   status: BlastStatus;
   scheduledAt: string | null;
   sentCount: number;
@@ -64,6 +67,12 @@ const AUDIENCE_LABEL: Record<AudienceType, string> = {
   tag: 'Tag', segment: 'Segmento', individual: 'Individual',
 };
 
+const COMMUNICATION_LABEL: Record<CommunicationType, string> = {
+  NEWSLETTER: 'Newsletter',
+  MARKETING: 'Marketing e nutrição',
+  OPERATIONAL: 'Operacional',
+};
+
 // ─── New Blast Modal ───────────────────────────────────────────────────────────
 
 const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ onClose, onDone }) => {
@@ -71,6 +80,7 @@ const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ 
 
   const [templates, setTemplates]   = useState<EmailTemplateOption[]>([]);
   const [templateId, setTemplateId] = useState('');
+  const [communicationType, setCommunicationType] = useState<CommunicationType | ''>('');
 
   const [audienceType, setAudienceType] = useState<AudienceType>('tag');
   const [tags, setTags]           = useState<string[]>([]);
@@ -111,20 +121,24 @@ const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ 
     : JSON.stringify(selectedLeads.map(l => l.email));
 
   const hasAudience = audienceType === 'individual' ? selectedLeads.length > 0 : Boolean(audienceValue);
+  const effectiveCommunicationType: CommunicationType | '' = audienceType === 'segment' && audienceValue === NEWSLETTER_AUDIENCE_ID
+    ? 'NEWSLETTER'
+    : communicationType;
 
   useEffect(() => {
-    if (!hasAudience) { setPreviewCount(null); return; }
+    if (!hasAudience || !effectiveCommunicationType) { setPreviewCount(null); return; }
     setPreviewLoading(true);
-    apiClient.get<{ count: number }>(`/email-blasts/audience-preview?audienceType=${audienceType}&audienceValue=${encodeURIComponent(audienceValue)}`)
+    apiClient.get<{ count: number }>(`/email-blasts/audience-preview?audienceType=${audienceType}&audienceValue=${encodeURIComponent(audienceValue)}&communicationType=${effectiveCommunicationType}`)
       .then(res => setPreviewCount(res.count))
       .catch(() => setPreviewCount(null))
       .finally(() => setPreviewLoading(false));
-  }, [audienceType, audienceValue, hasAudience]);
+  }, [audienceType, audienceValue, effectiveCommunicationType, hasAudience]);
 
   const selectedTemplate = templates.find(t => t.id === templateId);
 
   const handleSubmit = async () => {
     if (!name.trim()) { setError('Dê um nome para este disparo.'); return; }
+    if (!effectiveCommunicationType) { setError('Escolha o tipo de comunicação.'); return; }
     setSaving(true);
     setError(null);
     try {
@@ -133,6 +147,7 @@ const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ 
         templateId,
         audienceType,
         audienceValue,
+        communicationType: effectiveCommunicationType,
         scheduledAt: sendMode === 'schedule' && scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
         sendNow: sendMode === 'now',
       });
@@ -186,6 +201,18 @@ const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ 
           {step === 'template' && (
             <>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>Tipo de comunicação</span>
+                <select value={communicationType} onChange={e => setCommunicationType(e.target.value as CommunicationType)} style={inputStyle} aria-label="Tipo de comunicação">
+                  <option value="">Selecione o tipo...</option>
+                  <option value="NEWSLETTER">Newsletter — respeita os descadastros da newsletter</option>
+                  <option value="MARKETING">Marketing e nutrição — preferência separada</option>
+                  <option value="OPERATIONAL">Operacional — propostas, reuniões e avisos necessários</option>
+                </select>
+                <p style={{ margin: 0, fontSize: 11.5, color: 'var(--fg-muted)', lineHeight: 1.45 }}>
+                  E-mails operacionais não são bloqueados por um descadastro da newsletter. Denúncias de spam continuam bloqueando qualquer categoria.
+                </p>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>Template</span>
                 <select value={templateId} onChange={e => setTemplateId(e.target.value)} style={inputStyle}>
                   <option value="">Selecione um template...</option>
@@ -199,8 +226,8 @@ const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ 
                 </p>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button type="button" disabled={!templateId} onClick={() => setStep('audience')}
-                  style={{ padding: '9px 22px', borderRadius: 8, border: 'none', background: templateId ? 'var(--accent)' : 'var(--bg-muted)', color: templateId ? 'white' : 'var(--fg-subtle)', fontSize: 13, fontWeight: 700, cursor: templateId ? 'pointer' : 'not-allowed' }}>
+                <button type="button" disabled={!templateId || !communicationType} onClick={() => setStep('audience')}
+                  style={{ padding: '9px 22px', borderRadius: 8, border: 'none', background: templateId && communicationType ? 'var(--accent)' : 'var(--bg-muted)', color: templateId && communicationType ? 'white' : 'var(--fg-subtle)', fontSize: 13, fontWeight: 700, cursor: templateId && communicationType ? 'pointer' : 'not-allowed' }}>
                   Continuar
                 </button>
               </div>
@@ -232,7 +259,10 @@ const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ 
               )}
 
               {audienceType === 'segment' && (
-                <select value={selectedSegment} onChange={e => setSelectedSegment(e.target.value)} style={inputStyle}>
+                <select value={selectedSegment} onChange={e => {
+                  setSelectedSegment(e.target.value);
+                  if (e.target.value === NEWSLETTER_AUDIENCE_ID) setCommunicationType('NEWSLETTER');
+                }} style={inputStyle}>
                   <option value="">Selecione um segmento...</option>
                   {segments.map(seg => <option key={seg.id} value={seg.id}>{seg.name} ({seg.leadCount.toLocaleString('pt-BR')} leads)</option>)}
                 </select>
@@ -278,7 +308,7 @@ const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ 
                 {previewLoading ? (
                   <><RefreshCw size={14} className="animate-spin" /> Calculando audiência...</>
                 ) : previewCount !== null ? (
-                  <><Users size={14} style={{ color: 'var(--accent)' }} /> <strong>{previewCount.toLocaleString('pt-BR')}</strong>&nbsp;leads vão receber este email (leads desqualificados já excluídos)</>
+                  <><Users size={14} style={{ color: 'var(--accent)' }} /> <strong>{previewCount.toLocaleString('pt-BR')}</strong>&nbsp;leads vão receber este e-mail (desqualificados e descadastros desta categoria já excluídos)</>
                 ) : (
                   <span style={{ color: 'var(--fg-muted)' }}>Selecione a audiência para ver quantos leads serão alcançados.</span>
                 )}
@@ -404,6 +434,7 @@ const EmailBlastsView: React.FC = () => {
     if (b.audienceType === 'individual') {
       try { return `${(JSON.parse(b.audienceValue) as string[]).length} leads selecionados`; } catch { return 'Individual'; }
     }
+    if (b.audienceValue === NEWSLETTER_AUDIENCE_ID) return 'Newsletter — Inscritos';
     return 'Segmento';
   };
 
@@ -457,7 +488,7 @@ const EmailBlastsView: React.FC = () => {
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{blast.name}</div>
                 <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {blast.template?.name} — {blast.template?.subject || <em>(sem assunto)</em>}
+                  {blast.template?.name} — {COMMUNICATION_LABEL[blast.communicationType] ?? 'Marketing e nutrição'} — {blast.template?.subject || <em>(sem assunto)</em>}
                 </div>
               </div>
 

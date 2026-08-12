@@ -737,8 +737,8 @@ app.post('/api/resend-webhook', express.json(), async (req, res) => {
       const email = normalizeEmail(current.toEmail);
       if (email) {
         await db.emailSuppression.upsert({
-          where: { email },
-          create: { email, reason: 'complaint', source: 'resend-webhook', unsubscribedAt: now },
+          where: { email_scope: { email, scope: 'all' } },
+          create: { email, scope: 'all', reason: 'complaint', source: 'resend-webhook', unsubscribedAt: now },
           update: {},
         });
       }

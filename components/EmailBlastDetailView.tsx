@@ -10,6 +10,8 @@ import { apiClient } from '../services/apiClient';
 type BlastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed' | 'cancelled';
 type SendStatus  = 'sent' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'failed';
 type AudienceType = 'tag' | 'segment' | 'individual';
+type CommunicationType = 'NEWSLETTER' | 'MARKETING' | 'OPERATIONAL';
+const NEWSLETTER_AUDIENCE_ID = '__newsletter_subscribers__';
 
 interface BlastStats {
   sent: number; delivered: number; opened: number;
@@ -40,6 +42,7 @@ interface EmailBlast {
   audienceType: AudienceType;
   audienceValue: string;
   audienceCount: number;
+  communicationType: CommunicationType;
   status: BlastStatus;
   scheduledAt: string | null;
   sentCount: number;
@@ -76,6 +79,7 @@ const SEND_STATUS_CFG: Record<SendStatus, { label: string; bg: string; color: st
 
 const AUDIENCE_ICON: Record<AudienceType, React.ElementType> = { tag: Tag, segment: Layers, individual: Users };
 const AUDIENCE_LABEL: Record<AudienceType, string> = { tag: 'Tag', segment: 'Segmento', individual: 'Individual' };
+const COMMUNICATION_LABEL: Record<CommunicationType, string> = { NEWSLETTER: 'Newsletter', MARKETING: 'Marketing e nutrição', OPERATIONAL: 'Operacional' };
 
 const fmt = (d: string | null) => {
   if (!d) return '—';
@@ -182,7 +186,7 @@ const EmailBlastDetailView: React.FC = () => {
   const AudienceIcon = AUDIENCE_ICON[blast.audienceType];
 
   const audienceDetail = blast.audienceType === 'tag' ? `Tag: ${blast.audienceValue}`
-    : blast.audienceType === 'segment' ? 'Segmento configurado'
+    : blast.audienceType === 'segment' ? (blast.audienceValue === NEWSLETTER_AUDIENCE_ID ? 'Newsletter — Inscritos' : 'Segmento configurado')
     : (() => { try { return `${(JSON.parse(blast.audienceValue) as string[]).length} leads selecionados manualmente`; } catch { return 'Individual'; } })();
 
   return (
@@ -230,11 +234,16 @@ const EmailBlastDetailView: React.FC = () => {
 
       {/* Info card */}
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, marginBottom: 20 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16 }}>
           <div>
             <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Audiência</div>
             <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}><AudienceIcon size={12} />{AUDIENCE_LABEL[blast.audienceType]}</div>
             <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{audienceDetail} · {blast.audienceCount.toLocaleString('pt-BR')} leads</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tipo de comunicação</div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{COMMUNICATION_LABEL[blast.communicationType] ?? 'Marketing e nutrição'}</div>
+            <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Preferência aplicada no envio</div>
           </div>
           <div>
             <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Remetente</div>

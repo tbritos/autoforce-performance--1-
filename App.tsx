@@ -20,6 +20,7 @@ import ReportBuilderView from './components/ReportBuilderView';
 import AutomationJourneysView from './components/AutomationJourneysView';
 import AIAgentsView from './components/AIAgentsView';
 import EmailTemplatesView from './components/EmailTemplatesView';
+import EmailSuppressionsView from './components/EmailSuppressionsView';
 import EmailEditorView from './components/EmailEditorView';
 import EmailTemplateDetailView from './components/EmailTemplateDetailView';
 import EmailBlastsView from './components/EmailBlastsView';
@@ -1660,6 +1661,7 @@ const AppContent: React.FC = () => {
             <Route path="/campaigns" element={<CampaignsView />} />
             <Route path="/analytics" element={<LPView />} />
             <Route path="/emails" element={<EmailTemplatesView />} />
+            <Route path="/emails/unsubscribes" element={<EmailSuppressionsView />} />
             <Route path="/emails/new" element={<EmailEditorView />} />
             <Route path="/emails/:id" element={<EmailTemplateDetailView />} />
             <Route path="/emails/:id/edit" element={<EmailEditorView />} />

@@ -5,6 +5,7 @@ import {
   createUnsubscribeToken,
   maskUnsubscribeEmail,
   normalizeUnsubscribeEmail,
+  readUnsubscribePreferenceToken,
   readUnsubscribeToken,
 } from './email-unsubscribe.service';
 
@@ -28,6 +29,14 @@ test('token de desinscrição protege e recupera o email normalizado', () => wit
   assert.equal(readUnsubscribeToken(token), 'pessoa@exemplo.com');
   assert.equal(token.includes('pessoa'), false);
   assert.equal(token.includes('@'), false);
+}));
+
+test('token registra a categoria e mantém links antigos como newsletter', () => withEnv(() => {
+  const marketing = createUnsubscribeToken('pessoa@exemplo.com', 'marketing');
+  assert.deepEqual(readUnsubscribePreferenceToken(marketing), { email: 'pessoa@exemplo.com', scope: 'marketing' });
+
+  const newsletter = createUnsubscribeToken('pessoa@exemplo.com');
+  assert.deepEqual(readUnsubscribePreferenceToken(newsletter), { email: 'pessoa@exemplo.com', scope: 'newsletter' });
 }));
 
 test('token adulterado é rejeitado', () => withEnv(() => {

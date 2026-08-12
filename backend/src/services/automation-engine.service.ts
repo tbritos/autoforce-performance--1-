@@ -9,6 +9,7 @@ import {
   normalizeAutomationPriority,
   normalizeQueueTtlHours,
 } from './automation-priority.utils';
+import { normalizeEmailCommunicationType } from './email-preferences.service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1754,6 +1755,10 @@ async function executeSendEmail(
     templateId:            templateId ?? undefined,
     automationExecutionId: executionId,
     automationNodeId:      nodeId,
+    // Fluxos antigos não tinham classificação. Tratá-los como newsletter é
+    // o fallback conservador: mantém respeitados os descadastros históricos
+    // até que o responsável revise e classifique cada bloco explicitamente.
+    communicationType:     normalizeEmailCommunicationType(config.communicationType, 'NEWSLETTER'),
   });
 }
 

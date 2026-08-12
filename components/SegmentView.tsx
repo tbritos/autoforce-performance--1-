@@ -755,6 +755,7 @@ export const SegmentView: React.FC = () => {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {seg.name}
+                    {seg.system && <span style={{ marginLeft: 7, padding: '2px 6px', borderRadius: 999, background: 'var(--accent-soft)', color: 'var(--accent)', fontSize: 9, fontWeight: 800, verticalAlign: 'middle' }}>AUTOMÁTICO</span>}
                   </div>
                   {seg.description && (
                     <div style={{ fontSize: 12, color: 'var(--fg-muted)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -772,7 +773,9 @@ export const SegmentView: React.FC = () => {
 
               {/* Conditions summary */}
               <div style={{ fontSize: 11, color: 'var(--fg-muted)', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {seg.rules.conditions.length === 0 ? (
+                {seg.system ? (
+                  <span style={{ fontStyle: 'italic' }}>Base ativa menos descadastros da newsletter</span>
+                ) : seg.rules.conditions.length === 0 ? (
                   <span style={{ fontStyle: 'italic' }}>Sem filtros — todos os leads</span>
                 ) : seg.rules.conditions.slice(0, 3).map((c, i) => {
                   const meta = getFieldMeta(c.field);
@@ -806,12 +809,14 @@ export const SegmentView: React.FC = () => {
                 <button onClick={() => handleExport(seg)} disabled={exportingId === seg.id} title="Exportar leads deste segmento" style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', fontSize: 12, color: exportingId === seg.id ? '#d1d5db' : 'var(--fg-muted)', cursor: exportingId === seg.id ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center' }}>
                   <Download size={13} />
                 </button>
-                <button onClick={() => openEdit(seg)} title="Editar" style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', fontSize: 12, color: 'var(--fg-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                  <Edit2 size={13} />
-                </button>
-                <button onClick={() => handleDelete(seg.id)} disabled={deletingId === seg.id} title="Excluir" style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', fontSize: 12, color: deletingId === seg.id ? '#d1d5db' : 'var(--fg-muted)', cursor: deletingId === seg.id ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center' }}>
-                  <Trash2 size={13} />
-                </button>
+                {!seg.system && <>
+                  <button onClick={() => openEdit(seg)} title="Editar" style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', fontSize: 12, color: 'var(--fg-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                    <Edit2 size={13} />
+                  </button>
+                  <button onClick={() => handleDelete(seg.id)} disabled={deletingId === seg.id} title="Excluir" style={{ padding: '7px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', fontSize: 12, color: deletingId === seg.id ? '#d1d5db' : 'var(--fg-muted)', cursor: deletingId === seg.id ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center' }}>
+                    <Trash2 size={13} />
+                  </button>
+                </>}
               </div>
             </div>
           ))}

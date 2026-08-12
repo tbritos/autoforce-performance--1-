@@ -9,6 +9,7 @@ const EmailUnsubscribeView: React.FC = () => {
   const token = useMemo(() => new URLSearchParams(window.location.search).get('token') ?? '', []);
   const [state, setState] = useState<PageState>('loading');
   const [emailMasked, setEmailMasked] = useState('');
+  const [categoryLabel, setCategoryLabel] = useState('Newsletter');
   const [message, setMessage] = useState('');
 
   useEffect(() => {
@@ -21,9 +22,10 @@ const EmailUnsubscribeView: React.FC = () => {
     const controller = new AbortController();
     fetch(`${API_URL}/email-unsubscribe/${encodeURIComponent(token)}`, { signal: controller.signal })
       .then(async response => {
-        const data = await response.json().catch(() => ({})) as { emailMasked?: string; unsubscribed?: boolean; error?: string };
+        const data = await response.json().catch(() => ({})) as { emailMasked?: string; categoryLabel?: string; unsubscribed?: boolean; error?: string };
         if (!response.ok) throw new Error(data.error || 'Não foi possível validar este link.');
         setEmailMasked(data.emailMasked ?? '');
+        setCategoryLabel(data.categoryLabel ?? 'Newsletter');
         setState(data.unsubscribed ? 'already' : 'ready');
       })
       .catch(error => {
@@ -39,9 +41,10 @@ const EmailUnsubscribeView: React.FC = () => {
     setState('submitting');
     try {
       const response = await fetch(`${API_URL}/email-unsubscribe/${encodeURIComponent(token)}`, { method: 'POST' });
-      const data = await response.json().catch(() => ({})) as { emailMasked?: string; error?: string };
+      const data = await response.json().catch(() => ({})) as { emailMasked?: string; categoryLabel?: string; error?: string };
       if (!response.ok) throw new Error(data.error || 'Não foi possível concluir a desinscrição.');
       setEmailMasked(data.emailMasked ?? emailMasked);
+      setCategoryLabel(data.categoryLabel ?? categoryLabel);
       setState('success');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Não foi possível concluir a desinscrição.');
@@ -73,7 +76,7 @@ const EmailUnsubscribeView: React.FC = () => {
           {(state === 'ready' || state === 'submitting') && (
             <>
               <h1 style={titleStyle}>Cancelar recebimento</h1>
-              <p style={textStyle}>Você deixará de receber newsletters e comunicações de marketing enviadas para:</p>
+              <p style={textStyle}>Você deixará de receber e-mails da categoria <strong>{categoryLabel}</strong> enviados para:</p>
               <div style={{ margin: '18px 0 24px', padding: '11px 16px', borderRadius: 10, background: '#f8fafc', border: '1px solid #e5e7eb', fontSize: 14, fontWeight: 700, color: '#374151' }}>{emailMasked}</div>
               <button type="button" onClick={confirmUnsubscribe} disabled={state === 'submitting'} style={{ width: '100%', padding: '13px 20px', border: 0, borderRadius: 10, background: '#374fe2', color: '#fff', fontSize: 15, fontWeight: 750, cursor: state === 'submitting' ? 'wait' : 'pointer', opacity: state === 'submitting' ? 0.7 : 1 }}>
                 {state === 'submitting' ? 'Confirmando...' : 'Confirmar desinscrição'}
@@ -82,8 +85,8 @@ const EmailUnsubscribeView: React.FC = () => {
             </>
           )}
 
-          {state === 'success' && <><h1 style={titleStyle}>Desinscrição confirmada</h1><p style={textStyle}>O endereço <strong>{emailMasked}</strong> não receberá as próximas newsletters.</p></>}
-          {state === 'already' && <><h1 style={titleStyle}>Você já está desinscrito</h1><p style={textStyle}>O endereço <strong>{emailMasked}</strong> já não recebe nossas newsletters.</p></>}
+          {state === 'success' && <><h1 style={titleStyle}>Desinscrição confirmada</h1><p style={textStyle}>O endereço <strong>{emailMasked}</strong> não receberá mais e-mails da categoria <strong>{categoryLabel}</strong>.</p></>}
+          {state === 'already' && <><h1 style={titleStyle}>Você já está desinscrito</h1><p style={textStyle}>O endereço <strong>{emailMasked}</strong> já não recebe e-mails da categoria <strong>{categoryLabel}</strong>.</p></>}
           {state === 'error' && <><h1 style={titleStyle}>Não foi possível continuar</h1><p style={textStyle}>{message}</p></>}
 
           <div style={{ marginTop: 30, paddingTop: 20, borderTop: '1px solid #f0f1f4', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, color: '#9ca3af', fontSize: 12 }}>
