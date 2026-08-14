@@ -73,10 +73,15 @@ export default function WhatsAppHealthPanel({ numbers }: Props) {
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
+    if (!phoneNumberId) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
-      setData(await DataService.getWhatsAppNumberHealth(days, phoneNumberId || undefined));
+      setData(await DataService.getWhatsAppNumberHealth(days, phoneNumberId));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível carregar a saúde do WhatsApp.');
     } finally {
@@ -85,6 +90,15 @@ export default function WhatsAppHealthPanel({ numbers }: Props) {
   }, [days, phoneNumberId]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (numbers.length === 0) {
+      setPhoneNumberId('');
+      return;
+    }
+    if (!numbers.some(number => number.id === phoneNumberId)) {
+      setPhoneNumberId(numbers[0].id);
+    }
+  }, [numbers, phoneNumberId]);
 
   const selectedNumber = numbers.find(number => number.id === phoneNumberId);
   const quality = QUALITY_META[selectedNumber?.quality_rating ?? 'UNKNOWN'] ?? QUALITY_META.UNKNOWN;
@@ -96,11 +110,10 @@ export default function WhatsAppHealthPanel({ numbers }: Props) {
       <div className="ds-card" style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: 14, fontWeight: 750, color: 'var(--fg-primary)' }}>Saúde do número</div>
-          <div style={{ marginTop: 3, fontSize: 12, color: 'var(--fg-muted)' }}>Métricas calculadas somente sobre envios de templates registrados no sistema.</div>
+          <div style={{ marginTop: 3, fontSize: 12, color: 'var(--fg-muted)' }}>Todas as métricas consideram somente o número selecionado.</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <select aria-label="Número do WhatsApp" value={phoneNumberId} onChange={event => setPhoneNumberId(event.target.value)} className="ds-input" style={{ minWidth: 220, height: 38 }}>
-            <option value="">Todos os números</option>
             {numbers.map(number => <option key={number.id} value={number.id}>{number.label || number.verified_name || number.display_phone_number} — {number.display_phone_number}</option>)}
           </select>
           <select aria-label="Período da saúde" value={days} onChange={event => setDays(Number(event.target.value))} className="ds-input" style={{ height: 38 }}>
@@ -118,18 +131,18 @@ export default function WhatsAppHealthPanel({ numbers }: Props) {
 
       {loading && !data ? (
         <div className="ds-card" style={{ minHeight: 260, display: 'grid', placeItems: 'center', color: 'var(--fg-muted)' }}><span><RefreshCw size={18} className="animate-spin" style={{ display: 'inline', marginRight: 8 }} />Calculando métricas...</span></div>
+      ) : numbers.length === 0 ? (
+        <div className="ds-card" style={{ minHeight: 220, display: 'grid', placeItems: 'center', padding: 24, textAlign: 'center', color: 'var(--fg-muted)' }}><div><Smartphone size={24} style={{ margin: '0 auto 8px' }} /><strong style={{ display: 'block', color: 'var(--fg-primary)', marginBottom: 4 }}>Nenhum número disponível</strong>Cadastre ou conecte um número do WhatsApp para acompanhar sua saúde.</div></div>
       ) : data && metrics ? <>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
           <MetricCard
             icon={Smartphone}
             label="Qualidade Meta"
-            value={phoneNumberId ? quality.label : 'Selecione um número'}
-            color={phoneNumberId ? quality.color : '#64748b'}
-            detail={phoneNumberId
-              ? selectedNumber?.quality_rating === 'UNKNOWN'
-                ? 'A Meta ainda não informou a qualidade deste número.'
-                : 'Saúde oficial do número informada diretamente pela Meta.'
-              : 'A Meta informa a qualidade individualmente para cada número.'}
+            value={quality.label}
+            color={quality.color}
+            detail={selectedNumber?.quality_rating === 'UNKNOWN'
+              ? 'A Meta ainda não informou a qualidade deste número.'
+              : 'Saúde oficial do número informada diretamente pela Meta.'}
           />
           <MetricCard icon={Send} label="Templates enviados" value={metrics.totalTemplates.toLocaleString('pt-BR')} detail={`${metrics.uniqueRecipients.toLocaleString('pt-BR')} destinatários únicos`} />
           <MetricCard
@@ -193,23 +206,6 @@ export default function WhatsAppHealthPanel({ numbers }: Props) {
             </div>
           )}
         </div>
-
-        {!phoneNumberId && data.byNumber.length > 0 && (
-          <div className="ds-card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ padding: '15px 18px', borderBottom: '1px solid var(--border)' }}><div style={{ fontSize: 14, fontWeight: 750, color: 'var(--fg-primary)' }}>Resumo por número</div></div>
-            <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
-              <thead><tr style={{ background: 'var(--bg-muted)' }}>{['Número', 'Tentativas', 'Entregues', 'Lidas', 'Falhas', 'Taxa de erro'].map(label => <th key={label} style={{ padding: '10px 14px', textAlign: 'left', fontSize: 10, color: 'var(--fg-muted)', textTransform: 'uppercase' }}>{label}</th>)}</tr></thead>
-              <tbody>{data.byNumber.map(number => <tr key={number.phoneNumberId} style={{ borderTop: '1px solid var(--border)' }}>
-                <td style={{ padding: '12px 14px' }}><div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--fg-primary)' }}>{number.label || number.displayPhoneNumber || number.phoneNumberId}</div><div style={{ fontSize: 10.5, color: 'var(--fg-muted)', marginTop: 2 }}>{number.phoneNumberId}</div></td>
-                <td style={{ padding: '12px 14px', fontSize: 12 }}>{number.totalTemplates.toLocaleString('pt-BR')}</td>
-                <td style={{ padding: '12px 14px', fontSize: 12 }}>{number.delivered.toLocaleString('pt-BR')}</td>
-                <td style={{ padding: '12px 14px', fontSize: 12 }}>{number.read.toLocaleString('pt-BR')}</td>
-                <td style={{ padding: '12px 14px', fontSize: 12 }}>{number.failed.toLocaleString('pt-BR')}</td>
-                <td style={{ padding: '12px 14px', fontSize: 12, fontWeight: 750, color: number.errorRate > 5 ? '#dc2626' : number.errorRate > 2 ? '#b45309' : '#15803d' }}>{percent(number.errorRate)}</td>
-              </tr>)}</tbody>
-            </table></div>
-          </div>
-        )}
 
         <div className="ds-card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '15px 18px', borderBottom: '1px solid var(--border)' }}>

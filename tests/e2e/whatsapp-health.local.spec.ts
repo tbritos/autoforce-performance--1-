@@ -46,6 +46,18 @@ test.describe('Saúde do número de WhatsApp — localhost', () => {
   });
 
   test('tela mostra indicadores, gráfico, erros e filtros', async ({ page }) => {
+    await page.route('**/api/whatsapp/numbers', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{
+        id: 'meta-number-qa',
+        display_phone_number: '+55 84 99999-0000',
+        verified_name: 'AutoForce QA',
+        quality_rating: 'GREEN',
+        label: 'Comercial QA',
+        isRegistered: true,
+      }]),
+    }));
     await enterLocal(page);
     await page.getByRole('button', { name: 'Saúde do número', exact: true }).click();
 
@@ -55,6 +67,10 @@ test.describe('Saúde do número de WhatsApp — localhost', () => {
     await expect(page.getByText('Templates enviados', { exact: true })).toBeVisible();
     await expect(page.getByText('Taxa de entrega', { exact: true })).toBeVisible();
     await expect(page.getByText('Taxa de leitura', { exact: true })).toBeVisible();
+    await expect(page.getByText('Todas as métricas consideram somente o número selecionado.', { exact: true })).toBeVisible();
+    const number = page.getByLabel('Número do WhatsApp');
+    await expect(number).toHaveValue('meta-number-qa');
+    await expect(number.locator('option')).toHaveCount(1);
     const noErrors = page.getByText('Nenhum erro no período', { exact: true });
     if (await noErrors.isVisible().catch(() => false)) {
       await expect(noErrors).toBeVisible();
