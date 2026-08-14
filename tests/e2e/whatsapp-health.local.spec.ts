@@ -51,6 +51,7 @@ test.describe('Saúde do número de WhatsApp — localhost', () => {
 
     await expect(page.getByText('Quais erros estão acontecendo', { exact: true })).toBeVisible();
     await expect(page.getByText('Evolução dos envios', { exact: true })).toBeVisible();
+    await expect(page.getByText('Qualidade Meta', { exact: true })).toBeVisible();
     await expect(page.getByText('Templates enviados', { exact: true })).toBeVisible();
     await expect(page.getByText('Taxa de entrega', { exact: true })).toBeVisible();
     await expect(page.getByText('Taxa de leitura', { exact: true })).toBeVisible();

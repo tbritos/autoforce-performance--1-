@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Activity,
@@ -8,7 +8,6 @@ import {
   MessageSquareWarning,
   RefreshCw,
   Send,
-  ShieldAlert,
   Smartphone,
 } from 'lucide-react';
 import {
@@ -34,13 +33,6 @@ const QUALITY_META: Record<string, { label: string; color: string; bg: string }>
   RED: { label: 'Baixa', color: '#dc2626', bg: '#fee2e2' },
   UNKNOWN: { label: 'Não informada', color: '#64748b', bg: '#f1f5f9' },
 };
-
-const HEALTH_META = {
-  healthy: { label: 'Saudável', color: '#15803d', bg: '#dcfce7', icon: CheckCircle2 },
-  attention: { label: 'Atenção', color: '#b45309', bg: '#fef3c7', icon: ShieldAlert },
-  critical: { label: 'Crítica', color: '#dc2626', bg: '#fee2e2', icon: AlertCircle },
-  no_data: { label: 'Sem dados', color: '#64748b', bg: '#f1f5f9', icon: Activity },
-} as const;
 
 const percent = (value: number) => `${value.toLocaleString('pt-BR', { minimumFractionDigits: value > 0 && value < 10 ? 1 : 0, maximumFractionDigits: 2 })}%`;
 const dateTime = (value: string) => new Date(value).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
@@ -96,14 +88,6 @@ export default function WhatsAppHealthPanel({ numbers }: Props) {
 
   const selectedNumber = numbers.find(number => number.id === phoneNumberId);
   const quality = QUALITY_META[selectedNumber?.quality_rating ?? 'UNKNOWN'] ?? QUALITY_META.UNKNOWN;
-  const effectiveHealth = useMemo(() => {
-    const base = data?.health.level ?? 'no_data';
-    if (selectedNumber?.quality_rating === 'RED') return 'critical';
-    if (selectedNumber?.quality_rating === 'YELLOW' && base === 'healthy') return 'attention';
-    return base;
-  }, [data?.health.level, selectedNumber?.quality_rating]);
-  const health = HEALTH_META[effectiveHealth];
-  const HealthIcon = health.icon;
   const metrics = data?.metrics;
   const delta = data?.comparison.errorRateDelta ?? 0;
 
@@ -137,11 +121,15 @@ export default function WhatsAppHealthPanel({ numbers }: Props) {
       ) : data && metrics ? <>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
           <MetricCard
-            icon={HealthIcon}
-            label="Situação geral"
-            value={health.label}
-            color={health.color}
-            detail={<span>{phoneNumberId ? <>Qualidade Meta: <strong style={{ color: quality.color }}>{quality.label}</strong></> : 'Consolidado dos números selecionados'}</span>}
+            icon={Smartphone}
+            label="Qualidade Meta"
+            value={phoneNumberId ? quality.label : 'Selecione um número'}
+            color={phoneNumberId ? quality.color : '#64748b'}
+            detail={phoneNumberId
+              ? selectedNumber?.quality_rating === 'UNKNOWN'
+                ? 'A Meta ainda não informou a qualidade deste número.'
+                : 'Saúde oficial do número informada diretamente pela Meta.'
+              : 'A Meta informa a qualidade individualmente para cada número.'}
           />
           <MetricCard icon={Send} label="Templates enviados" value={metrics.totalTemplates.toLocaleString('pt-BR')} detail={`${metrics.uniqueRecipients.toLocaleString('pt-BR')} destinatários únicos`} />
           <MetricCard
