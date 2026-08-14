@@ -470,6 +470,75 @@ export interface WhatsAppNumberEntry {
   isRegistered: boolean;
 }
 
+export interface WhatsAppNumberHealth {
+  period: { days: number; from: string; to: string };
+  selectedPhoneNumberId: string | null;
+  health: { level: 'no_data' | 'healthy' | 'attention' | 'critical'; label: string };
+  metrics: {
+    totalTemplates: number;
+    accepted: number;
+    delivered: number;
+    read: number;
+    failed: number;
+    waitingDelivery: number;
+    uniqueRecipients: number;
+    affectedRecipients: number;
+    acceptanceRate: number;
+    deliveryRate: number;
+    readRate: number;
+    errorRate: number;
+  };
+  comparison: {
+    previousTotalTemplates: number;
+    previousErrorRate: number;
+    errorRateDelta: number;
+  };
+  daily: Array<{ date: string; total: number; delivered: number; read: number; failed: number }>;
+  errors: Array<{
+    code: number | null;
+    title: string;
+    message: string;
+    count: number;
+    percentage: number;
+    lastOccurredAt: string;
+    classification: 'permanent' | 'transient';
+  }>;
+  byNumber: Array<{
+    phoneNumberId: string;
+    label: string | null;
+    displayPhoneNumber: string | null;
+    totalTemplates: number;
+    accepted: number;
+    delivered: number;
+    read: number;
+    failed: number;
+    waitingDelivery: number;
+    uniqueRecipients: number;
+    affectedRecipients: number;
+    acceptanceRate: number;
+    deliveryRate: number;
+    readRate: number;
+    errorRate: number;
+  }>;
+  recentFailures: Array<{
+    id: string;
+    occurredAt: string;
+    phone: string;
+    phoneNumberId: string | null;
+    senderLabel: string | null;
+    leadId: string | null;
+    leadName: string | null;
+    company: string | null;
+    leadEmail: string | null;
+    templateName: string | null;
+    errorCode: number | null;
+    errorTitle: string | null;
+    errorMessage: string | null;
+    classification: 'permanent' | 'transient';
+    origin: string;
+  }>;
+}
+
 export interface WhatsAppConversationMessage {
   id: string;
   leadId: string | null;

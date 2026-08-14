@@ -1,14 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  AlertCircle, BrainCircuit, Check, CheckCircle, ChevronDown,
+  Activity, AlertCircle, BrainCircuit, Check, CheckCircle, ChevronDown,
   MessageSquare, Phone, Plus, RefreshCw, Search,
   Smartphone, Trash2,
 } from 'lucide-react';
 import { DataService } from '../services/dataService';
 import type { AIAgent, WhatsAppNumberEntry } from '../types';
+import WhatsAppHealthPanel from './WhatsAppHealthPanel';
 
-type Tab = 'number' | 'templates' | 'agent';
+type Tab = 'number' | 'health' | 'templates' | 'agent';
 
 interface WppTemplate {
   id: string;
@@ -134,9 +135,15 @@ export default function AIAgentsView() {
     setLoading(true);
     setError('');
     try {
+      // A aba de saúde usa somente nosso histórico. Não deve depender de uma
+      // chamada à Meta (nem falhar) quando as credenciais de templates não
+      // estão configuradas no ambiente local.
+      const shouldLoadTemplates = tab === 'templates' || tab === 'agent';
       const [nums, tpls, agents] = await Promise.all([
         DataService.getWhatsAppNumbers().catch(() => [] as WhatsAppNumberEntry[]),
-        DataService.getWhatsAppTemplates(templateNumberId || undefined).catch(() => [] as WppTemplate[]),
+        shouldLoadTemplates
+          ? DataService.getWhatsAppTemplates(templateNumberId || undefined).catch(() => [] as WppTemplate[])
+          : Promise.resolve(templates),
         DataService.listAIAgents().catch(() => [] as AIAgent[]),
       ]);
       setPhoneNums(nums);
@@ -165,6 +172,12 @@ export default function AIAgentsView() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if ((tab === 'templates' || tab === 'agent') && templates.length === 0) {
+      void changeTemplateNumber(templateNumberId);
+    }
+  }, [tab]);
 
   const saveNumberLabel = async (phoneNumberId: string) => {
     const label = (labelDrafts[phoneNumberId] ?? '').trim();
@@ -241,6 +254,7 @@ export default function AIAgentsView() {
 
   const tabs: Array<{ id: Tab; label: string; icon: React.ElementType }> = [
     { id: 'number',    label: 'Número',           icon: Phone },
+    { id: 'health',    label: 'Saúde do número',  icon: Activity },
     { id: 'templates', label: 'Templates da Meta', icon: MessageSquare },
     { id: 'agent',     label: 'Agente IA',         icon: BrainCircuit },
   ];
@@ -383,6 +397,9 @@ export default function AIAgentsView() {
           )}
         </div>
       )}
+
+      {/* ── Saúde do número ──────────────────────────────────────────────────── */}
+      {tab === 'health' && <WhatsAppHealthPanel numbers={phoneNums} />}
 
       {/* ── Templates ────────────────────────────────────────────────────────────── */}
       {tab === 'templates' && (

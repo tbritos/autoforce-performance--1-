@@ -904,6 +904,12 @@ export const DataService = {
     return apiClient.get('/whatsapp/numbers');
   },
 
+  getWhatsAppNumberHealth: async (days = 30, phoneNumberId?: string): Promise<import('../types').WhatsAppNumberHealth> => {
+    const params = new URLSearchParams({ days: String(days) });
+    if (phoneNumberId) params.set('phoneNumberId', phoneNumberId);
+    return apiClient.get(`/whatsapp/health?${params.toString()}`);
+  },
+
   registerWhatsAppNumber: async (phoneNumberId: string, label: string, wabaId?: string): Promise<import('../types').WhatsAppNumberEntry> => {
     return apiClient.post('/whatsapp/numbers', { phoneNumberId, label, wabaId });
   },

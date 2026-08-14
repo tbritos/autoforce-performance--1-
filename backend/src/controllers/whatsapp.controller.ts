@@ -25,6 +25,17 @@ function respondWithMetaError(res: Response, err: unknown) {
 }
 
 export class WhatsAppController {
+  static async getNumberHealth(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { getWhatsAppNumberHealth } = await import('../services/whatsapp-number-health.service');
+      const phoneNumberId = typeof req.query.phoneNumberId === 'string' ? req.query.phoneNumberId.trim() : undefined;
+      const days = Number.parseInt(String(req.query.days ?? '30'), 10);
+      res.json(await getWhatsAppNumberHealth({ phoneNumberId: phoneNumberId || undefined, days }));
+    } catch (err) {
+      next(err);
+    }
+  }
+
   static async getTemplates(req: Request, res: Response, next: NextFunction) {
     try {
       const phoneNumberId = req.query.phoneNumberId as string | undefined;

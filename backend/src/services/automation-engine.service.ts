@@ -1429,24 +1429,50 @@ async function executeWhatsAppMessage(
     template: templatePayload,
   };
 
-  const res = await fetch(
-    `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    }
-  );
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`WhatsApp API error ${res.status}: ${text.slice(0, 300)}`);
+  let res: Response;
+  try {
+    res = await fetch(
+      `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      }
+    );
+  } catch (err) {
+    await recordOutgoingWhatsAppMessage({
+      leadEmail,
+      phone: to,
+      templateName,
+      payload: { request: body, error: err instanceof Error ? err.message : String(err) },
+      automationJourneyId: journeyId,
+      automationExecutionId: executionId,
+      phoneNumberId,
+      status: 'failed',
+    });
+    throw err;
   }
 
-  const data = await res.json() as { messages?: Array<{ id?: string }> };
+  const responseText = await res.text();
+  let data: { messages?: Array<{ id?: string }>; error?: { code?: number; message?: string; title?: string; error_data?: { details?: string } } } = {};
+  try { data = responseText ? JSON.parse(responseText) : {}; } catch { /* resposta não JSON da Meta */ }
+
+  if (!res.ok || data.error) {
+    await recordOutgoingWhatsAppMessage({
+      leadEmail,
+      phone: to,
+      templateName,
+      payload: { request: body, error: data.error ?? responseText.slice(0, 500) },
+      automationJourneyId: journeyId,
+      automationExecutionId: executionId,
+      phoneNumberId,
+      status: 'failed',
+    });
+    throw new Error(data.error?.message ?? `WhatsApp API error ${res.status}: ${responseText.slice(0, 300)}`);
+  }
 
   // Build resolved text preview from template components + varMappings.
   const resolvedText: string | null = bodyComp?.text

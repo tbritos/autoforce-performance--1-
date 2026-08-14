@@ -842,6 +842,7 @@ export async function sendWhatsAppTextFromUI(leadId: string, text: string, phone
   const { accessToken } = await getWhatsAppCredentials();
   const phone = requireValidWhatsAppPhone(lead.phone);
   const phoneNumberId = phoneNumberIdOverride?.trim() || await resolveDefaultPhoneNumberIdForLead(phone);
+  const isGenerated = lead.email.startsWith('wpp_') && lead.email.endsWith('@autoforce.internal');
 
   const body = {
     messaging_product: 'whatsapp',
@@ -864,7 +865,6 @@ export async function sendWhatsAppTextFromUI(leadId: string, text: string, phone
     throw new Error(data.error?.message ?? `WhatsApp API error ${res.status}`);
   }
 
-  const isGenerated = lead.email.startsWith('wpp_') && lead.email.endsWith('@autoforce.internal');
   await recordOutgoingWhatsAppMessage({
     leadEmail: isGenerated ? null : lead.email,
     phone,
@@ -891,6 +891,7 @@ export async function sendWhatsAppTemplateFromUI(
   const { accessToken } = await getWhatsAppCredentials();
   const phone = requireValidWhatsAppPhone(lead.phone);
   const phoneNumberId = phoneNumberIdOverride?.trim() || await resolveDefaultPhoneNumberIdForLead(phone);
+  const isGenerated = lead.email.startsWith('wpp_') && lead.email.endsWith('@autoforce.internal');
 
   // Busca o template DEPOIS de saber o numero — templates ficam na WABA do
   // numero, e cada WABA pode ter templates diferentes (nao sao compartilhados).
@@ -914,17 +915,38 @@ export async function sendWhatsAppTemplateFromUI(
     template: templatePayload,
   };
 
-  const res = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    await recordOutgoingWhatsAppMessage({
+      leadEmail: isGenerated ? null : lead.email,
+      phone,
+      templateName: template.name,
+      payload: { request: body, error: err instanceof Error ? err.message : String(err) },
+      phoneNumberId,
+      status: 'failed',
+    });
+    throw err;
+  }
 
-  const data = await res.json() as { messages?: Array<{ id?: string }>; error?: { message: string } };
+  const data = await res.json() as { messages?: Array<{ id?: string }>; error?: { code?: number; message?: string; title?: string; error_data?: { details?: string } } };
   if (!res.ok || data.error) {
+    await recordOutgoingWhatsAppMessage({
+      leadEmail: isGenerated ? null : lead.email,
+      phone,
+      templateName: template.name,
+      payload: { request: body, error: data.error ?? null },
+      phoneNumberId,
+      status: 'failed',
+    });
     throw new Error(data.error?.message ?? `WhatsApp API error ${res.status}`);
   }
 
@@ -933,7 +955,6 @@ export async function sendWhatsAppTemplateFromUI(
     ? bodyComponent.text.replace(/\{\{(\d+)\}\}/g, (_match, idx) => bodyParams[Number(idx) - 1] ?? `{{${idx}}}`)
     : null;
 
-  const isGenerated = lead.email.startsWith('wpp_') && lead.email.endsWith('@autoforce.internal');
   await recordOutgoingWhatsAppMessage({
     leadEmail: isGenerated ? null : lead.email,
     phone,
