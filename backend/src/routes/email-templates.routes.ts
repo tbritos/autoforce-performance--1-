@@ -1,7 +1,39 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../config/database';
+import {
+  assertSenderDomainAllowed,
+  normalizeSenderEmail,
+  SenderEmailValidationError,
+} from '../services/email-sender.service';
+import { listVerifiedSendingDomains } from '../services/resend.service';
 
 const router = Router();
+
+async function validatedSenderEmail(value: unknown): Promise<string | null> {
+  const email = normalizeSenderEmail(value);
+  if (!email) return null;
+
+  let domains: string[];
+  try {
+    domains = await listVerifiedSendingDomains();
+  } catch {
+    throw new SenderEmailValidationError(
+      'Não foi possível validar os domínios de envio no Resend. Tente novamente.',
+      503
+    );
+  }
+
+  assertSenderDomainAllowed(email, domains);
+  return email;
+}
+
+function sendTemplateError(res: Response, error: unknown, fallback: string) {
+  if (error instanceof SenderEmailValidationError) {
+    res.status(error.statusCode).json({ error: error.message });
+    return;
+  }
+  res.status(500).json({ error: fallback });
+}
 
 // List all templates with aggregate metrics
 router.get('/', async (_req: Request, res: Response) => {
@@ -54,6 +86,17 @@ router.get('/', async (_req: Request, res: Response) => {
   }
 });
 
+// Domínios realmente habilitados para envio na conta do Resend.
+router.get('/sender-domains', async (_req: Request, res: Response) => {
+  try {
+    const domains = await listVerifiedSendingDomains();
+    res.json({ domains });
+  } catch (error) {
+    console.error('[email-templates] Erro ao listar domínios do Resend:', error);
+    res.status(503).json({ error: 'Não foi possível carregar os domínios configurados no Resend.' });
+  }
+});
+
 // Get single template with sends history
 router.get('/:id', async (req: Request, res: Response) => {
   try {
@@ -98,6 +141,7 @@ router.post('/', async (req: Request, res: Response) => {
     const { name, subject, body, design, fromName, fromEmail, status, scheduledAt, audienceType, audienceValue, audienceCount } = req.body as Record<string, unknown>;
     if (!String(name ?? '').trim())    { res.status(400).json({ error: 'Nome é obrigatório' }); return; }
 
+    const normalizedFromEmail = await validatedSenderEmail(fromEmail);
     const template = await prisma.emailTemplate.create({
       data: {
         name:          String(name).trim(),
@@ -105,7 +149,7 @@ router.post('/', async (req: Request, res: Response) => {
         body:          String(body ?? '').trim(),
         design:        design ?? undefined,
         fromName:      fromName  ? String(fromName).trim()  : null,
-        fromEmail:     fromEmail ? String(fromEmail).trim() : null,
+        fromEmail:     normalizedFromEmail,
         status:        String(status ?? 'draft'),
         scheduledAt:   scheduledAt ? new Date(String(scheduledAt)) : null,
         audienceType:  audienceType  ? String(audienceType)  : null,
@@ -115,7 +159,7 @@ router.post('/', async (req: Request, res: Response) => {
     });
     res.status(201).json(template);
   } catch (err) {
-    res.status(500).json({ error: 'Erro ao criar template' });
+    sendTemplateError(res, err, 'Erro ao criar template');
   }
 });
 
@@ -129,7 +173,23 @@ router.put('/:id', async (req: Request, res: Response) => {
     if (body.body         !== undefined) data['body']          = String(body.body).trim();
     if (body.design       !== undefined) data['design']        = body.design;
     if (body.fromName     !== undefined) data['fromName']      = body.fromName  ? String(body.fromName).trim()  : null;
-    if (body.fromEmail    !== undefined) data['fromEmail']     = body.fromEmail ? String(body.fromEmail).trim() : null;
+    if (body.fromEmail !== undefined) {
+      const normalizedFromEmail = normalizeSenderEmail(body.fromEmail);
+      const current = await prisma.emailTemplate.findUnique({
+        where: { id: req.params.id },
+        select: { fromEmail: true },
+      });
+
+      // Um template antigo continua editável mesmo se seu domínio deixar de ser
+      // retornado pelo Resend. Qualquer alteração do endereço exige validação.
+      const unchangedLegacyEmail =
+        normalizedFromEmail !== null &&
+        current?.fromEmail?.trim().toLowerCase() === normalizedFromEmail.toLowerCase();
+
+      data['fromEmail'] = unchangedLegacyEmail
+        ? normalizedFromEmail
+        : await validatedSenderEmail(normalizedFromEmail);
+    }
     if (body.isActive     !== undefined) data['isActive']      = Boolean(body.isActive);
     if (body.status       !== undefined) data['status']        = String(body.status);
     if (body.scheduledAt  !== undefined) data['scheduledAt']   = body.scheduledAt ? new Date(String(body.scheduledAt)) : null;
@@ -139,8 +199,8 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     const template = await prisma.emailTemplate.update({ where: { id: req.params.id }, data });
     res.json(template);
-  } catch {
-    res.status(500).json({ error: 'Erro ao atualizar template' });
+  } catch (err) {
+    sendTemplateError(res, err, 'Erro ao atualizar template');
   }
 });
 

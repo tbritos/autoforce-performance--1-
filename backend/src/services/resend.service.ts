@@ -13,6 +13,8 @@ import {
 } from './email-preferences.service';
 
 const SEND_TIMEOUT_MS = 20_000;
+const DOMAIN_LIST_TIMEOUT_MS = 10_000;
+const DOMAIN_CACHE_TTL_MS = 5 * 60_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -22,6 +24,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 }
 
 let _resend: Resend | null = null;
+let verifiedSendingDomainsCache: { domains: string[]; expiresAt: number } | null = null;
 
 function getResend(): Resend {
   if (!_resend) {
@@ -30,6 +33,36 @@ function getResend(): Resend {
     _resend = new Resend(apiKey);
   }
   return _resend;
+}
+
+export async function listVerifiedSendingDomains(): Promise<string[]> {
+  if (verifiedSendingDomainsCache && verifiedSendingDomainsCache.expiresAt > Date.now()) {
+    return verifiedSendingDomainsCache.domains;
+  }
+
+  const result = await withTimeout(
+    getResend().domains.list({ limit: 100 }),
+    DOMAIN_LIST_TIMEOUT_MS,
+    'listVerifiedSendingDomains'
+  );
+
+  if (result.error || !result.data) {
+    throw new Error(result.error?.message ?? 'Não foi possível consultar os domínios no Resend');
+  }
+
+  const domains = [...new Set(
+    result.data.data
+      .filter(domain => domain.capabilities.sending === 'enabled')
+      .map(domain => domain.name.trim().toLowerCase())
+      .filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b));
+
+  verifiedSendingDomainsCache = {
+    domains,
+    expiresAt: Date.now() + DOMAIN_CACHE_TTL_MS,
+  };
+
+  return domains;
 }
 
 export interface SendEmailInput {

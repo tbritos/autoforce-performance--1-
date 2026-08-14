@@ -13,6 +13,36 @@ interface EmailTemplate {
   status: string;
 }
 
+interface SenderDomainsResponse {
+  domains: string[];
+}
+
+interface EmailSetupForm {
+  name: string;
+  subject: string;
+  fromName: string;
+  fromEmailLocalPart: string;
+  fromEmailDomain: string;
+}
+
+function splitSenderEmail(email: string | null | undefined) {
+  const value = email?.trim() ?? '';
+  const atIndex = value.lastIndexOf('@');
+  if (atIndex <= 0) return { localPart: '', domain: '' };
+  return {
+    localPart: value.slice(0, atIndex),
+    domain: value.slice(atIndex + 1).toLowerCase(),
+  };
+}
+
+function buildSenderEmail(localPart: string, domain: string) {
+  const normalizedLocalPart = localPart.trim();
+  const normalizedDomain = domain.trim().toLowerCase();
+  return normalizedLocalPart && normalizedDomain
+    ? `${normalizedLocalPart}@${normalizedDomain}`
+    : '';
+}
+
 // ─── Seção visual ─────────────────────────────────────────────────────────────
 
 const Section: React.FC<{ done: boolean; title: string; summary?: string; children: React.ReactNode }> = ({ done, title, summary, children }) => (
@@ -50,16 +80,32 @@ const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = (props) => 
 // ─── Step 1 ───────────────────────────────────────────────────────────────────
 
 interface SetupStepProps {
-  form: { name: string; subject: string; fromName: string; fromEmail: string };
+  form: EmailSetupForm;
   onChange: (f: SetupStepProps['form']) => void;
   onContinue: () => void;
   onBack: () => void;
   isEdit: boolean;
+  senderDomains: string[];
+  senderDomainsLoading: boolean;
+  senderDomainsError: string | null;
+  onReloadSenderDomains: () => void;
 }
 
-const SetupStep: React.FC<SetupStepProps> = ({ form, onChange, onContinue, onBack, isEdit }) => {
+const SetupStep: React.FC<SetupStepProps> = ({
+  form,
+  onChange,
+  onContinue,
+  onBack,
+  isEdit,
+  senderDomains,
+  senderDomainsLoading,
+  senderDomainsError,
+  onReloadSenderDomains,
+}) => {
   const [error, setError] = useState('');
-  const [senderEditing, setSenderEditing] = useState(!form.fromName.trim() || !form.fromEmail.trim());
+  const [senderEditing, setSenderEditing] = useState(
+    !form.fromName.trim() || !form.fromEmailLocalPart.trim() || !form.fromEmailDomain.trim()
+  );
   const subjectRef = useRef<HTMLInputElement>(null);
 
   const insertVar = (tag: string) => {
@@ -75,13 +121,32 @@ const SetupStep: React.FC<SetupStepProps> = ({ form, onChange, onContinue, onBac
   const handleContinue = () => {
     if (!form.name.trim())    { setError('Nome do template é obrigatório'); return; }
     if (!form.subject.trim()) { setError('Assunto é obrigatório'); return; }
+    if (form.fromEmailLocalPart.trim() && !form.fromEmailDomain.trim()) {
+      setError('Selecione o domínio do e-mail do remetente');
+      return;
+    }
+    if (form.fromEmailDomain.trim() && !form.fromEmailLocalPart.trim()) {
+      setError('Digite o nome que ficará antes do @ no e-mail do remetente');
+      return;
+    }
+    if (/[@\s]/.test(form.fromEmailLocalPart.trim())) {
+      setError('Antes do @, informe apenas o nome do remetente, sem espaços ou outro @');
+      return;
+    }
     setError('');
     onContinue();
   };
 
-  const senderFilled  = !!(form.fromName.trim() && form.fromEmail.trim());
+  const senderEmail = buildSenderEmail(form.fromEmailLocalPart, form.fromEmailDomain);
+  const senderFilled  = !!(form.fromName.trim() && senderEmail);
   const senderDone    = senderFilled && !senderEditing;
-  const senderSummary = senderDone ? `${form.fromName} via ${form.fromEmail}` : undefined;
+  const senderSummary = senderDone ? `${form.fromName} via ${senderEmail}` : undefined;
+  const currentDomainIsLegacy = Boolean(
+    form.fromEmailDomain && !senderDomains.includes(form.fromEmailDomain)
+  );
+  const domainOptions = currentDomainIsLegacy
+    ? [form.fromEmailDomain, ...senderDomains]
+    : senderDomains;
 
   const subjectLen = form.subject.length;
   const subjectColor = subjectLen > 70 ? '#ef4444' : subjectLen > 50 ? '#f59e0b' : 'var(--fg-muted)';
@@ -113,15 +178,63 @@ const SetupStep: React.FC<SetupStepProps> = ({ form, onChange, onContinue, onBac
             <Section done={senderDone} title="Remetente" summary={senderSummary ? `O envio será feito por ${senderSummary}` : undefined}>
               {senderDone ? (
                 <p style={{ margin: 0, fontSize: 14, color: 'var(--fg-muted)' }}>
-                  O envio será feito por <strong style={{ color: 'var(--fg)' }}>{form.fromName}</strong> através do email <strong style={{ color: 'var(--fg)' }}>{form.fromEmail}</strong>
+                  O envio será feito por <strong style={{ color: 'var(--fg)' }}>{form.fromName}</strong> através do email <strong style={{ color: 'var(--fg)' }}>{senderEmail}</strong>
                 </p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                   <Field label="Nome do remetente">
                     <Input value={form.fromName} onChange={e => onChange({ ...form, fromName: e.target.value })} placeholder="Ex: Marketing AutoForce" autoComplete="off"/>
                   </Field>
-                  <Field label="E-mail do remetente" hint="Precisa ser um domínio verificado no Resend">
-                    <Input value={form.fromEmail} onChange={e => onChange({ ...form, fromEmail: e.target.value })} placeholder="Ex: marketing@updates.autoforce.com" autoComplete="off"/>
+                  <Field label="E-mail do remetente" hint="Digite o nome antes do @ e selecione um domínio habilitado no Resend.">
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1.35fr)', alignItems: 'center', gap: 9 }}>
+                      <Input
+                        value={form.fromEmailLocalPart}
+                        onChange={e => onChange({ ...form, fromEmailLocalPart: e.target.value })}
+                        placeholder="Ex: marketing"
+                        autoComplete="off"
+                        aria-label="Nome antes do arroba"
+                      />
+                      <span style={{ color: 'var(--fg-muted)', fontSize: 16, fontWeight: 700 }}>@</span>
+                      <select
+                        value={form.fromEmailDomain}
+                        onChange={e => onChange({ ...form, fromEmailDomain: e.target.value })}
+                        disabled={senderDomainsLoading || domainOptions.length === 0}
+                        aria-label="Domínio do remetente"
+                        style={{
+                          width: '100%', boxSizing: 'border-box', padding: '10px 34px 10px 12px',
+                          borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-base)',
+                          color: 'var(--fg)', fontSize: 14, outline: 'none', minWidth: 0,
+                          cursor: senderDomainsLoading ? 'wait' : 'pointer',
+                        }}
+                      >
+                        <option value="">
+                          {senderDomainsLoading ? 'Carregando domínios...' : 'Selecione o domínio'}
+                        </option>
+                        {domainOptions.map(domain => (
+                          <option key={domain} value={domain}>
+                            {domain}{currentDomainIsLegacy && domain === form.fromEmailDomain ? ' (domínio atual)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {senderEmail && (
+                      <div style={{ marginTop: 7, fontSize: 12, color: 'var(--fg-muted)' }}>
+                        Endereço completo: <strong style={{ color: 'var(--fg)' }}>{senderEmail}</strong>
+                      </div>
+                    )}
+                    {senderDomainsError && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 8, color: '#dc2626', fontSize: 12 }}>
+                        <AlertCircle size={13}/>
+                        <span>{senderDomainsError}</span>
+                        <button
+                          type="button"
+                          onClick={onReloadSenderDomains}
+                          style={{ padding: 0, border: 'none', background: 'none', color: 'var(--accent)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          Tentar novamente
+                        </button>
+                      </div>
+                    )}
                   </Field>
                   {senderFilled && (
                     <button onClick={() => setSenderEditing(false)}
@@ -204,7 +317,16 @@ const EmailEditorView: React.FC = () => {
   const isEdit   = Boolean(id);
 
   const [step, setStep]   = useState<1 | 2>(isEdit ? 1 : 1);
-  const [form, setForm]   = useState({ name: '', subject: '', fromName: '', fromEmail: '' });
+  const [form, setForm]   = useState<EmailSetupForm>({
+    name: '',
+    subject: '',
+    fromName: '',
+    fromEmailLocalPart: '',
+    fromEmailDomain: '',
+  });
+  const [senderDomains, setSenderDomains] = useState<string[]>([]);
+  const [senderDomainsLoading, setSenderDomainsLoading] = useState(true);
+  const [senderDomainsError, setSenderDomainsError] = useState<string | null>(null);
   const [editorReady, setEditorReady] = useState(false);
   const [editorError, setEditorError] = useState(false);
   const [saving, setSaving]           = useState(false);
@@ -215,12 +337,44 @@ const EmailEditorView: React.FC = () => {
   const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const designRef    = useRef<unknown | null>(null);
 
+  const loadSenderDomains = async () => {
+    setSenderDomainsLoading(true);
+    setSenderDomainsError(null);
+    try {
+      const response = await apiClient.get<SenderDomainsResponse>('/email-templates/sender-domains');
+      const domains = [...new Set(response.domains.map(domain => domain.trim().toLowerCase()).filter(Boolean))];
+      setSenderDomains(domains);
+      setForm(current => ({
+        ...current,
+        fromEmailDomain: current.fromEmailDomain || (domains.length === 1 ? domains[0] : ''),
+      }));
+      if (domains.length === 0) {
+        setSenderDomainsError('Nenhum domínio habilitado para envio foi encontrado no Resend.');
+      }
+    } catch {
+      setSenderDomainsError('Não foi possível carregar os domínios configurados no Resend.');
+    } finally {
+      setSenderDomainsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadSenderDomains();
+  }, []);
+
   // Load existing template when editing
   useEffect(() => {
     if (!isEdit || !id) return;
     apiClient.get<EmailTemplate>(`/email-templates/${id}`)
       .then(t => {
-        setForm({ name: t.name, subject: t.subject, fromName: t.fromName ?? '', fromEmail: t.fromEmail ?? '' });
+        const senderEmail = splitSenderEmail(t.fromEmail);
+        setForm({
+          name: t.name,
+          subject: t.subject,
+          fromName: t.fromName ?? '',
+          fromEmailLocalPart: senderEmail.localPart,
+          fromEmailDomain: senderEmail.domain,
+        });
         designRef.current = t.design;
       })
       .catch(() => setError('Erro ao carregar template'))
@@ -256,7 +410,7 @@ const EmailEditorView: React.FC = () => {
           body:      html,
           design,
           fromName:  form.fromName.trim()  || null,
-          fromEmail: form.fromEmail.trim() || null,
+          fromEmail: buildSenderEmail(form.fromEmailLocalPart, form.fromEmailDomain) || null,
           status:    asDraft ? 'draft' : 'sent',
         };
         if (isEdit && id) {
@@ -265,8 +419,8 @@ const EmailEditorView: React.FC = () => {
           await apiClient.post('/email-templates', payload);
         }
         navigate('/emails');
-      } catch {
-        setError('Erro ao salvar e-mail');
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Erro ao salvar e-mail');
         setSaving(false);
       }
     });
@@ -289,6 +443,10 @@ const EmailEditorView: React.FC = () => {
         onContinue={() => setStep(2)}
         onBack={() => navigate(isEdit && id ? `/emails/${id}` : '/emails')}
         isEdit={isEdit}
+        senderDomains={senderDomains}
+        senderDomainsLoading={senderDomainsLoading}
+        senderDomainsError={senderDomainsError}
+        onReloadSenderDomains={() => { void loadSenderDomains(); }}
       />
     );
   }
