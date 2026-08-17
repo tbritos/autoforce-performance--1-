@@ -48,10 +48,23 @@ export const RECOMMENDED_SCORING_RULES: Array<{
     conditions: [condition('icp-nurture', 'researchIcpSignal', 'equals', 'nurture')],
   },
   {
+    name: 'Concessionária, grupo ou montadora', logic: 'OR', points: 50, isActive: true,
+    conditions: [
+      'concession', 'grupo automotivo', 'montadora',
+    ].map((value, index) => condition(`automotive-segment-${index}`, 'segmento', 'contains', value)),
+  },
+  {
+    name: 'Revenda de veículos', logic: 'OR', points: 30, isActive: true,
+    conditions: [
+      'revenda', 'multimarcas', 'seminovos',
+    ].map((value, index) => condition(`reseller-segment-${index}`, 'segmento', 'contains', value)),
+  },
+  {
     name: 'Cargo com poder de decisão', logic: 'OR', points: 20, isActive: true,
     conditions: [
       'sócio', 'socio', 'proprietário', 'proprietario', 'dono', 'diretor', 'head',
       'gerente', 'coordenador', 'gestor', 'ceo', 'cmo', 'fundador', 'presidente',
+      'supervisor', 'superintendente', 'vice-presidente', 'vice presidente', 'owner', 'chief',
     ].map((value, index) => condition(`decision-${index}`, 'jobTitle', 'contains', value)),
   },
   {

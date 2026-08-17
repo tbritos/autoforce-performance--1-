@@ -70,6 +70,42 @@ test('cadastro e engajamento sem evidência de ICP não atingem o corte', () => 
   assert.ok(score < RECOMMENDED_SCORE_THRESHOLD);
 });
 
+test('concessionária com cargo decisor atinge o corte mesmo sem pesquisa prévia', () => {
+  const score = evaluateRules(lead({
+    jobTitle: 'Gerente de Marketing',
+    customFields: { segmento: 'CONCESSIONÁRIA 4 RODAS' },
+  }), rules);
+
+  assert.equal(score, 70);
+  assert.ok(score >= RECOMMENDED_SCORE_THRESHOLD);
+});
+
+test('revenda com cargo decisor e cadastro completo atinge o corte', () => {
+  const score = evaluateRules(lead({
+    jobTitle: 'Sócio proprietário',
+    phone: '5584999999999',
+    company: 'Multicar',
+    siteUrl: 'https://multicar.com.br',
+    customFields: { segmento: 'Revenda multimarcas' },
+  }), rules);
+
+  assert.equal(score, 70);
+  assert.ok(score >= RECOMMENDED_SCORE_THRESHOLD);
+});
+
+test('fornecedor do setor automotivo não qualifica apenas por cargo e cadastro', () => {
+  const score = evaluateRules(lead({
+    jobTitle: 'Diretor Comercial',
+    phone: '5584999999999',
+    company: 'Software Automotivo',
+    siteUrl: 'https://softwareautomotivo.com.br',
+    customFields: { segmento: 'Tecnologia automotiva' },
+  }), rules);
+
+  assert.equal(score, 40);
+  assert.ok(score < RECOMMENDED_SCORE_THRESHOLD);
+});
+
 test('lead fora do ICP nunca é promovido por cadastro ou engajamento', () => {
   const score = evaluateRules(lead({
     researchIcpSignal: 'disqualified',

@@ -447,7 +447,7 @@ export const LeadScoringView: React.FC = () => {
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: '#172554' }}>Modelo ICP AutoForce · nota de corte 70</div>
             <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.55, color: '#475569' }}>
-              Prioriza ICP confirmado, cargo decisor e dados de contato. Engajamento e mídia paga ajudam, mas não qualificam um lead sozinhos. Leads fora do ICP e cargos sem poder de decisão recebem penalidade.
+              Prioriza concessionárias, grupos automotivos, montadoras e revendas com cargo decisor. Pesquisa, dados de contato e engajamento reforçam a nota; leads fora do ICP e cargos sem poder de decisão recebem penalidade.
             </div>
             <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 11, fontWeight: 600 }}>
               <span style={{ color: '#166534' }}>70–100 · pronto para segmentação</span>
