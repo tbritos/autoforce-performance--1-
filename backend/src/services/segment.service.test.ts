@@ -21,13 +21,92 @@ test('segmentação pode excluir dinamicamente todos os membros de outra segment
   assert.deepEqual(where, {
     deletedAt: null,
     AND: [{
-      NOT: {
-        deletedAt: null,
-        OR: [
-          { status: { in: ['CLIENT'] } },
-          { tags: { has: 'nao-nutrir' } },
-        ],
-      },
+      deletedAt: null,
+      AND: [
+        { NOT: { status: { in: ['CLIENT'] } } },
+        { NOT: { tags: { has: 'nao-nutrir' } } },
+      ],
+    }],
+  });
+});
+
+test('exclusão de segmentação preserva leads com campos opcionais vazios', async () => {
+  const saved = new Map<string, SegmentRules>([
+    ['empresas-bloqueadas', rules([
+      { id: 'empresa-a', field: 'company', operator: 'contains', value: 'Empresa A' },
+      { id: 'empresa-b', field: 'company', operator: 'equals', value: 'Empresa B' },
+    ], 'OR')],
+  ]);
+
+  const where = await SegmentService.buildWhere(rules([
+    { id: 'excluir-empresas', field: 'segment', operator: 'not_in_segment', value: 'empresas-bloqueadas' },
+  ]), [], { loadRules: async id => saved.get(id) ?? null });
+
+  assert.deepEqual(where, {
+    deletedAt: null,
+    AND: [{
+      deletedAt: null,
+      AND: [
+        {
+          OR: [
+            { company: null },
+            { NOT: { company: { contains: 'Empresa A', mode: 'insensitive' } } },
+          ],
+        },
+        {
+          OR: [
+            { company: null },
+            { NOT: { company: 'Empresa B' } },
+          ],
+        },
+      ],
+    }],
+  });
+});
+
+test('excluir uma segmentação sem regras não retorna nenhum lead', async () => {
+  const saved = new Map<string, SegmentRules>([
+    ['todos-os-leads', rules([])],
+  ]);
+
+  const where = await SegmentService.buildWhere(rules([
+    { id: 'excluir-todos', field: 'segment', operator: 'not_in_segment', value: 'todos-os-leads' },
+  ]), [], { loadRules: async id => saved.get(id) ?? null });
+
+  assert.deepEqual(where, {
+    deletedAt: null,
+    AND: [{
+      deletedAt: null,
+      id: { in: [] },
+    }],
+  });
+});
+
+test('negação de segmentação com lógica AND aplica De Morgan corretamente', async () => {
+  const saved = new Map<string, SegmentRules>([
+    ['clientes-google', rules([
+      { id: 'cliente', field: 'status', operator: 'in', value: ['CLIENT'] },
+      { id: 'google', field: 'firstSource', operator: 'equals', value: 'Google' },
+    ])],
+  ]);
+
+  const where = await SegmentService.buildWhere(rules([
+    { id: 'excluir-clientes-google', field: 'segment', operator: 'not_in_segment', value: 'clientes-google' },
+  ]), [], { loadRules: async id => saved.get(id) ?? null });
+
+  assert.deepEqual(where, {
+    deletedAt: null,
+    AND: [{
+      deletedAt: null,
+      OR: [
+        { NOT: { status: { in: ['CLIENT'] } } },
+        {
+          OR: [
+            { firstSource: null },
+            { NOT: { firstSource: 'Google' } },
+          ],
+        },
+      ],
     }],
   });
 });

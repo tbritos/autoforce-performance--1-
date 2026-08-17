@@ -69,12 +69,19 @@ export class SegmentService {
     rules: SegmentRules,
     lineage: string[] = [],
     dependencies: SegmentBuildDependencies = {},
+    negated = false,
   ): Promise<Prisma.LeadWhereInput> {
     const base: Prisma.LeadWhereInput = { deletedAt: null };
-    if (!rules.conditions || !rules.conditions.length) return base;
+    if (!rules.conditions || !rules.conditions.length) {
+      return negated ? { ...base, id: { in: [] } } : base;
+    }
 
     const clauses = (await Promise.all(rules.conditions.map(async condition => {
-      if (condition.field !== 'segment') return SegmentService.conditionToWhere(condition);
+      if (condition.field !== 'segment') {
+        return negated
+          ? SegmentService.negatedConditionToWhere(condition)
+          : SegmentService.conditionToWhere(condition);
+      }
 
       const segmentId = typeof condition.value === 'string' ? condition.value.trim() : '';
       if (!segmentId) throw new SegmentValidationError('Selecione uma segmentação para esta condição.');
@@ -85,9 +92,14 @@ export class SegmentService {
         throw new SegmentValidationError('Esta regra cria uma referência circular entre segmentações.');
       }
 
+      const negateReferenced = condition.operator === 'not_in_segment'
+        ? !negated
+        : negated;
+
       let referencedWhere: Prisma.LeadWhereInput;
       if (segmentId === NEWSLETTER_AUDIENCE_ID) {
         referencedWhere = await (dependencies.newsletterWhere ?? SegmentService.newsletterEligibleWhere)();
+        if (negateReferenced) referencedWhere = { NOT: referencedWhere };
       } else {
         const referencedRules = dependencies.loadRules
           ? await dependencies.loadRules(segmentId)
@@ -98,17 +110,19 @@ export class SegmentService {
           referencedRules,
           [...lineage, segmentId],
           dependencies,
+          negateReferenced,
         );
       }
 
-      return condition.operator === 'in_segment'
-        ? referencedWhere
-        : { NOT: referencedWhere };
+      return referencedWhere;
     }))).filter((clause): clause is Prisma.LeadWhereInput => clause !== null && Object.keys(clause).length > 0);
 
-    if (!clauses.length) return base;
+    if (!clauses.length) return negated ? { ...base, id: { in: [] } } : base;
 
-    const combined = rules.logic === 'AND' ? { AND: clauses } : { OR: clauses };
+    const logic = negated
+      ? (rules.logic === 'AND' ? 'OR' : 'AND')
+      : rules.logic;
+    const combined = logic === 'AND' ? { AND: clauses } : { OR: clauses };
     return { ...base, ...combined };
   }
 
@@ -139,6 +153,33 @@ export class SegmentService {
     return null;
   }
 
+  private static negatedConditionToWhere(c: RuleCondition): Prisma.LeadWhereInput | null {
+    const { field, operator, value } = c;
+    switch (field) {
+      case 'status':
+        if (operator === 'in')     return { NOT: { status: { in: value } } };
+        if (operator === 'not_in') return { status: { in: value } };
+        break;
+      case 'isHot':
+        if (operator === 'is_true')  return { isHot: false };
+        if (operator === 'is_false') return { isHot: true };
+        break;
+      case 'firstSource': return SegmentService.negatedStringOp('firstSource', operator, value);
+      case 'firstMedium': return SegmentService.negatedStringOp('firstMedium', operator, value);
+      case 'company':     return SegmentService.negatedStringOp('company', operator, value);
+      case 'assignedTo':  return SegmentService.negatedStringOp('assignedTo', operator, value);
+      case 'tags':
+        if (operator === 'contains_tag')     return { NOT: { tags: { has: value } } };
+        if (operator === 'not_contains_tag') return { tags: { has: value } };
+        break;
+      case 'score':           return SegmentService.negatedNumberOp('score', operator, Number(value));
+      case 'firstSeenAt':     return SegmentService.negatedDateOp('firstSeenAt', operator, Number(value));
+      case 'lastSeenAt':      return SegmentService.negatedDateOp('lastSeenAt', operator, Number(value));
+      case 'conversionCount': return SegmentService.negatedConvCountOp(operator, Number(value));
+    }
+    return null;
+  }
+
   private static stringOp(field: string, operator: string, value: string): Prisma.LeadWhereInput {
     switch (operator) {
       case 'equals':     return { [field]: value };
@@ -150,11 +191,42 @@ export class SegmentService {
     }
   }
 
+  private static negatedStringOp(field: string, operator: string, value: string): Prisma.LeadWhereInput {
+    switch (operator) {
+      case 'equals':
+        return { OR: [{ [field]: null }, { NOT: { [field]: value } }] };
+      case 'not_equals':
+        return { [field]: value };
+      case 'contains':
+        return {
+          OR: [
+            { [field]: null },
+            { NOT: { [field]: { contains: value, mode: 'insensitive' } } },
+          ],
+        };
+      case 'is_set':
+        return { [field]: null };
+      case 'is_not_set':
+        return { [field]: { not: null } };
+      default:
+        return {};
+    }
+  }
+
   private static numberOp(field: string, operator: string, value: number): Prisma.LeadWhereInput {
     switch (operator) {
       case 'equals': return { [field]: value };
       case 'gte':    return { [field]: { gte: value } };
       case 'lte':    return { [field]: { lte: value } };
+      default:       return {};
+    }
+  }
+
+  private static negatedNumberOp(field: string, operator: string, value: number): Prisma.LeadWhereInput {
+    switch (operator) {
+      case 'equals': return { NOT: { [field]: value } };
+      case 'gte':    return { [field]: { lt: value } };
+      case 'lte':    return { [field]: { gt: value } };
       default:       return {};
     }
   }
@@ -168,9 +240,24 @@ export class SegmentService {
     }
   }
 
+  private static negatedDateOp(field: string, operator: string, days: number): Prisma.LeadWhereInput {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    switch (operator) {
+      case 'in_last_days':    return { [field]: { lt: cutoff } };
+      case 'before_days_ago': return { [field]: { gt: cutoff } };
+      default:                return {};
+    }
+  }
+
   private static convCountOp(operator: string, value: number): Prisma.LeadWhereInput {
     if (operator === 'gte' && value <= 1) return { conversions: { some: {} } };
     if (operator === 'lte' && value === 0) return { conversions: { none: {} } };
+    return {};
+  }
+
+  private static negatedConvCountOp(operator: string, value: number): Prisma.LeadWhereInput {
+    if (operator === 'gte' && value <= 1) return { conversions: { none: {} } };
+    if (operator === 'lte' && value === 0) return { conversions: { some: {} } };
     return {};
   }
 
