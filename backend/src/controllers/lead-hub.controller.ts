@@ -278,6 +278,7 @@ export class LeadHubController {
   private static readonly DISTINCT_STRING_FIELDS = [
     'firstSource', 'firstMedium', 'company', 'assignedTo',
     'jobTitle', 'city', 'state', 'firstCampaign', 'firstLandingPage',
+    'researchIcpSignal', 'researchBusinessType',
   ];
 
   static async getFieldValues(req: Request, res: Response, next: NextFunction) {

@@ -1,7 +1,7 @@
 import { prisma } from '../config/database';
 import { Prisma } from '@prisma/client';
 
-export type ScoringOperator = 'equals' | 'not_equals' | 'contains' | 'is_set' | 'is_not_set';
+export type ScoringOperator = 'equals' | 'not_equals' | 'contains' | 'is_set' | 'is_not_set' | 'gte' | 'lte';
 
 export interface ScoringCondition {
   id: string;
@@ -18,13 +18,79 @@ export interface ScoringRules {
 // Campos padrao do Lead avaliaveis por uma regra de score — os demais campos
 // possiveis vem de LeadCustomFieldDef (customFields, dinamico por tenant).
 const STANDARD_FIELDS = new Set([
-  'company', 'jobTitle', 'city', 'state', 'status',
+  'company', 'jobTitle', 'city', 'state', 'status', 'phone', 'siteUrl',
   'firstSource', 'firstMedium', 'firstCampaign', 'firstLandingPage',
-  'assignedTo', 'tags',
+  'assignedTo', 'tags', 'researchIcpSignal', 'researchBusinessType',
+  'aiScore', 'conversionCount',
 ]);
+
+export const RECOMMENDED_SCORE_THRESHOLD = 70;
+
+const condition = (id: string, field: string, operator: ScoringOperator, value = ''): ScoringCondition => ({
+  id, field, operator, value,
+});
+
+// Modelo inicial da AutoForce. Os pesos deixam dados cadastrais e engajamento
+// como reforco: sem evidencia real de ICP eles nao bastam para chegar ao corte.
+export const RECOMMENDED_SCORING_RULES: Array<{
+  name: string;
+  logic: 'AND' | 'OR';
+  conditions: ScoringCondition[];
+  points: number;
+  isActive: boolean;
+}> = [
+  {
+    name: 'ICP confirmado pela pesquisa', logic: 'AND', points: 50, isActive: true,
+    conditions: [condition('icp-qualified', 'researchIcpSignal', 'equals', 'qualified')],
+  },
+  {
+    name: 'Potencial em nutrição', logic: 'AND', points: 20, isActive: true,
+    conditions: [condition('icp-nurture', 'researchIcpSignal', 'equals', 'nurture')],
+  },
+  {
+    name: 'Cargo com poder de decisão', logic: 'OR', points: 20, isActive: true,
+    conditions: [
+      'sócio', 'socio', 'proprietário', 'proprietario', 'dono', 'diretor', 'head',
+      'gerente', 'coordenador', 'gestor', 'ceo', 'cmo', 'fundador', 'presidente',
+    ].map((value, index) => condition(`decision-${index}`, 'jobTitle', 'contains', value)),
+  },
+  {
+    name: 'Telefone disponível', logic: 'AND', points: 10, isActive: true,
+    conditions: [condition('phone-set', 'phone', 'is_set')],
+  },
+  {
+    name: 'Empresa identificada', logic: 'AND', points: 5, isActive: true,
+    conditions: [condition('company-set', 'company', 'is_set')],
+  },
+  {
+    name: 'Site da empresa identificado', logic: 'AND', points: 5, isActive: true,
+    conditions: [condition('site-set', 'siteUrl', 'is_set')],
+  },
+  {
+    name: 'Recorrência de conversão', logic: 'AND', points: 10, isActive: true,
+    conditions: [condition('conversion-recurring', 'conversionCount', 'gte', '2')],
+  },
+  {
+    name: 'Origem em mídia paga', logic: 'OR', points: 5, isActive: true,
+    conditions: ['cpc', 'paid', 'paid_social'].map((value, index) =>
+      condition(`paid-${index}`, 'firstMedium', 'equals', value)),
+  },
+  {
+    name: 'Fora do ICP', logic: 'AND', points: -100, isActive: true,
+    conditions: [condition('icp-disqualified', 'researchIcpSignal', 'equals', 'disqualified')],
+  },
+  {
+    name: 'Cargo sem poder de decisão', logic: 'OR', points: -40, isActive: true,
+    conditions: [
+      'consultor de vendas', 'consultora de vendas', 'consultor comercial',
+      'consultora comercial', 'vendedor', 'vendedora', 'estagiário', 'estagiaria',
+    ].map((value, index) => condition(`non-decision-${index}`, 'jobTitle', 'contains', value)),
+  },
+];
 
 type LeadForScoring = {
   id: string;
+  phone: string | null;
   company: string | null;
   jobTitle: string | null;
   city: string | null;
@@ -36,19 +102,25 @@ type LeadForScoring = {
   firstLandingPage: string | null;
   assignedTo: string | null;
   tags: string[];
+  siteUrl: string | null;
+  researchIcpSignal: string | null;
+  researchBusinessType: string | null;
+  aiScore: number | null;
+  _count: { conversions: number };
   customFields: unknown;
 };
 
-function getFieldValue(lead: LeadForScoring, field: string): string | string[] | null {
+function getFieldValue(lead: LeadForScoring, field: string): string | string[] | number | null {
+  if (field === 'conversionCount') return lead._count.conversions;
   if (STANDARD_FIELDS.has(field)) {
-    return (lead as unknown as Record<string, string | string[] | null>)[field] ?? null;
+    return (lead as unknown as Record<string, string | string[] | number | null>)[field] ?? null;
   }
   const custom = (lead.customFields ?? {}) as Record<string, unknown>;
   const value = custom[field];
   return value == null ? null : String(value);
 }
 
-function isEmpty(value: string | string[] | null): boolean {
+function isEmpty(value: string | string[] | number | null): boolean {
   if (value == null) return true;
   if (Array.isArray(value)) return value.length === 0;
   return value === '';
@@ -59,6 +131,13 @@ export function matchesCondition(lead: LeadForScoring, condition: ScoringConditi
 
   if (condition.operator === 'is_set') return !isEmpty(raw);
   if (condition.operator === 'is_not_set') return isEmpty(raw);
+
+  if (condition.operator === 'gte' || condition.operator === 'lte') {
+    const actual = Number(raw);
+    const target = Number(condition.value);
+    if (!Number.isFinite(actual) || !Number.isFinite(target)) return false;
+    return condition.operator === 'gte' ? actual >= target : actual <= target;
+  }
 
   const target = (condition.value ?? '').toLowerCase();
 
@@ -71,7 +150,7 @@ export function matchesCondition(lead: LeadForScoring, condition: ScoringConditi
     return false;
   }
 
-  const str = (raw ?? '').toLowerCase();
+  const str = String(raw ?? '').toLowerCase();
   if (condition.operator === 'equals') return str === target;
   if (condition.operator === 'not_equals') return str !== target;
   if (condition.operator === 'contains') return str.includes(target);
@@ -87,14 +166,24 @@ export function evaluateRules(lead: LeadForScoring, rules: Array<{ id: string; l
     const matched = rule.logic === 'OR' ? results.some(Boolean) : results.every(Boolean);
     if (matched) total += rule.points;
   }
-  return total;
+  return Math.max(0, Math.min(100, total));
 }
 
 const LEAD_SELECT_FOR_SCORING = {
-  id: true, company: true, jobTitle: true, city: true, state: true, status: true,
+  id: true, score: true, phone: true, company: true, jobTitle: true, city: true, state: true, status: true,
   firstSource: true, firstMedium: true, firstCampaign: true, firstLandingPage: true,
-  assignedTo: true, tags: true, customFields: true,
+  assignedTo: true, tags: true, siteUrl: true, researchIcpSignal: true,
+  researchBusinessType: true, aiScore: true, customFields: true,
+  _count: { select: { conversions: true } },
 } as const;
+
+function scoringBands(scores: number[]) {
+  return {
+    qualified: scores.filter(score => score >= RECOMMENDED_SCORE_THRESHOLD).length,
+    nurture: scores.filter(score => score >= 40 && score < RECOMMENDED_SCORE_THRESHOLD).length,
+    low: scores.filter(score => score < 40).length,
+  };
+}
 
 export class LeadScoringService {
   static async listRules() {
@@ -155,29 +244,72 @@ export class LeadScoringService {
     if (!lead) return 0;
 
     const total = evaluateRules(lead, rules);
-    if (total !== 0) {
-      await prisma.lead.update({ where: { id: leadId }, data: { score: { increment: total } } });
+    if (lead.score !== total) {
+      await prisma.lead.update({ where: { id: leadId }, data: { score: total } });
     }
     return total;
   }
 
-  // Backfill sob demanda (botao "Aplicar aos leads existentes") — roda as
-  // regras ativas contra todo lead nao deletado. Rodar de novo soma pontos de
-  // novo, mesmo comportamento ja aceito hoje na acao "somar score" das regras
-  // de classificacao (LeadClassificationRule).
-  static async applyScoringRulesToExistingLeads(): Promise<{ updated: number; evaluated: number }> {
+  static async installRecommendedRules() {
+    const recommendedNames = RECOMMENDED_SCORING_RULES.map(rule => rule.name);
+    const deactivated = await prisma.$transaction(async tx => {
+      const result = await tx.leadScoringRule.updateMany({ where: { isActive: true }, data: { isActive: false } });
+      await tx.leadScoringRule.deleteMany({ where: { name: { in: recommendedNames } } });
+      await tx.leadScoringRule.createMany({
+        data: RECOMMENDED_SCORING_RULES.map(rule => ({
+          ...rule,
+          conditions: rule.conditions as unknown as Prisma.InputJsonValue,
+        })),
+      });
+      return result.count;
+    });
+    return {
+      threshold: RECOMMENDED_SCORE_THRESHOLD,
+      deactivated,
+      rules: await LeadScoringService.listRules(),
+    };
+  }
+
+  // Recalculo deterministico: cada lead recebe exatamente a soma atual das
+  // regras. Repetir a operacao nunca infla a pontuacao.
+  static async applyScoringRulesToExistingLeads(): Promise<{
+    updated: number;
+    evaluated: number;
+    threshold: number;
+    bands: { qualified: number; nurture: number; low: number };
+  }> {
     const rules = await LeadScoringService.activeRules();
-    if (rules.length === 0) return { updated: 0, evaluated: 0 };
+    if (rules.length === 0) {
+      return { updated: 0, evaluated: 0, threshold: RECOMMENDED_SCORE_THRESHOLD, bands: { qualified: 0, nurture: 0, low: 0 } };
+    }
 
     const leads = await prisma.lead.findMany({ where: { deletedAt: null }, select: LEAD_SELECT_FOR_SCORING });
+    const idsByScore = new Map<number, string[]>();
+    const scores: number[] = [];
     let updated = 0;
     for (const lead of leads) {
       const total = evaluateRules(lead, rules);
-      if (total !== 0) {
-        await prisma.lead.update({ where: { id: lead.id }, data: { score: { increment: total } } });
+      scores.push(total);
+      if (lead.score !== total) {
+        idsByScore.set(total, [...(idsByScore.get(total) ?? []), lead.id]);
         updated++;
       }
     }
-    return { updated, evaluated: leads.length };
+
+    for (const [score, ids] of idsByScore) {
+      for (let index = 0; index < ids.length; index += 1_000) {
+        await prisma.lead.updateMany({
+          where: { id: { in: ids.slice(index, index + 1_000) } },
+          data: { score },
+        });
+      }
+    }
+
+    return {
+      updated,
+      evaluated: leads.length,
+      threshold: RECOMMENDED_SCORE_THRESHOLD,
+      bands: scoringBands(scores),
+    };
   }
 }

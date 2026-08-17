@@ -30,10 +30,16 @@ export class LeadScoringController {
     try { await LeadScoringService.deleteRule(req.params.id); res.status(204).end(); } catch (e) { next(e); }
   }
 
+  static async installRecommended(_req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json(await LeadScoringService.installRecommendedRules());
+    } catch (e) { next(e); }
+  }
+
   static async applyExisting(_req: Request, res: Response, next: NextFunction) {
     try {
       const result = await LeadScoringService.applyScoringRulesToExistingLeads();
-      res.json({ message: 'Regras aplicadas', ...result });
+      res.json({ message: 'Pontuação recalculada', ...result });
     } catch (e) { next(e); }
   }
 }

@@ -1822,12 +1822,12 @@ export async function exportSegment(id: string): Promise<{ filename: string; cou
 }
 
 // ─── Lead Scoring ───────────────────────────────────────────────────────────
-// Regras aplicadas automaticamente a todo lead novo que entra no sistema
-// (webhook, WhatsApp, CSV, criação manual, e-mail recebido).
+// Regras calculadas na entrada e recalculadas quando os sinais relevantes do
+// lead mudam (pesquisa, cadastro ou conversões).
 export type ScoringCondition = {
   id: string;
   field: string;
-  operator: 'equals' | 'not_equals' | 'contains' | 'is_set' | 'is_not_set';
+  operator: 'equals' | 'not_equals' | 'contains' | 'is_set' | 'is_not_set' | 'gte' | 'lte';
   value: string;
 };
 export type LeadScoringRule = {
@@ -1857,6 +1857,10 @@ export async function deleteLeadScoringRule(id: string): Promise<void> {
   return apiClient.delete<void>(`/lead-scoring/${id}`);
 }
 
-export async function applyLeadScoringRulesToExisting(): Promise<{ message: string; updated: number; evaluated: number }> {
-  return apiClient.post<{ message: string; updated: number; evaluated: number }>('/lead-scoring/apply-existing', {});
+export async function applyLeadScoringRulesToExisting(): Promise<{ message: string; updated: number; evaluated: number; threshold: number; bands: { qualified: number; nurture: number; low: number } }> {
+  return apiClient.post<{ message: string; updated: number; evaluated: number; threshold: number; bands: { qualified: number; nurture: number; low: number } }>('/lead-scoring/apply-existing', {});
+}
+
+export async function installRecommendedLeadScoringRules(): Promise<{ threshold: number; deactivated: number; rules: LeadScoringRule[] }> {
+  return apiClient.post<{ threshold: number; deactivated: number; rules: LeadScoringRule[] }>('/lead-scoring/install-recommended', {});
 }

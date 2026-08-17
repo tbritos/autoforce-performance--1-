@@ -25,7 +25,7 @@ const SEGMENT_FIELDS = [
   { value: 'tags',            label: 'Tags',                type: 'tag'          },
   { value: 'company',         label: 'Empresa',             type: 'string'       },
   { value: 'assignedTo',      label: 'Responsável',         type: 'string'       },
-  { value: 'score',           label: 'Score',               type: 'number'       },
+  { value: 'score',           label: 'Lead Score',          type: 'number'       },
   { value: 'firstSeenAt',     label: 'Criado há (dias)',    type: 'days'         },
   { value: 'lastSeenAt',      label: 'Última atividade',   type: 'days'         },
   { value: 'conversionCount', label: 'Nº de conversões',   type: 'conv_count'   },
@@ -107,11 +107,12 @@ function defaultOperator(type: FieldType): string {
   return OPERATORS_BY_TYPE[type][0].value;
 }
 
-function defaultValue(type: FieldType, operator: string): any {
+function defaultValue(type: FieldType, operator: string, field?: string): any {
   if (type === 'status_multi') return [];
   if (type === 'segment') return '';
   if (type === 'bool') return null;
   if (['is_set', 'is_not_set', 'is_true', 'is_false'].includes(operator)) return null;
+  if (field === 'score') return 70;
   if (type === 'number' || type === 'days' || type === 'conv_count') return 1;
   return '';
 }
@@ -340,7 +341,7 @@ function SegmentBuilder({ segment, availableSegments, onClose, onSaved }: Builde
     const field = SEGMENT_FIELDS[0].value;
     const type  = getFieldType(field);
     const op    = defaultOperator(type);
-    setConditions(cs => [...cs, { id: genId(), field, operator: op, value: defaultValue(type, op) }]);
+    setConditions(cs => [...cs, { id: genId(), field, operator: op, value: defaultValue(type, op, field) }]);
   };
 
   const updateCondition = (id: string, patch: Partial<DataService.RuleCondition>) => {
@@ -350,9 +351,9 @@ function SegmentBuilder({ segment, availableSegments, onClose, onSaved }: Builde
       if (patch.field && patch.field !== c.field) {
         const t = getFieldType(patch.field);
         next.operator = defaultOperator(t);
-        next.value    = defaultValue(t, next.operator);
+        next.value    = defaultValue(t, next.operator, patch.field);
       } else if (patch.operator && patch.operator !== c.operator) {
-        next.value = defaultValue(getFieldType(next.field), patch.operator);
+        next.value = defaultValue(getFieldType(next.field), patch.operator, next.field);
       }
       return next;
     }));

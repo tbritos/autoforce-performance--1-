@@ -660,6 +660,14 @@ async function runResearch(
     data: { aiScore: assessment.score },
   });
 
+  const { LeadScoringService } = await import('./lead-scoring.service');
+  const scoredLead = await prisma.lead.findUnique({ where: { email }, select: { id: true } });
+  if (scoredLead) {
+    await LeadScoringService.applyScoringRulesToLead(scoredLead.id).catch(err => {
+      console.error(`[LeadScoring] falha ao recalcular pesquisa de ${email}:`, err);
+    });
+  }
+
   const { setMarketingStage } = await import('./lead-marketing-stage.service');
   const stage = marketingStageForResearchFit(assessment.fit);
   await setMarketingStage(email, stage, 'research', undefined, assessment.reason).catch(() => {});
@@ -758,6 +766,13 @@ export async function refreshSiteResearch(leadEmailRaw: string, siteUrl: string)
         where: { email, aiScore: null },
         data: { aiScore: assessment.score },
       });
+      const scoredLead = await prisma.lead.findUnique({ where: { email }, select: { id: true } });
+      if (scoredLead) {
+        const { LeadScoringService } = await import('./lead-scoring.service');
+        await LeadScoringService.applyScoringRulesToLead(scoredLead.id).catch(err => {
+          console.error(`[LeadScoring] falha ao recalcular atualização de site de ${email}:`, err);
+        });
+      }
     }
 
     if (assessment) {

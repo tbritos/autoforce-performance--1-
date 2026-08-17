@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Edit2, Trash2, X, Target, RefreshCw } from 'lucide-react';
+import { Plus, Edit2, Trash2, X, Target, RefreshCw, ShieldCheck } from 'lucide-react';
 import { DataService } from '../services/dataService';
 import {
   listLeadScoringRules, createLeadScoringRule, updateLeadScoringRule, deleteLeadScoringRule,
   applyLeadScoringRulesToExisting, fetchFieldValues,
+  installRecommendedLeadScoringRules,
   LeadScoringRule, ScoringCondition,
 } from '../services/dataService';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-type FieldOperator = 'equals' | 'not_equals' | 'contains' | 'is_set' | 'is_not_set';
+type FieldOperator = 'equals' | 'not_equals' | 'contains' | 'is_set' | 'is_not_set' | 'gte' | 'lte';
+type ScoringField = { value: string; label: string; type?: 'text' | 'number' };
 
 const OPERATORS: FieldOperator[] = ['equals', 'not_equals', 'contains', 'is_set', 'is_not_set'];
 const OPERATOR_LABELS: Record<FieldOperator, string> = {
@@ -19,9 +21,17 @@ const OPERATOR_LABELS: Record<FieldOperator, string> = {
   contains: 'contém',
   is_set: 'está preenchido',
   is_not_set: 'não está preenchido',
+  gte: 'é maior ou igual a',
+  lte: 'é menor ou igual a',
 };
 
-const STANDARD_FIELDS: { value: string; label: string }[] = [
+const STANDARD_FIELDS: ScoringField[] = [
+  { value: 'researchIcpSignal', label: 'Classificação de ICP' },
+  { value: 'researchBusinessType', label: 'Tipo de empresa pesquisado' },
+  { value: 'phone', label: 'Telefone' },
+  { value: 'siteUrl', label: 'Site da empresa' },
+  { value: 'conversionCount', label: 'Quantidade de conversões', type: 'number' },
+  { value: 'aiScore', label: 'Score da Lara', type: 'number' },
   { value: 'firstSource', label: 'Origem' },
   { value: 'firstMedium', label: 'Mídia' },
   { value: 'firstCampaign', label: 'Campanha' },
@@ -149,7 +159,7 @@ function FieldValueCombobox({ field, value, onChange }: { field: string; value: 
 
 type BuilderProps = {
   rule: LeadScoringRule | null;
-  fields: { value: string; label: string }[];
+  fields: ScoringField[];
   onClose: () => void;
   onSaved: () => void;
 };
@@ -169,7 +179,11 @@ function RuleBuilder({ rule, fields, onClose, onSaved }: BuilderProps) {
   };
 
   const updateCondition = (id: string, patch: Partial<ScoringCondition>) => {
-    setConditions(cs => cs.map(c => c.id === id ? { ...c, ...patch, ...(patch.field ? { value: '' } : {}) } : c));
+    setConditions(cs => cs.map(c => c.id === id ? {
+      ...c,
+      ...patch,
+      ...(patch.field ? { value: '', operator: 'equals' as FieldOperator } : {}),
+    } : c));
   };
 
   const removeCondition = (id: string) => setConditions(cs => cs.filter(c => c.id !== id));
@@ -257,6 +271,10 @@ function RuleBuilder({ rule, fields, onClose, onSaved }: BuilderProps) {
 
             {conditions.map(cond => {
               const noValue = cond.operator === 'is_set' || cond.operator === 'is_not_set';
+              const fieldType = fields.find(field => field.value === cond.field)?.type ?? 'text';
+              const availableOperators = fieldType === 'number'
+                ? (['equals', 'gte', 'lte', 'is_set', 'is_not_set'] as FieldOperator[])
+                : OPERATORS;
               return (
                 <div key={cond.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--bg-subtle)', borderRadius: 10, border: '1px solid var(--border)' }}>
                   <select value={cond.field} onChange={e => updateCondition(cond.id, { field: e.target.value })}
@@ -266,10 +284,17 @@ function RuleBuilder({ rule, fields, onClose, onSaved }: BuilderProps) {
 
                   <select value={cond.operator} onChange={e => updateCondition(cond.id, { operator: e.target.value as FieldOperator })}
                     style={{ padding: '6px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, color: 'var(--fg-primary)', background: 'var(--bg-surface)', cursor: 'pointer', outline: 'none' }}>
-                    {OPERATORS.map(o => <option key={o} value={o}>{OPERATOR_LABELS[o]}</option>)}
+                    {availableOperators.map(o => <option key={o} value={o}>{OPERATOR_LABELS[o]}</option>)}
                   </select>
 
-                  {!noValue && (
+                  {!noValue && fieldType === 'number' && (
+                    <input type="number" value={cond.value} onChange={e => updateCondition(cond.id, { value: e.target.value })}
+                      placeholder="Digite o valor"
+                      style={{ minWidth: 160, padding: '6px 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 13, color: 'var(--fg-primary)', background: 'var(--bg-surface)', outline: 'none' }}
+                    />
+                  )}
+
+                  {!noValue && fieldType !== 'number' && (
                     <FieldValueCombobox field={cond.field} value={cond.value} onChange={v => updateCondition(cond.id, { value: v })} />
                   )}
 
@@ -312,12 +337,13 @@ function RuleBuilder({ rule, fields, onClose, onSaved }: BuilderProps) {
 
 export const LeadScoringView: React.FC = () => {
   const [rules, setRules]     = useState<LeadScoringRule[]>([]);
-  const [fields, setFields]   = useState<{ value: string; label: string }[]>(STANDARD_FIELDS);
+  const [fields, setFields]   = useState<ScoringField[]>(STANDARD_FIELDS);
   const [loading, setLoading] = useState(true);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<LeadScoringRule | null>(null);
   const [deletingId, setDeletingId]   = useState<string | null>(null);
   const [applying, setApplying]       = useState(false);
+  const [installing, setInstalling]   = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -345,15 +371,35 @@ export const LeadScoringView: React.FC = () => {
   };
 
   const handleApplyExisting = async () => {
-    if (!confirm('Aplicar todas as regras ativas aos leads já existentes? Isso soma pontos aos leads que baterem as condições — rodar de novo soma de novo.')) return;
+    if (!confirm('Recalcular a pontuação de todos os leads pelas regras ativas? O score atual será substituído pelo resultado correto das regras.')) return;
     setApplying(true);
     try {
       const result = await applyLeadScoringRulesToExisting();
-      alert(`Concluído. ${result.updated} lead(s) pontuado(s) (${result.evaluated} avaliado(s) no total).`);
+      alert(
+        `Concluído. ${result.updated} score(s) alterado(s) em ${result.evaluated} leads.\n\n` +
+        `Nota de corte: ${result.threshold}\n` +
+        `Acima do corte: ${result.bands.qualified}\n` +
+        `Nutrição (40–69): ${result.bands.nurture}\n` +
+        `Baixa prioridade (0–39): ${result.bands.low}`
+      );
     } catch (e) {
       alert('Erro ao aplicar regras: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
       setApplying(false);
+    }
+  };
+
+  const handleInstallRecommended = async () => {
+    if (!confirm('Configurar o modelo ICP AutoForce? As regras atuais serão preservadas, mas ficarão inativas. Depois você poderá recalcular toda a base com segurança.')) return;
+    setInstalling(true);
+    try {
+      await installRecommendedLeadScoringRules();
+      await load();
+      alert('Modelo ICP AutoForce configurado. Confira as regras e clique em “Recalcular todos os leads” para aplicar à base.');
+    } catch (e) {
+      alert('Erro ao configurar o modelo: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setInstalling(false);
     }
   };
 
@@ -367,7 +413,7 @@ export const LeadScoringView: React.FC = () => {
             Regras de Pontuação
           </h2>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--fg-muted)' }}>
-            Aplicadas automaticamente a todo lead novo que entrar no sistema (webhook, WhatsApp, CSV, criação manual, e-mail)
+            Calculadas na entrada e atualizadas quando pesquisa, cadastro ou conversões do lead mudam
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
@@ -377,7 +423,7 @@ export const LeadScoringView: React.FC = () => {
             fontSize: 13, fontWeight: 600, color: 'var(--fg-secondary)', cursor: rules.length === 0 ? 'not-allowed' : 'pointer',
             opacity: applying || rules.length === 0 ? 0.6 : 1,
           }}>
-            {applying ? <RefreshCw size={15} className="animate-spin" /> : <Target size={15} />} Aplicar aos leads existentes
+            {applying ? <RefreshCw size={15} className="animate-spin" /> : <Target size={15} />} Recalcular todos os leads
           </button>
           <button onClick={openCreate} style={{
             display: 'flex', alignItems: 'center', gap: 8, padding: '9px 18px',
@@ -387,6 +433,36 @@ export const LeadScoringView: React.FC = () => {
             <Plus size={15} /> Nova Regra
           </button>
         </div>
+      </div>
+
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 18, flexWrap: 'wrap',
+        padding: '18px 20px', marginBottom: 20, borderRadius: 12,
+        border: '1px solid #bfdbfe', background: 'linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flex: '1 1 480px' }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <ShieldCheck size={19} color="#2563eb" />
+          </div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#172554' }}>Modelo ICP AutoForce · nota de corte 70</div>
+            <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.55, color: '#475569' }}>
+              Prioriza ICP confirmado, cargo decisor e dados de contato. Engajamento e mídia paga ajudam, mas não qualificam um lead sozinhos. Leads fora do ICP e cargos sem poder de decisão recebem penalidade.
+            </div>
+            <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', fontSize: 11, fontWeight: 600 }}>
+              <span style={{ color: '#166534' }}>70–100 · pronto para segmentação</span>
+              <span style={{ color: '#92400e' }}>40–69 · nutrição</span>
+              <span style={{ color: '#64748b' }}>0–39 · baixa prioridade</span>
+            </div>
+          </div>
+        </div>
+        <button onClick={handleInstallRecommended} disabled={installing} style={{
+          padding: '9px 16px', border: '1px solid #93c5fd', borderRadius: 9, background: '#fff',
+          color: '#1d4ed8', fontSize: 12, fontWeight: 700, cursor: installing ? 'not-allowed' : 'pointer',
+          opacity: installing ? 0.65 : 1, whiteSpace: 'nowrap',
+        }}>
+          {installing ? 'Configurando...' : 'Configurar modelo recomendado'}
+        </button>
       </div>
 
       {loading ? (
@@ -423,7 +499,7 @@ export const LeadScoringView: React.FC = () => {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 10px', background: 'var(--accent-soft)', borderRadius: 99, flexShrink: 0 }}>
                   <Target size={11} style={{ color: 'var(--accent)' }} />
-                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)' }}>+{rule.points}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent)' }}>{rule.points > 0 ? '+' : ''}{rule.points}</span>
                 </div>
               </div>
 

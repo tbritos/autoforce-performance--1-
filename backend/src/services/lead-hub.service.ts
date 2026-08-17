@@ -216,6 +216,10 @@ export class LeadHubService {
         .catch(err => console.error('[LeadResearch] falha ao atualizar pesquisa com site recebido:', err));
     }
 
+    await LeadScoringService.applyScoringRulesToLead(updated.id).catch(err => {
+      console.error('[LeadScoring] falha ao recalcular lead atualizado:', err);
+    });
+
     return updated;
   }
 
@@ -239,7 +243,7 @@ export class LeadHubService {
       if (existing) return existing;
     }
 
-    return prisma.leadConversion.create({
+    const conversion = await prisma.leadConversion.create({
       data: {
         leadEmail: email,
         source: input.source,
@@ -257,6 +261,14 @@ export class LeadHubService {
         convertedAt: input.convertedAt || new Date(),
       },
     });
+
+    const lead = await prisma.lead.findUnique({ where: { email }, select: { id: true } });
+    if (lead) {
+      await LeadScoringService.applyScoringRulesToLead(lead.id).catch(err => {
+        console.error('[LeadScoring] falha ao recalcular depois da conversão:', err);
+      });
+    }
+    return conversion;
   }
 
   // ----------------------------------------------------------
@@ -669,6 +681,10 @@ export class LeadHubService {
       import('./automation-engine.service').then(({ fireTrigger }) => {
         fireTrigger('score_updated', updated.email, { score: updated.score });
       }).catch(() => {});
+    } else {
+      await LeadScoringService.applyScoringRulesToLead(updated.id).catch(err => {
+        console.error('[LeadScoring] falha ao recalcular depois da edição:', err);
+      });
     }
 
     if (normalizedSiteUrl && normalizedSiteUrl !== existingLead.siteUrl) {
