@@ -54,7 +54,7 @@ export const RECOMMENDED_SCORING_RULES: Array<{
     ].map((value, index) => condition(`automotive-segment-${index}`, 'segmento', 'contains', value)),
   },
   {
-    name: 'Revenda de veículos', logic: 'OR', points: 30, isActive: true,
+    name: 'Revenda de veículos', logic: 'OR', points: 50, isActive: true,
     conditions: [
       'revenda', 'multimarcas', 'seminovos',
     ].map((value, index) => condition(`reseller-segment-${index}`, 'segmento', 'contains', value)),

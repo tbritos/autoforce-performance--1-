@@ -80,12 +80,9 @@ test('concessionária com cargo decisor atinge o corte mesmo sem pesquisa prévi
   assert.ok(score >= RECOMMENDED_SCORE_THRESHOLD);
 });
 
-test('revenda com cargo decisor e cadastro completo atinge o corte', () => {
+test('revenda com cargo decisor atinge o corte sem depender de pesquisa ou contato', () => {
   const score = evaluateRules(lead({
     jobTitle: 'Sócio proprietário',
-    phone: '5584999999999',
-    company: 'Multicar',
-    siteUrl: 'https://multicar.com.br',
     customFields: { segmento: 'Revenda multimarcas' },
   }), rules);
 
