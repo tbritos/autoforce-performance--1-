@@ -14,6 +14,18 @@ export type SegmentRules = {
   conditions: RuleCondition[];
 };
 
+export class SegmentValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SegmentValidationError';
+  }
+}
+
+type SegmentBuildDependencies = {
+  loadRules?: (segmentId: string) => Promise<SegmentRules | null>;
+  newsletterWhere?: () => Promise<Prisma.LeadWhereInput>;
+};
+
 export class SegmentService {
 
   private static newsletterSegment(leadCount?: number) {
@@ -53,13 +65,46 @@ export class SegmentService {
     return /[;"\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
   }
 
-  static buildWhere(rules: SegmentRules): Prisma.LeadWhereInput {
+  static async buildWhere(
+    rules: SegmentRules,
+    lineage: string[] = [],
+    dependencies: SegmentBuildDependencies = {},
+  ): Promise<Prisma.LeadWhereInput> {
     const base: Prisma.LeadWhereInput = { deletedAt: null };
     if (!rules.conditions || !rules.conditions.length) return base;
 
-    const clauses = rules.conditions
-      .map(c => SegmentService.conditionToWhere(c))
-      .filter((c): c is Prisma.LeadWhereInput => c !== null && Object.keys(c).length > 0);
+    const clauses = (await Promise.all(rules.conditions.map(async condition => {
+      if (condition.field !== 'segment') return SegmentService.conditionToWhere(condition);
+
+      const segmentId = typeof condition.value === 'string' ? condition.value.trim() : '';
+      if (!segmentId) throw new SegmentValidationError('Selecione uma segmentação para esta condição.');
+      if (!['in_segment', 'not_in_segment'].includes(condition.operator)) {
+        throw new SegmentValidationError('Operador de segmentação inválido.');
+      }
+      if (lineage.includes(segmentId)) {
+        throw new SegmentValidationError('Esta regra cria uma referência circular entre segmentações.');
+      }
+
+      let referencedWhere: Prisma.LeadWhereInput;
+      if (segmentId === NEWSLETTER_AUDIENCE_ID) {
+        referencedWhere = await (dependencies.newsletterWhere ?? SegmentService.newsletterEligibleWhere)();
+      } else {
+        const referencedRules = dependencies.loadRules
+          ? await dependencies.loadRules(segmentId)
+          : await prisma.segment.findUnique({ where: { id: segmentId } })
+              .then(referenced => referenced?.rules as unknown as SegmentRules | undefined);
+        if (!referencedRules) throw new SegmentValidationError('A segmentação selecionada não existe mais.');
+        referencedWhere = await SegmentService.buildWhere(
+          referencedRules,
+          [...lineage, segmentId],
+          dependencies,
+        );
+      }
+
+      return condition.operator === 'in_segment'
+        ? referencedWhere
+        : { NOT: referencedWhere };
+    }))).filter((clause): clause is Prisma.LeadWhereInput => clause !== null && Object.keys(clause).length > 0);
 
     if (!clauses.length) return base;
 
@@ -131,14 +176,21 @@ export class SegmentService {
 
   static async listSegments() {
     const segments = await prisma.segment.findMany({ orderBy: { createdAt: 'desc' } });
-    const [newsletterCount, withCounts] = await Promise.all([
-      SegmentService.newsletterEligibleWhere().then(where => prisma.lead.count({ where })),
+    const rulesById = new Map(segments.map(segment => [segment.id, segment.rules as unknown as SegmentRules]));
+    const newsletterWherePromise = SegmentService.newsletterEligibleWhere();
+    const dependencies: SegmentBuildDependencies = {
+      loadRules: async id => rulesById.get(id) ?? null,
+      newsletterWhere: () => newsletterWherePromise,
+    };
+    const [newsletterWhere, withCounts] = await Promise.all([
+      newsletterWherePromise,
       Promise.all(segments.map(async seg => {
       const rules = seg.rules as unknown as SegmentRules;
-      const count = await prisma.lead.count({ where: SegmentService.buildWhere(rules) });
+      const count = await prisma.lead.count({ where: await SegmentService.buildWhere(rules, [seg.id], dependencies) });
       return { ...seg, leadCount: count };
       })),
     ]);
+    const newsletterCount = await prisma.lead.count({ where: newsletterWhere });
     return [SegmentService.newsletterSegment(newsletterCount), ...withCounts];
   }
 
@@ -151,6 +203,7 @@ export class SegmentService {
   }
 
   static async createSegment(data: { name: string; description?: string; color?: string; rules: SegmentRules; createdBy?: string }) {
+    await SegmentService.buildWhere(data.rules);
     return prisma.segment.create({
       data: {
         name: data.name,
@@ -164,6 +217,7 @@ export class SegmentService {
 
   static async updateSegment(id: string, data: { name?: string; description?: string; color?: string; rules?: SegmentRules }) {
     if (id === NEWSLETTER_AUDIENCE_ID) throw new Error('Este segmento é gerenciado automaticamente pelo sistema.');
+    if (data.rules !== undefined) await SegmentService.buildWhere(data.rules, [id]);
     return prisma.segment.update({
       where: { id },
       data: {
@@ -177,11 +231,21 @@ export class SegmentService {
 
   static async deleteSegment(id: string) {
     if (id === NEWSLETTER_AUDIENCE_ID) throw new Error('Este segmento é gerenciado automaticamente pelo sistema.');
+    const segments = await prisma.segment.findMany({ select: { id: true, name: true, rules: true } });
+    const dependents = segments.filter(segment => {
+      if (segment.id === id) return false;
+      const rules = segment.rules as unknown as SegmentRules;
+      return (rules.conditions ?? []).some(condition => condition.field === 'segment' && condition.value === id);
+    });
+    if (dependents.length) {
+      const names = dependents.slice(0, 3).map(segment => segment.name).join(', ');
+      throw new SegmentValidationError(`Este segmento é usado por: ${names}. Remova essa regra antes de excluí-lo.`);
+    }
     return prisma.segment.delete({ where: { id } });
   }
 
-  static async previewCount(rules: SegmentRules): Promise<number> {
-    return prisma.lead.count({ where: SegmentService.buildWhere(rules) });
+  static async previewCount(rules: SegmentRules, segmentId?: string): Promise<number> {
+    return prisma.lead.count({ where: await SegmentService.buildWhere(rules, segmentId ? [segmentId] : []) });
   }
 
   static async getSegmentLeads(id: string, page = 1, pageSize = 25) {
@@ -203,7 +267,7 @@ export class SegmentService {
     }
     const seg = await prisma.segment.findUniqueOrThrow({ where: { id } });
     const rules = seg.rules as unknown as SegmentRules;
-    const where = SegmentService.buildWhere(rules);
+    const where = await SegmentService.buildWhere(rules, [id]);
     const skip = (page - 1) * pageSize;
     const [total, leads] = await Promise.all([
       prisma.lead.count({ where }),
@@ -223,7 +287,7 @@ export class SegmentService {
     const seg = await SegmentService.getSegment(id);
     const where = id === NEWSLETTER_AUDIENCE_ID
       ? await SegmentService.newsletterEligibleWhere()
-      : SegmentService.buildWhere(seg.rules as unknown as SegmentRules);
+      : await SegmentService.buildWhere(seg.rules as unknown as SegmentRules, [id]);
     const leads = await prisma.lead.findMany({
       where,
       orderBy: { lastSeenAt: 'desc' },

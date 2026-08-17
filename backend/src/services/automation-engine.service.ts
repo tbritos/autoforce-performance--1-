@@ -397,7 +397,7 @@ async function queuedAudienceStillMatches(
   const segment = await tx.segment.findUnique({ where: { id: config.eventValue } });
   if (!segment) return false;
   const rules = segment.rules as unknown as SegmentRules;
-  const where = SegmentService.buildWhere(rules);
+  const where = await SegmentService.buildWhere(rules, [segment.id]);
   const lead = await tx.lead.findFirst({
     where: { ...where, email: leadEmail, deletedAt: null, status: { not: 'DISQUALIFIED' } },
     select: { id: true },

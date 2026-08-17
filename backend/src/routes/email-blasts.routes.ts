@@ -42,7 +42,7 @@ async function resolveAudienceLeads(
       const segment = await prisma.segment.findUnique({ where: { id: audienceValue } });
       if (!segment) return [];
       const rules = segment.rules as unknown as SegmentRules;
-      const segmentWhere = SegmentService.buildWhere(rules);
+      const segmentWhere = await SegmentService.buildWhere(rules, [segment.id]);
       leads = await prisma.lead.findMany({ where: { ...segmentWhere, status: { not: 'DISQUALIFIED' } }, select: LEAD_SELECT });
     }
   } else if (audienceType === 'individual') {

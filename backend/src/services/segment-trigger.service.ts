@@ -38,7 +38,7 @@ export async function evaluateSegmentTriggers(): Promise<void> {
       if (!segment) continue;
 
       const rules = segment.rules as unknown as SegmentRules;
-      const where = { ...SegmentService.buildWhere(rules), status: { not: 'DISQUALIFIED' as const } };
+      const where = { ...await SegmentService.buildWhere(rules, [segment.id]), status: { not: 'DISQUALIFIED' as const } };
       const currentLeads = await prisma.lead.findMany({ where, select: { email: true } });
       const currentEmails = new Set(currentLeads.map(l => l.email));
 

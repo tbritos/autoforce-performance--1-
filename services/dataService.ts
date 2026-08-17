@@ -1805,8 +1805,11 @@ export async function deleteSegment(id: string): Promise<void> {
   return apiClient.delete<void>(`/segments/${id}`);
 }
 
-export async function previewSegment(rules: SegmentRules): Promise<number> {
-  const { count } = await apiClient.post<{ count: number }>('/segments/preview', rules);
+export async function previewSegment(rules: SegmentRules, segmentId?: string): Promise<number> {
+  const { count } = await apiClient.post<{ count: number }>('/segments/preview', {
+    ...rules,
+    ...(segmentId ? { segmentId } : {}),
+  });
   return count;
 }
 

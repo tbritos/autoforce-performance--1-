@@ -18,6 +18,7 @@ const STATUS_OPTIONS = [
 
 const SEGMENT_FIELDS = [
   { value: 'status',          label: 'Status',              type: 'status_multi' },
+  { value: 'segment',         label: 'Segmentação',         type: 'segment'      },
   { value: 'isHot',           label: 'Lead Quente',         type: 'bool'         },
   { value: 'firstSource',     label: 'Fonte',               type: 'string'       },
   { value: 'firstMedium',     label: 'UTM Medium',          type: 'string'       },
@@ -30,7 +31,7 @@ const SEGMENT_FIELDS = [
   { value: 'conversionCount', label: 'Nº de conversões',   type: 'conv_count'   },
 ] as const;
 
-type FieldType = 'string' | 'status_multi' | 'bool' | 'number' | 'days' | 'tag' | 'conv_count';
+type FieldType = 'string' | 'status_multi' | 'bool' | 'number' | 'days' | 'tag' | 'conv_count' | 'segment';
 
 const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string }[]> = {
   string: [
@@ -43,6 +44,10 @@ const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string }[]> =
   status_multi: [
     { value: 'in',     label: 'é um de'         },
     { value: 'not_in', label: 'não é nenhum de' },
+  ],
+  segment: [
+    { value: 'in_segment',     label: 'está na segmentação'     },
+    { value: 'not_in_segment', label: 'não está na segmentação' },
   ],
   bool: [
     { value: 'is_true',  label: 'é verdadeiro (sim)' },
@@ -84,6 +89,12 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
 
 function genId() { return Math.random().toString(36).slice(2, 10); }
 
+function apiErrorMessage(error: unknown, fallback: string): string {
+  const raw = error instanceof Error ? error.message : '';
+  const match = raw.match(/"error":"([^"]+)"/);
+  return match?.[1] || raw || fallback;
+}
+
 function getFieldMeta(fieldValue: string) {
   return SEGMENT_FIELDS.find(f => f.value === fieldValue) ?? null;
 }
@@ -98,6 +109,7 @@ function defaultOperator(type: FieldType): string {
 
 function defaultValue(type: FieldType, operator: string): any {
   if (type === 'status_multi') return [];
+  if (type === 'segment') return '';
   if (type === 'bool') return null;
   if (['is_set', 'is_not_set', 'is_true', 'is_false'].includes(operator)) return null;
   if (type === 'number' || type === 'days' || type === 'conv_count') return 1;
@@ -228,12 +240,25 @@ function FieldCombobox({ field, value, onChange }: { field: string; value: strin
 
 // ── ConditionValueInput ────────────────────────────────────────────────────────
 
-function ConditionValueInput({ field, operator, value, onChange }: {
+function ConditionValueInput({ field, operator, value, onChange, segments = [] }: {
   field: string; operator: string; value: any; onChange: (v: any) => void;
+  segments?: DataService.SegmentType[];
 }) {
   if (['is_set', 'is_not_set', 'is_true', 'is_false'].includes(operator)) return null;
 
   const type = getFieldType(field);
+
+  if (type === 'segment') {
+    return (
+      <select aria-label="Segmentação da condição" value={value ?? ''} onChange={e => onChange(e.target.value)}
+        style={{ minWidth: 230, padding: '6px 10px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: value ? '#111827' : '#9ca3af', background: '#fff', cursor: 'pointer', outline: 'none' }}>
+        <option value="">Selecione uma segmentação...</option>
+        {segments.map(segment => (
+          <option key={segment.id} value={segment.id}>{segment.name}</option>
+        ))}
+      </select>
+    );
+  }
 
   if (type === 'status_multi') {
     const selected: string[] = Array.isArray(value) ? value : [];
@@ -280,11 +305,12 @@ function ConditionValueInput({ field, operator, value, onChange }: {
 
 type BuilderProps = {
   segment: DataService.SegmentType | null;
+  availableSegments: DataService.SegmentType[];
   onClose: () => void;
   onSaved: () => void;
 };
 
-function SegmentBuilder({ segment, onClose, onSaved }: BuilderProps) {
+function SegmentBuilder({ segment, availableSegments, onClose, onSaved }: BuilderProps) {
   const isEdit = !!segment;
   const [name, setName]               = useState(segment?.name ?? '');
   const [description, setDescription] = useState(segment?.description ?? '');
@@ -296,18 +322,19 @@ function SegmentBuilder({ segment, onClose, onSaved }: BuilderProps) {
   const [saving, setSaving]           = useState(false);
   const [error, setError]             = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout>|null>(null);
+  const selectableSegments = availableSegments.filter(candidate => candidate.id !== segment?.id);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       setPreviewLoading(true);
       try {
-        const count = await DataService.previewSegment({ logic, conditions });
+        const count = await DataService.previewSegment({ logic, conditions }, segment?.id);
         setPreviewCount(count);
       } catch { setPreviewCount(null); }
       finally { setPreviewLoading(false); }
     }, 600);
-  }, [logic, conditions]);
+  }, [logic, conditions, segment?.id]);
 
   const addCondition = () => {
     const field = SEGMENT_FIELDS[0].value;
@@ -344,7 +371,7 @@ function SegmentBuilder({ segment, onClose, onSaved }: BuilderProps) {
         await DataService.createSegment({ name, description: description || null, color, rules });
       }
       onSaved();
-    } catch (e: any) { setError(e?.message || 'Erro ao salvar segmento'); }
+    } catch (e: unknown) { setError(apiErrorMessage(e, 'Erro ao salvar segmento')); }
     finally { setSaving(false); }
   };
 
@@ -442,13 +469,13 @@ function SegmentBuilder({ segment, onClose, onSaved }: BuilderProps) {
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
                         {/* Field selector */}
-                        <select value={cond.field} onChange={e => updateCondition(cond.id, { field: e.target.value })}
+                        <select aria-label={`Campo da condição ${idx + 1}`} value={cond.field} onChange={e => updateCondition(cond.id, { field: e.target.value })}
                           style={{ padding: '6px 10px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#111827', background: '#fff', cursor: 'pointer', outline: 'none' }}>
                           {SEGMENT_FIELDS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
                         </select>
 
                         {/* Operator selector */}
-                        <select value={cond.operator} onChange={e => updateCondition(cond.id, { operator: e.target.value })}
+                        <select aria-label={`Operador da condição ${idx + 1}`} value={cond.operator} onChange={e => updateCondition(cond.id, { operator: e.target.value })}
                           style={{ padding: '6px 10px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#111827', background: '#fff', cursor: 'pointer', outline: 'none' }}>
                           {operators.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
@@ -458,6 +485,7 @@ function SegmentBuilder({ segment, onClose, onSaved }: BuilderProps) {
                           <ConditionValueInput
                             field={cond.field} operator={cond.operator}
                             value={cond.value} onChange={v => updateCondition(cond.id, { value: v })}
+                            segments={selectableSegments}
                           />
                         )}
                       </div>
@@ -487,6 +515,9 @@ function SegmentBuilder({ segment, onClose, onSaved }: BuilderProps) {
             >
               <Plus size={14} /> Adicionar condição
             </button>
+            <div style={{ fontSize: 11, color: '#9ca3af', lineHeight: 1.45 }}>
+              Você pode incluir ou excluir outra segmentação. A composição permanece dinâmica e acompanha futuras alterações da segmentação escolhida.
+            </div>
           </div>
         </div>
 
@@ -679,7 +710,7 @@ export const SegmentView: React.FC = () => {
     if (!confirm('Excluir este segmento?')) return;
     setDeletingId(id);
     try { await DataService.deleteSegment(id); await load(); }
-    catch { alert('Erro ao excluir segmento'); }
+    catch (error: unknown) { alert(apiErrorMessage(error, 'Erro ao excluir segmento')); }
     finally { setDeletingId(null); }
   };
 
@@ -827,6 +858,7 @@ export const SegmentView: React.FC = () => {
       {builderOpen && (
         <SegmentBuilder
           segment={editingSegment}
+          availableSegments={segments}
           onClose={() => setBuilderOpen(false)}
           onSaved={() => { setBuilderOpen(false); load(); }}
         />

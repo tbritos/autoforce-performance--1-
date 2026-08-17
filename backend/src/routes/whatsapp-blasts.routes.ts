@@ -31,7 +31,7 @@ async function resolveAudienceLeads(audienceType: string, audienceValue: string)
     const segment = await prisma.segment.findUnique({ where: { id: audienceValue } });
     if (!segment) return [];
     const rules = segment.rules as unknown as SegmentRules;
-    const segmentWhere = SegmentService.buildWhere(rules);
+    const segmentWhere = await SegmentService.buildWhere(rules, [segment.id]);
     return prisma.lead.findMany({ where: { ...segmentWhere, status: { not: 'DISQUALIFIED' }, phone: { not: null } }, select: LEAD_SELECT });
   }
 
