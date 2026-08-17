@@ -444,6 +444,8 @@ model AutomationExecution {
   @@index([leadEmail])
   @@index([leadEmail, status])
   @@index([leadEmail, nurtureGroupKeySnapshot, status])
+  @@index([journeyId, isTest, status])
+  @@index([journeyId, isTest, currentNodeId, status])
   @@index([resumeAt])
   @@index([status, queuedAt])
   @@index([startedAt])
@@ -1143,6 +1145,8 @@ model EmailSent {
   @@index([leadEmail])
   @@index([templateId])
   @@index([blastId])
+  @@index([automationExecutionId])
+  @@index([automationExecutionId, automationNodeId])
   @@index([status])
   @@index([sentAt])
 }

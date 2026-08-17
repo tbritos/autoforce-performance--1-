@@ -1,4 +1,5 @@
 import { prisma } from '../config/database';
+import { Prisma } from '@prisma/client';
 import {
   AutomationType,
   deriveEntryMode,
@@ -7,6 +8,15 @@ import {
   normalizeQueueTtlHours,
   suggestedPriorityForEntry,
 } from './automation-priority.utils';
+import { SegmentRules, SegmentService } from './segment.service';
+import {
+  buildStageMetrics,
+  ExitConditions as MonitoringExitConditions,
+  matchesExitConditions,
+  percentage,
+  StageReachedRow,
+  StageStatusRow,
+} from './automation-monitoring.utils';
 
 export interface JourneyNode {
   id: string;
@@ -56,6 +66,46 @@ export interface AutomationNurtureGroupInput {
   canInterruptLowerPriority?: boolean;
   queueTtlHours?: number | null;
 }
+
+type EmailMetricRow = {
+  nodeId: string | null;
+  sentMessages: number;
+  sentPeople: number;
+  deliveredPeople: number;
+  openedPeople: number;
+  clickedPeople: number;
+  bouncedPeople: number;
+  complainedPeople: number;
+};
+
+type WhatsAppMetricRow = {
+  templateName: string | null;
+  attemptedMessages: number;
+  sentPeople: number;
+  deliveredPeople: number;
+  readPeople: number;
+  failedPeople: number;
+};
+
+const emptyEmailMetric = (): EmailMetricRow => ({
+  nodeId: null,
+  sentMessages: 0,
+  sentPeople: 0,
+  deliveredPeople: 0,
+  openedPeople: 0,
+  clickedPeople: 0,
+  bouncedPeople: 0,
+  complainedPeople: 0,
+});
+
+const emptyWhatsAppMetric = (): WhatsAppMetricRow => ({
+  templateName: null,
+  attemptedMessages: 0,
+  sentPeople: 0,
+  deliveredPeople: 0,
+  readPeople: 0,
+  failedPeople: 0,
+});
 
 const validStatus = (status?: string) => {
   if (!status) return 'DRAFT';
@@ -239,17 +289,257 @@ export class AutomationJourneysService {
   }
 
   static async getExecutionStats(journeyId: string) {
-    const counts = await prisma.automationExecution.groupBy({
-      by: ['status'],
-      where: { journeyId },
-      _count: { _all: true },
+    const journey = await prisma.automationJourney.findUniqueOrThrow({
+      where: { id: journeyId },
+      select: { nodes: true, edges: true, exitConditions: true },
     });
+    const nodes = (journey.nodes as unknown as JourneyNode[]) ?? [];
+    const edges = (journey.edges as unknown as JourneyEdge[]) ?? [];
+
+    const [counts, stageGroups, reachedRows, emailTotals, emailByNode, whatsappTotals, whatsappByTemplate, whatsappResponses] = await Promise.all([
+      prisma.automationExecution.groupBy({
+        by: ['status'],
+        where: { journeyId, isTest: false },
+        _count: { _all: true },
+      }),
+      prisma.automationExecution.groupBy({
+        by: ['currentNodeId', 'status'],
+        where: { journeyId, isTest: false },
+        _count: { _all: true },
+      }),
+      prisma.$queryRaw<Array<{ nodeId: string | null; count: number }>>(Prisma.sql`
+        WITH reached AS (
+          SELECT execution."id", execution."currentNodeId" AS "nodeId"
+          FROM "AutomationExecution" execution
+          WHERE execution."journeyId" = ${journeyId}
+            AND execution."isTest" = false
+            AND execution."currentNodeId" IS NOT NULL
+          UNION
+          SELECT execution."id", item->>'nodeId' AS "nodeId"
+          FROM "AutomationExecution" execution
+          CROSS JOIN LATERAL jsonb_array_elements(execution."log") item
+          WHERE execution."journeyId" = ${journeyId}
+            AND execution."isTest" = false
+            AND item->>'nodeId' IS NOT NULL
+        )
+        SELECT "nodeId", COUNT(DISTINCT "id")::int AS "count"
+        FROM reached
+        GROUP BY "nodeId"
+      `),
+      prisma.$queryRaw<EmailMetricRow[]>(Prisma.sql`
+        SELECT
+          NULL::text AS "nodeId",
+          COUNT(*)::int AS "sentMessages",
+          COUNT(DISTINCT email."leadEmail")::int AS "sentPeople",
+          COUNT(DISTINCT email."leadEmail") FILTER (
+            WHERE email."deliveredAt" IS NOT NULL OR email."openedAt" IS NOT NULL OR email."clickedAt" IS NOT NULL
+          )::int AS "deliveredPeople",
+          COUNT(DISTINCT email."leadEmail") FILTER (
+            WHERE email."openedAt" IS NOT NULL OR email."clickedAt" IS NOT NULL
+          )::int AS "openedPeople",
+          COUNT(DISTINCT email."leadEmail") FILTER (WHERE email."clickedAt" IS NOT NULL)::int AS "clickedPeople",
+          COUNT(DISTINCT email."leadEmail") FILTER (WHERE email."bouncedAt" IS NOT NULL)::int AS "bouncedPeople",
+          COUNT(DISTINCT email."leadEmail") FILTER (WHERE email."complainedAt" IS NOT NULL)::int AS "complainedPeople"
+        FROM "EmailSent" email
+        INNER JOIN "AutomationExecution" execution ON execution."id" = email."automationExecutionId"
+        WHERE execution."journeyId" = ${journeyId} AND execution."isTest" = false
+      `),
+      prisma.$queryRaw<EmailMetricRow[]>(Prisma.sql`
+        SELECT
+          email."automationNodeId" AS "nodeId",
+          COUNT(*)::int AS "sentMessages",
+          COUNT(DISTINCT email."leadEmail")::int AS "sentPeople",
+          COUNT(DISTINCT email."leadEmail") FILTER (
+            WHERE email."deliveredAt" IS NOT NULL OR email."openedAt" IS NOT NULL OR email."clickedAt" IS NOT NULL
+          )::int AS "deliveredPeople",
+          COUNT(DISTINCT email."leadEmail") FILTER (
+            WHERE email."openedAt" IS NOT NULL OR email."clickedAt" IS NOT NULL
+          )::int AS "openedPeople",
+          COUNT(DISTINCT email."leadEmail") FILTER (WHERE email."clickedAt" IS NOT NULL)::int AS "clickedPeople",
+          COUNT(DISTINCT email."leadEmail") FILTER (WHERE email."bouncedAt" IS NOT NULL)::int AS "bouncedPeople",
+          COUNT(DISTINCT email."leadEmail") FILTER (WHERE email."complainedAt" IS NOT NULL)::int AS "complainedPeople"
+        FROM "EmailSent" email
+        INNER JOIN "AutomationExecution" execution ON execution."id" = email."automationExecutionId"
+        WHERE execution."journeyId" = ${journeyId} AND execution."isTest" = false
+        GROUP BY email."automationNodeId"
+      `),
+      prisma.$queryRaw<WhatsAppMetricRow[]>(Prisma.sql`
+        SELECT
+          NULL::text AS "templateName",
+          COUNT(*)::int AS "attemptedMessages",
+          COUNT(DISTINCT message."leadEmail") FILTER (WHERE message."status" <> 'failed')::int AS "sentPeople",
+          COUNT(DISTINCT message."leadEmail") FILTER (
+            WHERE message."deliveredAt" IS NOT NULL OR message."readAt" IS NOT NULL OR message."status" IN ('delivered', 'read')
+          )::int AS "deliveredPeople",
+          COUNT(DISTINCT message."leadEmail") FILTER (
+            WHERE message."readAt" IS NOT NULL OR message."status" = 'read'
+          )::int AS "readPeople",
+          COUNT(DISTINCT message."leadEmail") FILTER (
+            WHERE message."failedAt" IS NOT NULL OR message."status" = 'failed'
+          )::int AS "failedPeople"
+        FROM "WhatsAppMessage" message
+        INNER JOIN "AutomationExecution" execution ON execution."id" = message."automationExecutionId"
+        WHERE execution."journeyId" = ${journeyId}
+          AND execution."isTest" = false
+          AND message."direction" = 'outbound'
+      `),
+      prisma.$queryRaw<WhatsAppMetricRow[]>(Prisma.sql`
+        SELECT
+          message."templateName" AS "templateName",
+          COUNT(*)::int AS "attemptedMessages",
+          COUNT(DISTINCT message."leadEmail") FILTER (WHERE message."status" <> 'failed')::int AS "sentPeople",
+          COUNT(DISTINCT message."leadEmail") FILTER (
+            WHERE message."deliveredAt" IS NOT NULL OR message."readAt" IS NOT NULL OR message."status" IN ('delivered', 'read')
+          )::int AS "deliveredPeople",
+          COUNT(DISTINCT message."leadEmail") FILTER (
+            WHERE message."readAt" IS NOT NULL OR message."status" = 'read'
+          )::int AS "readPeople",
+          COUNT(DISTINCT message."leadEmail") FILTER (
+            WHERE message."failedAt" IS NOT NULL OR message."status" = 'failed'
+          )::int AS "failedPeople"
+        FROM "WhatsAppMessage" message
+        INNER JOIN "AutomationExecution" execution ON execution."id" = message."automationExecutionId"
+        WHERE execution."journeyId" = ${journeyId}
+          AND execution."isTest" = false
+          AND message."direction" = 'outbound'
+        GROUP BY message."templateName"
+      `),
+      prisma.$queryRaw<Array<{ respondedPeople: number }>>(Prisma.sql`
+        WITH outbound AS (
+          SELECT message."leadEmail", MIN(COALESCE(message."sentAt", message."createdAt")) AS "firstSentAt"
+          FROM "WhatsAppMessage" message
+          INNER JOIN "AutomationExecution" execution ON execution."id" = message."automationExecutionId"
+          WHERE execution."journeyId" = ${journeyId}
+            AND execution."isTest" = false
+            AND message."direction" = 'outbound'
+            AND message."leadEmail" IS NOT NULL
+          GROUP BY message."leadEmail"
+        )
+        SELECT COUNT(DISTINCT inbound."leadEmail")::int AS "respondedPeople"
+        FROM outbound
+        INNER JOIN "WhatsAppMessage" inbound
+          ON inbound."leadEmail" = outbound."leadEmail"
+          AND inbound."direction" = 'inbound'
+          AND inbound."createdAt" >= outbound."firstSentAt"
+      `),
+    ]);
+
     const result = { running: 0, waiting: 0, queued: 0, completed: 0, failed: 0, cancelled: 0, total: 0 };
     for (const row of counts) {
       const s = row.status as keyof typeof result;
       if (s in result) result[s] = row._count._all;
       result.total += row._count._all;
     }
-    return result;
+
+    const trigger = nodes.find(node => node.type === 'trigger');
+    const reached = reachedRows as StageReachedRow[];
+    if (trigger && !reached.some(row => row.nodeId === trigger.id)) {
+      reached.push({ nodeId: trigger.id, count: result.total });
+    }
+    const stages = buildStageMetrics(
+      nodes,
+      edges,
+      stageGroups.map(row => ({ currentNodeId: row.currentNodeId, status: row.status, count: row._count._all })) as StageStatusRow[],
+      reached,
+    );
+
+    const emailTotal = emailTotals[0] ?? emptyEmailMetric();
+    const emailNodes = new Map(nodes.filter(node => node.type === 'send_email').map(node => [node.id, node]));
+    const emailSteps = emailByNode
+      .filter(row => row.nodeId)
+      .map(row => ({
+        ...row,
+        nodeId: row.nodeId as string,
+        name: String(emailNodes.get(row.nodeId as string)?.config?.templateName ?? emailNodes.get(row.nodeId as string)?.config?.subject ?? 'E-mail do fluxo'),
+        deliveryRate: percentage(row.deliveredPeople, row.sentPeople),
+        openRate: percentage(row.openedPeople, row.deliveredPeople || row.sentPeople),
+        clickRate: percentage(row.clickedPeople, row.deliveredPeople || row.sentPeople),
+      }));
+
+    const whatsappTotal = whatsappTotals[0] ?? emptyWhatsAppMetric();
+    const respondedPeople = whatsappResponses[0]?.respondedPeople ?? 0;
+    const whatsappSteps = whatsappByTemplate.map(row => ({
+      ...row,
+      templateName: row.templateName || 'Mensagem sem template',
+      deliveryRate: percentage(row.deliveredPeople, row.sentPeople),
+      readRate: percentage(row.readPeople, row.deliveredPeople || row.sentPeople),
+      failureRate: percentage(row.failedPeople, row.attemptedMessages),
+    }));
+
+    let audience: null | {
+      segmentTotal: number;
+      eligible: number;
+      excluded: number;
+      freeNow: number;
+      inOtherFlows: number;
+      inThisFlow: number;
+      queuedForThisFlow: number;
+    } = null;
+    if (trigger?.config?.event === 'segment_entered' && trigger.config.eventValue) {
+      const segmentId = String(trigger.config.eventValue);
+      const segment = await prisma.segment.findUnique({ where: { id: segmentId }, select: { rules: true } });
+      if (segment) {
+        const segmentWhere = await SegmentService.buildWhere(segment.rules as unknown as SegmentRules, [segmentId]);
+        const [segmentTotal, candidates] = await Promise.all([
+          prisma.lead.count({ where: segmentWhere }),
+          prisma.lead.findMany({
+            where: { AND: [segmentWhere, { status: { not: 'DISQUALIFIED' } }] },
+            select: {
+              email: true, status: true, score: true, tags: true, isHot: true,
+              firstSource: true, company: true, jobTitle: true, phone: true, assignedTo: true,
+            },
+          }),
+        ]);
+        const exitConditions = journey.exitConditions as unknown as MonitoringExitConditions | null;
+        const eligibleLeads = candidates.filter(lead => !matchesExitConditions(lead, exitConditions));
+        const emails = eligibleLeads.map(lead => lead.email);
+        const activeExecutions = emails.length
+          ? await prisma.automationExecution.findMany({
+            where: {
+              leadEmail: { in: emails },
+              isTest: false,
+              automationTypeSnapshot: 'NURTURE',
+              status: { in: ['running', 'waiting', 'queued'] },
+            },
+            select: { leadEmail: true, journeyId: true, status: true },
+          })
+          : [];
+        const activeAny = new Set(activeExecutions.filter(item => item.status === 'running' || item.status === 'waiting').map(item => item.leadEmail));
+        const activeOther = new Set(activeExecutions.filter(item => item.journeyId !== journeyId && (item.status === 'running' || item.status === 'waiting')).map(item => item.leadEmail));
+        const inThis = new Set(activeExecutions.filter(item => item.journeyId === journeyId).map(item => item.leadEmail));
+        const queuedThis = new Set(activeExecutions.filter(item => item.journeyId === journeyId && item.status === 'queued').map(item => item.leadEmail));
+        audience = {
+          segmentTotal,
+          eligible: eligibleLeads.length,
+          excluded: segmentTotal - eligibleLeads.length,
+          freeNow: eligibleLeads.filter(lead => !activeAny.has(lead.email) && !inThis.has(lead.email)).length,
+          inOtherFlows: activeOther.size,
+          inThisFlow: inThis.size,
+          queuedForThisFlow: queuedThis.size,
+        };
+      }
+    }
+
+    return {
+      ...result,
+      audience,
+      stages,
+      email: {
+        ...emailTotal,
+        deliveryRate: percentage(emailTotal.deliveredPeople, emailTotal.sentPeople),
+        openRate: percentage(emailTotal.openedPeople, emailTotal.deliveredPeople || emailTotal.sentPeople),
+        clickRate: percentage(emailTotal.clickedPeople, emailTotal.deliveredPeople || emailTotal.sentPeople),
+        steps: emailSteps,
+      },
+      whatsapp: {
+        ...whatsappTotal,
+        respondedPeople,
+        deliveryRate: percentage(whatsappTotal.deliveredPeople, whatsappTotal.sentPeople),
+        readRate: percentage(whatsappTotal.readPeople, whatsappTotal.deliveredPeople || whatsappTotal.sentPeople),
+        responseRate: percentage(respondedPeople, whatsappTotal.sentPeople),
+        failureRate: percentage(whatsappTotal.failedPeople, whatsappTotal.attemptedMessages),
+        steps: whatsappSteps,
+      },
+    };
   }
 }

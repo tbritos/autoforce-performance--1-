@@ -676,6 +676,79 @@ export interface AutomationExecutionStats {
   failed: number;
   cancelled: number;
   total: number;
+  audience: null | {
+    segmentTotal: number;
+    eligible: number;
+    excluded: number;
+    freeNow: number;
+    inOtherFlows: number;
+    inThisFlow: number;
+    queuedForThisFlow: number;
+  };
+  stages: Array<{
+    nodeId: string;
+    order: number;
+    type: string;
+    label: string;
+    detail: string;
+    reached: number;
+    running: number;
+    waiting: number;
+    queued: number;
+    completed: number;
+    failed: number;
+    cancelled: number;
+    current: number;
+  }>;
+  email: {
+    sentMessages: number;
+    sentPeople: number;
+    deliveredPeople: number;
+    openedPeople: number;
+    clickedPeople: number;
+    bouncedPeople: number;
+    complainedPeople: number;
+    deliveryRate: number;
+    openRate: number;
+    clickRate: number;
+    steps: Array<{
+      nodeId: string;
+      name: string;
+      sentMessages: number;
+      sentPeople: number;
+      deliveredPeople: number;
+      openedPeople: number;
+      clickedPeople: number;
+      bouncedPeople: number;
+      complainedPeople: number;
+      deliveryRate: number;
+      openRate: number;
+      clickRate: number;
+    }>;
+  };
+  whatsapp: {
+    attemptedMessages: number;
+    sentPeople: number;
+    deliveredPeople: number;
+    readPeople: number;
+    failedPeople: number;
+    respondedPeople: number;
+    deliveryRate: number;
+    readRate: number;
+    responseRate: number;
+    failureRate: number;
+    steps: Array<{
+      templateName: string;
+      attemptedMessages: number;
+      sentPeople: number;
+      deliveredPeople: number;
+      readPeople: number;
+      failedPeople: number;
+      deliveryRate: number;
+      readRate: number;
+      failureRate: number;
+    }>;
+  };
 }
 
 export type AIProvider = 'gemini' | 'openai';

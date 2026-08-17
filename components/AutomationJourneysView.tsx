@@ -29,6 +29,12 @@ import {
   Layers,
   Archive,
   RotateCcw,
+  Users,
+  Mail,
+  MessageCircle,
+  MousePointerClick,
+  Eye,
+  Send,
 } from 'lucide-react';
 import { DataService, listSegments, SegmentType } from '../services/dataService';
 import {
@@ -1127,7 +1133,7 @@ const ExecutionsDrawer: React.FC<{
         style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 900 }}
       />
       <aside style={{
-        position: 'fixed', top: 0, right: 0, bottom: 0, width: 520, zIndex: 901,
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: 860, maxWidth: '96vw', zIndex: 901,
         background: 'var(--bg-surface)', borderLeft: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
@@ -1135,7 +1141,7 @@ const ExecutionsDrawer: React.FC<{
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           <div>
             <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Execuções</p>
-            <h2 style={{ margin: '2px 0 0', fontSize: 15, fontWeight: 800, color: 'var(--fg-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 380 }}>{journeyName}</h2>
+            <h2 style={{ margin: '2px 0 0', fontSize: 15, fontWeight: 800, color: 'var(--fg-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 700 }}>{journeyName}</h2>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" onClick={load} title="Atualizar" style={{ border: '1px solid var(--border)', background: 'var(--bg-muted)', color: 'var(--fg-muted)', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
@@ -1149,7 +1155,7 @@ const ExecutionsDrawer: React.FC<{
 
         {/* Stats */}
         {stats && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, padding: '14px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, padding: '14px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
             {statItems.map(({ key, label }) => {
               const cfg = STATUS_EXEC[key];
               return (
@@ -1164,6 +1170,157 @@ const ExecutionsDrawer: React.FC<{
 
         {/* List */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+          {stats && (
+            <div style={{ padding: '10px 20px 22px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {stats.audience && (
+                <section>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <Users size={15} color="var(--accent)" />
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: 13, color: 'var(--fg-primary)' }}>Público e priorização</h3>
+                      <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>Situação atual das pessoas que pertencem à segmentação</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 8 }}>
+                    {[
+                      { label: 'Na segmentação', value: stats.audience.segmentTotal, color: 'var(--fg-primary)' },
+                      { label: 'Aptos ao fluxo', value: stats.audience.eligible, color: 'var(--accent)' },
+                      { label: 'Livres agora', value: stats.audience.freeNow, color: 'var(--green-500)' },
+                      { label: 'Em outros fluxos', value: stats.audience.inOtherFlows, color: '#f59e0b' },
+                      { label: 'Neste fluxo', value: stats.audience.inThisFlow, color: '#6366f1' },
+                      { label: 'Na fila deste', value: stats.audience.queuedForThisFlow, color: '#8b5cf6' },
+                    ].map(item => (
+                      <div key={item.label} style={{ padding: '10px 11px', background: 'var(--bg-muted)', border: '1px solid var(--border)', borderRadius: 10, minWidth: 0 }}>
+                        <strong style={{ display: 'block', fontSize: 18, lineHeight: 1.1, color: item.color }}>{item.value.toLocaleString('pt-BR')}</strong>
+                        <span style={{ display: 'block', marginTop: 4, fontSize: 10, lineHeight: 1.2, color: 'var(--fg-subtle)' }}>{item.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {stats.audience.excluded > 0 && (
+                    <p style={{ margin: '8px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>
+                      {stats.audience.excluded.toLocaleString('pt-BR')} pessoas não entram por desqualificação ou regra de saída do fluxo.
+                    </p>
+                  )}
+                </section>
+              )}
+
+              <section>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <Layers size={15} color="var(--accent)" />
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 13, color: 'var(--fg-primary)' }}>Pessoas por fase do fluxo</h3>
+                    <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>“Alcançaram” mostra quem já chegou ao bloco; “agora” mostra quem está parado nele</p>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+                  {stats.stages.length === 0 ? (
+                    <p style={{ margin: 0, padding: 14, fontSize: 12, color: 'var(--fg-subtle)' }}>O fluxo ainda não possui fases monitoráveis.</p>
+                  ) : stats.stages.map((stage, index) => {
+                    const base = Math.max(stats.audience?.eligible ?? stats.total, 1);
+                    const reachedWidth = Math.min(100, (stage.reached / base) * 100);
+                    return (
+                      <div key={stage.nodeId} style={{ display: 'grid', gridTemplateColumns: '34px minmax(190px, 1fr) minmax(160px, 1.4fr) 88px 78px 68px', gap: 10, alignItems: 'center', padding: '9px 12px', borderTop: index ? '1px solid var(--border)' : 'none', background: stage.current || stage.queued ? 'var(--accent-soft)' : 'var(--bg-surface)' }}>
+                        <span style={{ width: 24, height: 24, borderRadius: 999, display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 800, color: 'var(--accent)', background: 'var(--bg-muted)', border: '1px solid var(--border)' }}>{stage.order}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <strong style={{ display: 'block', fontSize: 12, color: 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stage.label}</strong>
+                          <span style={{ display: 'block', fontSize: 10, color: 'var(--fg-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stage.detail}</span>
+                        </div>
+                        <div style={{ height: 7, borderRadius: 999, background: 'var(--bg-muted)', overflow: 'hidden' }}>
+                          <div style={{ width: `${reachedWidth}%`, height: '100%', borderRadius: 999, background: 'var(--accent)' }} />
+                        </div>
+                        <span style={{ fontSize: 11, color: 'var(--fg-muted)', textAlign: 'right' }}><strong style={{ color: 'var(--fg-primary)' }}>{stage.reached.toLocaleString('pt-BR')}</strong> alcançaram</span>
+                        <span style={{ fontSize: 11, color: stage.current ? '#f59e0b' : 'var(--fg-subtle)', textAlign: 'right' }}><strong>{stage.current.toLocaleString('pt-BR')}</strong> agora</span>
+                        <span style={{ fontSize: 11, color: stage.queued ? '#8b5cf6' : 'var(--fg-subtle)', textAlign: 'right' }}><strong>{stage.queued.toLocaleString('pt-BR')}</strong> fila</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'start' }}>
+                <section style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 14, background: 'var(--bg-surface)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
+                    <Mail size={15} color="var(--accent)" />
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: 13, color: 'var(--fg-primary)' }}>E-mails do fluxo</h3>
+                      <p style={{ margin: '2px 0 0', fontSize: 10, color: 'var(--fg-subtle)' }}>{stats.email.sentMessages.toLocaleString('pt-BR')} mensagens registradas</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                    {[
+                      { icon: <Send size={12} />, label: 'Enviados', value: stats.email.sentPeople, rate: stats.email.sentPeople ? 100 : 0 },
+                      { icon: <CheckCircle2 size={12} />, label: 'Receberam', value: stats.email.deliveredPeople, rate: stats.email.deliveryRate },
+                      { icon: <Eye size={12} />, label: 'Abriram', value: stats.email.openedPeople, rate: stats.email.openRate },
+                      { icon: <MousePointerClick size={12} />, label: 'Clicaram', value: stats.email.clickedPeople, rate: stats.email.clickRate },
+                    ].map(item => (
+                      <div key={item.label} style={{ padding: '8px 7px', borderRadius: 9, background: 'var(--bg-muted)', minWidth: 0 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: 'var(--fg-subtle)' }}>{item.icon}{item.label}</span>
+                        <strong style={{ display: 'block', marginTop: 3, fontSize: 17, color: 'var(--fg-primary)' }}>{item.value.toLocaleString('pt-BR')}</strong>
+                        <span style={{ fontSize: 9, color: 'var(--accent)' }}>{item.rate.toLocaleString('pt-BR')}%</span>
+                      </div>
+                    ))}
+                  </div>
+                  {stats.email.steps.length > 0 && (
+                    <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      {stats.email.steps.map(step => (
+                        <div key={step.nodeId} style={{ padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 8 }}>
+                          <strong style={{ display: 'block', fontSize: 10, color: 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{step.name}</strong>
+                          <span style={{ display: 'block', marginTop: 3, fontSize: 9, color: 'var(--fg-subtle)' }}>
+                            {step.sentPeople.toLocaleString('pt-BR')} enviados · {step.openedPeople.toLocaleString('pt-BR')} abriram ({step.openRate.toLocaleString('pt-BR')}%) · {step.clickedPeople.toLocaleString('pt-BR')} clicaram
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(stats.email.bouncedPeople > 0 || stats.email.complainedPeople > 0) && (
+                    <p style={{ margin: '8px 0 0', fontSize: 10, color: 'var(--red-500)' }}>{stats.email.bouncedPeople} devolvidos · {stats.email.complainedPeople} denúncias de spam</p>
+                  )}
+                </section>
+
+                <section style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 14, background: 'var(--bg-surface)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
+                    <MessageCircle size={15} color="#22c55e" />
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: 13, color: 'var(--fg-primary)' }}>WhatsApp do fluxo</h3>
+                      <p style={{ margin: '2px 0 0', fontSize: 10, color: 'var(--fg-subtle)' }}>{stats.whatsapp.attemptedMessages.toLocaleString('pt-BR')} tentativas registradas</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
+                    {[
+                      { label: 'Enviados', value: stats.whatsapp.sentPeople, rate: stats.whatsapp.sentPeople ? 100 : 0, color: 'var(--fg-primary)' },
+                      { label: 'Receberam', value: stats.whatsapp.deliveredPeople, rate: stats.whatsapp.deliveryRate, color: 'var(--green-500)' },
+                      { label: 'Leram', value: stats.whatsapp.readPeople, rate: stats.whatsapp.readRate, color: 'var(--accent)' },
+                      { label: 'Responderam', value: stats.whatsapp.respondedPeople, rate: stats.whatsapp.responseRate, color: '#8b5cf6' },
+                      { label: 'Falharam', value: stats.whatsapp.failedPeople, rate: stats.whatsapp.failureRate, color: 'var(--red-500)' },
+                    ].map(item => (
+                      <div key={item.label} style={{ padding: '8px 6px', borderRadius: 9, background: 'var(--bg-muted)', minWidth: 0 }}>
+                        <span style={{ display: 'block', fontSize: 9, color: 'var(--fg-subtle)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
+                        <strong style={{ display: 'block', marginTop: 3, fontSize: 16, color: item.color }}>{item.value.toLocaleString('pt-BR')}</strong>
+                        <span style={{ fontSize: 9, color: item.color }}>{item.rate.toLocaleString('pt-BR')}%</span>
+                      </div>
+                    ))}
+                  </div>
+                  {stats.whatsapp.steps.length > 0 && (
+                    <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      {stats.whatsapp.steps.map(step => (
+                        <div key={step.templateName} style={{ padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 8 }}>
+                          <strong style={{ display: 'block', fontSize: 10, color: 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{step.templateName}</strong>
+                          <span style={{ display: 'block', marginTop: 3, fontSize: 9, color: 'var(--fg-subtle)' }}>
+                            {step.sentPeople.toLocaleString('pt-BR')} enviados · {step.deliveredPeople.toLocaleString('pt-BR')} receberam · {step.readPeople.toLocaleString('pt-BR')} leram ({step.readRate.toLocaleString('pt-BR')}%)
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 4 }}>
+                <h3 style={{ margin: '10px 0 0', fontSize: 13, color: 'var(--fg-primary)' }}>Execuções recentes</h3>
+                <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>Clique em uma pessoa para ver os blocos executados e possíveis erros</p>
+              </div>
+            </div>
+          )}
           {loading && executions.length === 0 ? (
             <div style={{ padding: 28, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Loader2 size={15} className="animate-spin" /> Carregando...
