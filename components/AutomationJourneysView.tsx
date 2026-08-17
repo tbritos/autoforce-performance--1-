@@ -1091,7 +1091,7 @@ function fmtExecDate(iso: string): string {
   return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-const ExecutionsDrawer: React.FC<{
+const ExecutionsModal: React.FC<{
   journeyId: string;
   journeyName: string;
   onClose: () => void;
@@ -1130,13 +1130,20 @@ const ExecutionsDrawer: React.FC<{
     <>
       <div
         onClick={onClose}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.35)', zIndex: 900 }}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.48)', backdropFilter: 'blur(2px)', zIndex: 1000 }}
       />
-      <aside style={{
-        position: 'fixed', top: 0, right: 0, bottom: 0, width: 860, maxWidth: '96vw', zIndex: 901,
-        background: 'var(--bg-surface)', borderLeft: '1px solid var(--border)',
-        display: 'flex', flexDirection: 'column', overflow: 'hidden',
-      }}>
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Desempenho da automação ${journeyName}`}
+        style={{
+          position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+          width: 'min(1120px, calc(100vw - 48px))', height: 'min(860px, calc(100vh - 48px))', zIndex: 1001,
+          background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 18,
+          boxShadow: '0 24px 80px rgba(15,23,42,.28)',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        }}
+      >
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           <div>
@@ -1405,7 +1412,7 @@ const ExecutionsDrawer: React.FC<{
             </p>
           </div>
         )}
-      </aside>
+      </section>
     </>,
     document.body
   );
@@ -2402,7 +2409,7 @@ const AutomationJourneysView: React.FC = () => {
           const j = journeys.find(j => j.id === monitoringJourneyId);
           if (!j) return null;
           return (
-            <ExecutionsDrawer
+            <ExecutionsModal
               journeyId={monitoringJourneyId}
               journeyName={j.name}
               onClose={() => setMonitoringJourneyId(null)}
@@ -3495,7 +3502,7 @@ const AutomationJourneysView: React.FC = () => {
       {monitoringJourneyId && (() => {
         const j = journeys.find(j => j.id === monitoringJourneyId) ?? selected;
         return (
-          <ExecutionsDrawer
+          <ExecutionsModal
             journeyId={monitoringJourneyId}
             journeyName={j.name}
             onClose={() => setMonitoringJourneyId(null)}
