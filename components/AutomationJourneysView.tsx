@@ -32,9 +32,6 @@ import {
   Users,
   Mail,
   MessageCircle,
-  MousePointerClick,
-  Eye,
-  Send,
 } from 'lucide-react';
 import { DataService, listSegments, SegmentType } from '../services/dataService';
 import {
@@ -1069,12 +1066,12 @@ const emptyDraft = () => {
 // ─── Executions Drawer ───────────────────────────────────────────────────────
 
 const STATUS_EXEC: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  running:   { label: 'Rodando',   color: 'var(--af-500)',    icon: <Loader2 size={11} className="animate-spin" /> },
-  waiting:   { label: 'Aguard.',   color: '#f59e0b',          icon: <Hourglass size={11} /> },
+  running:   { label: 'Executando', color: 'var(--af-500)',    icon: <Loader2 size={11} className="animate-spin" /> },
+  waiting:   { label: 'Aguardando', color: '#f59e0b',          icon: <Hourglass size={11} /> },
   queued:    { label: 'Na fila',   color: '#6366f1',          icon: <Hourglass size={11} /> },
   completed: { label: 'Concluído', color: 'var(--green-500)', icon: <CheckCircle2 size={11} /> },
   failed:    { label: 'Falhou',    color: 'var(--red-500)',   icon: <XCircle size={11} /> },
-  cancelled: { label: 'Interromp.', color: 'var(--fg-muted)', icon: <XCircle size={11} /> },
+  cancelled: { label: 'Interrompido', color: 'var(--fg-muted)', icon: <XCircle size={11} /> },
 };
 
 function fmtDuration(startedAt: string, completedAt: string | null): string {
@@ -1083,7 +1080,14 @@ function fmtDuration(startedAt: string, completedAt: string | null): string {
   const ms = end - start;
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
-  return `${Math.round(ms / 60_000)}min`;
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours < 24) return remainingMinutes ? `${hours}h ${remainingMinutes}min` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return remainingHours ? `${days}d ${remainingHours}h` : `${days}d`;
 }
 
 function fmtExecDate(iso: string): string {
@@ -1100,6 +1104,7 @@ const ExecutionsModal: React.FC<{
   const [stats, setStats]           = useState<AutomationExecutionStats | null>(null);
   const [loading, setLoading]       = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [activeTab, setActiveTab]   = useState<'overview' | 'stages' | 'email' | 'whatsapp' | 'people'>('overview');
 
   const load = async () => {
     setLoading(true);
@@ -1117,14 +1122,32 @@ const ExecutionsModal: React.FC<{
 
   useEffect(() => { load(); }, [journeyId]);
 
-  const statItems = [
-    { key: 'running',   label: 'Rodando' },
-    { key: 'waiting',   label: 'Aguardando' },
-    { key: 'queued',    label: 'Na fila' },
-    { key: 'completed', label: 'Concluídos' },
-    { key: 'failed',    label: 'Falhou' },
-    { key: 'cancelled', label: 'Interrompidos' },
+  const activeNow = stats ? stats.running + stats.waiting : 0;
+  const needsAttention = stats ? stats.failed + stats.cancelled : 0;
+  const currentStages = stats?.stages.filter(stage => stage.current > 0 || stage.queued > 0) ?? [];
+  const tabs = [
+    { id: 'overview', label: 'Visão geral' },
+    { id: 'stages', label: 'Etapas' },
+    { id: 'email', label: 'E-mail' },
+    { id: 'whatsapp', label: 'WhatsApp' },
+    { id: 'people', label: 'Pessoas' },
   ] as const;
+
+  const summaryCards = stats ? [
+    { label: 'Ativas agora', value: activeNow, help: 'Em execução ou aguardando', color: 'var(--accent)', icon: <Activity size={15} /> },
+    { label: 'Na fila', value: stats.queued, help: 'Esperando uma vaga no fluxo', color: '#6366f1', icon: <Hourglass size={15} /> },
+    { label: 'Concluíram', value: stats.completed, help: 'Finalizaram esta automação', color: 'var(--green-500)', icon: <CheckCircle2 size={15} /> },
+    { label: 'Com problema', value: needsAttention, help: stats.cancelled ? `${stats.failed} falhas · ${stats.cancelled} interrompidas` : 'Execuções que falharam', color: needsAttention ? 'var(--red-500)' : 'var(--fg-muted)', icon: <XCircle size={15} /> },
+    { label: 'Participaram', value: stats.total, help: 'Histórico total de pessoas', color: 'var(--fg-primary)', icon: <Users size={15} /> },
+  ] : [];
+
+  const metricCard = (label: string, value: number | string, help?: string, color = 'var(--fg-primary)') => (
+    <div style={{ padding: '13px 14px', border: '1px solid var(--border)', borderRadius: 11, background: 'var(--bg-muted)', minWidth: 0 }}>
+      <span style={{ display: 'block', fontSize: 11, color: 'var(--fg-subtle)' }}>{label}</span>
+      <strong style={{ display: 'block', marginTop: 4, fontSize: 21, lineHeight: 1.1, color }}>{typeof value === 'number' ? value.toLocaleString('pt-BR') : value}</strong>
+      {help && <span style={{ display: 'block', marginTop: 4, fontSize: 10, lineHeight: 1.35, color: 'var(--fg-subtle)' }}>{help}</span>}
+    </div>
+  );
 
   return createPortal(
     <>
@@ -1138,7 +1161,7 @@ const ExecutionsModal: React.FC<{
         aria-label={`Desempenho da automação ${journeyName}`}
         style={{
           position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-          width: 'min(1120px, calc(100vw - 48px))', height: 'min(860px, calc(100vh - 48px))', zIndex: 1001,
+          width: 'min(1120px, calc(100vw - 32px))', height: 'min(860px, calc(100vh - 32px))', zIndex: 1001,
           background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 18,
           boxShadow: '0 24px 80px rgba(15,23,42,.28)',
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
@@ -1147,7 +1170,7 @@ const ExecutionsModal: React.FC<{
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           <div>
-            <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Execuções</p>
+            <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em' }}>Desempenho do fluxo</p>
             <h2 style={{ margin: '2px 0 0', fontSize: 15, fontWeight: 800, color: 'var(--fg-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 700 }}>{journeyName}</h2>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -1160,183 +1183,189 @@ const ExecutionsModal: React.FC<{
           </div>
         </div>
 
-        {/* Stats */}
+        {/* Resumo principal: somente números que respondem à situação atual */}
         {stats && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, padding: '14px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-            {statItems.map(({ key, label }) => {
-              const cfg = STATUS_EXEC[key];
-              return (
-                <div key={key} style={{ background: 'var(--bg-muted)', borderRadius: 10, padding: '10px 12px', border: `1px solid ${cfg.color}22` }}>
-                  <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: cfg.color }}>{stats[key]}</p>
-                  <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>{label}</p>
-                </div>
-              );
-            })}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 8, padding: '14px 20px 12px', flexShrink: 0 }}>
+            {summaryCards.map(card => (
+              <div key={card.label} style={{ background: 'var(--bg-muted)', borderRadius: 11, padding: '11px 12px', border: '1px solid var(--border)', minWidth: 0 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: card.color, fontSize: 11, fontWeight: 700 }}>{card.icon}{card.label}</span>
+                <strong style={{ display: 'block', marginTop: 5, fontSize: 23, lineHeight: 1, color: card.color }}>{card.value.toLocaleString('pt-BR')}</strong>
+                <span style={{ display: 'block', marginTop: 5, fontSize: 9, lineHeight: 1.3, color: 'var(--fg-subtle)' }}>{card.help}</span>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* List */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-          {stats && (
-            <div style={{ padding: '10px 20px 22px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-              {stats.audience && (
-                <section>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                    <Users size={15} color="var(--accent)" />
-                    <div>
-                      <h3 style={{ margin: 0, fontSize: 13, color: 'var(--fg-primary)' }}>Público e priorização</h3>
-                      <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>Situação atual das pessoas que pertencem à segmentação</p>
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, minmax(0, 1fr))', gap: 8 }}>
-                    {[
-                      { label: 'Na segmentação', value: stats.audience.segmentTotal, color: 'var(--fg-primary)' },
-                      { label: 'Aptos ao fluxo', value: stats.audience.eligible, color: 'var(--accent)' },
-                      { label: 'Livres agora', value: stats.audience.freeNow, color: 'var(--green-500)' },
-                      { label: 'Em outros fluxos', value: stats.audience.inOtherFlows, color: '#f59e0b' },
-                      { label: 'Neste fluxo', value: stats.audience.inThisFlow, color: '#6366f1' },
-                      { label: 'Na fila deste', value: stats.audience.queuedForThisFlow, color: '#8b5cf6' },
-                    ].map(item => (
-                      <div key={item.label} style={{ padding: '10px 11px', background: 'var(--bg-muted)', border: '1px solid var(--border)', borderRadius: 10, minWidth: 0 }}>
-                        <strong style={{ display: 'block', fontSize: 18, lineHeight: 1.1, color: item.color }}>{item.value.toLocaleString('pt-BR')}</strong>
-                        <span style={{ display: 'block', marginTop: 4, fontSize: 10, lineHeight: 1.2, color: 'var(--fg-subtle)' }}>{item.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {stats.audience.excluded > 0 && (
-                    <p style={{ margin: '8px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>
-                      {stats.audience.excluded.toLocaleString('pt-BR')} pessoas não entram por desqualificação ou regra de saída do fluxo.
-                    </p>
-                  )}
-                </section>
-              )}
+        {stats && (
+          <nav aria-label="Seções do desempenho" style={{ display: 'flex', gap: 4, padding: '0 20px 10px', borderBottom: '1px solid var(--border)', flexShrink: 0, overflowX: 'auto' }}>
+            {tabs.map(tab => {
+              const selected = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  style={{ border: 'none', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', whiteSpace: 'nowrap', fontSize: 11, fontWeight: 700, background: selected ? 'var(--accent-soft)' : 'transparent', color: selected ? 'var(--accent)' : 'var(--fg-muted)' }}
+                >
+                  {tab.label}
+                  {tab.id === 'people' && <span style={{ marginLeft: 5, fontSize: 9, opacity: .8 }}>{stats.total.toLocaleString('pt-BR')}</span>}
+                </button>
+              );
+            })}
+          </nav>
+        )}
 
-              <section>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                  <Layers size={15} color="var(--accent)" />
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 13, color: 'var(--fg-primary)' }}>Pessoas por fase do fluxo</h3>
-                    <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>“Alcançaram” mostra quem já chegou ao bloco; “agora” mostra quem está parado nele</p>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-                  {stats.stages.length === 0 ? (
-                    <p style={{ margin: 0, padding: 14, fontSize: 12, color: 'var(--fg-subtle)' }}>O fluxo ainda não possui fases monitoráveis.</p>
-                  ) : stats.stages.map((stage, index) => {
-                    const base = Math.max(stats.audience?.eligible ?? stats.total, 1);
-                    const reachedWidth = Math.min(100, (stage.reached / base) * 100);
-                    return (
-                      <div key={stage.nodeId} style={{ display: 'grid', gridTemplateColumns: '34px minmax(190px, 1fr) minmax(160px, 1.4fr) 88px 78px 68px', gap: 10, alignItems: 'center', padding: '9px 12px', borderTop: index ? '1px solid var(--border)' : 'none', background: stage.current || stage.queued ? 'var(--accent-soft)' : 'var(--bg-surface)' }}>
-                        <span style={{ width: 24, height: 24, borderRadius: 999, display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 800, color: 'var(--accent)', background: 'var(--bg-muted)', border: '1px solid var(--border)' }}>{stage.order}</span>
-                        <div style={{ minWidth: 0 }}>
-                          <strong style={{ display: 'block', fontSize: 12, color: 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stage.label}</strong>
-                          <span style={{ display: 'block', fontSize: 10, color: 'var(--fg-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stage.detail}</span>
-                        </div>
-                        <div style={{ height: 7, borderRadius: 999, background: 'var(--bg-muted)', overflow: 'hidden' }}>
-                          <div style={{ width: `${reachedWidth}%`, height: '100%', borderRadius: 999, background: 'var(--accent)' }} />
-                        </div>
-                        <span style={{ fontSize: 11, color: 'var(--fg-muted)', textAlign: 'right' }}><strong style={{ color: 'var(--fg-primary)' }}>{stage.reached.toLocaleString('pt-BR')}</strong> alcançaram</span>
-                        <span style={{ fontSize: 11, color: stage.current ? '#f59e0b' : 'var(--fg-subtle)', textAlign: 'right' }}><strong>{stage.current.toLocaleString('pt-BR')}</strong> agora</span>
-                        <span style={{ fontSize: 11, color: stage.queued ? '#8b5cf6' : 'var(--fg-subtle)', textAlign: 'right' }}><strong>{stage.queued.toLocaleString('pt-BR')}</strong> fila</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'start' }}>
-                <section style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 14, background: 'var(--bg-surface)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
-                    <Mail size={15} color="var(--accent)" />
-                    <div>
-                      <h3 style={{ margin: 0, fontSize: 13, color: 'var(--fg-primary)' }}>E-mails do fluxo</h3>
-                      <p style={{ margin: '2px 0 0', fontSize: 10, color: 'var(--fg-subtle)' }}>{stats.email.sentMessages.toLocaleString('pt-BR')} mensagens registradas</p>
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-                    {[
-                      { icon: <Send size={12} />, label: 'Enviados', value: stats.email.sentPeople, rate: stats.email.sentPeople ? 100 : 0 },
-                      { icon: <CheckCircle2 size={12} />, label: 'Receberam', value: stats.email.deliveredPeople, rate: stats.email.deliveryRate },
-                      { icon: <Eye size={12} />, label: 'Abriram', value: stats.email.openedPeople, rate: stats.email.openRate },
-                      { icon: <MousePointerClick size={12} />, label: 'Clicaram', value: stats.email.clickedPeople, rate: stats.email.clickRate },
-                    ].map(item => (
-                      <div key={item.label} style={{ padding: '8px 7px', borderRadius: 9, background: 'var(--bg-muted)', minWidth: 0 }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: 'var(--fg-subtle)' }}>{item.icon}{item.label}</span>
-                        <strong style={{ display: 'block', marginTop: 3, fontSize: 17, color: 'var(--fg-primary)' }}>{item.value.toLocaleString('pt-BR')}</strong>
-                        <span style={{ fontSize: 9, color: 'var(--accent)' }}>{item.rate.toLocaleString('pt-BR')}%</span>
-                      </div>
-                    ))}
-                  </div>
-                  {stats.email.steps.length > 0 && (
-                    <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
-                      {stats.email.steps.map(step => (
-                        <div key={step.nodeId} style={{ padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 8 }}>
-                          <strong style={{ display: 'block', fontSize: 10, color: 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{step.name}</strong>
-                          <span style={{ display: 'block', marginTop: 3, fontSize: 9, color: 'var(--fg-subtle)' }}>
-                            {step.sentPeople.toLocaleString('pt-BR')} enviados · {step.openedPeople.toLocaleString('pt-BR')} abriram ({step.openRate.toLocaleString('pt-BR')}%) · {step.clickedPeople.toLocaleString('pt-BR')} clicaram
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {(stats.email.bouncedPeople > 0 || stats.email.complainedPeople > 0) && (
-                    <p style={{ margin: '8px 0 0', fontSize: 10, color: 'var(--red-500)' }}>{stats.email.bouncedPeople} devolvidos · {stats.email.complainedPeople} denúncias de spam</p>
-                  )}
-                </section>
-
-                <section style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 14, background: 'var(--bg-surface)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11 }}>
-                    <MessageCircle size={15} color="#22c55e" />
-                    <div>
-                      <h3 style={{ margin: 0, fontSize: 13, color: 'var(--fg-primary)' }}>WhatsApp do fluxo</h3>
-                      <p style={{ margin: '2px 0 0', fontSize: 10, color: 'var(--fg-subtle)' }}>{stats.whatsapp.attemptedMessages.toLocaleString('pt-BR')} tentativas registradas</p>
-                    </div>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
-                    {[
-                      { label: 'Enviados', value: stats.whatsapp.sentPeople, rate: stats.whatsapp.sentPeople ? 100 : 0, color: 'var(--fg-primary)' },
-                      { label: 'Receberam', value: stats.whatsapp.deliveredPeople, rate: stats.whatsapp.deliveryRate, color: 'var(--green-500)' },
-                      { label: 'Leram', value: stats.whatsapp.readPeople, rate: stats.whatsapp.readRate, color: 'var(--accent)' },
-                      { label: 'Responderam', value: stats.whatsapp.respondedPeople, rate: stats.whatsapp.responseRate, color: '#8b5cf6' },
-                      { label: 'Falharam', value: stats.whatsapp.failedPeople, rate: stats.whatsapp.failureRate, color: 'var(--red-500)' },
-                    ].map(item => (
-                      <div key={item.label} style={{ padding: '8px 6px', borderRadius: 9, background: 'var(--bg-muted)', minWidth: 0 }}>
-                        <span style={{ display: 'block', fontSize: 9, color: 'var(--fg-subtle)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.label}</span>
-                        <strong style={{ display: 'block', marginTop: 3, fontSize: 16, color: item.color }}>{item.value.toLocaleString('pt-BR')}</strong>
-                        <span style={{ fontSize: 9, color: item.color }}>{item.rate.toLocaleString('pt-BR')}%</span>
-                      </div>
-                    ))}
-                  </div>
-                  {stats.whatsapp.steps.length > 0 && (
-                    <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 5 }}>
-                      {stats.whatsapp.steps.map(step => (
-                        <div key={step.templateName} style={{ padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 8 }}>
-                          <strong style={{ display: 'block', fontSize: 10, color: 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{step.templateName}</strong>
-                          <span style={{ display: 'block', marginTop: 3, fontSize: 9, color: 'var(--fg-subtle)' }}>
-                            {step.sentPeople.toLocaleString('pt-BR')} enviados · {step.deliveredPeople.toLocaleString('pt-BR')} receberam · {step.readPeople.toLocaleString('pt-BR')} leram ({step.readRate.toLocaleString('pt-BR')}%)
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
-              </div>
-
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 4 }}>
-                <h3 style={{ margin: '10px 0 0', fontSize: 13, color: 'var(--fg-primary)' }}>Execuções recentes</h3>
-                <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>Clique em uma pessoa para ver os blocos executados e possíveis erros</p>
-              </div>
-            </div>
-          )}
-          {loading && executions.length === 0 ? (
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {loading && !stats ? (
             <div style={{ padding: 28, color: 'var(--fg-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Loader2 size={15} className="animate-spin" /> Carregando...
             </div>
-          ) : executions.length === 0 ? (
-            <div style={{ padding: 34, color: 'var(--fg-muted)', textAlign: 'center', fontSize: 13 }}>
-              Nenhuma execução registrada ainda.
+          ) : stats && activeTab === 'overview' ? (
+            <div style={{ padding: '18px 20px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <section>
+                <div style={{ marginBottom: 10 }}>
+                  <h3 style={{ margin: 0, fontSize: 14, color: 'var(--fg-primary)' }}>{activeNow === 1 ? 'Onde está a pessoa ativa' : `Onde estão as ${activeNow.toLocaleString('pt-BR')} pessoas ativas`}</h3>
+                  <p style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>Mostra somente as etapas ocupadas neste momento.</p>
+                </div>
+                {currentStages.length === 0 ? (
+                  <div style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 11, color: 'var(--fg-subtle)', fontSize: 12 }}>Não há pessoas ativas ou na fila agora.</div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 8 }}>
+                    {currentStages.map(stage => (
+                      <div key={stage.nodeId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 12px', border: '1px solid var(--border)', borderRadius: 11, background: 'var(--bg-muted)' }}>
+                        <span style={{ width: 30, height: 30, borderRadius: 999, display: 'grid', placeItems: 'center', flexShrink: 0, fontSize: 13, fontWeight: 800, color: '#f59e0b', background: '#f59e0b18' }}>{stage.current || stage.queued}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <strong style={{ display: 'block', fontSize: 11, color: 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stage.detail}</strong>
+                          <span style={{ display: 'block', marginTop: 2, fontSize: 10, color: 'var(--fg-subtle)' }}>{stage.current ? `${stage.current} ${stage.current === 1 ? 'pessoa aguardando' : 'pessoas aguardando'} nesta etapa` : `${stage.queued} ${stage.queued === 1 ? 'pessoa na fila' : 'pessoas na fila'}`}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section>
+                <h3 style={{ margin: '0 0 10px', fontSize: 14, color: 'var(--fg-primary)' }}>Resultados dos canais</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 10 }}>
+                  <button type="button" onClick={() => setActiveTab('email')} style={{ textAlign: 'left', cursor: 'pointer', padding: 15, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-surface)', color: 'inherit' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 800, color: 'var(--fg-primary)' }}><Mail size={15} color="var(--accent)" /> E-mail</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 12 }}>
+                      {metricCard('Pessoas', stats.email.sentPeople)}
+                      {metricCard('Receberam', stats.email.deliveredPeople, `${stats.email.deliveryRate}%`)}
+                      {metricCard('Abriram', stats.email.openedPeople, `${stats.email.openRate}%`, 'var(--accent)')}
+                      {metricCard('Clicaram', stats.email.clickedPeople, `${stats.email.clickRate}%`, '#8b5cf6')}
+                    </div>
+                  </button>
+                  <button type="button" onClick={() => setActiveTab('whatsapp')} style={{ textAlign: 'left', cursor: 'pointer', padding: 15, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg-surface)', color: 'inherit' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 800, color: 'var(--fg-primary)' }}><MessageCircle size={15} color="#22c55e" /> WhatsApp</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginTop: 12 }}>
+                      {metricCard('Pessoas', stats.whatsapp.sentPeople)}
+                      {metricCard('Receberam', stats.whatsapp.deliveredPeople, `${stats.whatsapp.deliveryRate}%`)}
+                      {metricCard('Leram', stats.whatsapp.readPeople, `${stats.whatsapp.readRate}%`, 'var(--accent)')}
+                      {metricCard('Responderam', stats.whatsapp.respondedPeople, `${stats.whatsapp.responseRate}%`, '#8b5cf6')}
+                    </div>
+                  </button>
+                </div>
+              </section>
+
+              {stats.audience && (
+                <section>
+                  <h3 style={{ margin: '0 0 4px', fontSize: 14, color: 'var(--fg-primary)' }}>Público de entrada</h3>
+                  <p style={{ margin: '0 0 10px', fontSize: 11, color: 'var(--fg-subtle)' }}>Quem pertence à segmentação e pode entrar nesta automação.</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(125px, 1fr))', gap: 8 }}>
+                    {metricCard('Na segmentação', stats.audience.segmentTotal)}
+                    {metricCard('Aptas', stats.audience.eligible)}
+                    {metricCard('Livres agora', stats.audience.freeNow, 'Podem entrar', 'var(--green-500)')}
+                    {metricCard('Em outros fluxos', stats.audience.inOtherFlows, 'Não recebem este agora', '#f59e0b')}
+                    {metricCard('Neste fluxo', stats.audience.inThisFlow, 'Ativas ou na fila', '#6366f1')}
+                    {metricCard('Excluídas', stats.audience.excluded, 'Pelas regras de saída', 'var(--fg-muted)')}
+                  </div>
+                </section>
+              )}
             </div>
-          ) : executions.map(exec => {
+          ) : stats && activeTab === 'stages' ? (
+            <div style={{ padding: '18px 20px 24px' }}>
+              <h3 style={{ margin: 0, fontSize: 14, color: 'var(--fg-primary)' }}>Etapas do fluxo</h3>
+              <p style={{ margin: '3px 0 12px', fontSize: 11, color: 'var(--fg-subtle)' }}>“Agora” é a situação atual. “Já passaram” é o histórico acumulado.</p>
+              <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '42px minmax(220px, 1fr) 110px 110px 90px', gap: 10, padding: '8px 12px', background: 'var(--bg-muted)', fontSize: 10, fontWeight: 800, color: 'var(--fg-subtle)', textTransform: 'uppercase' }}>
+                  <span>#</span><span>Etapa</span><span style={{ textAlign: 'right' }}>Agora</span><span style={{ textAlign: 'right' }}>Já passaram</span><span style={{ textAlign: 'right' }}>Na fila</span>
+                </div>
+                {stats.stages.map((stage, index) => (
+                  <div key={stage.nodeId} style={{ display: 'grid', gridTemplateColumns: '42px minmax(220px, 1fr) 110px 110px 90px', gap: 10, alignItems: 'center', padding: '10px 12px', borderTop: '1px solid var(--border)', background: stage.current || stage.queued ? 'var(--accent-soft)' : 'var(--bg-surface)' }}>
+                    <span style={{ width: 25, height: 25, borderRadius: 999, display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 800, color: 'var(--accent)', background: 'var(--bg-muted)', border: '1px solid var(--border)' }}>{index + 1}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <strong style={{ display: 'block', fontSize: 12, color: 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stage.label}</strong>
+                      <span style={{ display: 'block', marginTop: 2, fontSize: 10, color: 'var(--fg-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stage.detail}</span>
+                    </div>
+                    <strong style={{ fontSize: 13, color: stage.current ? '#f59e0b' : 'var(--fg-subtle)', textAlign: 'right' }}>{stage.current.toLocaleString('pt-BR')}</strong>
+                    <span style={{ fontSize: 12, color: 'var(--fg-muted)', textAlign: 'right' }}>{stage.reached.toLocaleString('pt-BR')}</span>
+                    <strong style={{ fontSize: 12, color: stage.queued ? '#8b5cf6' : 'var(--fg-subtle)', textAlign: 'right' }}>{stage.queued.toLocaleString('pt-BR')}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : stats && activeTab === 'email' ? (
+            <div style={{ padding: '18px 20px 24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Mail size={17} color="var(--accent)" /><h3 style={{ margin: 0, fontSize: 15, color: 'var(--fg-primary)' }}>Desempenho dos e-mails</h3></div>
+              <p style={{ margin: '4px 0 12px', fontSize: 11, color: 'var(--fg-subtle)' }}>Pessoas são contadas uma única vez; mensagens representam todos os disparos feitos.</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(135px, 1fr))', gap: 8 }}>
+                {metricCard('Pessoas alcançadas', stats.email.sentPeople)}
+                {metricCard('Mensagens enviadas', stats.email.sentMessages)}
+                {metricCard('Taxa de entrega', `${stats.email.deliveryRate}%`, `${stats.email.deliveredPeople} pessoas`, 'var(--green-500)')}
+                {metricCard('Taxa de abertura', `${stats.email.openRate}%`, `${stats.email.openedPeople} pessoas`, 'var(--accent)')}
+                {metricCard('Taxa de clique', `${stats.email.clickRate}%`, `${stats.email.clickedPeople} pessoas`, '#8b5cf6')}
+              </div>
+              {(stats.email.bouncedPeople > 0 || stats.email.complainedPeople > 0) && (
+                <div style={{ marginTop: 10, padding: '9px 11px', borderRadius: 9, background: 'var(--red-500)12', color: 'var(--red-500)', fontSize: 11 }}>{stats.email.bouncedPeople} pessoas com devolução · {stats.email.complainedPeople} denúncias de spam</div>
+              )}
+              <h4 style={{ margin: '18px 0 8px', fontSize: 12, color: 'var(--fg-primary)' }}>Resultado por e-mail</h4>
+              <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+                {stats.email.steps.length === 0 ? <p style={{ margin: 0, padding: 14, fontSize: 12, color: 'var(--fg-subtle)' }}>Ainda não houve envio de e-mail neste fluxo.</p> : stats.email.steps.map((step, index) => (
+                  <div key={step.nodeId} style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) repeat(4, 105px)', gap: 10, padding: '11px 12px', alignItems: 'center', borderTop: index ? '1px solid var(--border)' : 'none' }}>
+                    <strong style={{ fontSize: 11, color: 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{step.name}</strong>
+                    <span style={{ fontSize: 11, color: 'var(--fg-muted)', textAlign: 'right' }}>{step.sentPeople} pessoas</span>
+                    <span style={{ fontSize: 11, color: 'var(--green-500)', textAlign: 'right' }}>{step.deliveryRate}% entrega</span>
+                    <span style={{ fontSize: 11, color: 'var(--accent)', textAlign: 'right' }}>{step.openRate}% abertura</span>
+                    <span style={{ fontSize: 11, color: '#8b5cf6', textAlign: 'right' }}>{step.clickRate}% clique</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : stats && activeTab === 'whatsapp' ? (
+            <div style={{ padding: '18px 20px 24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><MessageCircle size={17} color="#22c55e" /><h3 style={{ margin: 0, fontSize: 15, color: 'var(--fg-primary)' }}>Desempenho do WhatsApp</h3></div>
+              <p style={{ margin: '4px 0 12px', fontSize: 11, color: 'var(--fg-subtle)' }}>Pessoas são contadas uma única vez; tentativas representam todos os templates disparados.</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(125px, 1fr))', gap: 8 }}>
+                {metricCard('Pessoas alcançadas', stats.whatsapp.sentPeople)}
+                {metricCard('Tentativas de envio', stats.whatsapp.attemptedMessages)}
+                {metricCard('Receberam', stats.whatsapp.deliveredPeople, `${stats.whatsapp.deliveryRate}%`, 'var(--green-500)')}
+                {metricCard('Leram', stats.whatsapp.readPeople, `${stats.whatsapp.readRate}%`, 'var(--accent)')}
+                {metricCard('Responderam', stats.whatsapp.respondedPeople, `${stats.whatsapp.responseRate}%`, '#8b5cf6')}
+                {metricCard('Com falha', stats.whatsapp.failedPeople, `${stats.whatsapp.failureRate}% das tentativas`, stats.whatsapp.failedPeople ? 'var(--red-500)' : 'var(--fg-muted)')}
+              </div>
+              <h4 style={{ margin: '18px 0 8px', fontSize: 12, color: 'var(--fg-primary)' }}>Resultado por template</h4>
+              <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+                {stats.whatsapp.steps.length === 0 ? <p style={{ margin: 0, padding: 14, fontSize: 12, color: 'var(--fg-subtle)' }}>Ainda não houve envio de WhatsApp neste fluxo.</p> : stats.whatsapp.steps.map((step, index) => (
+                  <div key={step.templateName} style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) repeat(4, 105px)', gap: 10, padding: '11px 12px', alignItems: 'center', borderTop: index ? '1px solid var(--border)' : 'none' }}>
+                    <strong style={{ fontSize: 11, color: 'var(--fg-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{step.templateName}</strong>
+                    <span style={{ fontSize: 11, color: 'var(--fg-muted)', textAlign: 'right' }}>{step.sentPeople} pessoas</span>
+                    <span style={{ fontSize: 11, color: 'var(--green-500)', textAlign: 'right' }}>{step.deliveryRate}% entrega</span>
+                    <span style={{ fontSize: 11, color: 'var(--accent)', textAlign: 'right' }}>{step.readRate}% leitura</span>
+                    <span style={{ fontSize: 11, color: step.failedPeople ? 'var(--red-500)' : 'var(--fg-subtle)', textAlign: 'right' }}>{step.failedPeople} falhas</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : stats && activeTab === 'people' ? (
+            <div>
+              <div style={{ padding: '15px 20px 10px' }}>
+                <h3 style={{ margin: 0, fontSize: 14, color: 'var(--fg-primary)' }}>Pessoas e execuções</h3>
+                <p style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--fg-subtle)' }}>Clique em uma pessoa para ver o histórico, o próximo passo ou o motivo da falha.</p>
+              </div>
+              {executions.length === 0 ? (
+                <div style={{ padding: 34, color: 'var(--fg-muted)', textAlign: 'center', fontSize: 13 }}>Nenhuma execução registrada ainda.</div>
+              ) : executions.map(exec => {
             const cfg = STATUS_EXEC[exec.status] ?? STATUS_EXEC.failed;
             const isExpanded = expandedId === exec.id;
             return (
@@ -1365,7 +1394,7 @@ const ExecutionsModal: React.FC<{
                       {cfg.icon} {cfg.label}
                     </span>
                     <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>
-                      {fmtDuration(exec.startedAt, exec.completedAt)}
+                      {exec.completedAt ? 'Duração: ' : 'No fluxo há '}{fmtDuration(exec.startedAt, exec.completedAt)}
                     </span>
                   </div>
                 </button>
@@ -1394,21 +1423,23 @@ const ExecutionsModal: React.FC<{
                     )}
                     {exec.resumeAt && exec.status === 'waiting' && (
                       <p style={{ margin: 0, fontSize: 11, color: '#f59e0b' }}>
-                        Retoma em: {new Date(exec.resumeAt).toLocaleString('pt-BR')}
+                        Próximo passo em: {new Date(exec.resumeAt).toLocaleString('pt-BR')}
                       </p>
                     )}
                   </div>
                 )}
               </div>
             );
-          })}
+              })}
+            </div>
+          ) : null}
         </div>
 
         {/* Footer */}
-        {stats && stats.total > 0 && (
+        {stats && stats.total > 0 && activeTab === 'people' && (
           <div style={{ padding: '10px 20px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
             <p style={{ margin: 0, fontSize: 11, color: 'var(--fg-subtle)', textAlign: 'center' }}>
-              {Math.min(50, executions.length)} de {stats.total} execuções · Ordenado por mais recente
+              Mostrando {Math.min(50, executions.length)} de {stats.total} pessoas · Mais recentes primeiro
             </p>
           </div>
         )}
