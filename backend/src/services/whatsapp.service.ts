@@ -1004,6 +1004,21 @@ export async function sendWhatsAppTemplateFromUI(
     templatePayload.components = [{ type: 'body', parameters: params }];
   }
 
+  const bodyComponent = template.components.find(c => c.type === 'BODY');
+  const headerComponent = template.components.find(c => c.type === 'HEADER');
+  const headerFormat = String(headerComponent?.format ?? '').toUpperCase();
+  if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && !headerMediaUrl?.trim() && !headerMediaId?.trim()) {
+    throw new Error(`Este template exige uma mídia no cabeçalho (${headerFormat.toLowerCase()}). Informe uma URL pública.`);
+  }
+  if (headerFormat && headerFormat !== 'TEXT' && (headerMediaUrl?.trim() || headerMediaId?.trim())) {
+    const key = headerFormat.toLowerCase();
+    const media = headerMediaId?.trim() ? { id: headerMediaId.trim() } : { link: headerMediaUrl!.trim() };
+    templatePayload.components = [
+      ...(Array.isArray(templatePayload.components) ? templatePayload.components as unknown[] : []),
+      { type: 'header', parameters: [{ type: key, [key]: media }] },
+    ];
+  }
+
   const body = {
     messaging_product: 'whatsapp',
     to: phone,
@@ -1046,20 +1061,6 @@ export async function sendWhatsAppTemplateFromUI(
     throw new Error(data.error?.message ?? `WhatsApp API error ${res.status}`);
   }
 
-  const bodyComponent = template.components.find(c => c.type === 'BODY');
-  const headerComponent = template.components.find(c => c.type === 'HEADER');
-  const headerFormat = String(headerComponent?.format ?? '').toUpperCase();
-  if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && !headerMediaUrl?.trim() && !headerMediaId?.trim()) {
-    throw new Error(`Este template exige uma mídia no cabeçalho (${headerFormat.toLowerCase()}). Informe uma URL pública.`);
-  }
-  if (headerFormat && headerFormat !== 'TEXT' && (headerMediaUrl?.trim() || headerMediaId?.trim())) {
-    const key = headerFormat.toLowerCase();
-    const media = headerMediaId?.trim() ? { id: headerMediaId.trim() } : { link: headerMediaUrl!.trim() };
-    templatePayload.components = [
-      ...(Array.isArray(templatePayload.components) ? templatePayload.components as unknown[] : []),
-      { type: 'header', parameters: [{ type: key, [key]: media }] },
-    ];
-  }
   const resolvedText = bodyComponent?.text
     ? bodyComponent.text.replace(/\{\{(\d+)\}\}/g, (_match, idx) => bodyParams[Number(idx) - 1] ?? `{{${idx}}}`)
     : null;
