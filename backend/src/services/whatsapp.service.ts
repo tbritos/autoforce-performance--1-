@@ -94,6 +94,7 @@ export interface WhatsAppConversationMessage {
   templateName: string | null;
   text: string | null;
   payload: unknown;
+  mediaId?: string | null;
   phoneNumberId: string | null;
   phoneNumberLabel: string | null;
   phoneNumberDisplay: string | null;
@@ -104,6 +105,16 @@ export interface WhatsAppConversationMessage {
   failedAt: Date | null;
   aiProcessedAt: Date | null;
   createdAt: Date;
+}
+
+const MEDIA_MESSAGE_TYPES = new Set(['image', 'audio', 'sticker', 'video', 'document']);
+
+function mediaIdFromPayload(payload: unknown, type: string): string | null {
+  if (!MEDIA_MESSAGE_TYPES.has(type) || !payload || typeof payload !== 'object') return null;
+  const media = (payload as Record<string, unknown>)[type];
+  if (!media || typeof media !== 'object') return null;
+  const id = (media as Record<string, unknown>).id;
+  return typeof id === 'string' && id.trim() ? id.trim() : null;
 }
 
 function normalizePhone(phone: string | null | undefined): string {
@@ -448,6 +459,7 @@ export async function listWhatsAppConversationByLead(leadId: string): Promise<Wh
     const entry = phoneNumberId ? labelMap.get(phoneNumberId) : undefined;
     return {
       ...msg,
+      mediaId: mediaIdFromPayload(msg.payload, msg.type),
       phoneNumberId,
       phoneNumberLabel: entry?.label ?? null,
       phoneNumberDisplay: entry?.displayPhoneNumber ?? null,
@@ -455,6 +467,26 @@ export async function listWhatsAppConversationByLead(leadId: string): Promise<Wh
   });
 
   return enriched.reverse();
+}
+
+/**
+ * Downloads a WhatsApp media object through the Graph API. The access token
+ * never reaches the browser; the controller streams the result to the CRM.
+ */
+export async function fetchWhatsAppMedia(mediaId: string): Promise<{ body: Buffer; contentType: string }> {
+  const cleanId = String(mediaId ?? '').trim();
+  validateGraphId(cleanId, 'mediaId');
+  const { accessToken } = await getWhatsAppCredentials();
+  const metadata = await metaGet<{ url?: string; mime_type?: string }>(
+    `https://graph.facebook.com/v19.0/${cleanId}?fields=url,mime_type`, accessToken
+  );
+  if (!metadata.url) throw new Error('Mídia do WhatsApp não possui URL disponível');
+  const response = await fetch(metadata.url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!response.ok) throw new Error(`Meta media error ${response.status}`);
+  return {
+    body: Buffer.from(await response.arrayBuffer()),
+    contentType: metadata.mime_type || response.headers.get('content-type') || 'application/octet-stream',
+  };
 }
 
 export async function recordOutgoingWhatsAppMessage(input: {

@@ -13,6 +13,7 @@ router.get('/templates', WhatsAppController.getTemplates);
 router.post('/templates', WhatsAppController.createTemplate);
 router.delete('/templates/:templateName', WhatsAppController.deleteTemplate);
 router.get('/leads/:leadId/conversation', WhatsAppController.getConversation);
+router.get('/media/:mediaId', WhatsAppController.getMedia);
 router.post('/leads/:leadId/send', WhatsAppController.sendMessage);
 router.post('/leads/:leadId/send-template', WhatsAppController.sendTemplate);
 router.patch('/leads/:leadId/handoff', WhatsAppController.updateHandoff);

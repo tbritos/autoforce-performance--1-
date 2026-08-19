@@ -244,6 +244,7 @@ export interface LeadWebhookLog {
   source: string;
   sourceId: string | null;
   payload: unknown;
+  mediaId?: string | null;
   normalized: unknown;
   result: unknown;
   status: string;

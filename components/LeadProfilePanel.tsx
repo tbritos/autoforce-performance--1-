@@ -422,6 +422,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   const [pipedriveUrl, setPipedriveUrl] = useState<string | null>(null);
   const [selectedConversion, setSelectedConversion] = useState<LeadConversion | null>(null);
   const [whatsAppMessages, setWhatsAppMessages] = useState<WhatsAppConversationMessage[] | null>(null);
+  const [whatsAppMedia, setWhatsAppMedia] = useState<Record<string, string>>({});
   const [activeWppNumberKey, setActiveWppNumberKey] = useState<string | null>(null);
   const [aiHandoff, setAiHandoff]               = useState<boolean>(false);
   const [handoffSaving, setHandoffSaving]       = useState(false);
@@ -461,6 +462,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
       if (cancelled) return;
       setProfile(p);
       setWhatsAppMessages(null);
+      setWhatsAppMedia({});
       setTemplates(null);
       setSelectedPhoneNumberId('');
       setEmailsSent(null);
@@ -504,6 +506,34 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
       .then(setWhatsAppMessages)
       .catch(() => setWhatsAppMessages([]));
   }, [profile?.id, whatsAppMessages]);
+
+  // Media messages arrive with a Meta media id. Fetch them through the
+  // authenticated backend proxy and turn them into short-lived blob URLs so
+  // the access token never appears in the browser or in the DOM.
+  useEffect(() => {
+    const mediaMessages = (whatsAppMessages ?? []).filter(message => message.mediaId && ['image', 'audio', 'sticker', 'video', 'document'].includes(message.type));
+    if (mediaMessages.length === 0) return;
+    let cancelled = false;
+    const createdUrls: string[] = [];
+    Promise.all(mediaMessages.map(async message => {
+      const id = message.mediaId as string;
+      try {
+        const blob = await DataService.getWhatsAppMedia(id);
+        const url = URL.createObjectURL(blob);
+        createdUrls.push(url);
+        return [id, url] as const;
+      } catch {
+        return null;
+      }
+    })).then(entries => {
+      if (cancelled) return;
+      setWhatsAppMedia(previous => ({ ...previous, ...Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => Boolean(entry))) }));
+    });
+    return () => {
+      cancelled = true;
+      createdUrls.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [whatsAppMessages]);
 
   useEffect(() => {
     if (whatsAppMessages && whatsAppMessages.length > 0) {
@@ -1493,6 +1523,16 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                       const out = msg.direction === 'outbound';
                                       const ts = fmtTime(msg.sentAt ?? msg.receivedAt ?? msg.createdAt);
                                       const body = msg.text || (msg.templateName ? `📋 ${msg.templateName}` : `(${msg.type})`);
+                                      const mediaSrc = msg.mediaId ? whatsAppMedia[msg.mediaId] : null;
+                                      const mediaContent = mediaSrc && msg.type === 'audio' ? (
+                                        <audio controls src={mediaSrc} style={{ display:'block', width:220, maxWidth:'100%', marginBottom:6 }} />
+                                      ) : mediaSrc && (msg.type === 'image' || msg.type === 'sticker') ? (
+                                        <img src={mediaSrc} alt={msg.type === 'sticker' ? 'Figurinha recebida' : 'Imagem recebida'} style={{ display:'block', maxWidth:240, maxHeight:260, borderRadius:8, marginBottom:6, objectFit:'contain' }} />
+                                      ) : mediaSrc && msg.type === 'video' ? (
+                                        <video controls src={mediaSrc} style={{ display:'block', maxWidth:260, maxHeight:260, borderRadius:8, marginBottom:6 }} />
+                                      ) : mediaSrc && msg.type === 'document' ? (
+                                        <a href={mediaSrc} target="_blank" rel="noreferrer" style={{ display:'block', marginBottom:6, color:'#1d4ed8', fontSize:12, fontWeight:600 }}>📎 Abrir documento</a>
+                                      ) : null;
                                       const isTemplate = !!msg.templateName;
                                       const attribution = out
                                         ? (isTemplate ? `Automação · ${msg.templateName}` : `Você · ${senderName}`)
@@ -1520,6 +1560,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                               </p>
                                             )}
                                             <div style={{ background:bubbleBg, borderRadius: out?'12px 2px 12px 12px':'2px 12px 12px 12px', padding:'8px 10px', boxShadow:'0 1px 2px rgba(0,0,0,.12)', position:'relative' }}>
+                                              {mediaContent}
                                               <p style={{ margin:0, fontSize:13, lineHeight:1.45, whiteSpace:'pre-wrap', wordBreak:'break-word', color:'#111' }}>{body}</p>
                                               <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:4, marginTop:4 }}>
                                                 <span style={{ fontSize:10, color:'#666' }}>{ts}</span>

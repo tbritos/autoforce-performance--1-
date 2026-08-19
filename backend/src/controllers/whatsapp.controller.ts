@@ -4,6 +4,7 @@ import {
   fetchWhatsAppPhoneNumbers,
   handleWhatsAppWebhook,
   listWhatsAppConversationByLead,
+  fetchWhatsAppMedia,
   sendWhatsAppTextFromUI,
   sendWhatsAppTemplateFromUI,
   setLeadAiHandoff,
@@ -128,6 +129,17 @@ export class WhatsAppController {
   static async getConversation(req: Request, res: Response, next: NextFunction) {
     try {
       res.json(await listWhatsAppConversationByLead(req.params.leadId));
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async getMedia(req: Request, res: Response, next: NextFunction) {
+    try {
+      const media = await fetchWhatsAppMedia(req.params.mediaId);
+      res.setHeader('Content-Type', media.contentType);
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      res.send(media.body);
     } catch (err) {
       next(err);
     }

@@ -940,6 +940,15 @@ export const DataService = {
   getWhatsAppConversation: async (leadId: string): Promise<import('../types').WhatsAppConversationMessage[]> => {
     return apiClient.get(`/whatsapp/leads/${encodeURIComponent(leadId)}/conversation`);
   },
+  getWhatsAppMedia: async (mediaId: string): Promise<Blob> => {
+    const token = localStorage.getItem('autoforce_token');
+    const response = await fetch(`${API_URL}/whatsapp/media/${encodeURIComponent(mediaId)}`, {
+      credentials: 'include',
+      headers: token === 'dev-local-bypass' ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    if (!response.ok) throw new Error(`Falha ao carregar mídia (${response.status})`);
+    return response.blob();
+  },
 
   sendWhatsAppMessage: async (leadId: string, text: string): Promise<void> => {
     return apiClient.post(`/whatsapp/leads/${encodeURIComponent(leadId)}/send`, { text });
