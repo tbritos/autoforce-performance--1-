@@ -573,7 +573,7 @@ async function applyWhatsAppFailureClassification(
   }
 }
 
-function extractInboundText(message: any): { type: string; text: string | null } {
+export function extractInboundText(message: any): { type: string; text: string | null } {
   if (message.type === 'text') return { type: 'text', text: message.text?.body ?? null };
   if (message.type === 'button') return { type: 'button', text: message.button?.text ?? message.button?.payload ?? null };
   if (message.type === 'interactive') {
@@ -581,6 +581,33 @@ function extractInboundText(message: any): { type: string; text: string | null }
       type: 'interactive',
       text: message.interactive?.button_reply?.title ?? message.interactive?.list_reply?.title ?? null,
     };
+  }
+
+  // A Meta webhook keeps the actual media in the payload.  The conversation
+  // list intentionally stores the raw payload too, but `text` is what the CRM
+  // renders in the bubble and what Lara uses as reply context.  Normalize all
+  // inbound non-text types to a useful human-readable preview instead of
+  // leaving the message blank.
+  if (message.type === 'image') {
+    return { type: 'image', text: message.image?.caption ? `🖼️ ${message.image.caption}` : '🖼️ Imagem recebida' };
+  }
+  if (message.type === 'audio') return { type: 'audio', text: '🎧 Áudio recebido' };
+  if (message.type === 'sticker') return { type: 'sticker', text: '🪄 Figurinha recebida' };
+  if (message.type === 'video') {
+    return { type: 'video', text: message.video?.caption ? `🎥 ${message.video.caption}` : '🎥 Vídeo recebido' };
+  }
+  if (message.type === 'document') {
+    const filename = message.document?.filename ? `: ${message.document.filename}` : '';
+    return { type: 'document', text: `📎 Documento recebido${filename}` };
+  }
+  if (message.type === 'location') {
+    const name = message.location?.name || message.location?.address;
+    return { type: 'location', text: name ? `📍 Localização: ${name}` : '📍 Localização recebida' };
+  }
+  if (message.type === 'contacts') return { type: 'contacts', text: '👤 Contato recebido' };
+  if (message.type === 'reaction') {
+    const emoji = String(message.reaction?.emoji ?? '').trim();
+    return { type: 'reaction', text: emoji ? `${emoji} Reação à mensagem` : '↩️ Reação removida' };
   }
   return { type: String(message.type ?? 'unknown'), text: null };
 }
