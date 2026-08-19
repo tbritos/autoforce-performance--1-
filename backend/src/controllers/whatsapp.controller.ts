@@ -161,12 +161,12 @@ export class WhatsAppController {
 
   static async sendTemplate(req: Request, res: Response, next: NextFunction) {
     try {
-      const { templateName, bodyParams, phoneNumberId } = req.body as { templateName?: string; bodyParams?: string[]; phoneNumberId?: string };
+      const { templateName, bodyParams, phoneNumberId, headerMediaUrl } = req.body as { templateName?: string; bodyParams?: string[]; phoneNumberId?: string; headerMediaUrl?: string };
       if (!templateName?.trim()) {
         res.status(400).json({ error: 'templateName é obrigatório' });
         return;
       }
-      await sendWhatsAppTemplateFromUI(req.params.leadId, templateName.trim(), bodyParams ?? [], phoneNumberId);
+      await sendWhatsAppTemplateFromUI(req.params.leadId, templateName.trim(), bodyParams ?? [], phoneNumberId, headerMediaUrl);
       res.json({ ok: true });
     } catch (err) {
       respondWithMetaError(res, err);

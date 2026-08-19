@@ -3350,7 +3350,21 @@ const AutomationJourneysView: React.FC = () => {
                               } : prev);
                             }}
                           />
-                          <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>Apenas templates com status APPROVED aparecem aqui.</span>
+                        <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>Apenas templates com status APPROVED aparecem aqui.</span>
+
+                        {storedComponents.some(c => ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(String(c.format ?? '').toUpperCase())) && (
+                          <div style={{ display: 'grid', gap: 7 }}>
+                            <span style={fieldLabelStyle}>Mídia do cabeçalho</span>
+                            <input
+                              type="url"
+                              value={panelValues.config.headerMediaUrl ?? ''}
+                              onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, headerMediaUrl: e.target.value } } : prev)}
+                              placeholder="https://seu-dominio.com/arquivo.jpg"
+                              style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}
+                            />
+                            <span style={{ fontSize: 11, color: 'var(--fg-subtle)' }}>URL pública que a Meta consiga baixar no momento do disparo.</span>
+                          </div>
+                        )}
                         </div>
 
                         {/* Phone field */}

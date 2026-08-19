@@ -434,6 +434,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [selectedTemplateName, setSelectedTemplateName] = useState('');
   const [templateVarValues, setTemplateVarValues] = useState<string[]>([]);
+  const [templateHeaderMediaUrl, setTemplateHeaderMediaUrl] = useState('');
   const [whatsAppNumbers, setWhatsAppNumbers] = useState<WhatsAppNumberEntry[] | null>(null);
   const [selectedPhoneNumberId, setSelectedPhoneNumberId] = useState('');
   const [sendingTemplate, setSendingTemplate]   = useState(false);
@@ -629,6 +630,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
     setSelectedPhoneNumberId(id);
     setSelectedTemplateName('');
     setTemplateVarValues([]);
+    setTemplateHeaderMediaUrl('');
   };
 
   const selectedTemplate = templates?.find(t => t.name === selectedTemplateName) ?? null;
@@ -641,6 +643,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
 
   const handleSelectTemplate = (name: string) => {
     setSelectedTemplateName(name);
+    setTemplateHeaderMediaUrl('');
     const body = templates?.find(t => t.name === name)?.components.find(c => c.type === 'BODY')?.text ?? '';
     const count = new Set(Array.from(body.matchAll(/\{\{(\d+)\}\}/g)).map(m => m[1])).size;
     setTemplateVarValues(Array.from({ length: count }, () => ''));
@@ -651,10 +654,11 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
     setSendingTemplate(true);
     setTemplateError('');
     try {
-      await DataService.sendWhatsAppTemplate(profile.id, selectedTemplateName, templateVarValues, selectedPhoneNumberId || undefined);
+      await DataService.sendWhatsAppTemplate(profile.id, selectedTemplateName, templateVarValues, selectedPhoneNumberId || undefined, templateHeaderMediaUrl || undefined);
       setTemplateModalOpen(false);
       setSelectedTemplateName('');
       setTemplateVarValues([]);
+      setTemplateHeaderMediaUrl('');
       const msgs = await DataService.getWhatsAppConversation(profile.id);
       setWhatsAppMessages(msgs);
     } catch (err: any) {
@@ -1524,6 +1528,19 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                       const ts = fmtTime(msg.sentAt ?? msg.receivedAt ?? msg.createdAt);
                                       const body = msg.text || (msg.templateName ? `📋 ${msg.templateName}` : `(${msg.type})`);
                                       const mediaSrc = msg.mediaId ? whatsAppMedia[msg.mediaId] : null;
+                                      const outboundTemplateMedia = (() => {
+                                        if (!out || !msg.templateName || !msg.payload || typeof msg.payload !== 'object') return null;
+                                        const payload = msg.payload as any;
+                                        const components = payload?.template?.components ?? payload?.request?.template?.components;
+                                        const header = Array.isArray(components) ? components.find((c: any) => String(c.type).toLowerCase() === 'header') : null;
+                                        const params = header?.parameters ?? [];
+                                        const parameter = params[0];
+                                        for (const type of ['image', 'video', 'document']) {
+                                          const link = parameter?.[type]?.link;
+                                          if (typeof link === 'string' && /^https?:\/\//i.test(link)) return { type, link };
+                                        }
+                                        return null;
+                                      })();
                                       const mediaContent = mediaSrc && msg.type === 'audio' ? (
                                         <audio controls src={mediaSrc} style={{ display:'block', width:220, maxWidth:'100%', marginBottom:6 }} />
                                       ) : mediaSrc && (msg.type === 'image' || msg.type === 'sticker') ? (
@@ -1532,6 +1549,12 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                         <video controls src={mediaSrc} style={{ display:'block', maxWidth:260, maxHeight:260, borderRadius:8, marginBottom:6 }} />
                                       ) : mediaSrc && msg.type === 'document' ? (
                                         <a href={mediaSrc} target="_blank" rel="noreferrer" style={{ display:'block', marginBottom:6, color:'#1d4ed8', fontSize:12, fontWeight:600 }}>📎 Abrir documento</a>
+                                      ) : outboundTemplateMedia?.type === 'image' ? (
+                                        <img src={outboundTemplateMedia.link} alt="Imagem do template" style={{ display:'block', maxWidth:240, maxHeight:260, borderRadius:8, marginBottom:6, objectFit:'contain' }} />
+                                      ) : outboundTemplateMedia?.type === 'video' ? (
+                                        <video controls src={outboundTemplateMedia.link} style={{ display:'block', maxWidth:260, maxHeight:260, borderRadius:8, marginBottom:6 }} />
+                                      ) : outboundTemplateMedia?.type === 'document' ? (
+                                        <a href={outboundTemplateMedia.link} target="_blank" rel="noreferrer" style={{ display:'block', marginBottom:6, color:'#1d4ed8', fontSize:12, fontWeight:600 }}>📎 Abrir documento do template</a>
                                       ) : null;
                                       const isTemplate = !!msg.templateName;
                                       const attribution = out
@@ -1680,6 +1703,20 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                               <div style={{ padding: 12, background: 'var(--bg-subtle)', borderRadius: 8, fontSize: 12, color: 'var(--fg-secondary)', whiteSpace: 'pre-wrap' }}>
                                 {selectedTemplatePreview || <em style={{ color: 'var(--fg-subtle)' }}>Sem corpo de texto.</em>}
                               </div>
+                            )}
+
+                            {selectedTemplate?.components.some(c => ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(String(c.format ?? '').toUpperCase())) && (
+                              <label style={{ display: 'block' }}>
+                                <span style={{ fontSize: 11, color: 'var(--fg-subtle)', marginBottom: 4, display: 'block' }}>Mídia do cabeçalho</span>
+                                <input
+                                  type="url"
+                                  value={templateHeaderMediaUrl}
+                                  onChange={e => setTemplateHeaderMediaUrl(e.target.value)}
+                                  placeholder="https://seu-dominio.com/imagem.jpg"
+                                  style={{ width: '100%', height: 36, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
+                                />
+                                <span style={{ display: 'block', marginTop: 4, fontSize: 10, color: 'var(--fg-subtle)' }}>URL pública do arquivo; a Meta precisa conseguir acessá-la.</span>
+                              </label>
                             )}
 
                             {selectedTemplateVarCount > 0 && (

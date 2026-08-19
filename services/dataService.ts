@@ -954,8 +954,8 @@ export const DataService = {
     return apiClient.post(`/whatsapp/leads/${encodeURIComponent(leadId)}/send`, { text });
   },
 
-  sendWhatsAppTemplate: async (leadId: string, templateName: string, bodyParams: string[], phoneNumberId?: string): Promise<void> => {
-    return apiClient.post(`/whatsapp/leads/${encodeURIComponent(leadId)}/send-template`, { templateName, bodyParams, phoneNumberId });
+  sendWhatsAppTemplate: async (leadId: string, templateName: string, bodyParams: string[], phoneNumberId?: string, headerMediaUrl?: string): Promise<void> => {
+    return apiClient.post(`/whatsapp/leads/${encodeURIComponent(leadId)}/send-template`, { templateName, bodyParams, phoneNumberId, headerMediaUrl });
   },
 
   setLeadAiHandoff: async (leadId: string, handoff: boolean): Promise<void> => {

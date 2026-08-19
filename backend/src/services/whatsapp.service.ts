@@ -938,7 +938,8 @@ export async function sendWhatsAppTemplateFromUI(
   leadId: string,
   templateName: string,
   bodyParams: string[] = [],
-  phoneNumberIdOverride?: string
+  phoneNumberIdOverride?: string,
+  headerMediaUrl?: string
 ): Promise<void> {
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
@@ -1010,6 +1011,18 @@ export async function sendWhatsAppTemplateFromUI(
   }
 
   const bodyComponent = template.components.find(c => c.type === 'BODY');
+  const headerComponent = template.components.find(c => c.type === 'HEADER');
+  const headerFormat = String(headerComponent?.format ?? '').toUpperCase();
+  if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && !headerMediaUrl?.trim()) {
+    throw new Error(`Este template exige uma mídia no cabeçalho (${headerFormat.toLowerCase()}). Informe uma URL pública.`);
+  }
+  if (headerFormat && headerFormat !== 'TEXT' && headerMediaUrl?.trim()) {
+    const key = headerFormat.toLowerCase();
+    templatePayload.components = [
+      ...(Array.isArray(templatePayload.components) ? templatePayload.components as unknown[] : []),
+      { type: 'header', parameters: [{ type: key, [key]: { link: headerMediaUrl.trim() } }] },
+    ];
+  }
   const resolvedText = bodyComponent?.text
     ? bodyComponent.text.replace(/\{\{(\d+)\}\}/g, (_match, idx) => bodyParams[Number(idx) - 1] ?? `{{${idx}}}`)
     : null;
