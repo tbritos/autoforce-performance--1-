@@ -28,6 +28,7 @@ import EmailBlastDetailView from './components/EmailBlastDetailView';
 import WhatsAppTemplateNewView from './components/WhatsAppTemplateNewView';
 import WhatsAppBlastsView from './components/WhatsAppBlastsView';
 import WhatsAppBlastDetailView from './components/WhatsAppBlastDetailView';
+import WhatsAppInboxView from './components/WhatsAppInboxView';
 import EmailUnsubscribeView from './components/EmailUnsubscribeView';
 import { DataService } from './services/dataService';
 import { User, Metric, LandingPage, DailyLeadEntry, RevenueEntry, FunnelCounts, LeadStatus } from './types';
@@ -1382,7 +1383,7 @@ const AppContent: React.FC = () => {
       label: 'AUTOMACAO',
       items: [
         { label: 'Automacao', path: '/automation', icon: Workflow },
-        { label: 'WhatsApp', path: '/ai-agents', icon: MessageSquare },
+        { label: 'WhatsApp', path: '/whatsapp', icon: MessageSquare },
       ],
     },
     {
@@ -1655,6 +1656,7 @@ const AppContent: React.FC = () => {
             <Route path="/automation" element={<AutomationJourneysView />} />
             <Route path="/automation/:id" element={<AutomationJourneysView />} />
             <Route path="/ai-agents" element={<AIAgentsView />} />
+            <Route path="/whatsapp" element={<WhatsAppInboxView />} />
 
             {/* Performance */}
             <Route path="/funnel" element={<FunnelView />} />

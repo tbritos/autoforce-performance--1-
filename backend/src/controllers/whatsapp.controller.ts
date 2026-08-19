@@ -4,6 +4,7 @@ import {
   fetchWhatsAppPhoneNumbers,
   handleWhatsAppWebhook,
   listWhatsAppConversationByLead,
+  listWhatsAppInbox,
   fetchWhatsAppMedia,
   uploadWhatsAppMedia,
   sendWhatsAppTextFromUI,
@@ -27,6 +28,10 @@ function respondWithMetaError(res: Response, err: unknown) {
 }
 
 export class WhatsAppController {
+  static async getInbox(req: Request, res: Response, next: NextFunction) {
+    try { res.json(await listWhatsAppInbox()); } catch (err) { next(err); }
+  }
+
   static async getNumberHealth(req: Request, res: Response, next: NextFunction) {
     try {
       const { getWhatsAppNumberHealth } = await import('../services/whatsapp-number-health.service');

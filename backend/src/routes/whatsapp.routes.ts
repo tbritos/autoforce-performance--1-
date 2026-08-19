@@ -12,6 +12,7 @@ router.post('/numbers', WhatsAppController.registerNumber);
 router.get('/meeting-slots', WhatsAppController.getMeetingSlots);
 router.post('/meeting-bookings/sync', WhatsAppController.syncMeetingBookings);
 router.get('/templates', WhatsAppController.getTemplates);
+router.get('/inbox', WhatsAppController.getInbox);
 router.post('/templates', WhatsAppController.createTemplate);
 router.delete('/templates/:templateName', WhatsAppController.deleteTemplate);
 router.get('/leads/:leadId/conversation', WhatsAppController.getConversation);

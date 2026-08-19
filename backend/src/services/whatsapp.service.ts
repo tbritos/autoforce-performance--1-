@@ -480,6 +480,44 @@ export async function listWhatsAppConversationByLead(leadId: string): Promise<Wh
   return enriched.reverse();
 }
 
+/** Lista resumida para a caixa de entrada unificada do WhatsApp. */
+export async function listWhatsAppInbox() {
+  const messages = await (prisma as any).whatsAppMessage.findMany({
+    where: { direction: { in: ['inbound', 'outbound'] } },
+    orderBy: [{ createdAt: 'desc' }],
+    take: 5000,
+  });
+  const leadIds: string[] = Array.from(new Set<string>(messages.map((m: any) => String(m.leadId ?? '')).filter((id: string) => id.length > 0)));
+  const leads = leadIds.length ? await prisma.lead.findMany({ where: { id: { in: leadIds } }, select: { id: true, name: true, email: true, phone: true } }) : [];
+  const leadMap = new Map(leads.map(lead => [lead.id, lead]));
+  const groups = new Map<string, any>();
+  for (const message of messages) {
+    const key = message.leadId ?? message.leadEmail ?? message.phone;
+    if (!key) continue;
+    const current = groups.get(key);
+    const date = new Date(message.createdAt).getTime();
+    if (!current) {
+      const lead = message.leadId ? leadMap.get(message.leadId) : null;
+      groups.set(key, {
+        key, leadId: lead?.id ?? message.leadId ?? null,
+        name: lead?.name ?? message.leadEmail ?? message.phone,
+        email: lead?.email ?? message.leadEmail ?? null,
+        phone: lead?.phone ?? message.phone,
+        latestMessage: message.text || (message.templateName ? `📋 ${message.templateName}` : `(${message.type})`),
+        latestType: message.type, latestDirection: message.direction,
+        latestAt: message.createdAt, latestStatus: message.status,
+        unreadCount: message.direction === 'inbound' ? 1 : 0,
+        open: message.direction === 'inbound',
+        countingUnread: message.direction === 'inbound',
+      });
+    } else if (current.countingUnread) {
+      if (message.direction === 'inbound') current.unreadCount += 1;
+      else if (message.direction === 'outbound') current.countingUnread = false;
+    }
+  }
+  return [...groups.values()].map(({ countingUnread, ...item }) => item).sort((a, b) => new Date(b.latestAt).getTime() - new Date(a.latestAt).getTime());
+}
+
 /**
  * Downloads a WhatsApp media object through the Graph API. The access token
  * never reaches the browser; the controller streams the result to the CRM.

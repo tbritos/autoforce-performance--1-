@@ -940,6 +940,9 @@ export const DataService = {
   getWhatsAppConversation: async (leadId: string): Promise<import('../types').WhatsAppConversationMessage[]> => {
     return apiClient.get(`/whatsapp/leads/${encodeURIComponent(leadId)}/conversation`);
   },
+  getWhatsAppInbox: async (): Promise<import('../types').WhatsAppInboxConversation[]> => {
+    return apiClient.get('/whatsapp/inbox');
+  },
   getWhatsAppMedia: async (mediaId: string): Promise<Blob> => {
     const token = localStorage.getItem('autoforce_token');
     const response = await fetch(`${API_URL}/whatsapp/media/${encodeURIComponent(mediaId)}`, {

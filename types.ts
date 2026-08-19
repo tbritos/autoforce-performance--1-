@@ -567,6 +567,21 @@ export interface WhatsAppConversationMessage {
   createdAt: string;
 }
 
+export interface WhatsAppInboxConversation {
+  key: string;
+  leadId: string | null;
+  name: string;
+  email: string | null;
+  phone: string;
+  latestMessage: string;
+  latestType: string;
+  latestDirection: string;
+  latestAt: string;
+  latestStatus: string;
+  unreadCount: number;
+  open: boolean;
+}
+
 export type AutomationNodeType =
   | 'trigger'
   | 'condition'
