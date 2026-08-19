@@ -124,9 +124,10 @@ async function sendWhatsAppBlastNow(blastId: string, opts: { resume?: boolean } 
         const fieldValues = leadFieldValues(lead);
         const headerParams = buildComponentParams(headerText, varMappings, fieldValues);
         const mediaUrl = String(blast.headerMediaUrl ?? '').trim();
-        if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && mediaUrl) {
+        const mediaId = String(blast.headerMediaId ?? '').trim();
+        if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && (mediaUrl || mediaId)) {
           const key = headerFormat.toLowerCase();
-          headerParams.splice(0, headerParams.length, { type: key, [key]: { link: mediaUrl } } as any);
+          headerParams.splice(0, headerParams.length, { type: key, [key]: mediaId ? { id: mediaId } : { link: mediaUrl } } as any);
         }
         const bodyParams = buildComponentParams(bodyText, varMappings, fieldValues);
         const to = toE164(lead.phone!);
@@ -326,7 +327,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 // POST / — cria um disparo (rascunho, agendado, ou dispara na hora se sendNow=true)
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { name, phoneNumberId, templateName, templateLanguage, varMappings, audienceType, audienceValue, scheduledAt, sendNow, headerMediaUrl } =
+    const { name, phoneNumberId, templateName, templateLanguage, varMappings, audienceType, audienceValue, scheduledAt, sendNow, headerMediaUrl, headerMediaId } =
       req.body as Record<string, unknown>;
 
     if (!String(name ?? '').trim())          { res.status(400).json({ error: 'Nome é obrigatório' }); return; }
@@ -340,7 +341,7 @@ router.post('/', async (req: Request, res: Response) => {
     const template = templates.find(t => t.name === String(templateName));
     if (!template) { res.status(404).json({ error: 'Template não encontrado nesse número' }); return; }
     const headerFormat = String(template.components.find(c => c.type === 'HEADER')?.format ?? '').toUpperCase();
-    if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && !String(headerMediaUrl ?? '').trim()) {
+    if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && !String(headerMediaUrl ?? '').trim() && !String(headerMediaId ?? '').trim()) {
       res.status(400).json({ error: `Este template exige uma mídia no cabeçalho (${headerFormat.toLowerCase()}). Informe uma URL pública.` }); return;
     }
 
@@ -363,6 +364,7 @@ router.post('/', async (req: Request, res: Response) => {
         templateName: String(templateName),
         templateLanguage: String(templateLanguage ?? template.language ?? 'pt_BR'),
         headerMediaUrl: String(headerMediaUrl ?? '').trim() || null,
+        headerMediaId: String(headerMediaId ?? '').trim() || null,
         varMappings: mappings,
         audienceType: String(audienceType),
         audienceValue: String(audienceValue),

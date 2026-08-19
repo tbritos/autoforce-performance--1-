@@ -949,13 +949,26 @@ export const DataService = {
     if (!response.ok) throw new Error(`Falha ao carregar mídia (${response.status})`);
     return response.blob();
   },
+  uploadWhatsAppMedia: async (phoneNumberId: string, file: File): Promise<{ id: string; mimeType: string }> => {
+    const token = localStorage.getItem('autoforce_token');
+    const form = new FormData();
+    form.append('phoneNumberId', phoneNumberId);
+    form.append('file', file);
+    const response = await fetch(`${API_URL}/whatsapp/media/upload`, {
+      method: 'POST', credentials: 'include', body: form,
+      headers: token === 'dev-local-bypass' ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error ?? `Falha ao subir mídia (${response.status})`);
+    return data;
+  },
 
   sendWhatsAppMessage: async (leadId: string, text: string): Promise<void> => {
     return apiClient.post(`/whatsapp/leads/${encodeURIComponent(leadId)}/send`, { text });
   },
 
-  sendWhatsAppTemplate: async (leadId: string, templateName: string, bodyParams: string[], phoneNumberId?: string, headerMediaUrl?: string): Promise<void> => {
-    return apiClient.post(`/whatsapp/leads/${encodeURIComponent(leadId)}/send-template`, { templateName, bodyParams, phoneNumberId, headerMediaUrl });
+  sendWhatsAppTemplate: async (leadId: string, templateName: string, bodyParams: string[], phoneNumberId?: string, headerMediaUrl?: string, headerMediaId?: string): Promise<void> => {
+    return apiClient.post(`/whatsapp/leads/${encodeURIComponent(leadId)}/send-template`, { templateName, bodyParams, phoneNumberId, headerMediaUrl, headerMediaId });
   },
 
   setLeadAiHandoff: async (leadId: string, handoff: boolean): Promise<void> => {

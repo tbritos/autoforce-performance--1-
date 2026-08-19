@@ -115,6 +115,8 @@ const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ 
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templateName, setTemplateName] = useState('');
   const [headerMediaUrl, setHeaderMediaUrl] = useState('');
+  const [headerMediaId, setHeaderMediaId] = useState('');
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const [varMappings, setVarMappings] = useState<Record<string, string>>({});
 
   const [audienceType, setAudienceType] = useState<AudienceType>('tag');
@@ -192,6 +194,7 @@ const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ 
         templateLanguage: selectedTemplate?.language ?? 'pt_BR',
         varMappings,
         headerMediaUrl: headerMediaUrl.trim() || undefined,
+        headerMediaId: headerMediaId || undefined,
         audienceType,
         audienceValue,
         scheduledAt: sendMode === 'schedule' && scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
@@ -277,7 +280,7 @@ const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ 
                     <RefreshCw size={13} className="animate-spin" /> Carregando templates...
                   </div>
                 ) : (
-                  <select value={templateName} onChange={e => { setTemplateName(e.target.value); setVarMappings({}); setHeaderMediaUrl(''); }} style={inputStyle}>
+                  <select value={templateName} onChange={e => { setTemplateName(e.target.value); setVarMappings({}); setHeaderMediaUrl(''); setHeaderMediaId(''); }} style={inputStyle}>
                     <option value="">Selecione um template...</option>
                     {templates.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                   </select>
@@ -285,8 +288,15 @@ const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ 
                 {selectedTemplate?.components.some(c => ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(String(c.format ?? '').toUpperCase())) && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>Mídia do cabeçalho</span>
-                    <input type="url" value={headerMediaUrl} onChange={e => setHeaderMediaUrl(e.target.value)} placeholder="https://seu-dominio.com/arquivo.jpg" style={inputStyle} />
-                    <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>URL pública que a Meta consiga acessar.</span>
+                    <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf" disabled={uploadingMedia} onChange={async e => {
+                      const file = e.target.files?.[0]; if (!file || !phoneNumberId) return;
+                      setUploadingMedia(true); setError(null);
+                      try { const result = await DataService.uploadWhatsAppMedia(phoneNumberId, file); setHeaderMediaId(result.id); setHeaderMediaUrl(''); }
+                      catch (err) { setError(err instanceof Error ? err.message : 'Não foi possível subir a mídia.'); }
+                      finally { setUploadingMedia(false); }
+                    }} style={{ ...inputStyle, padding: 7 }} />
+                    {uploadingMedia ? <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Enviando mídia para a Meta…</span> : headerMediaId ? <span style={{ fontSize: 11, color: 'var(--green-600)' }}>Mídia carregada e pronta para o disparo.</span> : <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Ou use uma URL pública abaixo.</span>}
+                    <input type="url" value={headerMediaUrl} onChange={e => { setHeaderMediaUrl(e.target.value); setHeaderMediaId(''); }} placeholder="https://seu-dominio.com/arquivo.jpg" style={inputStyle} />
                   </div>
                 )}
                 {!templatesLoading && templates.length === 0 && (

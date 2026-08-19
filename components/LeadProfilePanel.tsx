@@ -512,7 +512,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   // authenticated backend proxy and turn them into short-lived blob URLs so
   // the access token never appears in the browser or in the DOM.
   useEffect(() => {
-    const mediaMessages = (whatsAppMessages ?? []).filter(message => message.mediaId && ['image', 'audio', 'sticker', 'video', 'document'].includes(message.type));
+    const mediaMessages = (whatsAppMessages ?? []).filter(message => message.mediaId && (['image', 'audio', 'sticker', 'video', 'document'].includes(message.type) || message.type === 'template'));
     if (mediaMessages.length === 0) return;
     let cancelled = false;
     const createdUrls: string[] = [];
@@ -1538,6 +1538,8 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                         for (const type of ['image', 'video', 'document']) {
                                           const link = parameter?.[type]?.link;
                                           if (typeof link === 'string' && /^https?:\/\//i.test(link)) return { type, link };
+                                          const id = parameter?.[type]?.id;
+                                          if (typeof id === 'string' && msg.mediaId === id && whatsAppMedia[id]) return { type, link: whatsAppMedia[id] };
                                         }
                                         return null;
                                       })();

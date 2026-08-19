@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { WhatsAppController } from '../controllers/whatsapp.controller';
+import multer from 'multer';
 
 const router = Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 16 * 1024 * 1024 } });
 
 router.get('/phone-numbers', WhatsAppController.getPhoneNumbers);
 router.get('/numbers', WhatsAppController.getNumbers);
@@ -13,6 +15,7 @@ router.get('/templates', WhatsAppController.getTemplates);
 router.post('/templates', WhatsAppController.createTemplate);
 router.delete('/templates/:templateName', WhatsAppController.deleteTemplate);
 router.get('/leads/:leadId/conversation', WhatsAppController.getConversation);
+router.post('/media/upload', upload.single('file'), WhatsAppController.uploadMedia);
 router.get('/media/:mediaId', WhatsAppController.getMedia);
 router.post('/leads/:leadId/send', WhatsAppController.sendMessage);
 router.post('/leads/:leadId/send-template', WhatsAppController.sendTemplate);

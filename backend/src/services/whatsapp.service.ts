@@ -110,7 +110,18 @@ export interface WhatsAppConversationMessage {
 const MEDIA_MESSAGE_TYPES = new Set(['image', 'audio', 'sticker', 'video', 'document']);
 
 function mediaIdFromPayload(payload: unknown, type: string): string | null {
-  if (!MEDIA_MESSAGE_TYPES.has(type) || !payload || typeof payload !== 'object') return null;
+  if (!payload || typeof payload !== 'object') return null;
+  if (type === 'template') {
+    const template = (payload as any)?.template ?? (payload as any)?.request?.template;
+    const header = Array.isArray(template?.components) ? template.components.find((c: any) => String(c.type).toLowerCase() === 'header') : null;
+    const parameter = header?.parameters?.[0];
+    for (const key of ['image', 'video', 'document']) {
+      const id = parameter?.[key]?.id;
+      if (typeof id === 'string' && id.trim()) return id.trim();
+    }
+    return null;
+  }
+  if (!MEDIA_MESSAGE_TYPES.has(type)) return null;
   const media = (payload as Record<string, unknown>)[type];
   if (!media || typeof media !== 'object') return null;
   const id = (media as Record<string, unknown>).id;
@@ -487,6 +498,27 @@ export async function fetchWhatsAppMedia(mediaId: string): Promise<{ body: Buffe
     body: Buffer.from(await response.arrayBuffer()),
     contentType: metadata.mime_type || response.headers.get('content-type') || 'application/octet-stream',
   };
+}
+
+export async function uploadWhatsAppMedia(input: {
+  phoneNumberId: string;
+  buffer: Buffer;
+  mimeType: string;
+  filename: string;
+}): Promise<{ id: string; mimeType: string }> {
+  validateGraphId(input.phoneNumberId, 'phoneNumberId');
+  const allowed = /^(image\/(jpeg|png|webp)|video\/mp4|application\/pdf)$/i;
+  if (!allowed.test(input.mimeType)) throw new Error('Formato não suportado. Use JPG, PNG, WEBP, MP4 ou PDF.');
+  const { accessToken } = await getWhatsAppCredentials();
+  const form = new FormData();
+  form.append('messaging_product', 'whatsapp');
+  form.append('file', new Blob([input.buffer], { type: input.mimeType }), input.filename || 'media');
+  const response = await fetch(`https://graph.facebook.com/v19.0/${input.phoneNumberId}/media`, {
+    method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: form,
+  });
+  const data = await response.json() as { id?: string; error?: { message?: string } };
+  if (!response.ok || !data.id) throw new Error(data.error?.message ?? `Meta media upload error ${response.status}`);
+  return { id: data.id, mimeType: input.mimeType };
 }
 
 export async function recordOutgoingWhatsAppMessage(input: {
@@ -939,7 +971,8 @@ export async function sendWhatsAppTemplateFromUI(
   templateName: string,
   bodyParams: string[] = [],
   phoneNumberIdOverride?: string,
-  headerMediaUrl?: string
+  headerMediaUrl?: string,
+  headerMediaId?: string
 ): Promise<void> {
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
@@ -1013,14 +1046,15 @@ export async function sendWhatsAppTemplateFromUI(
   const bodyComponent = template.components.find(c => c.type === 'BODY');
   const headerComponent = template.components.find(c => c.type === 'HEADER');
   const headerFormat = String(headerComponent?.format ?? '').toUpperCase();
-  if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && !headerMediaUrl?.trim()) {
+  if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && !headerMediaUrl?.trim() && !headerMediaId?.trim()) {
     throw new Error(`Este template exige uma mídia no cabeçalho (${headerFormat.toLowerCase()}). Informe uma URL pública.`);
   }
-  if (headerFormat && headerFormat !== 'TEXT' && headerMediaUrl?.trim()) {
+  if (headerFormat && headerFormat !== 'TEXT' && (headerMediaUrl?.trim() || headerMediaId?.trim())) {
     const key = headerFormat.toLowerCase();
+    const media = headerMediaId?.trim() ? { id: headerMediaId.trim() } : { link: headerMediaUrl!.trim() };
     templatePayload.components = [
       ...(Array.isArray(templatePayload.components) ? templatePayload.components as unknown[] : []),
-      { type: 'header', parameters: [{ type: key, [key]: { link: headerMediaUrl.trim() } }] },
+      { type: 'header', parameters: [{ type: key, [key]: media }] },
     ];
   }
   const resolvedText = bodyComponent?.text

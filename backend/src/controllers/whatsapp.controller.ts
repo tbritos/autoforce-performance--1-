@@ -5,6 +5,7 @@ import {
   handleWhatsAppWebhook,
   listWhatsAppConversationByLead,
   fetchWhatsAppMedia,
+  uploadWhatsAppMedia,
   sendWhatsAppTextFromUI,
   sendWhatsAppTemplateFromUI,
   setLeadAiHandoff,
@@ -145,6 +146,18 @@ export class WhatsAppController {
     }
   }
 
+  static async uploadMedia(req: Request, res: Response, next: NextFunction) {
+    try {
+      const file = (req as Request & { file?: { buffer: Buffer; mimetype: string; originalname: string } }).file;
+      const phoneNumberId = String(req.body?.phoneNumberId ?? '').trim();
+      if (!file) { res.status(400).json({ error: 'Selecione um arquivo.' }); return; }
+      if (!phoneNumberId) { res.status(400).json({ error: 'Número de envio é obrigatório.' }); return; }
+      res.json(await uploadWhatsAppMedia({ phoneNumberId, buffer: file.buffer, mimeType: file.mimetype, filename: file.originalname }));
+    } catch (err) {
+      respondWithMetaError(res, err);
+    }
+  }
+
   static async sendMessage(req: Request, res: Response, next: NextFunction) {
     try {
       const { text, phoneNumberId } = req.body as { text?: string; phoneNumberId?: string };
@@ -161,12 +174,12 @@ export class WhatsAppController {
 
   static async sendTemplate(req: Request, res: Response, next: NextFunction) {
     try {
-      const { templateName, bodyParams, phoneNumberId, headerMediaUrl } = req.body as { templateName?: string; bodyParams?: string[]; phoneNumberId?: string; headerMediaUrl?: string };
+      const { templateName, bodyParams, phoneNumberId, headerMediaUrl, headerMediaId } = req.body as { templateName?: string; bodyParams?: string[]; phoneNumberId?: string; headerMediaUrl?: string; headerMediaId?: string };
       if (!templateName?.trim()) {
         res.status(400).json({ error: 'templateName é obrigatório' });
         return;
       }
-      await sendWhatsAppTemplateFromUI(req.params.leadId, templateName.trim(), bodyParams ?? [], phoneNumberId, headerMediaUrl);
+      await sendWhatsAppTemplateFromUI(req.params.leadId, templateName.trim(), bodyParams ?? [], phoneNumberId, headerMediaUrl, headerMediaId);
       res.json({ ok: true });
     } catch (err) {
       respondWithMetaError(res, err);
