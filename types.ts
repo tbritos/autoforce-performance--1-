@@ -573,6 +573,9 @@ export interface WhatsAppInboxConversation {
   name: string;
   email: string | null;
   phone: string;
+  phoneNumberId: string | null;
+  phoneNumberLabel: string | null;
+  phoneNumberDisplay: string | null;
   latestMessage: string;
   latestType: string;
   latestDirection: string;

@@ -490,9 +490,12 @@ export async function listWhatsAppInbox() {
   const leadIds: string[] = Array.from(new Set<string>(messages.map((m: any) => String(m.leadId ?? '')).filter((id: string) => id.length > 0)));
   const leads = leadIds.length ? await prisma.lead.findMany({ where: { id: { in: leadIds } }, select: { id: true, name: true, email: true, phone: true } }) : [];
   const leadMap = new Map(leads.map(lead => [lead.id, lead]));
+  const labelMap = await buildPhoneNumberLabelMap();
+  const defaultPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID?.trim() || null;
   const groups = new Map<string, any>();
   for (const message of messages) {
-    const key = message.leadId ?? message.leadEmail ?? message.phone;
+    const phoneNumberId = message.phoneNumberId ?? defaultPhoneNumberId;
+    const key = `${message.leadId ?? message.leadEmail ?? message.phone}|${phoneNumberId ?? 'default'}`;
     if (!key) continue;
     const current = groups.get(key);
     const date = new Date(message.createdAt).getTime();
@@ -503,6 +506,9 @@ export async function listWhatsAppInbox() {
         name: lead?.name ?? message.leadEmail ?? message.phone,
         email: lead?.email ?? message.leadEmail ?? null,
         phone: lead?.phone ?? message.phone,
+        phoneNumberId,
+        phoneNumberLabel: phoneNumberId ? labelMap.get(phoneNumberId)?.label ?? null : null,
+        phoneNumberDisplay: phoneNumberId ? labelMap.get(phoneNumberId)?.displayPhoneNumber ?? null : null,
         latestMessage: message.text || (message.templateName ? `📋 ${message.templateName}` : `(${message.type})`),
         latestType: message.type, latestDirection: message.direction,
         latestAt: message.createdAt, latestStatus: message.status,
