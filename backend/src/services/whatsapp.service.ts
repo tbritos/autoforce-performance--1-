@@ -845,9 +845,19 @@ async function recordStatus(status: any, phoneNumberId: string | null): Promise<
   const errorTitle = firstError?.title ?? null;
   const errorMessage = firstError?.message ?? firstError?.error_data?.details ?? null;
 
+  // O payload original do envio contém o ID/link da mídia do cabeçalho.
+  // Os webhooks de delivered/read não podem substituí-lo pelo payload de
+  // status, senão a conversa perde a referência necessária para renderizar a
+  // imagem do template. Mantemos o envio e anexamos a atualização de status.
+  const existing = await (prisma as any).whatsAppMessage.findUnique({
+    where: { messageId },
+    select: { payload: true },
+  });
+  const previousPayload = existing?.payload && typeof existing.payload === 'object' ? existing.payload as Record<string, unknown> : {};
+  const preservedPayload = { ...previousPayload, _status: status };
   const data: Record<string, unknown> = {
     status: state,
-    payload: status,
+    payload: preservedPayload,
     ...(state === 'failed' ? { errorCode, errorTitle, errorMessage } : {}),
   };
   if (state === 'sent') data.sentAt = at;
