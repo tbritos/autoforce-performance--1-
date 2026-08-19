@@ -512,12 +512,19 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   // authenticated backend proxy and turn them into short-lived blob URLs so
   // the access token never appears in the browser or in the DOM.
   useEffect(() => {
-    const mediaMessages = (whatsAppMessages ?? []).filter(message => message.mediaId && (['image', 'audio', 'sticker', 'video', 'document'].includes(message.type) || message.type === 'template'));
+    const mediaMessages = (whatsAppMessages ?? []).map(message => {
+      const payload = message.payload && typeof message.payload === 'object' ? message.payload as any : null;
+      const components = payload?.template?.components ?? payload?.request?.template?.components;
+      const header = Array.isArray(components) ? components.find((c: any) => String(c.type).toLowerCase() === 'header') : null;
+      const params = header?.parameters?.[0];
+      const embedded = ['image', 'video', 'document'].map(type => params?.[type]?.id).find(Boolean) ?? null;
+      return { message, resolvedMediaId: message.mediaId || embedded };
+    }).filter(({ message, resolvedMediaId }) => resolvedMediaId && (['image', 'audio', 'sticker', 'video', 'document'].includes(message.type) || message.type === 'template'));
     if (mediaMessages.length === 0) return;
     let cancelled = false;
     const createdUrls: string[] = [];
-    Promise.all(mediaMessages.map(async message => {
-      const id = message.mediaId as string;
+    Promise.all(mediaMessages.map(async ({ message, resolvedMediaId }) => {
+      const id = resolvedMediaId as string;
       try {
         const blob = await DataService.getWhatsAppMedia(id);
         const url = URL.createObjectURL(blob);
@@ -1527,7 +1534,13 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                       const out = msg.direction === 'outbound';
                                       const ts = fmtTime(msg.sentAt ?? msg.receivedAt ?? msg.createdAt);
                                       const body = msg.text || (msg.templateName ? `📋 ${msg.templateName}` : `(${msg.type})`);
-                                      const mediaSrc = msg.mediaId ? whatsAppMedia[msg.mediaId] : null;
+                                      const payloadForMedia = msg.payload && typeof msg.payload === 'object' ? msg.payload as any : null;
+                                      const templateComponentsForMedia = payloadForMedia?.template?.components ?? payloadForMedia?.request?.template?.components;
+                                      const templateHeaderForMedia = Array.isArray(templateComponentsForMedia) ? templateComponentsForMedia.find((c: any) => String(c.type).toLowerCase() === 'header') : null;
+                                      const templateParameterForMedia = templateHeaderForMedia?.parameters?.[0];
+                                      const embeddedMedia = ['image', 'video', 'document'].map(type => ({ type, value: templateParameterForMedia?.[type] })).find(item => item.value?.id || item.value?.link);
+                                      const resolvedMediaId = msg.mediaId || embeddedMedia?.value?.id || null;
+                                      const mediaSrc = resolvedMediaId ? whatsAppMedia[resolvedMediaId] : null;
                                       const outboundTemplateMedia = (() => {
                                         if (!out || !msg.templateName || !msg.payload || typeof msg.payload !== 'object') return null;
                                         const payload = msg.payload as any;
@@ -1539,7 +1552,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                                           const link = parameter?.[type]?.link;
                                           if (typeof link === 'string' && /^https?:\/\//i.test(link)) return { type, link };
                                           const id = parameter?.[type]?.id;
-                                          if (typeof id === 'string' && msg.mediaId === id && whatsAppMedia[id]) return { type, link: whatsAppMedia[id] };
+                                          if (typeof id === 'string' && resolvedMediaId === id && whatsAppMedia[id]) return { type, link: whatsAppMedia[id] };
                                         }
                                         return null;
                                       })();
