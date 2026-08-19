@@ -1383,7 +1383,8 @@ const AppContent: React.FC = () => {
       label: 'AUTOMACAO',
       items: [
         { label: 'Automacao', path: '/automation', icon: Workflow },
-        { label: 'WhatsApp', path: '/whatsapp', icon: MessageSquare },
+        { label: 'Conversas WhatsApp', path: '/whatsapp', icon: MessageSquare },
+        { label: 'Agente IA', path: '/ai-agents', icon: Bot },
       ],
     },
     {
@@ -1395,6 +1396,7 @@ const AppContent: React.FC = () => {
         { label: 'Templates Emails',  path: '/emails',      icon: Mail },
         { label: 'Disparos de Email', path: '/disparos',    icon: Send },
         { label: 'Disparos WhatsApp', path: '/disparos-whatsapp', icon: MessageSquare },
+        { label: 'Novo template WhatsApp', path: '/whatsapp/template/new', icon: MessageSquare },
       ],
     },
     {
