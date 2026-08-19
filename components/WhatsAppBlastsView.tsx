@@ -114,6 +114,7 @@ const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ 
   const [templates, setTemplates] = useState<WhatsAppTemplateOption[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templateName, setTemplateName] = useState('');
+  const [headerMediaUrl, setHeaderMediaUrl] = useState('');
   const [varMappings, setVarMappings] = useState<Record<string, string>>({});
 
   const [audienceType, setAudienceType] = useState<AudienceType>('tag');
@@ -190,6 +191,7 @@ const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ 
         templateName,
         templateLanguage: selectedTemplate?.language ?? 'pt_BR',
         varMappings,
+        headerMediaUrl: headerMediaUrl.trim() || undefined,
         audienceType,
         audienceValue,
         scheduledAt: sendMode === 'schedule' && scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
@@ -275,10 +277,17 @@ const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ 
                     <RefreshCw size={13} className="animate-spin" /> Carregando templates...
                   </div>
                 ) : (
-                  <select value={templateName} onChange={e => { setTemplateName(e.target.value); setVarMappings({}); }} style={inputStyle}>
+                  <select value={templateName} onChange={e => { setTemplateName(e.target.value); setVarMappings({}); setHeaderMediaUrl(''); }} style={inputStyle}>
                     <option value="">Selecione um template...</option>
                     {templates.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                   </select>
+                )}
+                {selectedTemplate?.components.some(c => ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(String(c.format ?? '').toUpperCase())) && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>Mídia do cabeçalho</span>
+                    <input type="url" value={headerMediaUrl} onChange={e => setHeaderMediaUrl(e.target.value)} placeholder="https://seu-dominio.com/arquivo.jpg" style={inputStyle} />
+                    <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>URL pública que a Meta consiga acessar.</span>
+                  </div>
                 )}
                 {!templatesLoading && templates.length === 0 && (
                   <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-muted)' }}>Nenhum template aprovado nessa conta ainda.</p>

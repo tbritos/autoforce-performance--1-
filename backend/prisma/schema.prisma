@@ -1093,6 +1093,7 @@ model WhatsAppBlast {
   phoneNumberId    String
   templateName     String
   templateLanguage String    @default("pt_BR")
+  headerMediaUrl   String?   @db.Text
   varMappings      Json      @default("{}") // { "{{1}}": "name" } ou { "{{nome}}": "name" }
   audienceType     String // tag | segment | individual
   audienceValue    String    @db.Text

@@ -108,6 +108,7 @@ async function sendWhatsAppBlastNow(blastId: string, opts: { resume?: boolean } 
     const templates = await fetchWhatsAppTemplates(blast.phoneNumberId);
     const template = templates.find(t => t.name === blast.templateName);
     const headerText = template?.components.find(c => c.type === 'HEADER')?.text ?? null;
+    const headerFormat = String(template?.components.find(c => c.type === 'HEADER')?.format ?? '').toUpperCase();
     const bodyText = template?.components.find(c => c.type === 'BODY')?.text ?? null;
     const varMappings = (blast.varMappings ?? {}) as Record<string, string>;
 
@@ -122,6 +123,11 @@ async function sendWhatsAppBlastNow(blastId: string, opts: { resume?: boolean } 
       const results = await Promise.all(batch.map(async lead => {
         const fieldValues = leadFieldValues(lead);
         const headerParams = buildComponentParams(headerText, varMappings, fieldValues);
+        const mediaUrl = String(blast.headerMediaUrl ?? '').trim();
+        if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && mediaUrl) {
+          const key = headerFormat.toLowerCase();
+          headerParams.splice(0, headerParams.length, { type: key, [key]: { link: mediaUrl } } as any);
+        }
         const bodyParams = buildComponentParams(bodyText, varMappings, fieldValues);
         const to = toE164(lead.phone!);
         const resolvedText = bodyText ? resolveTemplateBodyText(bodyText, varMappings, fieldValues) : null;
@@ -320,7 +326,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 // POST / — cria um disparo (rascunho, agendado, ou dispara na hora se sendNow=true)
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { name, phoneNumberId, templateName, templateLanguage, varMappings, audienceType, audienceValue, scheduledAt, sendNow } =
+    const { name, phoneNumberId, templateName, templateLanguage, varMappings, audienceType, audienceValue, scheduledAt, sendNow, headerMediaUrl } =
       req.body as Record<string, unknown>;
 
     if (!String(name ?? '').trim())          { res.status(400).json({ error: 'Nome é obrigatório' }); return; }
@@ -333,6 +339,10 @@ router.post('/', async (req: Request, res: Response) => {
     const templates = await fetchWhatsAppTemplates(String(phoneNumberId));
     const template = templates.find(t => t.name === String(templateName));
     if (!template) { res.status(404).json({ error: 'Template não encontrado nesse número' }); return; }
+    const headerFormat = String(template.components.find(c => c.type === 'HEADER')?.format ?? '').toUpperCase();
+    if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && !String(headerMediaUrl ?? '').trim()) {
+      res.status(400).json({ error: `Este template exige uma mídia no cabeçalho (${headerFormat.toLowerCase()}). Informe uma URL pública.` }); return;
+    }
 
     const mappings = (varMappings ?? {}) as Record<string, string>;
     const requiredVars = extractTemplateVars(template.components);
@@ -352,6 +362,7 @@ router.post('/', async (req: Request, res: Response) => {
         phoneNumberId: String(phoneNumberId),
         templateName: String(templateName),
         templateLanguage: String(templateLanguage ?? template.language ?? 'pt_BR'),
+        headerMediaUrl: String(headerMediaUrl ?? '').trim() || null,
         varMappings: mappings,
         audienceType: String(audienceType),
         audienceValue: String(audienceValue),
