@@ -6,6 +6,7 @@ import {
   RefreshCw, AlertCircle, CheckCircle, Trash2, MessageCircle, Clock, XCircle, Phone,
 } from 'lucide-react';
 import { apiClient } from '../services/apiClient';
+import { DataService } from '../services/dataService';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
