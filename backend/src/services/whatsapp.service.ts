@@ -720,12 +720,13 @@ export function extractInboundText(message: any): { type: string; text: string |
 // Confere se `phoneNumberId` (o numero da Meta que RECEBEU a mensagem) e o
 // numero configurado pro agente de IA — evita que o agente responda a
 // mensagens recebidas em outros numeros (ex: respostas a disparos em massa
-// feitos de um numero diferente). Sem nada configurado em lugar nenhum, nao
-// bloqueia (mantem o comportamento anterior a essa checagem).
+// feitos de um numero diferente). Sem um numero explicitamente configurado,
+// bloqueia por seguranca: e melhor a Lara nao responder do que responder pelo
+// numero errado. Isso nao impede visualizar a conversa nem enviar manualmente.
 async function isAgentPhoneNumber(phoneNumberId: string | null): Promise<boolean> {
   const agent = await (prisma as any).aIAgent.findFirst({ where: { isActive: true }, select: { whatsappPhoneNumberId: true } });
   const expected = agent?.whatsappPhoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || null;
-  if (!expected) return true;
+  if (!expected || !phoneNumberId) return false;
   return phoneNumberId === expected;
 }
 
