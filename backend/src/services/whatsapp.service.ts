@@ -486,7 +486,10 @@ export async function listWhatsAppConversationByLead(leadId: string): Promise<Wh
  */
 export async function fetchWhatsAppMedia(mediaId: string): Promise<{ body: Buffer; contentType: string }> {
   const cleanId = String(mediaId ?? '').trim();
-  validateGraphId(cleanId, 'mediaId');
+  // Media IDs da Meta normalmente são numéricos, mas algumas contas retornam
+  // IDs opacos com letras, hífens ou sublinhados. Mantemos a proteção contra
+  // path injection sem restringir o formato válido do Graph API.
+  if (!/^[A-Za-z0-9_-]{1,256}$/.test(cleanId)) throw new Error('mediaId inválido');
   const { accessToken } = await getWhatsAppCredentials();
   const metadata = await metaGet<{ url?: string; mime_type?: string }>(
     `https://graph.facebook.com/v19.0/${cleanId}?fields=url,mime_type`, accessToken
