@@ -1063,7 +1063,23 @@ async function executeNode(
     case 'condition': {
       const lead = await prisma.lead.findUnique({ where: { email: leadEmail } });
       if (!lead) return 'stop';
-      const result = evaluateCondition(lead as LeadRecord, c);
+      let result: boolean;
+      if (String(c.field ?? '') === 'segment') {
+        const segmentId = String(c.value ?? '').trim();
+        if (!segmentId || !['in_segment', 'not_in_segment'].includes(String(c.operator ?? ''))) {
+          result = false;
+        } else {
+          const { SegmentService } = await import('./segment.service');
+          const segment = await prisma.segment.findUnique({ where: { id: segmentId }, select: { rules: true } });
+          const segmentWhere = segment
+            ? await SegmentService.buildWhere(segment.rules as any, [segmentId])
+            : { id: { in: [] as string[] } };
+          const member = await prisma.lead.findFirst({ where: { AND: [{ id: lead.id }, segmentWhere] }, select: { id: true } });
+          result = String(c.operator) === 'in_segment' ? Boolean(member) : !member;
+        }
+      } else {
+        result = evaluateCondition(lead as LeadRecord, c);
+      }
       await appendLog(executionId, node.id, 'condition', 'ok', `Condição: ${result}`);
       return result;
     }
