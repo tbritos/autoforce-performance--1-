@@ -186,10 +186,12 @@ const CONDITION_FIELD_OPTIONS: SmartSelectOption[] = [
   { value: 'jobTitle', label: 'Cargo',   description: 'Verifica o cargo do lead' },
   { value: 'company',  label: 'Empresa', description: 'Verifica o nome da empresa' },
   { value: 'source',   label: 'Origem',  description: 'Verifica de onde veio o lead' },
+  { value: 'segment',  label: 'Segmentação', description: 'Verifica se o lead pertence a uma segmentação' },
 ];
 
 const CONDITION_OPERATORS_BY_FIELD: Record<string, SmartSelectOption[]> = {
   tag:    [{ value: 'has_tag', label: 'possui a tag' }, { value: 'not_has_tag', label: 'não possui a tag' }],
+  segment: [{ value: 'in_segment', label: 'está em' }, { value: 'not_in_segment', label: 'não está em' }],
   score:  [{ value: '>=', label: 'maior ou igual a' }, { value: '<=', label: 'menor ou igual a' }, { value: '=', label: 'igual a' }],
   status: [{ value: '=', label: 'é' }, { value: '!=', label: 'não é' }],
 };
@@ -720,7 +722,9 @@ function ExitConditionsModal({
                 {row.field && (
                   <div style={{ display: 'grid', gap: 6 }}>
                     <span style={fieldLabelStyle}>Valor</span>
-                    {row.field === 'tag' ? (
+                    {row.field === 'segment' ? (
+                      <SegmentSelector value={row.value} onChange={v => updateRow(idx, { value: v })} />
+                    ) : row.field === 'tag' ? (
                       <TagSelector value={row.value} onChange={v => updateRow(idx, { value: v })} />
                     ) : row.field === 'status' ? (
                       <SmartSelect value={row.value} options={LEAD_STATUS_OPTIONS} onChange={v => updateRow(idx, { value: v })} placeholder="Selecionar etapa..." />
@@ -2906,7 +2910,8 @@ const AutomationJourneysView: React.FC = () => {
                         {field === 'tag' && panelTagField('value', 'Qual tag?')}
                         {field === 'status' && panelSelectField('value', 'Qual etapa?', LEAD_STATUS_OPTIONS, 'Selecionar etapa...')}
                         {field === 'score' && panelTextField('value', 'Valor do score', 'ex: 50', 'number')}
-                        {field && field !== 'tag' && field !== 'status' && field !== 'score' && panelTextField('value', 'Valor esperado', 'ex: CEO, acelerador...')}
+                        {field === 'segment' && <SegmentSelector value={String(panelValues.config.value ?? '')} onChange={v => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, value: v } } : prev)} />}
+                        {field && field !== 'tag' && field !== 'status' && field !== 'score' && field !== 'segment' && panelTextField('value', 'Valor esperado', 'ex: CEO, acelerador...')}
                       </div>
                     );
                   })()}
