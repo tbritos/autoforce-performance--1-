@@ -2572,19 +2572,28 @@ const AutomationJourneysView: React.FC = () => {
               ? `Saída: ${conditionFieldLabel(selected.exitConditions.conditions[0].field)} ${conditionOperatorLabel(selected.exitConditions.conditions[0].field, selected.exitConditions.conditions[0].operator)} ${selected.exitConditions.conditions[0].value}${selected.exitConditions.conditions.length > 1 ? ` (+${selected.exitConditions.conditions.length - 1})` : ''}`
               : 'Condição de saída'}
           </button>
-          {selected.id && selected.nodes.find(n => n.type === 'trigger')?.config?.event === 'segment_entered' && (
+          {selected.id && ['segment_entered', 'conversion_received'].includes(String(selected.nodes.find(n => n.type === 'trigger')?.config?.event ?? '')) && (
             <button
               type="button"
               onClick={async () => {
-                if (!window.confirm('Reprocessar esta automação? Todos os leads que satisfazem as regras do segmento hoje serão tratados como entrada nova no próximo ciclo (até 2 minutos).')) return;
+                const triggerEvent = String(selected.nodes.find(n => n.type === 'trigger')?.config?.event ?? '');
+                const message = triggerEvent === 'conversion_received'
+                  ? 'Reprocessar as conversões históricas desta automação? Os leads que já converteram serão tratados como entrada, respeitando condições e deduplicação.'
+                  : 'Reprocessar esta automação? Todos os leads que satisfazem as regras do segmento hoje serão tratados como entrada nova no próximo ciclo (até 2 minutos).';
+                if (!window.confirm(message)) return;
                 try {
-                  const result = await DataService.reprocessSegmentTrigger(selected.id!);
-                  alert(`Rastreamento limpo (${result.cleared} registro(s)). Os leads que ainda batem com o segmento vão disparar de novo em até 2 minutos.`);
+                  if (triggerEvent === 'conversion_received') {
+                    const result = await DataService.reprocessConversionTrigger(selected.id!);
+                    alert(`${result.queued} lead(s) com conversão histórica foram enviados para a fila.`);
+                  } else {
+                    const result = await DataService.reprocessSegmentTrigger(selected.id!);
+                    alert(`Rastreamento limpo (${result.cleared} registro(s)). Os leads que ainda batem com o segmento vão disparar de novo em até 2 minutos.`);
+                  }
                 } catch (err) {
                   alert(err instanceof Error ? err.message : 'Erro ao reprocessar');
                 }
               }}
-              title="Limpar o controle de quem já entrou no segmento e reprocessar todo mundo que bate hoje"
+              title="Reprocessar conversões históricas ou leads que batem no segmento"
               style={{
                 display: 'inline-flex', gap: 6, alignItems: 'center', height: 34, padding: '0 14px',
                 border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-surface)',

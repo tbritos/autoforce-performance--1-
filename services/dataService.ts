@@ -1551,6 +1551,10 @@ export const DataService = {
     return apiClient.post(`/automation-journeys/${encodeURIComponent(journeyId)}/reprocess-segment`, {});
   },
 
+  reprocessConversionTrigger: async (journeyId: string): Promise<{ ok: boolean; queued: number }> => {
+    return apiClient.post(`/automation-journeys/${encodeURIComponent(journeyId)}/reprocess-conversion`, {});
+  },
+
   listAIAgents: async (): Promise<AIAgent[]> => {
     return apiClient.get<AIAgent[]>('/ai-agents');
   },

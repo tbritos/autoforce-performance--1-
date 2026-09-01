@@ -110,4 +110,36 @@ export class AutomationJourneysController {
       next(error);
     }
   }
+
+  // Reenvia o gatilho de conversão para os leads que já converteram no
+  // formulário configurado na jornada. A própria engine aplica prioridade,
+  // condições de persona e deduplicação antes de criar a execução.
+  static async reprocessConversion(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { prisma } = await import('../config/database');
+      const { fireTrigger } = await import('../services/automation-engine.service');
+      const journey = await prisma.automationJourney.findUnique({ where: { id: req.params.id } });
+      if (!journey) { res.status(404).json({ error: 'Automação não encontrada' }); return; }
+      const nodes = (journey.nodes as any[]) ?? [];
+      const trigger = nodes.find(node => node?.type === 'trigger');
+      const configuredEvent = String(trigger?.config?.event ?? '');
+      const conversionName = String(trigger?.config?.eventValue ?? '').trim();
+      if (configuredEvent !== 'conversion_received' || !conversionName) {
+        res.status(400).json({ error: 'Esta automação não possui um gatilho de conversão configurado' }); return;
+      }
+
+      const conversions = await prisma.leadConversion.findMany({
+        where: { OR: [{ formName: conversionName }, { campaignName: conversionName }] },
+        select: { leadEmail: true, source: true, formName: true, convertedAt: true },
+        distinct: ['leadEmail'],
+      });
+      for (const conversion of conversions) {
+        await fireTrigger('conversion_received', conversion.leadEmail, {
+          conversionName: conversion.formName || conversionName,
+          source: conversion.source,
+        });
+      }
+      res.json({ ok: true, queued: conversions.length });
+    } catch (error) { next(error); }
+  }
 }
