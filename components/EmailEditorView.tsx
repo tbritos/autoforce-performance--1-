@@ -336,6 +336,7 @@ const EmailEditorView: React.FC = () => {
   const editorRef    = useRef<EditorRef>(null);
   const loadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const designRef    = useRef<unknown | null>(null);
+  const bodyRef      = useRef<string>('');
 
   const loadSenderDomains = async () => {
     setSenderDomainsLoading(true);
@@ -376,6 +377,7 @@ const EmailEditorView: React.FC = () => {
           fromEmailDomain: senderEmail.domain,
         });
         designRef.current = t.design;
+        bodyRef.current = t.body ?? '';
       })
       .catch(() => setError('Erro ao carregar template'))
       .finally(() => setLoadingTemplate(false));
@@ -394,8 +396,24 @@ const EmailEditorView: React.FC = () => {
     if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
     setEditorReady(true);
     setEditorError(false);
-    if (designRef.current) {
-      try { editorRef.current?.editor?.loadDesign(designRef.current as any); } catch {}
+    // Older/imported templates may have the rendered HTML saved in `body`
+    // without an Unlayer design. In that case, put the HTML in a native
+    // Unlayer HTML block so the visual editor is not empty.
+    const design = designRef.current ?? (bodyRef.current.trim() ? {
+      body: {
+        rows: [{
+          cells: [1],
+          columns: [{
+            contents: [{ type: 'html', values: { html: bodyRef.current } }],
+            values: {},
+          }],
+          values: {},
+        }],
+        values: {},
+      },
+    } : null);
+    if (design) {
+      try { editorRef.current?.editor?.loadDesign(design as any); } catch {}
     }
   };
 
