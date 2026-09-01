@@ -399,7 +399,9 @@ const EmailEditorView: React.FC = () => {
     // Older/imported templates may have the rendered HTML saved in `body`
     // without an Unlayer design. In that case, put the HTML in a native
     // Unlayer HTML block so the visual editor is not empty.
-    const design = designRef.current ?? (bodyRef.current.trim() ? {
+    const savedDesign = designRef.current as any;
+    const hasSavedRows = Array.isArray(savedDesign?.body?.rows) && savedDesign.body.rows.length > 0;
+    const design = hasSavedRows ? savedDesign : (bodyRef.current.trim() ? {
       body: {
         rows: [{
           cells: [1],
