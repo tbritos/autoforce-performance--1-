@@ -307,6 +307,10 @@ export async function fireTrigger(
       where: { isActive: true },
       include: { nurtureGroup: true },
     });
+    const leadForPersona = await prisma.lead.findUnique({
+      where: { email: leadEmail },
+      select: LEAD_RECORD_SELECT,
+    });
 
     const directlyMatching = journeys.filter(journey => {
       const nodes = (journey.nodes as unknown as AutomationNode[]) ?? [];
@@ -314,7 +318,7 @@ export async function fireTrigger(
       if (!triggerNode) return false;
 
       const c = (triggerNode.config ?? {}) as Record<string, string>;
-      return matchesTrigger(c.event, event, c, context);
+      return matchesTrigger(c.event, event, c, context) && matchesJourneyPersona(journey, leadForPersona);
     });
     const triggeredGroupIds = new Set(
       directlyMatching
@@ -323,8 +327,9 @@ export async function fireTrigger(
     );
     const directlyMatchingIds = new Set(directlyMatching.map(journey => journey.id));
     const matching = journeys.filter(journey =>
-      directlyMatchingIds.has(journey.id)
-      || (journey.automationType === 'NURTURE' && Boolean(journey.nurtureGroupId) && triggeredGroupIds.has(journey.nurtureGroupId!))
+      (directlyMatchingIds.has(journey.id)
+        || (journey.automationType === 'NURTURE' && Boolean(journey.nurtureGroupId) && triggeredGroupIds.has(journey.nurtureGroupId!)))
+      && matchesJourneyPersona(journey, leadForPersona)
     ).sort((a, b) => {
       if (a.automationType === 'NURTURE' && b.automationType === 'NURTURE') {
         return nurtureSettings(b).priority - nurtureSettings(a).priority;
@@ -343,6 +348,22 @@ export async function fireTrigger(
   } catch (err) {
     console.error('[automation] fireTrigger error:', err);
   }
+}
+
+// Jornadas do mesmo grupo (e-mail, WhatsApp etc.) compartilham o gatilho. A
+// condição de persona, porém, precisa ser aplicada antes de iniciar a jornada;
+// caso contrário todos os ramos do grupo criam uma execução e podem disparar
+// mensagens duplicadas antes que o bloco visual de condição seja processado.
+function matchesJourneyPersona(journey: { nodes: unknown }, lead: LeadRecord | null): boolean {
+  const nodes = (journey.nodes as unknown as AutomationNode[]) ?? [];
+  const personaCondition = nodes.find(node => {
+    if (node.type !== 'condition') return false;
+    const config = (node.config ?? {}) as Record<string, string>;
+    return config.field === 'jobTitle' && config.operator === 'contains' && Boolean(config.value?.trim());
+  });
+  if (!personaCondition) return true;
+  if (!lead) return false;
+  return evaluateCondition(lead, (personaCondition.config ?? {}) as Record<string, string>);
 }
 
 // Dispara o gatilho para UMA journey especifica, sem escanear as demais — usado pelo
