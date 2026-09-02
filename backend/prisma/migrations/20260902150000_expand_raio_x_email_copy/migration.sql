@@ -33,17 +33,17 @@ BEGIN
 END $$;
 
 UPDATE "EmailTemplate" SET "subject" = CASE "id"
-  WHEN 'raio_x_marcas_chinesas_a_e2' THEN 'O que as marcas chinesas estão mudando no digital'
-  WHEN 'raio_x_marcas_chinesas_a_e3' THEN 'O que os dados mostram sobre sua operação'
-  WHEN 'raio_x_marcas_chinesas_a_e4' THEN 'Como reduzir o risco de ficar para trás'
-  WHEN 'raio_x_marcas_chinesas_a_e5' THEN 'A janela para se preparar está aberta'
-  WHEN 'raio_x_marcas_chinesas_b_e2' THEN 'R$ 15,5 bi em fábricas: a decisão comercial mudou'
-  WHEN 'raio_x_marcas_chinesas_b_e3' THEN 'O que os dados mostram sobre sua operação comercial'
-  WHEN 'raio_x_marcas_chinesas_b_e4' THEN 'Testar com pouco investimento resolve?'
-  WHEN 'raio_x_marcas_chinesas_b_e5' THEN 'Enquanto você decide, a rede já está se formando'
-  WHEN 'raio_x_marcas_chinesas_c_e2' THEN 'Venda direta e governança: o risco para sua rede'
-  WHEN 'raio_x_marcas_chinesas_c_e3' THEN 'Sete marcas já padronizaram seus dealers'
-  WHEN 'raio_x_marcas_chinesas_c_e4' THEN 'Minha estrutura ainda não está pronta'
+  WHEN 'raio_x_marcas_chinesas_a_e2' THEN 'O concorrente chinês já vende direto pelo site. E a sua concessionária?'
+  WHEN 'raio_x_marcas_chinesas_a_e3' THEN 'Isso deve ter passado batido — reenvio rápido'
+  WHEN 'raio_x_marcas_chinesas_a_e4' THEN 'Os números que sua diretoria precisa ver na próxima reunião de budget'
+  WHEN 'raio_x_marcas_chinesas_a_e5' THEN 'Enquanto isso, a rede das chinesas já está sendo definida'
+  WHEN 'raio_x_marcas_chinesas_b_e2' THEN 'R$ 15,5 bi. Só em fábrica. Só de duas marcas.'
+  WHEN 'raio_x_marcas_chinesas_b_e3' THEN 'Como o Grupo Linhares parou de decidir por instinto'
+  WHEN 'raio_x_marcas_chinesas_b_e4' THEN '“Vou testar com pouco investimento” — o erro mais caro do setor'
+  WHEN 'raio_x_marcas_chinesas_b_e5' THEN 'A largada já começou (e o grid tá enchendo)'
+  WHEN 'raio_x_marcas_chinesas_c_e2' THEN 'O modelo direto ao consumidor está a um passo de fragmentar sua rede'
+  WHEN 'raio_x_marcas_chinesas_c_e3' THEN 'Padrão de governança digital'
+  WHEN 'raio_x_marcas_chinesas_c_e4' THEN '“Minha estrutura atual não está pronta pra um programa desse tamanho”'
   WHEN 'raio_x_marcas_chinesas_c_e5' THEN 'Enquanto sua rede espera, a concorrência já está padronizada'
   ELSE "subject"
 END, "updatedAt" = CURRENT_TIMESTAMP
