@@ -163,4 +163,22 @@ export class AutomationJourneysController {
       res.json({ conversionName, total: emails.length, rows: leads.map(lead => ({ ...lead, delivery: latest.get(lead.email) ? 'sent' : 'not_sent', status: latest.get(lead.email)?.status ?? null, sentAt: latest.get(lead.email)?.sentAt ?? null })) });
     } catch (error) { next(error); }
   }
+
+  static async sendMissingConversion(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { prisma } = await import('../config/database');
+      const { fireTrigger } = await import('../services/automation-engine.service');
+      const journey = await prisma.automationJourney.findUnique({ where: { id: req.params.id }, select: { nodes: true, isActive: true } });
+      if (!journey || !journey.isActive) { res.status(400).json({ error: 'Automação não encontrada ou inativa' }); return; }
+      const nodes = (journey.nodes as any[]) ?? [];
+      const conversionName = String(nodes.find(node => node?.type === 'trigger')?.config?.eventValue ?? '').trim();
+      const templateId = String(nodes.find(node => node?.type === 'send_email')?.config?.templateId ?? '').trim();
+      const conversions = await prisma.leadConversion.findMany({ where: { OR: [{ formName: conversionName }, { campaignName: conversionName }] }, distinct: ['leadEmail'], select: { leadEmail: true, source: true, formName: true } });
+      const sent = await prisma.emailSent.findMany({ where: { templateId, leadEmail: { in: conversions.map(item => item.leadEmail) } }, select: { leadEmail: true } });
+      const alreadySent = new Set(sent.map(item => item.leadEmail));
+      const missing = conversions.filter(item => !alreadySent.has(item.leadEmail));
+      for (const item of missing) await fireTrigger('conversion_received', item.leadEmail, { conversionName: item.formName || conversionName, source: item.source });
+      res.json({ ok: true, queued: missing.length });
+    } catch (error) { next(error); }
+  }
 }

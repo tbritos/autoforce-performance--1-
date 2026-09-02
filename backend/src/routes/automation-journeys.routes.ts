@@ -14,6 +14,7 @@ router.post('/:id/test', AutomationJourneysController.testRun);
 router.post('/:id/reprocess-segment', AutomationJourneysController.reprocessSegment);
 router.post('/:id/reprocess-conversion', AutomationJourneysController.reprocessConversion);
 router.get('/:id/conversion-delivery-report', AutomationJourneysController.conversionDeliveryReport);
+router.post('/:id/send-missing-conversion', AutomationJourneysController.sendMissingConversion);
 router.patch('/:id', AutomationJourneysController.update);
 router.delete('/:id', AutomationJourneysController.remove);
 

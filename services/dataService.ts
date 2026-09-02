@@ -1557,6 +1557,7 @@ export const DataService = {
   getConversionDeliveryReport: async (journeyId: string): Promise<{ total: number; rows: Array<{ email: string; name: string | null; jobTitle: string | null; delivery: string; status: string | null }> }> => {
     return apiClient.get(`/automation-journeys/${encodeURIComponent(journeyId)}/conversion-delivery-report`);
   },
+  sendMissingConversion: async (journeyId: string): Promise<{ ok: boolean; queued: number }> => apiClient.post(`/automation-journeys/${encodeURIComponent(journeyId)}/send-missing-conversion`, {}),
 
   listAIAgents: async (): Promise<AIAgent[]> => {
     return apiClient.get<AIAgent[]>('/ai-agents');

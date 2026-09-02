@@ -2636,6 +2636,16 @@ const AutomationJourneysView: React.FC = () => {
               <Mail size={12} /> Não receberam
             </button>
           )}
+          {selected.id && selected.nodes.find(n => n.type === 'trigger')?.config?.event === 'conversion_received' && (
+            <button type="button" onClick={async () => {
+              if (!window.confirm('Enviar o e-mail somente para quem ainda não recebeu?')) return;
+              try { const result = await DataService.sendMissingConversion(selected.id!); alert(`${result.queued} lead(s) foram enviados para a fila.`); }
+              catch (err) { alert(err instanceof Error ? err.message : 'Erro ao enviar'); }
+            }} title="Enviar apenas para inscritos sem entrega registrada"
+              style={{ display: 'inline-flex', gap: 6, alignItems: 'center', height: 34, padding: '0 14px', border: 'none', borderRadius: 8, background: 'var(--accent)', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              <Mail size={12} /> Enviar pendentes
+            </button>
+          )}
           <button
             type="button"
             onClick={saveJourney}
