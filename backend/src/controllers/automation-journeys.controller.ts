@@ -142,4 +142,25 @@ export class AutomationJourneysController {
       res.json({ ok: true, queued: conversions.length });
     } catch (error) { next(error); }
   }
+
+  static async conversionDeliveryReport(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { prisma } = await import('../config/database');
+      const journey = await prisma.automationJourney.findUnique({ where: { id: req.params.id }, select: { nodes: true } });
+      if (!journey) { res.status(404).json({ error: 'Automação não encontrada' }); return; }
+      const nodes = (journey.nodes as any[]) ?? [];
+      const trigger = nodes.find(node => node?.type === 'trigger');
+      const conversionName = String(trigger?.config?.eventValue ?? '').trim();
+      const emailNode = nodes.find(node => node?.type === 'send_email');
+      const templateId = String(emailNode?.config?.templateId ?? '').trim();
+      if (!conversionName || !templateId) { res.status(400).json({ error: 'Automação sem conversão ou template de entrega configurado' }); return; }
+      const conversions = await prisma.leadConversion.findMany({ where: { OR: [{ formName: conversionName }, { campaignName: conversionName }] }, distinct: ['leadEmail'], select: { leadEmail: true } });
+      const emails = conversions.map(item => item.leadEmail);
+      const sent = await prisma.emailSent.findMany({ where: { templateId, leadEmail: { in: emails } }, orderBy: { sentAt: 'desc' }, select: { leadEmail: true, status: true, sentAt: true } });
+      const latest = new Map<string, typeof sent[number]>();
+      sent.forEach(item => { if (!latest.has(item.leadEmail)) latest.set(item.leadEmail, item); });
+      const leads = await prisma.lead.findMany({ where: { email: { in: emails } }, select: { email: true, name: true, jobTitle: true } });
+      res.json({ conversionName, total: emails.length, rows: leads.map(lead => ({ ...lead, delivery: latest.get(lead.email) ? 'sent' : 'not_sent', status: latest.get(lead.email)?.status ?? null, sentAt: latest.get(lead.email)?.sentAt ?? null })) });
+    } catch (error) { next(error); }
+  }
 }

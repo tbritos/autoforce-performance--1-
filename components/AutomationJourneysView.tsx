@@ -2618,6 +2618,24 @@ const AutomationJourneysView: React.FC = () => {
               Execuções
             </button>
           )}
+          {selected.id && selected.nodes.find(n => n.type === 'trigger')?.config?.event === 'conversion_received' && (
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const report = await DataService.getConversionDeliveryReport(selected.id!);
+                  const missing = report.rows.filter(row => row.delivery !== 'sent');
+                  alert(missing.length
+                    ? `${missing.length} de ${report.total} inscritos ainda não receberam:\n\n${missing.map(row => `${row.name || 'Sem nome'} — ${row.email} (${row.jobTitle || 'cargo não informado'})`).join('\n')}`
+                    : `Todos os ${report.total} inscritos receberam o e-mail de entrega.`);
+                } catch (err) { alert(err instanceof Error ? err.message : 'Erro ao consultar entregas'); }
+              }}
+              title="Ver inscritos da conversão que ainda não receberam o e-mail"
+              style={{ display: 'inline-flex', gap: 6, alignItems: 'center', height: 34, padding: '0 14px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-surface)', color: 'var(--fg-primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            >
+              <Mail size={12} /> Não receberam
+            </button>
+          )}
           <button
             type="button"
             onClick={saveJourney}

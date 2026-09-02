@@ -1554,6 +1554,9 @@ export const DataService = {
   reprocessConversionTrigger: async (journeyId: string): Promise<{ ok: boolean; queued: number }> => {
     return apiClient.post(`/automation-journeys/${encodeURIComponent(journeyId)}/reprocess-conversion`, {});
   },
+  getConversionDeliveryReport: async (journeyId: string): Promise<{ total: number; rows: Array<{ email: string; name: string | null; jobTitle: string | null; delivery: string; status: string | null }> }> => {
+    return apiClient.get(`/automation-journeys/${encodeURIComponent(journeyId)}/conversion-delivery-report`);
+  },
 
   listAIAgents: async (): Promise<AIAgent[]> => {
     return apiClient.get<AIAgent[]>('/ai-agents');

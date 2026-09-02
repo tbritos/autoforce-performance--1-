@@ -13,6 +13,7 @@ router.get('/:id/execution-stats', AutomationJourneysController.getExecutionStat
 router.post('/:id/test', AutomationJourneysController.testRun);
 router.post('/:id/reprocess-segment', AutomationJourneysController.reprocessSegment);
 router.post('/:id/reprocess-conversion', AutomationJourneysController.reprocessConversion);
+router.get('/:id/conversion-delivery-report', AutomationJourneysController.conversionDeliveryReport);
 router.patch('/:id', AutomationJourneysController.update);
 router.delete('/:id', AutomationJourneysController.remove);
 
