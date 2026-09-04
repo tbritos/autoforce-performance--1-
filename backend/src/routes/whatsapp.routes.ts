@@ -16,7 +16,20 @@ router.get('/inbox', WhatsAppController.getInbox);
 router.post('/templates', WhatsAppController.createTemplate);
 router.delete('/templates/:templateName', WhatsAppController.deleteTemplate);
 router.get('/leads/:leadId/conversation', WhatsAppController.getConversation);
-router.post('/media/upload', upload.single('file'), WhatsAppController.uploadMedia);
+// Trata o limite do multipart antes do controller para não mascarar vídeos
+// maiores que o limite da Meta como erro 500 genérico.
+const uploadMedia = upload.single('file');
+router.post('/media/upload', (req, res, next) => uploadMedia(req, res, err => {
+  if (err) {
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({ error: 'O arquivo excede o limite de 16 MB aceito pela Meta para vídeos do WhatsApp.' });
+      return;
+    }
+    next(err);
+    return;
+  }
+  next();
+}), WhatsAppController.uploadMedia);
 router.get('/media/:mediaId', WhatsAppController.getMedia);
 router.post('/leads/:leadId/send', WhatsAppController.sendMessage);
 router.post('/leads/:leadId/send-template', WhatsAppController.sendTemplate);
