@@ -435,6 +435,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   const [selectedTemplateName, setSelectedTemplateName] = useState('');
   const [templateVarValues, setTemplateVarValues] = useState<string[]>([]);
   const [templateHeaderMediaUrl, setTemplateHeaderMediaUrl] = useState('');
+  const [templateHeaderMediaId, setTemplateHeaderMediaId] = useState('');
   const [whatsAppNumbers, setWhatsAppNumbers] = useState<WhatsAppNumberEntry[] | null>(null);
   const [selectedPhoneNumberId, setSelectedPhoneNumberId] = useState('');
   const [sendingTemplate, setSendingTemplate]   = useState(false);
@@ -638,6 +639,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
     setSelectedTemplateName('');
     setTemplateVarValues([]);
     setTemplateHeaderMediaUrl('');
+    setTemplateHeaderMediaId('');
   };
 
   const selectedTemplate = templates?.find(t => t.name === selectedTemplateName) ?? null;
@@ -651,6 +653,7 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
   const handleSelectTemplate = (name: string) => {
     setSelectedTemplateName(name);
     setTemplateHeaderMediaUrl('');
+    setTemplateHeaderMediaId('');
     const body = templates?.find(t => t.name === name)?.components.find(c => c.type === 'BODY')?.text ?? '';
     const count = new Set(Array.from(body.matchAll(/\{\{(\d+)\}\}/g)).map(m => m[1])).size;
     setTemplateVarValues(Array.from({ length: count }, () => ''));
@@ -661,11 +664,12 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
     setSendingTemplate(true);
     setTemplateError('');
     try {
-      await DataService.sendWhatsAppTemplate(profile.id, selectedTemplateName, templateVarValues, selectedPhoneNumberId || undefined, templateHeaderMediaUrl || undefined);
+      await DataService.sendWhatsAppTemplate(profile.id, selectedTemplateName, templateVarValues, selectedPhoneNumberId || undefined, templateHeaderMediaUrl || undefined, templateHeaderMediaId || undefined);
       setTemplateModalOpen(false);
       setSelectedTemplateName('');
       setTemplateVarValues([]);
       setTemplateHeaderMediaUrl('');
+      setTemplateHeaderMediaId('');
       const msgs = await DataService.getWhatsAppConversation(profile.id);
       setWhatsAppMessages(msgs);
     } catch (err: any) {
@@ -1723,10 +1727,16 @@ const LeadProfilePanel: React.FC<Props> = ({ email, leadId, onClose, onStatusCha
                             {selectedTemplate?.components.some(c => ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(String(c.format ?? '').toUpperCase())) && (
                               <label style={{ display: 'block' }}>
                                 <span style={{ fontSize: 11, color: 'var(--fg-subtle)', marginBottom: 4, display: 'block' }}>Mídia do cabeçalho</span>
+                                <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf" onChange={async e => {
+                                  const file = e.target.files?.[0]; if (!file || !selectedPhoneNumberId) return;
+                                  try { const uploaded = await DataService.uploadWhatsAppMedia(selectedPhoneNumberId, file); setTemplateHeaderMediaId(uploaded.id); setTemplateHeaderMediaUrl(''); }
+                                  catch (err) { setTemplateError(err instanceof Error ? err.message : 'Falha ao subir mídia'); }
+                                }} style={{ width: '100%', marginBottom: 6, fontSize: 12 }} />
+                                {templateHeaderMediaId && <span style={{ display: 'block', marginBottom: 4, fontSize: 10, color: 'var(--green-600)' }}>Mídia carregada na Meta.</span>}
                                 <input
                                   type="url"
                                   value={templateHeaderMediaUrl}
-                                  onChange={e => setTemplateHeaderMediaUrl(e.target.value)}
+                                  onChange={e => { setTemplateHeaderMediaUrl(e.target.value); setTemplateHeaderMediaId(''); }}
                                   placeholder="https://seu-dominio.com/imagem.jpg"
                                   style={{ width: '100%', height: 36, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-subtle)', color: 'var(--fg-primary)', fontSize: 13, outline: 'none', boxSizing: 'border-box' }}
                                 />
