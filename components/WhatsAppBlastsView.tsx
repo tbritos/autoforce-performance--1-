@@ -118,6 +118,7 @@ const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ 
   const [headerMediaUrl, setHeaderMediaUrl] = useState('');
   const [headerMediaId, setHeaderMediaId] = useState('');
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [mediaError, setMediaError] = useState('');
   const [varMappings, setVarMappings] = useState<Record<string, string>>({});
 
   const [audienceType, setAudienceType] = useState<AudienceType>('tag');
@@ -291,12 +292,13 @@ const NewBlastModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({ 
                     <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-secondary)' }}>Mídia do cabeçalho</span>
                     <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf" disabled={uploadingMedia} onChange={async e => {
                       const file = e.target.files?.[0]; if (!file || !phoneNumberId) return;
-                      setUploadingMedia(true); setError(null);
+                      setUploadingMedia(true); setMediaError(''); setError(null);
                       try { const result = await DataService.uploadWhatsAppMedia(phoneNumberId, file); setHeaderMediaId(result.id); setHeaderMediaUrl(''); }
-                      catch (err) { setError(err instanceof Error ? err.message : 'Não foi possível subir a mídia.'); }
+                      catch (err) { setMediaError(err instanceof Error ? err.message : 'Não foi possível subir a mídia.'); }
                       finally { setUploadingMedia(false); }
                     }} style={{ ...inputStyle, padding: 7 }} />
                     {uploadingMedia ? <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Enviando mídia para a Meta…</span> : headerMediaId ? <span style={{ fontSize: 11, color: 'var(--green-600)' }}>Mídia carregada e pronta para o disparo.</span> : <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Ou use uma URL pública abaixo.</span>}
+                    {mediaError && <span style={{ fontSize: 11, color: '#dc2626', lineHeight: 1.4 }}>{mediaError}</span>}
                     <input type="url" value={headerMediaUrl} onChange={e => { setHeaderMediaUrl(e.target.value); setHeaderMediaId(''); }} placeholder="https://seu-dominio.com/arquivo.jpg" style={inputStyle} />
                   </div>
                 )}
