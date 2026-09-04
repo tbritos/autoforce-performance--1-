@@ -715,7 +715,15 @@ export function extractInboundText(message: any): { type: string; text: string |
     const name = message.location?.name || message.location?.address;
     return { type: 'location', text: name ? `📍 Localização: ${name}` : '📍 Localização recebida' };
   }
-  if (message.type === 'contacts') return { type: 'contacts', text: '👤 Contato recebido' };
+  if (message.type === 'contacts') {
+    const contacts = Array.isArray(message.contacts) ? message.contacts : [];
+    const summary = contacts.map((contact: any) => {
+      const name = contact?.name?.formatted_name || contact?.name?.first_name || 'Contato sem nome';
+      const phone = contact?.phones?.[0]?.phone || contact?.phones?.[0]?.wa_id;
+      return phone ? `${name} — ${phone}` : name;
+    }).filter(Boolean).join('\n');
+    return { type: 'contacts', text: summary ? `👤 Contato compartilhado:\n${summary}` : '👤 Contato recebido (sem dados)' };
+  }
   if (message.type === 'reaction') {
     const emoji = String(message.reaction?.emoji ?? '').trim();
     return { type: 'reaction', text: emoji ? `${emoji} Reação à mensagem` : '↩️ Reação removida' };
