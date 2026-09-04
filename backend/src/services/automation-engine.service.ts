@@ -1451,12 +1451,13 @@ async function executeWhatsAppMessage(
   const bodyParams   = buildComponentParams(bodyComp?.text, varMappings, leadFieldValues);
   const headerFormat = String((headerComp as { format?: string } | undefined)?.format ?? '').toUpperCase();
   const headerMediaUrl = String(config.headerMediaUrl ?? '').trim();
-  if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && !headerMediaUrl) {
+  const headerMediaId = String(config.headerMediaId ?? '').trim();
+  if (['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerFormat) && !headerMediaUrl && !headerMediaId) {
     throw new Error(`Template ${templateName} exige uma mídia no cabeçalho (${headerFormat.toLowerCase()})`);
   }
-  if (headerFormat && headerFormat !== 'TEXT' && headerMediaUrl) {
+  if (headerFormat && headerFormat !== 'TEXT' && (headerMediaUrl || headerMediaId)) {
     const key = headerFormat.toLowerCase();
-    headerParams.splice(0, headerParams.length, { type: key, [key]: { link: headerMediaUrl } } as any);
+    headerParams.splice(0, headerParams.length, { type: key, [key]: headerMediaId ? { id: headerMediaId } : { link: headerMediaUrl } } as any);
   }
 
   const templatePayload: Record<string, unknown> = {

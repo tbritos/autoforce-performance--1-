@@ -3397,10 +3397,19 @@ const AutomationJourneysView: React.FC = () => {
                         {storedComponents.some(c => ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(String(c.format ?? '').toUpperCase())) && (
                           <div style={{ display: 'grid', gap: 7 }}>
                             <span style={fieldLabelStyle}>Mídia do cabeçalho</span>
+                            <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf" onChange={async e => {
+                              const file = e.target.files?.[0];
+                              if (!file || !phoneNumberId) return;
+                              try {
+                                const uploaded = await DataService.uploadWhatsAppMedia(phoneNumberId, file);
+                                setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, headerMediaId: uploaded.id, headerMediaUrl: '' } } : prev);
+                              } catch (err) { alert(err instanceof Error ? err.message : 'Falha ao subir mídia'); }
+                            }} style={{ padding: '7px', borderRadius: 8, border: '1px solid var(--border)', color: 'var(--fg)', fontSize: 12 }} />
+                            {panelValues.config.headerMediaId && <span style={{ fontSize: 11, color: 'var(--green-600)' }}>Mídia carregada na Meta e vinculada ao bloco.</span>}
                             <input
                               type="url"
                               value={panelValues.config.headerMediaUrl ?? ''}
-                              onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, headerMediaUrl: e.target.value } } : prev)}
+                              onChange={e => setPanelValues(prev => prev ? { ...prev, config: { ...prev.config, headerMediaUrl: e.target.value, headerMediaId: '' } } : prev)}
                               placeholder="https://seu-dominio.com/arquivo.jpg"
                               style={{ padding: '9px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--fg)', fontSize: 13, outline: 'none' }}
                             />
