@@ -19,6 +19,7 @@ export default function WhatsAppInboxView() {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
 
   const load = async () => {
     try { setItems(await DataService.getWhatsAppInbox()); } finally { setLoading(false); }
@@ -59,6 +60,7 @@ export default function WhatsAppInboxView() {
     try {
       await DataService.sendWhatsAppMessage(selected.leadId, draft.trim(), selected.phoneNumberId ?? undefined);
       setDraft('');
+      if (composerRef.current) composerRef.current.style.height = '20px';
       const all = await DataService.getWhatsAppConversation(selected.leadId);
       setMessages(all.filter(message => (message.phoneNumberId ?? null) === (selected.phoneNumberId ?? null)));
       await load();
@@ -77,6 +79,15 @@ export default function WhatsAppInboxView() {
     return (!query || text.includes(query.toLowerCase())) && (filter === 'all' || (filter === 'open' && item.open) || (filter === 'unread' && item.unreadCount > 0));
   }), [items, query, filter]);
 
+  // A janela de atendimento livre da Meta conta a partir da última mensagem
+  // recebida do lead (e não a partir do último template enviado por nós).
+  const lastInboundAt = messages
+    .filter(message => message.direction === 'inbound')
+    .map(message => new Date(message.receivedAt ?? message.createdAt).getTime())
+    .filter(Number.isFinite)
+    .reduce((latest, value) => Math.max(latest, value), 0);
+  const withinCustomerCareWindow = lastInboundAt > 0 && Date.now() - lastInboundAt < 24 * 60 * 60 * 1000;
+
   return <div style={{ padding: 24, height: 'calc(100vh - 72px)', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 16 }}>
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <div><h1 style={{ margin: 0, fontSize: 24, color: 'var(--fg-primary)' }}>WhatsApp</h1><p style={{ margin: '5px 0 0', color: 'var(--fg-muted)', fontSize: 13 }}>Central de conversas e atendimento</p></div>
@@ -93,8 +104,9 @@ export default function WhatsAppInboxView() {
           <span style={{ marginLeft: 48, marginTop: -8, display: 'block', color: '#128c7e', fontSize: 10, fontWeight: 700 }}>{item.phoneNumberLabel || item.phoneNumberDisplay || 'Número principal'}</span>
         </button>)}{!loading && filtered.length === 0 && <div style={{ padding: 28, textAlign: 'center', color: 'var(--fg-muted)', fontSize: 13 }}>Nenhuma conversa encontrada.</div>}</div>
       </aside>
-      <main ref={messagesEndRef} style={{ minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', background: '#ece5dd' }}>
+      <main ref={messagesEndRef} style={{ minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', background: '#ece5dd', position: 'relative' }}>
         {!selected ? <div style={{ flex: 1, display: 'grid', placeItems: 'center', color: '#667781', background: '#f5f7f8' }}><div style={{ textAlign: 'center' }}><MessageCircle size={42} style={{ opacity: .35 }} /><p>Selecione uma conversa para visualizar</p></div></div> : <><header style={{ padding: '13px 18px', background: '#f0f2f5', borderBottom: '1px solid #d8dde0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><div><strong style={{ color: '#202c33' }}>{selected.name}</strong><div style={{ fontSize: 12, color: '#667781', marginTop: 3 }}>{selected.phone}{selected.email ? ` · ${selected.email}` : ''}</div><div style={{ color: '#128c7e', fontSize: 11, fontWeight: 700, marginTop: 3 }}>{selected.phoneNumberLabel || selected.phoneNumberDisplay || 'Número principal'}</div></div>{selected.leadId && <button onClick={() => navigate(`/leads/${selected.leadId}`)} style={{ border: 0, background: 'transparent', color: '#128c7e', cursor: 'pointer', display: 'flex', gap: 5, alignItems: 'center', fontWeight: 600, fontSize: 12 }}>Abrir lead <ExternalLink size={13} /></button>}</header><div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 22px' }}>{messages.map(msg => { const out = msg.direction === 'outbound'; const payload = msg.payload && typeof msg.payload === 'object' ? msg.payload as any : null; const components = payload?.template?.components ?? payload?.request?.template?.components; const header = Array.isArray(components) ? components.find((c: any) => String(c.type).toLowerCase() === 'header') : null; const parameter = header?.parameters?.[0]; const embedded = ['image', 'video', 'document'].map(type => ({ type, value: parameter?.[type] })).find(item => item.value?.id || item.value?.link); const mediaId = msg.mediaId || embedded?.value?.id; const mediaSrc = mediaId ? whatsAppMedia[String(mediaId)] : null; const publicLink = embedded?.value?.link; const mediaLink = mediaSrc || (typeof publicLink === 'string' && /^https?:\/\//i.test(publicLink) ? publicLink : null); const media = mediaLink && embedded?.type === 'image' ? <img src={mediaLink} alt="Imagem do template" style={{ display:'block', maxWidth:240, maxHeight:260, borderRadius:8, marginBottom:6, objectFit:'contain' }} /> : mediaLink && embedded?.type === 'video' ? <video controls preload="metadata" src={mediaLink} style={{ display:'block', maxWidth:260, maxHeight:260, borderRadius:8, marginBottom:6 }} /> : mediaLink && embedded?.type === 'document' ? <a href={mediaLink} target="_blank" rel="noreferrer" style={{ display:'block', marginBottom:6, color:'#1d4ed8', fontSize:12, fontWeight:600 }}>📎 Abrir documento do template</a> : mediaLink && msg.type === 'video' ? <video controls preload="metadata" src={mediaLink} style={{ display:'block', maxWidth:260, maxHeight:260, borderRadius:8, marginBottom:6 }} /> : mediaLink && msg.type === 'image' ? <img src={mediaLink} alt="Imagem recebida" style={{ display:'block', maxWidth:240, maxHeight:260, borderRadius:8, marginBottom:6, objectFit:'contain' }} /> : null; return <div key={msg.id} style={{ display: 'flex', justifyContent: out ? 'flex-end' : 'flex-start', marginBottom: 7 }}><div style={{ maxWidth: '72%', background: out ? '#d9fdd3' : '#fff', borderRadius: out ? '8px 0 8px 8px' : '0 8px 8px 8px', padding: '8px 10px 5px', boxShadow: '0 1px 1px #0001' }}>{media}<div style={{ fontSize: 13, color: '#202c33', whiteSpace: 'pre-wrap' }}>{msg.text || (msg.templateName ? `📋 ${msg.templateName}` : `(${msg.type})`)}</div><div style={{ textAlign: 'right', color: '#667781', fontSize: 10, marginTop: 3 }}>{fmtTime(msg.sentAt ?? msg.receivedAt ?? msg.createdAt)} {out && <CheckCheck size={12} style={{ verticalAlign: 'middle', color: msg.status === 'read' ? '#53bdeb' : undefined }} />}</div></div></div>})}</div><div style={{ display:'flex', alignItems:'flex-end', gap:8, padding:'10px 14px', background:'#f0f2f5', borderTop:'1px solid #d8dde0' }}><textarea value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendReply(); } }} rows={1} placeholder="Digite uma mensagem" style={{ flex:1, resize:'none', minHeight:20, maxHeight:100, overflowY:'auto', border:0, borderRadius:20, padding:'10px 14px', outline:'none', lineHeight:1.4, fontFamily:'inherit' }} /><button onClick={() => void sendReply()} disabled={!draft.trim() || sending} style={{ border:0, borderRadius:'50%', width:40, height:40, background:'#128c7e', color:'#fff', display:'grid', placeItems:'center', cursor:'pointer', opacity: draft.trim() ? 1 : .5 }}><Send size={16}/></button></div></>}
+        {selected && !withinCustomerCareWindow && <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 2, padding: '12px 14px', background: '#f0f2f5', borderTop: '1px solid #d8dde0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}><div style={{ color: '#667781', fontSize: 12 }}>A janela de 24 horas está fechada. Envie um template aprovado para iniciar uma nova conversa.</div><button onClick={() => navigate('/disparos-whatsapp')} style={{ flexShrink: 0, border: 0, borderRadius: 18, padding: '9px 14px', background: '#128c7e', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 12 }}>Enviar novo template</button></div>}
       </main>
     </div>
   </div>;
