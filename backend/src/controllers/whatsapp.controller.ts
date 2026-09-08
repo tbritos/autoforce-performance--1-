@@ -143,8 +143,29 @@ export class WhatsAppController {
   static async getMedia(req: Request, res: Response, next: NextFunction) {
     try {
       const media = await fetchWhatsAppMedia(req.params.mediaId);
-      res.setHeader('Content-Type', media.contentType);
+      const contentType = media.contentType.split(';', 1)[0].trim() || 'application/octet-stream';
+      const range = req.headers.range;
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Accept-Ranges', 'bytes');
       res.setHeader('Cache-Control', 'private, max-age=300');
+      if (range) {
+        const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+        if (match) {
+          const size = media.body.length;
+          const start = match[1] ? Number(match[1]) : Math.max(0, size - Number(match[2] || 0));
+          const end = match[2] ? Number(match[2]) : size - 1;
+          if (Number.isSafeInteger(start) && Number.isSafeInteger(end) && start >= 0 && start <= end && end < size) {
+            res.status(206);
+            res.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
+            res.setHeader('Content-Length', String(end - start + 1));
+            res.send(media.body.subarray(start, end + 1));
+            return;
+          }
+        }
+        res.status(416).setHeader('Content-Range', `bytes */${media.body.length}`).end();
+        return;
+      }
+      res.setHeader('Content-Length', String(media.body.length));
       res.send(media.body);
     } catch (err) {
       next(err);
