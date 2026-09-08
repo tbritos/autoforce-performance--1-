@@ -388,7 +388,7 @@ export class LeadHubController {
     }
   }
 
-  // POST /api/lead-hub/import  — body: { rows: { email, name?, phone?, company?, jobTitle?, city?, state?, tags?, source? }[] }
+  // POST /api/lead-hub/import  — body: { rows: { email, name?, phone?, company?, jobTitle?, city?, state?, status?, tags?, source? }[] }
   static async importLeads(req: Request, res: Response, next: NextFunction) {
     try {
       const { rows } = req.body as { rows?: Record<string, string>[] };
@@ -419,6 +419,21 @@ export class LeadHubController {
         }
 
         try {
+          const rawStatus = row.status?.trim();
+          const statusAliases: Record<string, LeadStatus> = {
+            LEAD: 'LEAD', MQL: 'MQL', SQL: 'SQL', SCHEDULED: 'SCHEDULED',
+            DEMO: 'DEMO', PROPOSAL: 'PROPOSAL', OPPORTUNITY: 'OPPORTUNITY',
+            CLIENT: 'CLIENT', LOST: 'LOST', DISQUALIFIED: 'DISQUALIFIED',
+            CLIENTE: 'CLIENT', AGENDADO: 'SCHEDULED', PROPOSTA: 'PROPOSAL',
+            PERDIDO: 'LOST', DESQUALIFICADO: 'DISQUALIFIED',
+          };
+          const normalizedStatusKey = rawStatus
+            ? rawStatus.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z_]/g, '')
+            : '';
+          const importStatus = rawStatus ? statusAliases[normalizedStatusKey] : undefined;
+          if (rawStatus && !importStatus) {
+            throw new Error(`Status inválido: ${rawStatus}. Use Lead, MQL, SQL, Agendado, Demo, Proposta, Cliente, Perdido ou Desqualificado.`);
+          }
           const existing = await LeadHubService.getLeadProfile(email).catch(() => null);
 
           const tags = row.tags
@@ -452,6 +467,10 @@ export class LeadHubController {
             },
             scoringRules
           );
+
+          if (importStatus) {
+            await LeadHubService.setImportedStatus(email, importStatus);
+          }
 
           // Se tem data histórica e é lead novo, atualiza firstSeenAt/lastSeenAt
           if (firstSeenAt && !existing) {

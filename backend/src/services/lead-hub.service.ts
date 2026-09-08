@@ -788,6 +788,35 @@ export class LeadHubService {
     });
   }
 
+  // Define o status durante uma importação sem disparar automações de status.
+  // O histórico é preservado para auditoria, mas a mudança não é tratada como
+  // uma ação manual do funil.
+  static async setImportedStatus(emailRaw: string, newStatus: LeadStatus) {
+    const email = normalizeEmail(emailRaw);
+    const lead = await prisma.lead.findUniqueOrThrow({ where: { email } });
+    if (lead.status === newStatus) return lead;
+
+    return prisma.$transaction(async (tx) => {
+      const timestamps: Partial<Prisma.LeadUpdateInput> = {};
+      if (newStatus === 'MQL' && !lead.qualifiedAt) timestamps.qualifiedAt = new Date();
+      if (newStatus === 'CLIENT' && !lead.convertedAt) timestamps.convertedAt = new Date();
+      const updated = await tx.lead.update({
+        where: { email },
+        data: { status: newStatus, ...timestamps },
+      });
+      await tx.leadStatusHistory.create({
+        data: {
+          leadEmail: email,
+          fromStatus: lead.status,
+          toStatus: newStatus,
+          changedBy: 'importacao',
+          reason: 'Status definido na importação',
+        },
+      });
+      return updated;
+    });
+  }
+
   // Um lead conta como "virou SQL" quando entra num estagio SQL-ou-alem vindo de um
   // estagio anterior (LEAD/MQL/nenhum) — cobre tanto quem passa literalmente pelo
   // estagio SQL quanto quem o vendedor pulou direto pra um estagio mais a frente no

@@ -123,6 +123,7 @@ const IMPORT_COLUMNS = [
   { key: 'jobTitle',       label: 'Cargo',                            required: false },
   { key: 'city',           label: 'Cidade',                           required: false },
   { key: 'state',          label: 'Estado',                           required: false },
+  { key: 'status',         label: 'Status (Lead, MQL, SQL, Cliente...)', required: false },
   { key: 'tags',           label: 'Tags (separadas por vírgula)',      required: false },
   { key: 'source',         label: 'Origem',                           required: false },
   { key: 'first_seen_at',  label: 'Data de chegada (AAAA-MM-DD)',      required: false },
@@ -169,6 +170,7 @@ function autoMap(headers: string[]): Record<string, string> {
     cargo: 'jobTitle', jobtitle: 'jobTitle', role: 'jobTitle',
     cidade: 'city', city: 'city',
     estado: 'state', state: 'state', uf: 'state',
+    status: 'status', situacao: 'status',
     tags: 'tags', tag: 'tags',
     origem: 'source', source: 'source', canal: 'source',
   };
@@ -186,6 +188,7 @@ const CsvImportModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({
   const [preview, setPreview]     = useState<Record<string, string>[]>([]);
   const [allRows, setAllRows]     = useState<Record<string, string>[]>([]);
   const [mapping, setMapping]     = useState<Record<string, string>>({});
+  const [defaultImportStatus, setDefaultImportStatus] = useState<LeadStatus | ''>('');
   const [result, setResult]       = useState<{ total: number; created: number; updated: number; errors: number; errorDetails: { row: number; email: string; error: string }[] } | null>(null);
   const [dragOver, setDragOver]   = useState(false);
   const [importProgress, setImportProgress] = useState({ done: 0, total: 0 });
@@ -229,6 +232,7 @@ const CsvImportModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({
       for (const [col, target] of Object.entries(mapping)) {
         if (target && row[col] !== undefined) out[target] = row[col];
       }
+      if (defaultImportStatus) out.status = defaultImportStatus;
       return out;
     });
 
@@ -355,6 +359,25 @@ const CsvImportModal: React.FC<{ onClose: () => void; onDone: () => void }> = ({
                     </select>
                   </div>
                 ))}
+              </div>
+
+              <div style={{ padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-subtle)' }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--fg-secondary)', marginBottom: 6 }}>
+                  Status dos leads importados (opcional)
+                </label>
+                <select
+                  value={defaultImportStatus}
+                  onChange={e => setDefaultImportStatus(e.target.value as LeadStatus | '')}
+                  style={{ fontSize: 12, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--fg-primary)', outline: 'none', width: '100%' }}
+                >
+                  <option value="">Manter status atual / padrão Lead</option>
+                  {STATUSES.map(status => (
+                    <option key={status.value} value={status.value}>{status.label}</option>
+                  ))}
+                </select>
+                <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--fg-muted)' }}>
+                  Esta escolha vale para todas as linhas. Se houver uma coluna STATUS, esta opção a substitui.
+                </p>
               </div>
 
               {allRows.length > 5000 && (
