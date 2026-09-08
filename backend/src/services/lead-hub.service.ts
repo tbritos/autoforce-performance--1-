@@ -845,11 +845,13 @@ export class LeadHubService {
   ): Prisma.LeadStatusHistoryWhereInput {
     return {
       toStatus: { in: LeadHubService.SQL_OR_LATER_STATUSES },
-      OR: [
-        { fromStatus: null },
-        { fromStatus: { notIn: LeadHubService.SQL_OR_LATER_STATUSES } },
+      AND: [
+        { OR: [
+          { fromStatus: null },
+          { fromStatus: { notIn: LeadHubService.SQL_OR_LATER_STATUSES } },
+        ] },
+        { OR: [{ changedBy: null }, { changedBy: { not: 'importacao' } }] },
       ],
-      NOT: { changedBy: 'importacao' },
       // O periodo do funil e uma safra definida pela entrada como MQL
       // (qualifiedAt), que coincide com a criacao do negocio no Pipedrive.
       // Assim SQL continua pertencendo a safra original mesmo quando o avanco
@@ -884,7 +886,7 @@ export class LeadHubService {
       prisma.leadStatusHistory.findMany({
         where: {
           toStatus: 'MQL',
-          NOT: { changedBy: 'importacao' },
+          OR: [{ changedBy: null }, { changedBy: { not: 'importacao' } }],
           lead: LeadHubService.activeLeadRelationWhere(true, mqlCohortRange),
         },
         distinct: ['leadEmail'],
@@ -899,7 +901,7 @@ export class LeadHubService {
         where: {
           toStatus: 'CLIENT',
           changedAt: { gte: start, lte: end },
-          NOT: { changedBy: 'importacao' },
+          OR: [{ changedBy: null }, { changedBy: { not: 'importacao' } }],
           lead: LeadHubService.activeLeadRelationWhere(),
         },
         distinct: ['leadEmail'],
@@ -1065,7 +1067,7 @@ export class LeadHubService {
       const histories = await prisma.leadStatusHistory.findMany({
         where: {
           toStatus: toStatus as any,
-          NOT: { changedBy: 'importacao' },
+          OR: [{ changedBy: null }, { changedBy: { not: 'importacao' } }],
           ...(!usesMqlCohort && cohortRange ? { changedAt: cohortRange } : {}),
           // Mesmo escopo dos cards: a lista precisa bater com o numero
           // mostrado, sem leads excluidos. MQL e Cliente ignoram a tag de
