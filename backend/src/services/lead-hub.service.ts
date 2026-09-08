@@ -796,25 +796,10 @@ export class LeadHubService {
     const lead = await prisma.lead.findUniqueOrThrow({ where: { email } });
     if (lead.status === newStatus) return lead;
 
-    return prisma.$transaction(async (tx) => {
-      const timestamps: Partial<Prisma.LeadUpdateInput> = {};
-      if (newStatus === 'MQL' && !lead.qualifiedAt) timestamps.qualifiedAt = new Date();
-      if (newStatus === 'CLIENT' && !lead.convertedAt) timestamps.convertedAt = new Date();
-      const updated = await tx.lead.update({
-        where: { email },
-        data: { status: newStatus, ...timestamps },
-      });
-      await tx.leadStatusHistory.create({
-        data: {
-          leadEmail: email,
-          fromStatus: lead.status,
-          toStatus: newStatus,
-          changedBy: 'importacao',
-          reason: 'Status definido na importação',
-        },
-      });
-      return updated;
-    });
+    // Status importado é um retrato histórico, não uma conversão ocorrida
+    // agora. Não preenche qualifiedAt/convertedAt nem cria histórico de etapa;
+    // assim o contato não aparece como MQL, venda ou MRR novo no período atual.
+    return prisma.lead.update({ where: { email }, data: { status: newStatus } });
   }
 
   // Um lead conta como "virou SQL" quando entra num estagio SQL-ou-alem vindo de um
@@ -864,6 +849,7 @@ export class LeadHubService {
         { fromStatus: null },
         { fromStatus: { notIn: LeadHubService.SQL_OR_LATER_STATUSES } },
       ],
+      NOT: { changedBy: 'importacao' },
       // O periodo do funil e uma safra definida pela entrada como MQL
       // (qualifiedAt), que coincide com a criacao do negocio no Pipedrive.
       // Assim SQL continua pertencendo a safra original mesmo quando o avanco
@@ -898,6 +884,7 @@ export class LeadHubService {
       prisma.leadStatusHistory.findMany({
         where: {
           toStatus: 'MQL',
+          NOT: { changedBy: 'importacao' },
           lead: LeadHubService.activeLeadRelationWhere(true, mqlCohortRange),
         },
         distinct: ['leadEmail'],
@@ -912,6 +899,7 @@ export class LeadHubService {
         where: {
           toStatus: 'CLIENT',
           changedAt: { gte: start, lte: end },
+          NOT: { changedBy: 'importacao' },
           lead: LeadHubService.activeLeadRelationWhere(),
         },
         distinct: ['leadEmail'],
@@ -1077,6 +1065,7 @@ export class LeadHubService {
       const histories = await prisma.leadStatusHistory.findMany({
         where: {
           toStatus: toStatus as any,
+          NOT: { changedBy: 'importacao' },
           ...(!usesMqlCohort && cohortRange ? { changedAt: cohortRange } : {}),
           // Mesmo escopo dos cards: a lista precisa bater com o numero
           // mostrado, sem leads excluidos. MQL e Cliente ignoram a tag de
