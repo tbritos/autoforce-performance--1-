@@ -15,6 +15,7 @@ export default function WhatsAppInboxView() {
   const [whatsAppMedia, setWhatsAppMedia] = useState<Record<string, string>>({});
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'open' | 'unread'>('all');
+  const [phoneFilter, setPhoneFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -76,8 +77,19 @@ export default function WhatsAppInboxView() {
 
   const filtered = useMemo(() => items.filter(item => {
     const text = `${item.name} ${item.email ?? ''} ${item.phone}`.toLowerCase();
-    return (!query || text.includes(query.toLowerCase())) && (filter === 'all' || (filter === 'open' && item.open) || (filter === 'unread' && item.unreadCount > 0));
-  }), [items, query, filter]);
+    const numberKey = item.phoneNumberId ?? 'default';
+    return (!query || text.includes(query.toLowerCase())) && (phoneFilter === 'all' || numberKey === phoneFilter) && (filter === 'all' || (filter === 'open' && item.open) || (filter === 'unread' && item.unreadCount > 0));
+  }), [items, query, filter, phoneFilter]);
+
+  const phoneOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    items.forEach(item => {
+      const key = item.phoneNumberId ?? 'default';
+      const label = item.phoneNumberLabel || item.phoneNumberDisplay || 'Número principal';
+      if (!map.has(key)) map.set(key, label);
+    });
+    return [...map.entries()];
+  }, [items]);
 
   // A janela de atendimento livre da Meta conta a partir da última mensagem
   // recebida do lead (e não a partir do último template enviado por nós).
@@ -98,6 +110,7 @@ export default function WhatsAppInboxView() {
         <div style={{ padding: 14, borderBottom: '1px solid var(--border)' }}>
           <div style={{ position: 'relative' }}><Search size={15} style={{ position: 'absolute', left: 10, top: 10, color: 'var(--fg-muted)' }} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Pesquisar conversas" style={{ width: '100%', boxSizing: 'border-box', padding: '9px 10px 9px 32px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-muted)', color: 'var(--fg-primary)' }} /></div>
           <div style={{ display: 'flex', gap: 6, marginTop: 10 }}><button onClick={() => setFilter('all')} style={pill(filter === 'all')}>Todas</button><button onClick={() => setFilter('open')} style={pill(filter === 'open')}>Em andamento</button><button onClick={() => setFilter('unread')} style={pill(filter === 'unread')}>Não lidas</button></div>
+          {phoneOptions.length > 1 && <select value={phoneFilter} onChange={e => setPhoneFilter(e.target.value)} aria-label="Filtrar por número do WhatsApp" style={{ width: '100%', marginTop: 10, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-surface)', color: 'var(--fg-primary)', fontSize: 12 }}><option value="all">Todos os números</option>{phoneOptions.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select>}
         </div>
         <div style={{ overflowY: 'auto', flex: 1 }}>{filtered.map(item => <button key={item.key} onClick={() => setSelected(item)} style={{ width: '100%', textAlign: 'left', border: 0, borderBottom: '1px solid var(--border)', background: selected?.key === item.key ? 'var(--bg-muted)' : 'transparent', padding: '13px 14px', cursor: 'pointer', display: 'flex', gap: 10 }}>
           <span style={{ width: 38, height: 38, borderRadius: '50%', background: '#d9fdd3', color: '#167c3a', display: 'grid', placeItems: 'center', flexShrink: 0 }}><MessageCircle size={18} /></span><span style={{ minWidth: 0, flex: 1 }}><span style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><strong style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--fg-primary)', fontSize: 13 }}>{item.name}</strong><small style={{ color: 'var(--fg-muted)', whiteSpace: 'nowrap' }}>{fmtDay(item.latestAt)}</small></span><span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 4 }}><span style={{ color: 'var(--fg-muted)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.latestDirection === 'outbound' ? 'Você: ' : ''}{item.latestMessage}</span>{item.unreadCount > 0 && <b style={{ background: '#25d366', color: '#fff', borderRadius: 99, minWidth: 18, height: 18, display: 'grid', placeItems: 'center', fontSize: 10 }}>{item.unreadCount}</b>}</span></span>
