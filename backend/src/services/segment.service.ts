@@ -149,6 +149,10 @@ export class SegmentService {
       case 'firstSeenAt':     return SegmentService.dateOp('firstSeenAt', operator, Number(value));
       case 'lastSeenAt':      return SegmentService.dateOp('lastSeenAt', operator, Number(value));
       case 'conversionCount': return SegmentService.convCountOp(operator, Number(value));
+      default:
+        // Campos personalizados são armazenados no JSON customFields do lead.
+        // Qualquer chave válida que não seja um campo nativo é tratada aqui.
+        if (/^[a-z0-9_]+$/i.test(field)) return SegmentService.customFieldOp(field, operator, value);
     }
     return null;
   }
@@ -176,6 +180,8 @@ export class SegmentService {
       case 'firstSeenAt':     return SegmentService.negatedDateOp('firstSeenAt', operator, Number(value));
       case 'lastSeenAt':      return SegmentService.negatedDateOp('lastSeenAt', operator, Number(value));
       case 'conversionCount': return SegmentService.negatedConvCountOp(operator, Number(value));
+      default:
+        if (/^[a-z0-9_]+$/i.test(field)) return SegmentService.negatedCustomFieldOp(field, operator, value);
     }
     return null;
   }
@@ -189,6 +195,21 @@ export class SegmentService {
       case 'is_not_set': return { [field]: null };
       default:           return {};
     }
+  }
+
+  private static customFieldOp(field: string, operator: string, value: unknown): Prisma.LeadWhereInput {
+    const json = { customFields: { path: [field], equals: value as Prisma.InputJsonValue } } as Prisma.LeadWhereInput;
+    if (operator === 'equals') return json;
+    if (operator === 'not_equals') return { NOT: json };
+    if (operator === 'contains') {
+      return { customFields: { path: [field], string_contains: String(value), mode: 'insensitive' } } as Prisma.LeadWhereInput;
+    }
+    return {};
+  }
+
+  private static negatedCustomFieldOp(field: string, operator: string, value: unknown): Prisma.LeadWhereInput {
+    const positive = SegmentService.customFieldOp(field, operator, value);
+    return operator === 'not_equals' ? SegmentService.customFieldOp(field, 'equals', value) : { NOT: positive };
   }
 
   private static negatedStringOp(field: string, operator: string, value: string): Prisma.LeadWhereInput {

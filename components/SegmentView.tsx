@@ -322,8 +322,14 @@ function SegmentBuilder({ segment, availableSegments, onClose, onSaved }: Builde
   const [previewLoading, setPreviewLoading] = useState(false);
   const [saving, setSaving]           = useState(false);
   const [error, setError]             = useState('');
+  const [customFieldDefs, setCustomFieldDefs] = useState<import('../types').LeadCustomFieldDef[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout>|null>(null);
   const selectableSegments = availableSegments.filter(candidate => candidate.id !== segment?.id);
+  const segmentFields = [...SEGMENT_FIELDS, ...customFieldDefs.map(def => ({ value: def.name, label: def.label, type: 'string' as const }))];
+
+  useEffect(() => {
+    DataService.listCustomFieldDefs().then(setCustomFieldDefs).catch(() => setCustomFieldDefs([]));
+  }, []);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -338,7 +344,7 @@ function SegmentBuilder({ segment, availableSegments, onClose, onSaved }: Builde
   }, [logic, conditions, segment?.id]);
 
   const addCondition = () => {
-    const field = SEGMENT_FIELDS[0].value;
+    const field = segmentFields[0].value;
     const type  = getFieldType(field);
     const op    = defaultOperator(type);
     setConditions(cs => [...cs, { id: genId(), field, operator: op, value: defaultValue(type, op, field) }]);
@@ -472,7 +478,7 @@ function SegmentBuilder({ segment, availableSegments, onClose, onSaved }: Builde
                         {/* Field selector */}
                         <select aria-label={`Campo da condição ${idx + 1}`} value={cond.field} onChange={e => updateCondition(cond.id, { field: e.target.value })}
                           style={{ padding: '6px 10px', border: '1.5px solid #e5e7eb', borderRadius: 8, fontSize: 13, color: '#111827', background: '#fff', cursor: 'pointer', outline: 'none' }}>
-                          {SEGMENT_FIELDS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                          {segmentFields.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
                         </select>
 
                         {/* Operator selector */}

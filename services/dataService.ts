@@ -1822,6 +1822,10 @@ export async function fetchFieldValues(field: string): Promise<string[]> {
   return values;
 }
 
+export async function listCustomFieldDefs(): Promise<LeadCustomFieldDef[]> {
+  return DataService.listCustomFieldDefs();
+}
+
 export async function listSegments(): Promise<SegmentType[]> {
   return apiClient.get<SegmentType[]>('/segments');
 }
